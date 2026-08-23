@@ -73,8 +73,8 @@ pnpm package:windows
 
 Результаты:
 
-- installer: `outputs/FreeTalk_0.3.2_x64-setup.exe`;
-- portable executable: `outputs/FreeTalk_0.3.2_portable_x64.exe`.
+- официальный NSIS installer: `apps/desktop/src-tauri/target/release/bundle/nsis/`;
+- fallback installer и portable executable: `outputs/`.
 
 NSIS использует WebView2 download bootstrapper и показывает установку runtime, если Evergreen WebView2 отсутствует. Portable `.exe` не устанавливает runtime: при его отсутствии сначала установите официальный [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 
@@ -93,9 +93,9 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription` и audio-input/network entitlements. Эти bundles не были собраны или запущены на Mac в текущем Windows окружении.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.3 созданы на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверено после скачивания artifacts. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
-Для первого безопасного запуска неподписанной сборки: перетащите FreeTalk в Applications, попробуйте открыть; затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → найдите сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
+Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
 Для будущего signed/notarized release используйте Apple Developer ID Application certificate, App Store Connect issuer/key и переменные CI `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`, затем включите signing/notarization по [Tauri macOS signing guide](https://v2.tauri.app/distribute/sign/macos/). Платная Apple account для локальной unsigned разработки не нужна.
 

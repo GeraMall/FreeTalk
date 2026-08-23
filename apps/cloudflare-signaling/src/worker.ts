@@ -263,7 +263,15 @@ export class VoiceRoom implements DurableObject {
       });
       return;
     }
-    if (same) same.close(4001, 'Reconnected');
+    if (same && sameAttachment) {
+      // Cloudflare can keep a closing socket in getWebSockets() until its close
+      // callback runs. Remove the replaced socket from the active set first so
+      // it cannot be included in the new participant snapshot or emit a stale
+      // participant-left event for the replacement.
+      sameAttachment.joined = false;
+      same.serializeAttachment(sameAttachment);
+      same.close(4001, 'Reconnected');
+    }
     Object.assign(attachment, {
       joined: true,
       clientId: message.clientId,
@@ -299,6 +307,10 @@ export class VoiceRoom implements DurableObject {
   private async leave(socket: WebSocket) {
     const attachment = socket.deserializeAttachment() as SocketAttachment;
     if (!attachment.joined || !attachment.clientId) return;
+    // webSocketError and webSocketClose may both run for one connection.
+    // Mark it inactive before broadcasting so leave remains idempotent.
+    attachment.joined = false;
+    socket.serializeAttachment(attachment);
     this.broadcast(
       {
         type: 'participant-left',
