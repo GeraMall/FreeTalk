@@ -16,7 +16,7 @@ Cloudflare Durable Objects с SQLite backend доступны на Workers Free.
 ```powershell
 pnpm install --frozen-lockfile
 pnpm --filter @freetalk/cloudflare-signaling exec wrangler login
-pnpm --filter @freetalk/cloudflare-signaling deploy
+pnpm --filter @freetalk/cloudflare-signaling run deploy
 ```
 
 `wrangler login` и `deploy` создают/изменяют внешний ресурс и требуют явного разрешения. Для новой сборки используйте адрес Worker в `VITE_SIGNALING_URL`.
@@ -34,5 +34,10 @@ pnpm --filter @freetalk/cloudflare-signaling exec wrangler secret put TURN_CREDE
 ```
 
 Worker обменивает server-side key на краткоживущие ICE credentials. В клиент и Git они не попадают. Без этих переменных выдаётся только STUN-конфигурация и прямое соединение может не пройти через symmetric NAT/строгий корпоративный firewall.
+
+В production эти secrets настроены 23.08.2026. Проверка через настоящий production WSS
+подтвердила выдачу UDP/TCP/TLS TURN URLs, временных username/credential и срока действия.
+Дополнительный forced-relay Chromium-тест подтвердил передачу данных и синтетического
+аудиосигнала через relay; сами credentials тест не выводит.
 
 `ALLOWED_ORIGIN` опционально ограничивает WebSocket Origin. Для Tauri production origin зависит от платформы; проверяйте фактический origin перед включением строгого значения.

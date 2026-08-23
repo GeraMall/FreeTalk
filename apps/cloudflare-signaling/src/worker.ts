@@ -378,8 +378,10 @@ export class VoiceRoom implements DurableObject {
       { urls: 'stun:stun.cloudflare.com:3478' },
       { urls: 'stun:stun.l.google.com:19302' },
     ];
-    if (!this.env.TURN_KEY_ID || !this.env.TURN_KEY_API_TOKEN)
+    if (!this.env.TURN_KEY_ID || !this.env.TURN_KEY_API_TOKEN) {
+      console.warn('TURN credentials unavailable: Worker secrets are missing');
       return { type: 'ice-config', iceServers: fallback };
+    }
     const ttl = Number(this.env.TURN_CREDENTIAL_TTL_SECONDS ?? 86_400);
     try {
       const response = await fetch(
@@ -393,7 +395,10 @@ export class VoiceRoom implements DurableObject {
           body: JSON.stringify({ ttl }),
         },
       );
-      if (!response.ok) throw new Error('TURN error');
+      if (!response.ok) {
+        console.warn(`TURN credential request failed with HTTP ${response.status}`);
+        throw new Error('TURN error');
+      }
       const result = await response.json<{ iceServers: RTCIceServer[] }>();
       return {
         type: 'ice-config',
@@ -401,6 +406,7 @@ export class VoiceRoom implements DurableObject {
         expiresAt: Date.now() + ttl * 1000,
       };
     } catch {
+      console.warn('TURN credentials unavailable: using STUN fallback');
       return { type: 'ice-config', iceServers: fallback };
     }
   }
