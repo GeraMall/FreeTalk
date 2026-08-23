@@ -1,13 +1,14 @@
 import { HEARTBEAT_INTERVAL_MS } from '@freetalk/config';
 import { parseServerMessage, type ClientMessage, type ServerMessage } from '@freetalk/protocol';
 import { ReconnectSchedule } from './reconnect';
+import { createSignalSocket, SIGNAL_SOCKET_OPEN, type SignalSocket } from './signaling-transport';
 
 export type SignalingState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
 
 const SERVER_ACTIVITY_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 3;
 
 export class SignalingClient {
-  private socket?: WebSocket;
+  private socket?: SignalSocket;
   private heartbeat?: number;
   private retryTimer?: number;
   private closedByUser = false;
@@ -29,7 +30,7 @@ export class SignalingClient {
   }
 
   send(message: ClientMessage) {
-    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (this.socket?.readyState !== SIGNAL_SOCKET_OPEN) return false;
     this.socket.send(JSON.stringify(message));
     return true;
   }
@@ -58,10 +59,10 @@ export class SignalingClient {
     if (this.retryTimer) window.clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
     this.onState(reconnecting ? 'reconnecting' : 'connecting', this.schedule.attempts);
-    let socket: WebSocket;
+    let socket: SignalSocket;
     try {
       const separator = this.url.includes('?') ? '&' : '?';
-      socket = new WebSocket(
+      socket = createSignalSocket(
         `${this.url}${separator}room=${encodeURIComponent(this.joined.roomId)}`,
       );
       this.socket = socket;
@@ -79,9 +80,10 @@ export class SignalingClient {
       this.startHeartbeat(socket);
     });
     socket.addEventListener('message', (event) => {
-      if (this.socket !== socket || typeof event.data !== 'string') return;
+      const data = (event as MessageEvent<unknown>).data;
+      if (this.socket !== socket || typeof data !== 'string') return;
       try {
-        const message = parseServerMessage(event.data);
+        const message = parseServerMessage(data);
         this.lastServerActivity = Date.now();
         this.schedule.reset();
         this.onMessage(message);
@@ -105,7 +107,7 @@ export class SignalingClient {
     });
   }
 
-  private startHeartbeat(socket: WebSocket) {
+  private startHeartbeat(socket: SignalSocket) {
     if (this.heartbeat) window.clearInterval(this.heartbeat);
     this.heartbeat = window.setInterval(() => {
       if (this.socket !== socket) return;

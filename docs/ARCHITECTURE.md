@@ -3,7 +3,7 @@
 ## Поток данных
 
 1. Клиент получает `MediaStream` только с аудиотреком и применяет echo cancellation, noise suppression, automatic gain control, mono/48 kHz.
-2. WebSocket-сигналинг передаёт присутствие, mute, SDP и ICE. Аудиоданные через него не проходят.
+2. WebSocket-сигналинг передаёт присутствие, mute, SDP и ICE. В Tauri production WSS открывает нативный Rust-модуль; браузерная разработка использует стандартный `WebSocket`. Аудиоданные через сигналинг не проходят.
 3. `PeerManager` создаёт один `RTCPeerConnection` на каждого удалённого участника. Mesh из шести человек означает до пяти исходящих Opus-потоков на клиент.
 4. После SDP/ICE браузеры передают DTLS-SRTP аудио напрямую либо через TURN. Opus получает ограничение 64 kbit/s на sender.
 
@@ -18,6 +18,7 @@
 - `apps/desktop/src/lib/audio-manager.ts` — захват, mute/PTT и voice activity.
 - `peer-manager.ts` — perfect negotiation, ICE deduplication, Opus и peer lifecycle.
 - `signaling-client.ts` — heartbeat и ограниченный exponential backoff до 30 секунд.
+- `signaling-transport.ts` и `src-tauri/src/signaling.rs` — взаимозаменяемые browser/native WSS-транспорты; нативный транспорт разрешает только production FreeTalk WSS и локальный development server, ограничивает сообщения 32 КБ и проверяет исходящий JSON.
 - `remote-audio.ts` — output sink, индивидуальные volume/mute и удалённый voice activity.
 
 ## Протокол

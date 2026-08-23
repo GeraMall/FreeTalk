@@ -1,6 +1,6 @@
 # FreeTalk
 
-FreeTalk — бесплатное desktop-приложение для голосовых комнат на 2–6 человек. Один код, без аккаунтов, рекламы, телеметрии и записи разговоров. Клиент: Tauri 2 + React/TypeScript; аудио: WebRTC mesh + Opus; сигналинг: WebSocket.
+FreeTalk — бесплатное desktop-приложение для голосовых комнат на 2–6 человек. Один код, без аккаунтов, рекламы, телеметрии и записи разговоров. Клиент: Tauri 2 + React/TypeScript; аудио: WebRTC mesh + Opus; сигналинг: WebSocket. В desktop-сборке production WSS работает в нативной Rust-части Tauri, поэтому больше не зависит от сетевого маршрута WebView2.
 
 > Статус: функциональный MVP. Автоматически подтверждены два WebRTC peers, состояние `connected` и получение удалённых аудиотреков. Фактическая слышимость через реальные микрофоны/динамики ещё требует ручной проверки.
 
@@ -39,7 +39,7 @@ pnpm tauri:dev
 - режимы VAD/PTT/постоянной передачи, изменяемая PTT-клавиша и настраиваемый порог голоса;
 - input/output device selection, общая и индивидуальная громкость, local mute;
 - WebRTC echo cancellation, noise suppression, AGC, output ducking, подавление щелчков клавиатуры, комфортный шум и тестовая запись;
-- exponential WebSocket reconnect 0.5–30 s, heartbeat, session replacement и краткий reconnect grace;
+- нативный WSS-транспорт desktop-клиента, exponential reconnect 0.5–30 s, heartbeat, session replacement и краткий reconnect grace;
 - сохранение имени, устройств и всех аудиопараметров в localStorage;
 - встроенная проверка подписанных обновлений Tauri, уведомление, прогресс и установка из приложения;
 - понятные ошибки permission/no device/network/room full/NAT;
@@ -94,7 +94,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.7 созданы на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверено после скачивания artifacts. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.8 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
@@ -129,6 +129,8 @@ TURN secrets задаются только Worker:
 - unit tests protocol/validation/rooms/limit/cleanup/reconnect/audio gate/owner moderation — пройдены;
 - signaling/protocol/frontend production builds — пройдены;
 - `cargo check` (Rust 1.98.0, Tauri 2.11.5) — пройден;
+- `cargo test --lib` — пройдены ограничения нативного WSS URL и размера/формата сообщений;
+- Windows release 0.3.8 создал production-комнату через нативный WSS; TCP 443 принадлежал самому `freetalk.exe`, а не дочернему WebView2;
 - два Chromium clients с fake microphone — оба connected и получили remote track; владелец принудительно выключил микрофон второго клиента, состояние синхронизировалось в обеих вкладках;
 - PTT keydown — UI pressed gate и unit-level `MediaStreamTrack.enabled` проверены;
 - реальная слышимость, реальные audio devices, сложный NAT/TURN и macOS — не проверены.
