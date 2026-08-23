@@ -77,6 +77,16 @@ sockets.on('connection', (socket) => {
             code: 'INVALID_MESSAGE',
             message: 'Вы уже находитесь в комнате',
           });
+        let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
+        try {
+          iceConfig = await getIceConfig();
+        } catch {
+          iceConfig = {
+            type: 'ice-config',
+            iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+          };
+        }
+        send(socket, iceConfig);
         if (message.type === 'create-room')
           manager.create(
             message.roomId,
@@ -97,14 +107,7 @@ sockets.on('connection', (socket) => {
         meta.clientId = message.clientId;
         if (message.type === 'create-room')
           send(socket, { type: 'room-created', roomId: message.roomId });
-        try {
-          send(socket, await getIceConfig());
-        } catch {
-          send(socket, {
-            type: 'ice-config',
-            iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
-          });
-        }
+        send(socket, iceConfig);
         return;
       }
       if (!meta.roomId || !meta.clientId)

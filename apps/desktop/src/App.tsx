@@ -62,13 +62,14 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.5');
+  const [appVersion, setAppVersion] = useState('0.3.6');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
   const peers = useRef<PeerManager | undefined>(undefined);
   const signaling = useRef<SignalingClient | undefined>(undefined);
+  const currentIceServers = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
   const notificationSounds = useRef(new NotificationSounds());
   const participantNotifications = useRef(new ParticipantNotificationTracker());
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -111,12 +112,14 @@ export function App() {
     remoteAudio.current.closeAll();
     notificationSounds.current.stop();
     participantNotifications.current.clear();
+    currentIceServers.current = DEFAULT_ICE_SERVERS;
     setRoomId(undefined);
     setParticipants([]);
     setPeerState({});
     setMuted(false);
     setSignalState('offline');
     setJoining(false);
+    setTurnAvailable(false);
   }, []);
 
   useEffect(() => {
@@ -222,6 +225,7 @@ export function App() {
         return;
       }
       if (message.type === 'ice-config') {
+        currentIceServers.current = message.iceServers;
         setTurnAvailable(hasTurnServer(message.iceServers));
         peers.current?.updateIceServers(message.iceServers);
         return;
@@ -241,7 +245,7 @@ export function App() {
         if (!localStream) return;
         peers.current = new PeerManager(
           selfId.current,
-          DEFAULT_ICE_SERVERS,
+          currentIceServers.current,
           localStream,
           (signal) => {
             const { from: _from, ...clientSignal } = signal;

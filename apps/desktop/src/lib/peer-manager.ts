@@ -7,6 +7,7 @@ interface PeerContext {
   ignoreOffer: boolean;
   settingRemoteAnswer: boolean;
   candidates: Set<string>;
+  pendingCandidates: RTCIceCandidateInit[];
   disconnectTimer?: number;
   iceRestartAttempts: number;
 }
@@ -46,6 +47,7 @@ export class PeerManager {
       ignoreOffer: false,
       settingRemoteAnswer: false,
       candidates: new Set(),
+      pendingCandidates: [],
       iceRestartAttempts: 0,
     };
     this.peers.set(peerId, context);
@@ -127,6 +129,11 @@ export class PeerManager {
       const key = JSON.stringify(message.candidate);
       if (context.candidates.has(key)) return;
       context.candidates.add(key);
+      if (!connection.remoteDescription) {
+        if (context.pendingCandidates.length >= 256) context.pendingCandidates.shift();
+        context.pendingCandidates.push(message.candidate);
+        return;
+      }
       try {
         await connection.addIceCandidate(message.candidate);
       } catch (error) {
@@ -145,6 +152,7 @@ export class PeerManager {
     context.settingRemoteAnswer = message.description.type === 'answer';
     await connection.setRemoteDescription(message.description);
     context.settingRemoteAnswer = false;
+    await this.flushPendingCandidates(context);
     if (isOffer) {
       await connection.setLocalDescription();
       if (connection.localDescription?.type === 'answer') {
@@ -168,6 +176,7 @@ export class PeerManager {
   }
 
   updateIceServers(iceServers: RTCIceServer[]) {
+    if (JSON.stringify(this.iceServers) === JSON.stringify(iceServers)) return;
     this.iceServers = iceServers;
     for (const context of this.peers.values()) {
       const { connection } = context;
@@ -222,5 +231,17 @@ export class PeerManager {
     if (!context.disconnectTimer) return;
     window.clearTimeout(context.disconnectTimer);
     context.disconnectTimer = undefined;
+  }
+
+  private async flushPendingCandidates(context: PeerContext) {
+    const pending = context.pendingCandidates.splice(0);
+    for (const candidate of pending) {
+      try {
+        await context.connection.addIceCandidate(candidate);
+      } catch {
+        // A queued candidate can belong to an offer ignored during glare. Later
+        // candidates for the accepted description will still be applied.
+      }
+    }
   }
 }

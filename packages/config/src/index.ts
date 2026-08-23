@@ -15,3 +15,51 @@ export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:stun.l.google.com:19302' },
 ];
+
+const IPV4_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+
+export function isIpv4Address(value: string) {
+  if (!IPV4_PATTERN.test(value)) return false;
+  return value.split('.').every((part) => Number(part) <= 255);
+}
+
+export function parseDnsIpv4Answers(value: unknown) {
+  if (!value || typeof value !== 'object' || !('Answer' in value) || !Array.isArray(value.Answer))
+    return [];
+  return [
+    ...new Set(
+      value.Answer.flatMap((answer) => {
+        if (!answer || typeof answer !== 'object') return [];
+        if (!('type' in answer) || answer.type !== 1 || !('data' in answer)) return [];
+        return typeof answer.data === 'string' && isIpv4Address(answer.data) ? [answer.data] : [];
+      }),
+    ),
+  ].slice(0, 4);
+}
+
+export function withCloudflareTurnIpFallbacks(iceServers: RTCIceServer[], ipv4Addresses: string[]) {
+  const addresses = [...new Set(ipv4Addresses.filter(isIpv4Address))].slice(0, 4);
+  if (addresses.length === 0) return iceServers;
+  const fallbackServers = iceServers.flatMap((server): RTCIceServer[] => {
+    const urls = typeof server.urls === 'string' ? [server.urls] : server.urls;
+    if (
+      !server.username ||
+      !server.credential ||
+      !urls.some((url) => /^turns?:turn\.cloudflare\.com(?=[:/?]|$)/i.test(url))
+    )
+      return [];
+    return [
+      {
+        urls: addresses.flatMap((address) => [
+          `turn:${address}:3478?transport=udp`,
+          `turn:${address}:3478?transport=tcp`,
+          `turn:${address}:53?transport=udp`,
+          `turn:${address}:80?transport=tcp`,
+        ]),
+        username: server.username,
+        credential: server.credential,
+      },
+    ];
+  });
+  return [...iceServers, ...fallbackServers];
+}

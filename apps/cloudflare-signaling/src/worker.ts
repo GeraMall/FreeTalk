@@ -5,6 +5,8 @@ import {
   RATE_LIMIT_WINDOW_MS,
   ROOM_MAX_PARTICIPANTS,
   ROOM_CODE_PATTERN,
+  parseDnsIpv4Answers,
+  withCloudflareTurnIpFallbacks,
 } from '@freetalk/config';
 import { parseClientMessage, type Participant, type ServerMessage } from '@freetalk/protocol';
 
@@ -217,6 +219,7 @@ export class VoiceRoom implements DurableObject {
       });
       return;
     }
+    const iceConfig = await this.iceConfig();
     const active = this.active();
     const grace = await this.state.storage.get<{ sessionId: string; expiresAt: number }>('grace');
     if (message.type === 'create-room' && active.length > 0) {
@@ -290,6 +293,7 @@ export class VoiceRoom implements DurableObject {
     });
     await this.state.storage.setAlarm(Date.now() + 60_000);
     const participant = this.participant(attachment);
+    this.send(socket, iceConfig);
     this.send(socket, {
       type: 'joined-room',
       roomId: message.roomId,
@@ -301,7 +305,9 @@ export class VoiceRoom implements DurableObject {
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });
     if (!same) this.broadcast({ type: 'participant-joined', participant }, message.clientId);
-    this.send(socket, await this.iceConfig());
+    // Older clients only apply TURN after creating their PeerManager. Send the
+    // same configuration again during the 0.3.5 -> 0.3.6 transition.
+    this.send(socket, iceConfig);
   }
 
   private async leave(socket: WebSocket) {
@@ -384,17 +390,20 @@ export class VoiceRoom implements DurableObject {
     }
     const ttl = Number(this.env.TURN_CREDENTIAL_TTL_SECONDS ?? 86_400);
     try {
-      const response = await fetch(
-        `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(this.env.TURN_KEY_ID)}/credentials/generate-ice-servers`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.env.TURN_KEY_API_TOKEN}`,
-            'Content-Type': 'application/json',
+      const [response, turnIpv4Addresses] = await Promise.all([
+        fetch(
+          `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(this.env.TURN_KEY_ID)}/credentials/generate-ice-servers`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.env.TURN_KEY_API_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ttl }),
           },
-          body: JSON.stringify({ ttl }),
-        },
-      );
+        ),
+        this.turnIpv4Addresses(),
+      ]);
       if (!response.ok) {
         console.warn(`TURN credential request failed with HTTP ${response.status}`);
         throw new Error('TURN error');
@@ -402,12 +411,28 @@ export class VoiceRoom implements DurableObject {
       const result = await response.json<{ iceServers: RTCIceServer[] }>();
       return {
         type: 'ice-config',
-        iceServers: [...fallback, ...result.iceServers],
+        iceServers: [
+          ...fallback,
+          ...withCloudflareTurnIpFallbacks(result.iceServers, turnIpv4Addresses),
+        ],
         expiresAt: Date.now() + ttl * 1000,
       };
     } catch {
       console.warn('TURN credentials unavailable: using STUN fallback');
       return { type: 'ice-config', iceServers: fallback };
+    }
+  }
+
+  private async turnIpv4Addresses() {
+    try {
+      const response = await fetch(
+        'https://cloudflare-dns.com/dns-query?name=turn.cloudflare.com&type=A',
+        { headers: { Accept: 'application/dns-json' } },
+      );
+      if (!response.ok) return [];
+      return parseDnsIpv4Answers(await response.json<unknown>());
+    } catch {
+      return [];
     }
   }
 }

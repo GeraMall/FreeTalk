@@ -1,4 +1,5 @@
 import type { ServerMessage } from '@freetalk/protocol';
+import { parseDnsIpv4Answers, withCloudflareTurnIpFallbacks } from '@freetalk/config';
 import { describe, expect, it } from 'vitest';
 import { VoiceRoom } from '../src/worker';
 
@@ -103,6 +104,7 @@ describe('Cloudflare voice room reconnects', () => {
 
     expect(current.attachment.joined).toBe(false);
     expect(current.closedWith?.[0]).toBe(4001);
+    expect(replacement.sent[0]?.type).toBe('ice-config');
     const snapshot = replacement.sent.find((message) => message.type === 'joined-room');
     expect(snapshot?.type).toBe('joined-room');
     if (snapshot?.type === 'joined-room') {
@@ -141,5 +143,48 @@ describe('Cloudflare voice room reconnects', () => {
 
     expect(member.attachment.joined).toBe(false);
     expect(owner.sent.filter((message) => message.type === 'participant-left')).toHaveLength(1);
+  });
+});
+
+describe('Cloudflare TURN IP fallback', () => {
+  it('accepts only valid IPv4 answers from DNS over HTTPS', () => {
+    expect(
+      parseDnsIpv4Answers({
+        Answer: [
+          { type: 1, data: '141.101.90.1' },
+          { type: 28, data: '2a06:98c1:3200::1' },
+          { type: 1, data: '999.1.1.1' },
+          { type: 1, data: '141.101.90.1' },
+        ],
+      }),
+    ).toEqual(['141.101.90.1']);
+  });
+
+  it('adds authenticated UDP and TCP IP endpoints without replacing provider URLs', () => {
+    const provider: RTCIceServer[] = [
+      {
+        urls: [
+          'turn:turn.cloudflare.com:3478?transport=udp',
+          'turns:turn.cloudflare.com:443?transport=tcp',
+        ],
+        username: 'temporary-user',
+        credential: 'temporary-password',
+      },
+    ];
+
+    const result = withCloudflareTurnIpFallbacks(provider, ['141.101.90.1']);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(provider[0]);
+    expect(result[1]).toEqual({
+      urls: [
+        'turn:141.101.90.1:3478?transport=udp',
+        'turn:141.101.90.1:3478?transport=tcp',
+        'turn:141.101.90.1:53?transport=udp',
+        'turn:141.101.90.1:80?transport=tcp',
+      ],
+      username: 'temporary-user',
+      credential: 'temporary-password',
+    });
   });
 });

@@ -8,11 +8,20 @@ class FakePeerConnection {
 
   connectionState: RTCPeerConnectionState = 'new';
   signalingState: RTCSignalingState = 'stable';
+  remoteDescription: RTCSessionDescription | null = null;
+  localDescription: RTCSessionDescription | null = null;
   onconnectionstatechange: ((event: Event) => void) | null = null;
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   onnegotiationneeded: RTCPeerConnection['onnegotiationneeded'] = null;
   ontrack: RTCPeerConnection['ontrack'] = null;
   restartIce = vi.fn();
+  addIceCandidate = vi.fn(async () => undefined);
+  setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
+    this.remoteDescription = description as RTCSessionDescription;
+  });
+  setLocalDescription = vi.fn(async () => {
+    this.localDescription = { type: 'answer', sdp: 'answer-sdp' } as RTCSessionDescription;
+  });
   setConfiguration = vi.fn((configuration: RTCConfiguration) => {
     this.configuration = configuration;
   });
@@ -82,6 +91,17 @@ describe('PeerManager ICE recovery', () => {
     expect(connection.restartIce).toHaveBeenCalledOnce();
   });
 
+  it('does not restart ICE for a repeated identical configuration', () => {
+    const peers = manager();
+    peers.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = FakePeerConnection.instances[0]!;
+
+    peers.updateIceServers([]);
+
+    expect(connection.setConfiguration).not.toHaveBeenCalled();
+    expect(connection.restartIce).not.toHaveBeenCalled();
+  });
+
   it('limits automatic ICE restarts after a failed connection', () => {
     vi.useFakeTimers();
     const peers = manager();
@@ -97,5 +117,28 @@ describe('PeerManager ICE recovery', () => {
     vi.advanceTimersByTime(30_000);
 
     expect(connection.restartIce).toHaveBeenCalledTimes(3);
+  });
+
+  it('queues an ICE candidate until the remote SDP is available', async () => {
+    const peers = manager();
+    const peerId = '386d39ef-61af-4aca-84b8-47f78b0f554b';
+    const candidate = {
+      candidate: 'candidate:1 1 udp 1 203.0.113.1 3478 typ relay',
+      sdpMid: '0',
+      sdpMLineIndex: 0,
+    };
+
+    await peers.handle({ type: 'ice-candidate', from: peerId, candidate });
+    const connection = FakePeerConnection.instances[0]!;
+    expect(connection.addIceCandidate).not.toHaveBeenCalled();
+
+    await peers.handle({
+      type: 'offer',
+      from: peerId,
+      description: { type: 'offer', sdp: 'offer-sdp' },
+    });
+
+    expect(connection.setRemoteDescription).toHaveBeenCalledOnce();
+    expect(connection.addIceCandidate).toHaveBeenCalledWith(candidate);
   });
 });
