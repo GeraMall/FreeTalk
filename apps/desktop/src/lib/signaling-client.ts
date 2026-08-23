@@ -19,7 +19,7 @@ export class SignalingClient {
 
   constructor(
     private readonly url: string,
-    private readonly onMessage: (message: ServerMessage) => void | Promise<void>,
+    private readonly onMessage: (message: ServerMessage) => Promise<void>,
     private readonly onState: (state: SignalingState, attempt?: number) => void,
   ) {}
 

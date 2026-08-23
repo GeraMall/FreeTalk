@@ -140,5 +140,8 @@ describe('PeerManager ICE recovery', () => {
 
     expect(connection.setRemoteDescription).toHaveBeenCalledOnce();
     expect(connection.addIceCandidate).toHaveBeenCalledWith(candidate);
+    expect(connection.setRemoteDescription.mock.invocationCallOrder[0]).toBeLessThan(
+      connection.addIceCandidate.mock.invocationCallOrder[0]!,
+    );
   });
 });

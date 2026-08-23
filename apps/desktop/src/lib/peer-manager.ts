@@ -8,6 +8,7 @@ interface PeerContext {
   settingRemoteAnswer: boolean;
   candidates: Set<string>;
   pendingCandidates: RTCIceCandidateInit[];
+  operationQueue: Promise<void>;
   disconnectTimer?: number;
   iceRestartAttempts: number;
 }
@@ -17,6 +18,14 @@ const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
 export interface PeerEvents {
   onTrack(peerId: string, stream: MediaStream): void;
   onState(peerId: string, state: RTCPeerConnectionState): void;
+}
+
+interface NegotiationDiagnosticTarget {
+  __FREETALK_NEGOTIATION_LOG__?: (entry: {
+    peerId: string;
+    event: string;
+    signalingState: RTCSignalingState;
+  }) => void;
 }
 
 export class PeerManager {
@@ -48,9 +57,11 @@ export class PeerManager {
       settingRemoteAnswer: false,
       candidates: new Set(),
       pendingCandidates: [],
+      operationQueue: Promise.resolve(),
       iceRestartAttempts: 0,
     };
     this.peers.set(peerId, context);
+    this.trace(peerId, context.polite ? 'role:polite' : 'role:impolite', connection);
 
     for (const track of this.localStream.getAudioTracks()) {
       const sender = connection.addTrack(track, this.localStream);
@@ -100,23 +111,34 @@ export class PeerManager {
         this.clearDisconnectTimer(context);
       }
     };
-    connection.onnegotiationneeded = async () => {
-      try {
-        context.makingOffer = true;
-        await connection.setLocalDescription();
-        if (connection.localDescription?.type === 'offer') {
-          this.signal({
-            type: 'offer',
-            from: this.selfId,
-            to: peerId,
-            description: { type: 'offer', sdp: connection.localDescription.sdp },
-          });
-        }
-      } catch {
-        this.events.onState(peerId, 'failed');
-      } finally {
-        context.makingOffer = false;
+    connection.onnegotiationneeded = () => {
+      this.trace(peerId, 'negotiationneeded', connection);
+      if (connection.signalingState !== 'stable') {
+        this.trace(peerId, 'offer-skipped:not-stable', connection);
+        return;
       }
+      void this.enqueue(context, async () => {
+        if (connection.signalingState !== 'stable') {
+          this.trace(peerId, 'offer-skipped:not-stable', connection);
+          return;
+        }
+        try {
+          context.makingOffer = true;
+          this.trace(peerId, 'create-offer', connection);
+          await connection.setLocalDescription();
+          if (connection.localDescription?.type === 'offer') {
+            this.trace(peerId, 'set-local-offer', connection);
+            this.signal({
+              type: 'offer',
+              from: this.selfId,
+              to: peerId,
+              description: { type: 'offer', sdp: connection.localDescription.sdp },
+            });
+          }
+        } finally {
+          context.makingOffer = false;
+        }
+      }).catch(() => this.events.onState(peerId, 'failed'));
     };
     return connection;
   }
@@ -124,6 +146,13 @@ export class PeerManager {
   async handle(message: Extract<ServerMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>) {
     const context =
       this.peers.get(message.from) ?? (this.ensure(message.from), this.peers.get(message.from)!);
+    await this.enqueue(context, () => this.handlePeerMessage(context, message));
+  }
+
+  private async handlePeerMessage(
+    context: PeerContext,
+    message: Extract<ServerMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>,
+  ) {
     const connection = context.connection;
     if (message.type === 'ice-candidate') {
       const key = JSON.stringify(message.candidate);
@@ -147,15 +176,31 @@ export class PeerManager {
       !context.makingOffer &&
       (connection.signalingState === 'stable' || context.settingRemoteAnswer);
     const collision = isOffer && !readyForOffer;
+    if (collision) this.trace(message.from, 'collision-detected', connection);
     context.ignoreOffer = !context.polite && collision;
-    if (context.ignoreOffer) return;
+    if (context.ignoreOffer) {
+      this.trace(message.from, 'impolite:ignore-offer', connection);
+      return;
+    }
+    if (isOffer && collision && connection.signalingState !== 'stable') {
+      this.trace(message.from, 'polite:rollback', connection);
+      await connection.setLocalDescription({ type: 'rollback' });
+    }
+    if (message.description.type === 'answer')
+      this.trace(message.from, 'answer-received', connection);
     context.settingRemoteAnswer = message.description.type === 'answer';
-    await connection.setRemoteDescription(message.description);
-    context.settingRemoteAnswer = false;
+    try {
+      await connection.setRemoteDescription(message.description);
+      this.trace(message.from, `set-remote-${message.description.type}`, connection);
+    } finally {
+      context.settingRemoteAnswer = false;
+    }
     await this.flushPendingCandidates(context);
     if (isOffer) {
+      this.trace(message.from, 'create-answer', connection);
       await connection.setLocalDescription();
       if (connection.localDescription?.type === 'answer') {
+        this.trace(message.from, 'set-local-answer', connection);
         this.signal({
           type: 'answer',
           from: this.selfId,
@@ -231,6 +276,21 @@ export class PeerManager {
     if (!context.disconnectTimer) return;
     window.clearTimeout(context.disconnectTimer);
     context.disconnectTimer = undefined;
+  }
+
+  private enqueue(context: PeerContext, operation: () => Promise<void>) {
+    const pending = context.operationQueue.then(operation);
+    context.operationQueue = pending.catch(() => undefined);
+    return pending;
+  }
+
+  private trace(peerId: string, event: string, connection: RTCPeerConnection) {
+    const target = globalThis as typeof globalThis & NegotiationDiagnosticTarget;
+    target.__FREETALK_NEGOTIATION_LOG__?.({
+      peerId,
+      event,
+      signalingState: connection.signalingState,
+    });
   }
 
   private async flushPendingCandidates(context: PeerContext) {

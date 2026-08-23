@@ -415,21 +415,15 @@ export function App() {
       setName(cleanName);
       pendingRoomId.current = code;
       joinedRoom.current = false;
-      const client = new SignalingClient(
-        signalingUrl,
-        (message) => {
-          void handleServerMessage(message);
-        },
-        (state, attempt) => {
-          setSignalState(state);
-          setReconnectAttempt(attempt ?? 0);
-          if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
-          else if (state === 'connected') setNotice('');
-          else if (state === 'offline' && joinedRoom.current) {
-            setError('Соединение с сервером потеряно. Выйдите из комнаты и подключитесь снова.');
-          }
-        },
-      );
+      const client = new SignalingClient(signalingUrl, handleServerMessage, (state, attempt) => {
+        setSignalState(state);
+        setReconnectAttempt(attempt ?? 0);
+        if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
+        else if (state === 'connected') setNotice('');
+        else if (state === 'offline' && joinedRoom.current) {
+          setError('Соединение с сервером потеряно. Выйдите из комнаты и подключитесь снова.');
+        }
+      });
       signaling.current = client;
       client.connect({
         type: create ? 'create-room' : 'join-room',

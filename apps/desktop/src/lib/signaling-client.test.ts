@@ -143,4 +143,26 @@ describe('SignalingClient', () => {
     for (let index = 0; index < 12; index += 1) await Promise.resolve();
     expect(order).toEqual(['start-1', 'end-1', 'start-2', 'end-2']);
   });
+
+  it('continues processing after a rejected message handler', async () => {
+    const handled: number[] = [];
+    const client = new SignalingClient(
+      'wss://example.test/ws',
+      async (message) => {
+        if (message.type !== 'pong') return;
+        if (message.timestamp === 1) throw new Error('expected handler failure');
+        handled.push(message.timestamp);
+      },
+      vi.fn(),
+    );
+    client.connect(join);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+
+    socket.receive({ type: 'pong', timestamp: 1 });
+    socket.receive({ type: 'pong', timestamp: 2 });
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+
+    expect(handled).toEqual([2]);
+  });
 });
