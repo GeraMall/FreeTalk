@@ -113,4 +113,34 @@ describe('SignalingClient', () => {
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(JSON.parse(second.sent[0]!)).toMatchObject({ type: 'join-room', roomId: join.roomId });
   });
+
+  it('processes asynchronous server messages in wire order', async () => {
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstFinished = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const client = new SignalingClient(
+      'wss://example.test/ws',
+      async (message) => {
+        if (message.type !== 'pong') return;
+        order.push(`start-${message.timestamp}`);
+        if (message.timestamp === 1) await firstFinished;
+        order.push(`end-${message.timestamp}`);
+      },
+      vi.fn(),
+    );
+    client.connect(join);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+
+    socket.receive({ type: 'pong', timestamp: 1 });
+    socket.receive({ type: 'pong', timestamp: 2 });
+    await Promise.resolve();
+    expect(order).toEqual(['start-1']);
+
+    releaseFirst();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    expect(order).toEqual(['start-1', 'end-1', 'start-2', 'end-2']);
+  });
 });

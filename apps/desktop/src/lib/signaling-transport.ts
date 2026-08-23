@@ -1,4 +1,4 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 
 export const SIGNAL_SOCKET_OPEN = 1;
 
@@ -21,32 +21,30 @@ function isTauri() {
 class NativeSignalSocket extends EventTarget implements SignalSocket {
   readyState: number = WebSocket.CONNECTING;
   private readonly connectionId = crypto.randomUUID();
+  private commandQueue: Promise<unknown> = Promise.resolve();
   private closeDispatched = false;
 
   constructor(url: string) {
     super();
-    const onEvent = new Channel<NativeSignalEvent>();
-    onEvent.onmessage = (event) => this.handle(event);
-    void invoke('signaling_connect', {
-      connectionId: this.connectionId,
-      url,
-      onEvent,
-    }).catch(() => this.fail());
+    void this.connect(url);
   }
 
   send(message: string) {
     if (this.readyState !== SIGNAL_SOCKET_OPEN) throw new Error('Native signaling is not open');
-    void invoke('signaling_send', { connectionId: this.connectionId, message }).catch(() =>
-      this.fail(),
-    );
+    // Tauri invokes are asynchronous IPC calls. Serialize them so an offer is
+    // never overtaken by its answer/ICE candidates on the way to Rust.
+    this.commandQueue = this.commandQueue
+      .then(() => invoke('signaling_send', { connectionId: this.connectionId, message }))
+      .catch(() => this.fail());
   }
 
   close() {
     if (this.readyState === WebSocket.CLOSED || this.readyState === WebSocket.CLOSING) return;
     this.readyState = WebSocket.CLOSING;
-    void invoke('signaling_close', { connectionId: this.connectionId }).finally(() =>
-      this.dispatchClose(),
-    );
+    // Flush a queued leave-room before closing the native socket.
+    this.commandQueue = this.commandQueue
+      .then(() => invoke('signaling_close', { connectionId: this.connectionId }))
+      .finally(() => this.dispatchClose());
   }
 
   private handle(event: NativeSignalEvent) {
@@ -79,6 +77,20 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
     this.closeDispatched = true;
     this.readyState = WebSocket.CLOSED;
     this.dispatchEvent(new Event('close'));
+  }
+
+  private async connect(url: string) {
+    try {
+      await invoke('signaling_connect', { connectionId: this.connectionId, url });
+      while (this.readyState !== WebSocket.CLOSED) {
+        const event = await invoke<NativeSignalEvent>('signaling_receive', {
+          connectionId: this.connectionId,
+        });
+        this.handle(event);
+      }
+    } catch {
+      this.fail();
+    }
   }
 }
 

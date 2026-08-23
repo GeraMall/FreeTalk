@@ -3,8 +3,9 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
+    sync::Arc,
 };
-use tauri::{ipc::Channel, AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
@@ -22,6 +23,7 @@ pub struct NativeSignalingState {
 struct ConnectionControl {
     generation: u64,
     commands: mpsc::UnboundedSender<NativeCommand>,
+    events: Arc<Mutex<mpsc::UnboundedReceiver<NativeSignalEvent>>>,
 }
 
 enum NativeCommand {
@@ -63,40 +65,82 @@ fn validate_message(message: &str) -> Result<(), String> {
         .map_err(|_| "Сигнальное сообщение не является JSON".to_string())
 }
 
+fn debug_message(direction: &str, message: &str) {
+    if std::env::var_os("FREETALK_SIGNAL_DEBUG").is_none() {
+        return;
+    }
+    let kind = serde_json::from_str::<serde_json::Value>(message)
+        .ok()
+        .and_then(|value| value.get("type")?.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "unknown".into());
+    eprintln!("FreeTalk signaling {direction}: {kind}");
+}
+
 #[tauri::command]
 pub async fn signaling_connect(
     app: AppHandle,
     state: State<'_, NativeSignalingState>,
     connection_id: String,
     url: String,
-    on_event: Channel<NativeSignalEvent>,
 ) -> Result<(), String> {
     validate_url(&url)?;
-    if connection_id.len() > 64 || connection_id.is_empty() {
+    if connection_id.is_empty()
+        || connection_id.len() > 64
+        || !connection_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+    {
         return Err("Некорректный идентификатор соединения".to_string());
     }
 
     let generation = state.next_generation.fetch_add(1, Ordering::Relaxed);
     let (commands, receiver) = mpsc::unbounded_channel();
+    let (events, event_receiver) = mpsc::unbounded_channel();
     if let Some(previous) = state.connections.lock().await.insert(
         connection_id.clone(),
         ConnectionControl {
             generation,
             commands,
+            events: Arc::new(Mutex::new(event_receiver)),
         },
     ) {
         let _ = previous.commands.send(NativeCommand::Close);
     }
 
+    // The socket task owns network I/O. Incoming events are retained in a
+    // per-connection queue until the frontend explicitly receives them, so
+    // late room/SDP/ICE messages cannot be lost between IPC event callbacks.
     tauri::async_runtime::spawn(run_connection(
         app,
         connection_id,
         generation,
         url,
         receiver,
-        on_event,
+        events,
     ));
     Ok(())
+}
+
+#[tauri::command]
+pub async fn signaling_receive(
+    state: State<'_, NativeSignalingState>,
+    connection_id: String,
+) -> Result<NativeSignalEvent, String> {
+    let events = {
+        let connections = state.connections.lock().await;
+        connections
+            .get(&connection_id)
+            .map(|connection| Arc::clone(&connection.events))
+            .ok_or_else(|| "Нативный сигналинг не подключён".to_string())?
+    };
+
+    let event = events
+        .lock()
+        .await
+        .recv()
+        .await
+        .ok_or_else(|| "Нативный сигналинг уже закрыт".to_string())?;
+    Ok(event)
 }
 
 #[tauri::command]
@@ -133,18 +177,19 @@ async fn run_connection(
     generation: u64,
     url: String,
     mut commands: mpsc::UnboundedReceiver<NativeCommand>,
-    on_event: Channel<NativeSignalEvent>,
+    events: mpsc::UnboundedSender<NativeSignalEvent>,
 ) {
     match connect_async(&url).await {
         Ok((socket, _response)) => {
-            let _ = on_event.send(NativeSignalEvent::Open);
+            let _ = events.send(NativeSignalEvent::Open);
             let (mut writer, mut reader) = socket.split();
             loop {
                 tokio::select! {
                     command = commands.recv() => match command {
                         Some(NativeCommand::Send(value)) => {
+                            debug_message("out", &value);
                             if writer.send(Message::Text(value.into())).await.is_err() {
-                                let _ = on_event.send(NativeSignalEvent::Error {
+                                let _ = events.send(NativeSignalEvent::Error {
                                     message: "Не удалось отправить сообщение через нативный сигналинг".into(),
                                 });
                                 break;
@@ -157,11 +202,12 @@ async fn run_connection(
                     },
                     incoming = reader.next() => match incoming {
                         Some(Ok(Message::Text(value))) if value.len() <= MAX_SIGNAL_BYTES => {
-                            let _ = on_event.send(NativeSignalEvent::Message { data: value.to_string() });
+                            debug_message("in", &value);
+                            let _ = events.send(NativeSignalEvent::Message { data: value.to_string() });
                         }
                         Some(Ok(Message::Close(frame))) => {
                             let reason = frame.map(|item| item.reason.to_string()).unwrap_or_default();
-                            let _ = on_event.send(NativeSignalEvent::Close { reason });
+                            let _ = events.send(NativeSignalEvent::Close { reason });
                             break;
                         }
                         Some(Ok(Message::Ping(value))) => {
@@ -169,7 +215,7 @@ async fn run_connection(
                         }
                         Some(Ok(_)) => {}
                         Some(Err(error)) => {
-                            let _ = on_event.send(NativeSignalEvent::Error { message: error.to_string() });
+                            let _ = events.send(NativeSignalEvent::Error { message: error.to_string() });
                             break;
                         }
                         None => break,
@@ -178,7 +224,7 @@ async fn run_connection(
             }
         }
         Err(error) => {
-            let _ = on_event.send(NativeSignalEvent::Error {
+            let _ = events.send(NativeSignalEvent::Error {
                 message: format!("Нативное WSS-соединение не установлено: {error}"),
             });
         }
@@ -191,7 +237,7 @@ async fn run_connection(
         .is_some_and(|connection| connection.generation == generation)
     {
         connections.remove(&connection_id);
-        let _ = on_event.send(NativeSignalEvent::Close {
+        let _ = events.send(NativeSignalEvent::Close {
             reason: "Соединение закрыто".into(),
         });
     }

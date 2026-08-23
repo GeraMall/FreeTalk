@@ -6,6 +6,7 @@ pub fn run() {
         .manage(signaling::NativeSignalingState::default())
         .invoke_handler(tauri::generate_handler![
             signaling::signaling_connect,
+            signaling::signaling_receive,
             signaling::signaling_send,
             signaling::signaling_close
         ])

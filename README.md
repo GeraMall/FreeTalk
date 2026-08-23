@@ -94,7 +94,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.8 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.9 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
@@ -130,7 +130,8 @@ TURN secrets задаются только Worker:
 - signaling/protocol/frontend production builds — пройдены;
 - `cargo check` (Rust 1.98.0, Tauri 2.11.5) — пройден;
 - `cargo test --lib` — пройдены ограничения нативного WSS URL и размера/формата сообщений;
-- Windows release 0.3.8 создал production-комнату через нативный WSS; TCP 443 принадлежал самому `freetalk.exe`, а не дочернему WebView2;
+- Windows release 0.3.9 без VPN создал production-комнату; второй отдельный экземпляр позднее вошёл в неё, оба клиента показали `2 из 6` и получили удалённый аудиотрек (`Слушает`);
+- принудительный TURN relay без VPN отдельно прошёл через UDP, TCP и TLS, включая ненулевой синтетический аудиосигнал;
 - два Chromium clients с fake microphone — оба connected и получили remote track; владелец принудительно выключил микрофон второго клиента, состояние синхронизировалось в обеих вкладках;
 - PTT keydown — UI pressed gate и unit-level `MediaStreamTrack.enabled` проверены;
 - реальная слышимость, реальные audio devices, сложный NAT/TURN и macOS — не проверены.

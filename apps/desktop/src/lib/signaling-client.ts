@@ -13,12 +13,13 @@ export class SignalingClient {
   private retryTimer?: number;
   private closedByUser = false;
   private lastServerActivity = 0;
+  private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
   private readonly schedule = new ReconnectSchedule();
 
   constructor(
     private readonly url: string,
-    private readonly onMessage: (message: ServerMessage) => void,
+    private readonly onMessage: (message: ServerMessage) => void | Promise<void>,
     private readonly onState: (state: SignalingState, attempt?: number) => void,
   ) {}
 
@@ -86,13 +87,23 @@ export class SignalingClient {
         const message = parseServerMessage(data);
         this.lastServerActivity = Date.now();
         this.schedule.reset();
-        this.onMessage(message);
+        // SDP state transitions are order-sensitive. EventTarget does not wait
+        // for async listeners, so process every server message in wire order.
+        this.messageQueue = this.messageQueue
+          .then(() => this.onMessage(message))
+          .then(() => undefined)
+          .catch(() => undefined);
       } catch {
-        this.onMessage({
-          type: 'error',
-          code: 'INVALID_MESSAGE',
-          message: 'Сервер прислал некорректный ответ',
-        });
+        this.messageQueue = this.messageQueue
+          .then(() =>
+            this.onMessage({
+              type: 'error',
+              code: 'INVALID_MESSAGE',
+              message: 'Сервер прислал некорректный ответ',
+            }),
+          )
+          .then(() => undefined)
+          .catch(() => undefined);
       }
     });
     socket.addEventListener('close', () => {
