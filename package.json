@@ -1,0 +1,36 @@
+{
+  "name": "freetalk",
+  "version": "0.3.2",
+  "private": true,
+  "description": "FreeTalk — приватные голосовые комнаты для небольших компаний",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @freetalk/protocol --filter @freetalk/signaling --filter @freetalk/desktop dev",
+    "dev:signaling": "pnpm --filter @freetalk/signaling dev",
+    "dev:desktop": "pnpm --filter @freetalk/desktop dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "tauri": "pnpm --filter @freetalk/desktop tauri",
+    "tauri:dev": "pnpm --filter @freetalk/desktop tauri dev",
+    "tauri:build": "pnpm --filter @freetalk/desktop tauri build",
+    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/build-installer.ps1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "eslint": "^9.35.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.41.0"
+  },
+  "license": "MIT"
+}

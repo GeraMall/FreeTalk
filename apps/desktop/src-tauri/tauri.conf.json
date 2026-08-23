@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FreeTalk",
+  "version": "0.3.2",
+  "identifier": "io.freetalk.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:* ws://localhost:* wss: https:; font-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "publisher": "FreeTalk contributors",
+    "copyright": "Copyright © 2026 FreeTalk contributors",
+    "category": "SocialNetworking",
+    "shortDescription": "Бесплатные голосовые комнаты для небольших компаний",
+    "longDescription": "FreeTalk — минималистичное приложение для голосового общения в закрытых комнатах до шести человек.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": false },
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "languages": ["Russian", "English"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist",
+      "dmg": {
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 190 },
+        "applicationFolderPosition": { "x": 480, "y": 190 }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZDNUJBRTI0QjVDQzI2NUEKUldSYUpzeTFKSzViYkNIMk44YWRLVGxPYTV1QzhWQ0ZnalBGTnhsUHZ6YnpNcTQzNGJpZmR6NTkK",
+      "endpoints": ["https://updates.freetalk.invalid/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  }
+}

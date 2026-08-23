@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "freetalk-signaling",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-23",
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "VoiceRoom" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["VoiceRoom"] }],
+  "observability": { "enabled": false },
+}
