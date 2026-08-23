@@ -9,8 +9,9 @@ $webViewBootstrapper = Join-Path $toolsDirectory 'MicrosoftEdgeWebview2Setup.exe
 $appExecutable = Join-Path $workspaceRoot 'apps\desktop\src-tauri\target\release\freetalk.exe'
 $appIcon = Join-Path $workspaceRoot 'apps\desktop\src-tauri\icons\icon.ico'
 $outputDirectory = Join-Path $workspaceRoot 'outputs'
-$installer = Join-Path $outputDirectory 'FreeTalk_0.3.2_x64-setup.exe'
-$portable = Join-Path $outputDirectory 'FreeTalk_0.3.2_portable_x64.exe'
+$version = (Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot 'package.json') | ConvertFrom-Json).version
+$installer = Join-Path $outputDirectory "FreeTalk_${version}_x64-setup.exe"
+$portable = Join-Path $outputDirectory "FreeTalk_${version}_portable_x64.exe"
 
 New-Item -ItemType Directory -Force -Path $toolsDirectory, $outputDirectory | Out-Null
 

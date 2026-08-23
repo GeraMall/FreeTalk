@@ -62,7 +62,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.6');
+  const [appVersion, setAppVersion] = useState('0.3.7');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
@@ -156,6 +156,21 @@ export function App() {
     };
     window.addEventListener('beforeunload', leave);
     return () => window.removeEventListener('beforeunload', leave);
+  }, []);
+
+  useEffect(() => {
+    const recoverAfterNetworkChange = () => signaling.current?.reconnectNow();
+    const connection = (
+      navigator as Navigator & {
+        connection?: EventTarget;
+      }
+    ).connection;
+    window.addEventListener('online', recoverAfterNetworkChange);
+    connection?.addEventListener('change', recoverAfterNetworkChange);
+    return () => {
+      window.removeEventListener('online', recoverAfterNetworkChange);
+      connection?.removeEventListener('change', recoverAfterNetworkChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -427,7 +442,7 @@ export function App() {
         if (joinedRoom.current) return;
         cleanup();
         setError('Сервер голосовых комнат недоступен. Проверьте интернет или адрес сигналинга.');
-      }, 12_000);
+      }, 20_000);
     } catch (caught) {
       setJoining(false);
       setError(caught instanceof Error ? caught.message : 'Не удалось войти в комнату');

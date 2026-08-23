@@ -4,11 +4,14 @@ import { ReconnectSchedule } from './reconnect';
 
 export type SignalingState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
 
+const SERVER_ACTIVITY_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 3;
+
 export class SignalingClient {
   private socket?: WebSocket;
   private heartbeat?: number;
   private retryTimer?: number;
   private closedByUser = false;
+  private lastServerActivity = 0;
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
   private readonly schedule = new ReconnectSchedule();
 
@@ -21,6 +24,7 @@ export class SignalingClient {
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
     this.joined = join;
     this.closedByUser = false;
+    this.schedule.reset();
     this.open(false);
   }
 
@@ -32,42 +36,55 @@ export class SignalingClient {
 
   close() {
     this.closedByUser = true;
-    if (this.retryTimer) window.clearTimeout(this.retryTimer);
-    if (this.heartbeat) window.clearInterval(this.heartbeat);
+    this.clearTimers();
     this.send({ type: 'leave-room' });
     this.socket?.close(1000, 'Выход');
     this.socket = undefined;
     this.onState('offline');
   }
 
+  reconnectNow() {
+    if (this.closedByUser || !this.joined) return;
+    this.clearTimers();
+    this.schedule.reset();
+    const previous = this.socket;
+    this.socket = undefined;
+    previous?.close(4001, 'Network changed');
+    this.open(true);
+  }
+
   private open(reconnecting: boolean) {
     if (!this.joined) return;
+    if (this.retryTimer) window.clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
     this.onState(reconnecting ? 'reconnecting' : 'connecting', this.schedule.attempts);
+    let socket: WebSocket;
     try {
       const separator = this.url.includes('?') ? '&' : '?';
-      this.socket = new WebSocket(
+      socket = new WebSocket(
         `${this.url}${separator}room=${encodeURIComponent(this.joined.roomId)}`,
       );
+      this.socket = socket;
     } catch {
       this.scheduleRetry();
       return;
     }
 
-    this.socket.addEventListener('open', () => {
+    socket.addEventListener('open', () => {
+      if (this.socket !== socket) return;
       this.onState('connected');
       const message = reconnecting ? { ...this.joined!, type: 'join-room' as const } : this.joined!;
       this.send(message);
-      this.schedule.reset();
-      if (this.heartbeat) window.clearInterval(this.heartbeat);
-      this.heartbeat = window.setInterval(
-        () => this.send({ type: 'ping', timestamp: Date.now() }),
-        HEARTBEAT_INTERVAL_MS,
-      );
+      this.lastServerActivity = Date.now();
+      this.startHeartbeat(socket);
     });
-    this.socket.addEventListener('message', (event) => {
-      if (typeof event.data !== 'string') return;
+    socket.addEventListener('message', (event) => {
+      if (this.socket !== socket || typeof event.data !== 'string') return;
       try {
-        this.onMessage(parseServerMessage(event.data));
+        const message = parseServerMessage(event.data);
+        this.lastServerActivity = Date.now();
+        this.schedule.reset();
+        this.onMessage(message);
       } catch {
         this.onMessage({
           type: 'error',
@@ -76,17 +93,40 @@ export class SignalingClient {
         });
       }
     });
-    this.socket.addEventListener('close', () => {
+    socket.addEventListener('close', () => {
+      if (this.socket !== socket) return;
+      this.socket = undefined;
       if (this.heartbeat) window.clearInterval(this.heartbeat);
+      this.heartbeat = undefined;
       if (!this.closedByUser) this.scheduleRetry();
     });
-    this.socket.addEventListener('error', () => this.socket?.close());
+    socket.addEventListener('error', () => {
+      if (this.socket === socket) socket.close();
+    });
+  }
+
+  private startHeartbeat(socket: WebSocket) {
+    if (this.heartbeat) window.clearInterval(this.heartbeat);
+    this.heartbeat = window.setInterval(() => {
+      if (this.socket !== socket) return;
+      if (Date.now() - this.lastServerActivity >= SERVER_ACTIVITY_TIMEOUT_MS) {
+        socket.close(4000, 'Heartbeat timeout');
+        return;
+      }
+      this.send({ type: 'ping', timestamp: Date.now() });
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private clearTimers() {
+    if (this.retryTimer) window.clearTimeout(this.retryTimer);
+    if (this.heartbeat) window.clearInterval(this.heartbeat);
+    this.retryTimer = undefined;
+    this.heartbeat = undefined;
   }
 
   private scheduleRetry() {
     if (this.closedByUser) return;
     if (!this.schedule.canRetry) {
-      this.closedByUser = true;
       this.onState('offline', this.schedule.attempts);
       return;
     }
