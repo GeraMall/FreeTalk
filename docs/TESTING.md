@@ -16,6 +16,8 @@ Production 0.3.2 проверен отдельно через опубликов
 
 23.08.2026 сетевые endpoints проверены с привязкой тестовых сокетов к Ethernet IPv4, чтобы исключить активный VPN-маршрут: signaling и GitHub updater вернули HTTP 200, Cloudflare STUN ответил на UDP Binding Request, TCP-порты TURN 443/80/3478 доступны. Подробности и ограничения: [RUSSIA-NETWORK.md](RUSSIA-NETWORK.md).
 
+Для 0.3.6 production Worker проверен после развёртывания: клиент получает TURN до `joined-room` и повторно для совместимости с 0.3.5, а конфигурация содержит официальные доменные URL и актуальные IPv4 UDP/TCP fallback URL. В Chromium два полноценных клиента FreeTalk были принудительно ограничены `iceTransportPolicy: "relay"`; из конфигурации удалены все доменные адреса и оставлены только IP fallback URL. Оба клиента вошли в одну комнату, показали `2 из 6` и получили удалённые синтетические аудиотреки через Cloudflare TURN.
+
 ## Ручная проверка слышимости
 
 1. Запустите `pnpm dev:signaling` и `pnpm dev:desktop`.
