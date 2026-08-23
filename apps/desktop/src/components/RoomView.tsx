@@ -35,6 +35,7 @@ interface RoomViewProps {
   reconnectAttempt: number;
   settings: LocalSettings;
   inviteCopied: boolean;
+  turnAvailable: boolean;
   onCopyInvite(): void;
   onMute(): void;
   onTransmissionMode(): void;
@@ -57,6 +58,7 @@ export function RoomView({
   reconnectAttempt,
   settings,
   inviteCopied,
+  turnAvailable,
   onCopyInvite,
   onMute,
   onTransmissionMode,
@@ -108,7 +110,7 @@ export function RoomView({
             <p>{participants.length} из 6</p>
           </div>
           <span className="room-security">
-            <Radio size={14} /> WebRTC audio
+            <Radio size={14} /> {turnAvailable ? 'WebRTC · TURN резерв' : 'WebRTC · прямое'}
           </span>
         </div>
 

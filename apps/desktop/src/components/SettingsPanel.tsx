@@ -20,6 +20,7 @@ interface SettingsPanelProps {
   inputLevel: number;
   appVersion: string;
   updateStatus: UpdateStatus;
+  turnAvailable: boolean;
   outputSupported: boolean;
   onClose(): void;
   onInput(value: string): void;
@@ -37,6 +38,7 @@ export function SettingsPanel({
   inputLevel,
   appVersion,
   updateStatus,
+  turnAvailable,
   outputSupported,
   onClose,
   onInput,
@@ -197,6 +199,7 @@ export function SettingsPanel({
               <AboutTab
                 appVersion={appVersion}
                 updateStatus={updateStatus}
+                turnAvailable={turnAvailable}
                 onCheckUpdate={onCheckUpdate}
                 onInstallUpdate={onInstallUpdate}
               />
@@ -455,11 +458,13 @@ function DevicesTab({
 function AboutTab({
   appVersion,
   updateStatus,
+  turnAvailable,
   onCheckUpdate,
   onInstallUpdate,
 }: {
   appVersion: string;
   updateStatus: UpdateStatus;
+  turnAvailable: boolean;
   onCheckUpdate(): void;
   onInstallUpdate(): void;
 }) {
@@ -484,6 +489,10 @@ function AboutTab({
         <div>
           <dt>Телеметрия</dt>
           <dd>Отсутствует</dd>
+        </div>
+        <div>
+          <dt>Резервное соединение</dt>
+          <dd>{turnAvailable ? 'TURN готов' : 'Прямой WebRTC (STUN)'}</dd>
         </div>
       </dl>
       <div className="update-section">

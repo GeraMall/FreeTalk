@@ -8,11 +8,13 @@ pnpm check
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
 ```
 
-Тесты покрывают схемы сообщений, опасные имена, комнату/relay, лимит 6, удаление пустой комнаты, замену WebSocket при reconnect, capped и ограниченный по числу попыток backoff, криптографический формат room code, права владельца/передачу владения и изменение реального `MediaStreamTrack.enabled` для mute/PTT.
+Тесты покрывают схемы сообщений, опасные имена, комнату/relay, лимит 6, удаление пустой комнаты, замену WebSocket при reconnect, capped и ограниченный по числу попыток backoff, криптографический формат room code, права владельца/передачу владения, изменение реального `MediaStreamTrack.enabled` для mute/PTT, распознавание TURN-конфигурации, применение поздно полученных TURN credentials через ICE restart и предел автоматических ICE restart.
 
 23.08.2026 дополнительно выполнен browser smoke test в двух изолированных Chromium tabs с fake microphone: оба участника увидели друг друга, оба `RTCPeerConnection` стали `connected`, на обоих сработал `ontrack` («Слушает»). Только владелец получил команду модерации; после её применения целевой клиент выключил передачу, показал уведомление, а mute синхронизировался в обеих вкладках. UI проверен при 1440×900 и 900×600. PTT и mute меняют реальный `MediaStreamTrack.enabled` в unit test; фактическая слышимость не проверялась.
 
 Production 0.3.2 проверен отдельно через опубликованный Cloudflare Worker: `/health` ответил успешно, два raw WSS-клиента синхронизировали Durable Object-комнату, затем два Chromium-клиента production `dist` вошли в общую комнату, показали `2 из 6`, `Сигналинг подключён` и получили удалённые аудиотреки (`Слушает`).
+
+23.08.2026 сетевые endpoints проверены с привязкой тестовых сокетов к Ethernet IPv4, чтобы исключить активный VPN-маршрут: signaling и GitHub updater вернули HTTP 200, Cloudflare STUN ответил на UDP Binding Request, TCP-порты TURN 443/80/3478 доступны. Подробности и ограничения: [RUSSIA-NETWORK.md](RUSSIA-NETWORK.md).
 
 ## Ручная проверка слышимости
 

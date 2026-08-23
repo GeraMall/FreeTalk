@@ -8,7 +8,10 @@ interface PeerContext {
   settingRemoteAnswer: boolean;
   candidates: Set<string>;
   disconnectTimer?: number;
+  iceRestartAttempts: number;
 }
+
+const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
 
 export interface PeerEvents {
   onTrack(peerId: string, stream: MediaStream): void;
@@ -43,6 +46,7 @@ export class PeerManager {
       ignoreOffer: false,
       settingRemoteAnswer: false,
       candidates: new Set(),
+      iceRestartAttempts: 0,
     };
     this.peers.set(peerId, context);
 
@@ -82,11 +86,17 @@ export class PeerManager {
     };
     connection.onconnectionstatechange = () => {
       this.events.onState(peerId, connection.connectionState);
-      if (connection.connectionState === 'disconnected') {
-        context.disconnectTimer = window.setTimeout(() => {
-          if (connection.connectionState === 'disconnected') connection.restartIce();
-        }, 3_000);
-      } else if (context.disconnectTimer) window.clearTimeout(context.disconnectTimer);
+      if (connection.connectionState === 'connected') {
+        context.iceRestartAttempts = 0;
+        this.clearDisconnectTimer(context);
+      } else if (
+        connection.connectionState === 'disconnected' ||
+        connection.connectionState === 'failed'
+      ) {
+        this.scheduleIceRestart(context);
+      } else if (connection.connectionState === 'closed') {
+        this.clearDisconnectTimer(context);
+      }
     };
     connection.onnegotiationneeded = async () => {
       try {
@@ -159,8 +169,16 @@ export class PeerManager {
 
   updateIceServers(iceServers: RTCIceServer[]) {
     this.iceServers = iceServers;
-    for (const { connection } of this.peers.values()) {
+    for (const context of this.peers.values()) {
+      const { connection } = context;
+      if (connection.signalingState === 'closed') continue;
       connection.setConfiguration({ ...connection.getConfiguration(), iceServers });
+      context.iceRestartAttempts = 0;
+      this.clearDisconnectTimer(context);
+      // The signaling server intentionally issues short-lived TURN credentials
+      // only after the participant joins. Restart gathering so connections that
+      // already started with STUN can immediately discover relay candidates.
+      connection.restartIce();
     }
   }
 
@@ -174,5 +192,35 @@ export class PeerManager {
 
   closeAll() {
     for (const peerId of [...this.peers.keys()]) this.remove(peerId);
+  }
+
+  private scheduleIceRestart(context: PeerContext) {
+    if (
+      context.disconnectTimer ||
+      context.iceRestartAttempts >= ICE_RESTART_DELAYS_MS.length ||
+      context.connection.signalingState === 'closed'
+    )
+      return;
+    const delay = ICE_RESTART_DELAYS_MS[context.iceRestartAttempts]!;
+    context.disconnectTimer = window.setTimeout(() => {
+      context.disconnectTimer = undefined;
+      if (
+        context.connection.connectionState !== 'disconnected' &&
+        context.connection.connectionState !== 'failed'
+      )
+        return;
+      context.iceRestartAttempts += 1;
+      try {
+        context.connection.restartIce();
+      } catch {
+        /* the peer may have closed between the state event and this timer */
+      }
+    }, delay);
+  }
+
+  private clearDisconnectTimer(context: PeerContext) {
+    if (!context.disconnectTimer) return;
+    window.clearTimeout(context.disconnectTimer);
+    context.disconnectTimer = undefined;
   }
 }

@@ -109,6 +109,8 @@ Production Worker развёрнут и проверен по адресу `free
 pnpm tauri:build
 ```
 
+Проверка сетевых точек через обычный Ethernet без VPN и ограничения для сложных NAT описаны в [docs/RUSSIA-NETWORK.md](docs/RUSSIA-NETWORK.md).
+
 TURN secrets задаются только Worker:
 
 - `TURN_KEY_ID`;

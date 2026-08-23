@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
 import type { ClientMessage, Participant, ServerMessage } from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
+import { hasTurnServer } from './lib/ice-config';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
@@ -60,7 +61,8 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.3');
+  const [appVersion, setAppVersion] = useState('0.3.4');
+  const [turnAvailable, setTurnAvailable] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
@@ -214,6 +216,7 @@ export function App() {
         return;
       }
       if (message.type === 'ice-config') {
+        setTurnAvailable(hasTurnServer(message.iceServers));
         peers.current?.updateIceServers(message.iceServers);
         return;
       }
@@ -519,6 +522,7 @@ export function App() {
       inputLevel={inputLevel}
       appVersion={appVersion}
       updateStatus={updateStatus}
+      turnAvailable={turnAvailable}
       outputSupported={remoteAudio.current.supportsOutputSelection()}
       onClose={() => setSettingsOpen(false)}
       onInput={(value) => void selectInput(value)}
@@ -566,6 +570,7 @@ export function App() {
         signalingState={signalState}
         reconnectAttempt={reconnectAttempt}
         inviteCopied={inviteCopied}
+        turnAvailable={turnAvailable}
         onCopyInvite={() => void copyInvite()}
         onMute={toggleMute}
         onTransmissionMode={() =>
