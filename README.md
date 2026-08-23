@@ -94,7 +94,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.6 созданы на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверено после скачивания artifacts. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.7 созданы на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверено после скачивания artifacts. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
