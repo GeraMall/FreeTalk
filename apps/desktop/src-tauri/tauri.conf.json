@@ -53,7 +53,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZDNUJBRTI0QjVDQzI2NUEKUldSYUpzeTFKSzViYkNIMk44YWRLVGxPYTV1QzhWQ0ZnalBGTnhsUHZ6YnpNcTQzNGJpZmR6NTkK",
-      "endpoints": ["https://updates.freetalk.invalid/latest.json"],
+      "endpoints": ["https://github.com/GeraMall/FreeTalk/releases/latest/download/latest.json"],
       "windows": { "installMode": "passive" }
     }
   }

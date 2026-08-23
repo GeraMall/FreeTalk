@@ -8,8 +8,8 @@
 
 ## Что требуется для production
 
-1. HTTPS-адрес для `latest.json` и release bundles (например, GitHub Releases или Cloudflare R2/Worker).
-2. Перед release-сборкой заменить `plugins.updater.endpoints` в `apps/desktop/src-tauri/tauri.conf.json` на этот адрес.
+1. HTTPS-адрес для `latest.json` и release bundles. Текущая конфигурация использует публичные GitHub Releases репозитория `GeraMall/FreeTalk`.
+2. Не менять `plugins.updater.endpoints` без выпуска переходной версии: уже установленные клиенты должны продолжать видеть манифест.
 3. Задать `TAURI_SIGNING_PRIVATE_KEY` содержимым приватного minisign-ключа и, если используется, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. В CI ключ хранится как secret `FREETALK_UPDATER_PRIVATE_KEY`; путь к файлу текущий Tauri CLI 2.11.1 при release-сборке не принял.
 4. Выполнить `pnpm tauri:build`. При `createUpdaterArtifacts: true` Tauri создаст installer/archive и `.sig`.
 5. Опубликовать bundles, подписи и manifest только после проверки хешей.
@@ -42,4 +42,4 @@ URL обязан использовать HTTPS. В manifest помещаетс�
 
 ## Текущий статус
 
-Механизм проверки, уведомления, прогресса, установки, Tauri permissions и создание подписываемых artifacts реализованы. Для Windows 0.3.2 реально созданы NSIS/MSI и обе `.sig`. Публичный endpoint обновлений не развёрнут: это отдельный внешний ресурс, не относящийся к уже работающему голосовому сигналингу. До его публикации ручная проверка обновлений показывает понятную ошибку доступности сервера.
+Механизм проверки при запуске, ручная проверка, уведомление, прогресс установки, Tauri permissions и подписываемые updater-artifacts реализованы. Production endpoint: `https://github.com/GeraMall/FreeTalk/releases/latest/download/latest.json`. Манифест и bundles публикуются в GitHub Release; подпись проверяется встроенным публичным ключом. При недоступности GitHub текущая версия продолжает работать, а интерфейс показывает понятную ошибку.
