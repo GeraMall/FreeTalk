@@ -1,6 +1,6 @@
 {
   "name": "freetalk",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "FreeTalk — приватные голосовые комнаты для небольших компаний",
   "packageManager": "pnpm@11.19.0",

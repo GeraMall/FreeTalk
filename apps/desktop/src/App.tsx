@@ -4,6 +4,7 @@ import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
 import type { ClientMessage, Participant, ServerMessage } from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
 import { hasTurnServer } from './lib/ice-config';
+import { NotificationSounds, ParticipantNotificationTracker } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
@@ -61,13 +62,15 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.4');
+  const [appVersion, setAppVersion] = useState('0.3.5');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
   const peers = useRef<PeerManager | undefined>(undefined);
   const signaling = useRef<SignalingClient | undefined>(undefined);
+  const notificationSounds = useRef(new NotificationSounds());
+  const participantNotifications = useRef(new ParticipantNotificationTracker());
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
   const pendingRoomId = useRef<string | undefined>(undefined);
@@ -106,6 +109,8 @@ export function App() {
     audio.current?.stop();
     audio.current = undefined;
     remoteAudio.current.closeAll();
+    notificationSounds.current.stop();
+    participantNotifications.current.clear();
     setRoomId(undefined);
     setParticipants([]);
     setPeerState({});
@@ -144,6 +149,7 @@ export function App() {
       peers.current?.closeAll();
       audio.current?.stop();
       remoteAudio.current.closeAll();
+      notificationSounds.current.stop();
     };
     window.addEventListener('beforeunload', leave);
     return () => window.removeEventListener('beforeunload', leave);
@@ -227,6 +233,9 @@ export function App() {
         if (pendingRoomId.current) setRoomId(pendingRoomId.current);
         setJoining(false);
         setParticipants(message.participants);
+        participantNotifications.current.reset(
+          message.participants.map((participant) => participant.id),
+        );
         peers.current?.closeAll();
         const localStream = audio.current?.getStream();
         if (!localStream) return;
@@ -273,21 +282,34 @@ export function App() {
         return;
       }
       if (message.type === 'participant-joined') {
+        const shouldNotify = participantNotifications.current.joined(
+          message.participant.id,
+          selfId.current,
+        );
         setParticipants((old) => [
           ...old.filter((item) => item.id !== message.participant.id),
           message.participant,
         ]);
         peers.current?.ensure(message.participant.id);
+        if (shouldNotify) void notificationSounds.current.playJoined();
         return;
       }
       if (message.type === 'participant-left') {
+        const shouldNotify = participantNotifications.current.disconnected(
+          message.participantId,
+          selfId.current,
+        );
         setParticipants((old) => old.filter((item) => item.id !== message.participantId));
         peers.current?.remove(message.participantId);
         remoteAudio.current.remove(message.participantId);
+        if (shouldNotify) void notificationSounds.current.playDisconnected();
         return;
       }
       if (message.type === 'participants') {
         setParticipants(message.participants);
+        participantNotifications.current.reset(
+          message.participants.map((participant) => participant.id),
+        );
         return;
       }
       if (message.type === 'mute-changed') {
@@ -357,6 +379,7 @@ export function App() {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
     }
+    void notificationSounds.current.prepare(settings.outputDeviceId);
     setJoining(true);
     try {
       const manager = new AudioManager(
@@ -501,7 +524,10 @@ export function App() {
 
   const selectOutput = async (deviceId: string) => {
     updateSettings({ outputDeviceId: deviceId });
-    await remoteAudio.current.setOutput(deviceId);
+    await Promise.all([
+      remoteAudio.current.setOutput(deviceId),
+      notificationSounds.current.setOutput(deviceId),
+    ]);
   };
   const setPeerVolume = (peerId: string, value: number) => {
     const peerVolumes = { ...settings.peerVolumes, [peerId]: value };
