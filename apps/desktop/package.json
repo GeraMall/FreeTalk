@@ -1,6 +1,6 @@
 {
   "name": "@freetalk/desktop",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
     "@freetalk/config": "workspace:*",
     "@freetalk/protocol": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
@@ -23,8 +24,8 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",
-    "@types/node": "^24.3.0",
     "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.3.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",

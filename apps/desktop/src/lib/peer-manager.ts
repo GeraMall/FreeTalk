@@ -35,6 +35,7 @@ interface PeerContext {
   inboundVideoRecorded: Set<VideoMediaSource>;
   outboundVideoRecorded: Set<VideoMediaSource>;
   videoSenders: Partial<Record<VideoMediaSource, VideoSenderContext>>;
+  screenAudioSender?: VideoSenderContext;
   videoStateChannel?: RTCDataChannel;
   remoteVideoStateChannel?: RTCDataChannel;
   remoteVideoState: Record<VideoMediaSource, RemoteVideoSourceState>;
@@ -77,6 +78,7 @@ export class PeerManager {
     camera: null,
     screen: null,
   };
+  private localScreenStream?: MediaStream;
 
   constructor(
     private readonly selfId: string,
@@ -149,8 +151,18 @@ export class PeerManager {
 
     for (const source of ['camera', 'screen'] as const) {
       const track = this.localVideoTracks[source];
-      if (track) this.createVideoSender(peerId, context, source, track);
+      if (track)
+        this.createVideoSender(
+          peerId,
+          context,
+          source,
+          track,
+          source === 'screen' ? this.localScreenStream : undefined,
+        );
     }
+    const screenAudioTrack = this.localScreenStream?.getAudioTracks()[0];
+    if (screenAudioTrack)
+      this.createScreenAudioSender(peerId, context, screenAudioTrack, this.localScreenStream!);
     if (this.localVideoTracks.camera || this.localVideoTracks.screen)
       this.ensureVideoStateChannel(peerId, context);
 
@@ -216,6 +228,12 @@ export class PeerManager {
         };
         this.publishMappedRemoteVideo(peerId, context, mid);
         this.startDiagnosticTimer(peerId, context);
+      } else if (stream.getVideoTracks().length > 0) {
+        connectionDiagnostics.record('remote-screen-audio-track', peerId, {
+          trackId: track.id,
+          streamId: stream.id,
+          mid: transceiver.mid ?? 'unassigned',
+        });
       } else {
         this.events.onTrack(peerId, stream);
       }
@@ -407,8 +425,13 @@ export class PeerManager {
     );
   }
 
-  async setVideoTrack(track: MediaStreamTrack | null, source: VideoMediaSource) {
+  async setVideoTrack(
+    track: MediaStreamTrack | null,
+    source: VideoMediaSource,
+    stream?: MediaStream,
+  ) {
     this.localVideoTracks[source] = track;
+    if (source === 'screen') this.localScreenStream = track ? stream : undefined;
     connectionDiagnostics.record('local-video-source', undefined, {
       mediaSource: source,
       active: Boolean(track),
@@ -423,7 +446,20 @@ export class PeerManager {
             await existing.sender.replaceTrack(track);
             if (track) this.configureVideoSender(peerId, existing, source);
           } else if (track) {
-            this.createVideoSender(peerId, context, source, track);
+            this.createVideoSender(peerId, context, source, track, stream);
+          }
+          if (source === 'screen') {
+            const audioTrack = stream?.getAudioTracks()[0] ?? null;
+            if (context.screenAudioSender) {
+              await context.screenAudioSender.sender.replaceTrack(audioTrack);
+              if (audioTrack) this.configureScreenAudioSender(peerId, context.screenAudioSender);
+            } else if (audioTrack && stream) {
+              this.createScreenAudioSender(peerId, context, audioTrack, stream);
+            }
+            connectionDiagnostics.record('local-screen-audio-source', peerId, {
+              active: Boolean(audioTrack),
+              trackId: audioTrack?.id ?? 'none',
+            });
           }
           this.sendVideoState(peerId, context);
           this.startDiagnosticTimer(peerId, context);
@@ -638,10 +674,11 @@ export class PeerManager {
     context: PeerContext,
     source: VideoMediaSource,
     track: MediaStreamTrack,
+    stream?: MediaStream,
   ) {
     const transceiver = context.connection.addTransceiver(track, {
       direction: 'sendonly',
-      streams: [new MediaStream([track])],
+      streams: [stream ?? new MediaStream([track])],
     });
     const videoSender = { transceiver, sender: transceiver.sender };
     context.videoSenders[source] = videoSender;
@@ -651,6 +688,46 @@ export class PeerManager {
       trackId: track.id,
       mid: transceiver.mid ?? 'unassigned',
     });
+  }
+
+  private createScreenAudioSender(
+    peerId: string,
+    context: PeerContext,
+    track: MediaStreamTrack,
+    stream: MediaStream,
+  ) {
+    const transceiver = context.connection.addTransceiver(track, {
+      direction: 'sendonly',
+      streams: [stream],
+    });
+    const sender = { transceiver, sender: transceiver.sender };
+    context.screenAudioSender = sender;
+    this.configureScreenAudioSender(peerId, sender);
+    const opus = RTCRtpReceiver.getCapabilities?.('audio')?.codecs.filter(
+      (codec) => codec.mimeType.toLowerCase() === 'audio/opus',
+    );
+    if (transceiver.setCodecPreferences && opus?.length) transceiver.setCodecPreferences(opus);
+    connectionDiagnostics.record('screen-audio-transceiver:created', peerId, {
+      trackId: track.id,
+      streamId: stream.id,
+      mid: transceiver.mid ?? 'unassigned',
+    });
+  }
+
+  private configureScreenAudioSender(peerId: string, audioSender: VideoSenderContext) {
+    const parameters = audioSender.sender.getParameters();
+    if (!parameters.encodings?.length) parameters.encodings = [{}];
+    parameters.encodings[0]!.maxBitrate = 160_000;
+    parameters.encodings[0]!.priority = 'medium';
+    void audioSender.sender
+      .setParameters(parameters)
+      .then(() =>
+        connectionDiagnostics.record('screen-audio-sender:configured', peerId, {
+          maxBitrate: parameters.encodings?.[0]?.maxBitrate ?? 0,
+          priority: parameters.encodings?.[0]?.priority ?? 'unknown',
+        }),
+      )
+      .catch(() => undefined);
   }
 
   private configureVideoSender(

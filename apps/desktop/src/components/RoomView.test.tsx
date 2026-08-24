@@ -40,6 +40,7 @@ function view(
         source: localSource === 'both' ? 'screen' : localSource,
         cameraEnabled: localSource === 'camera' || localSource === 'both',
         screenEnabled: localSource === 'screen' || localSource === 'both',
+        screenAudioEnabled: localSource === 'screen' || localSource === 'both',
         previewStream: localSource === 'none' ? undefined : stream,
         cameraStream: localSource === 'camera' || localSource === 'both' ? stream : undefined,
         screenStream: localSource === 'screen' || localSource === 'both' ? stream : undefined,
@@ -92,9 +93,20 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.participants-grid')).toBeNull();
   });
 
+  it('plays remote screen audio but keeps the local preview muted', () => {
+    const remote = render(view('none', { [peerId]: { screen: stream } }));
+    const remoteScreen = remote.getByLabelText('Экран Друг') as HTMLVideoElement;
+    expect(remoteScreen.muted).toBe(false);
+    expect(remoteScreen.volume).toBe(0.85);
+    remote.unmount();
+
+    const local = render(view('screen'));
+    expect((local.getByLabelText('Экран Гера') as HTMLVideoElement).muted).toBe(true);
+  });
+
   it('keeps the active screen control label compact', () => {
     const { getByRole } = render(view('screen'));
-    expect(getByRole('button', { name: /Стоп/ })).not.toBeNull();
+    expect(getByRole('button', { name: /Стоп Со звуком/ })).not.toBeNull();
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

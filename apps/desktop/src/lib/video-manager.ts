@@ -6,13 +6,18 @@ export type VideoMediaSource = Exclude<LocalVideoSource, 'none'>;
 export interface LocalVideoState {
   cameraEnabled: boolean;
   screenEnabled: boolean;
+  screenAudioEnabled: boolean;
   source: LocalVideoSource;
   previewStream?: MediaStream;
   cameraStream?: MediaStream;
   screenStream?: MediaStream;
 }
 
-type PublishVideo = (track: MediaStreamTrack | null, source: VideoMediaSource) => Promise<void>;
+type PublishVideo = (
+  track: MediaStreamTrack | null,
+  source: VideoMediaSource,
+  stream?: MediaStream,
+) => Promise<void>;
 
 export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 1920 },
@@ -23,6 +28,7 @@ export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
 export class VideoManager {
   private cameraTrack?: MediaStreamTrack;
   private screenTrack?: MediaStreamTrack;
+  private screenStream?: MediaStream;
   private operationQueue = Promise.resolve();
   private disposed = false;
 
@@ -46,14 +52,19 @@ export class VideoManager {
   }
 
   getTracks() {
-    return { camera: this.cameraTrack ?? null, screen: this.screenTrack ?? null };
+    return {
+      camera: this.cameraTrack ?? null,
+      screen: this.screenTrack ?? null,
+      screenStream: this.screenStream,
+    };
   }
 
   dispose() {
     this.disposed = true;
-    this.detachAndStop(this.screenTrack);
+    this.stopStream(this.screenStream);
     this.detachAndStop(this.cameraTrack);
     this.screenTrack = undefined;
+    this.screenStream = undefined;
     this.cameraTrack = undefined;
     this.emitState();
   }
@@ -116,9 +127,15 @@ export class VideoManager {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        audio: false,
+        audio: {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: false,
+          channelCount: { ideal: 2 },
+        },
         video: { frameRate: { ideal: 30, max: 30 } },
-      });
+        systemAudio: 'include',
+      } as DisplayMediaStreamOptions);
     } catch (error) {
       connectionDiagnostics.record('screen-capture:error', undefined, {
         errorName: error instanceof DOMException ? error.name : 'unknown',
@@ -131,16 +148,23 @@ export class VideoManager {
       throw new Error('Не удалось получить изображение выбранного экрана или окна.');
     }
     if (this.disposed) {
-      track.stop();
+      stream.getTracks().forEach((item) => item.stop());
       return;
     }
     this.screenTrack = track;
+    this.screenStream = stream;
     track.contentHint = 'detail';
+    const audioTrack = stream.getAudioTracks()[0];
+    if (audioTrack) audioTrack.contentHint = 'music';
     track.onended = () => {
       void this.enqueue(() => this.finishScreen(track, false));
     };
-    connectionDiagnostics.record('screen-capture:ready', undefined, videoTrackDetails(track));
-    await this.publish(track, 'screen');
+    connectionDiagnostics.record('screen-capture:ready', undefined, {
+      ...videoTrackDetails(track),
+      audioIncluded: Boolean(audioTrack),
+      audioTrackId: audioTrack?.id ?? 'none',
+    });
+    await this.publish(track, 'screen', stream);
     this.emitState();
   }
 
@@ -150,10 +174,13 @@ export class VideoManager {
 
   private async finishScreen(track: MediaStreamTrack | undefined, stopTrack: boolean) {
     if (!track || this.screenTrack !== track) return;
+    const stream = this.screenStream;
     this.screenTrack = undefined;
+    this.screenStream = undefined;
     track.onended = null;
     await this.publish(null, 'screen');
-    if (stopTrack) track.stop();
+    if (stopTrack) this.stopStream(stream);
+    else stream?.getAudioTracks().forEach((item) => item.stop());
     connectionDiagnostics.record('screen-capture:stopped', undefined, {
       initiatedBy: stopTrack ? 'app' : 'system',
       cameraPreserved: Boolean(this.cameraTrack),
@@ -172,10 +199,11 @@ export class VideoManager {
     this.onState({
       cameraEnabled: Boolean(this.cameraTrack),
       screenEnabled: Boolean(this.screenTrack),
+      screenAudioEnabled: Boolean(this.screenStream?.getAudioTracks().length),
       source: this.source(),
       previewStream: current ? new MediaStream([current]) : undefined,
       cameraStream: this.cameraTrack ? new MediaStream([this.cameraTrack]) : undefined,
-      screenStream: this.screenTrack ? new MediaStream([this.screenTrack]) : undefined,
+      screenStream: this.screenTrack ? this.screenStream : undefined,
     });
   }
 
@@ -183,6 +211,13 @@ export class VideoManager {
     if (!track) return;
     track.onended = null;
     track.stop();
+  }
+
+  private stopStream(stream: MediaStream | undefined) {
+    stream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
   }
 
   private enqueue<T>(operation: () => Promise<T>) {

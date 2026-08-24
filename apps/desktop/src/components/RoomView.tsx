@@ -152,6 +152,9 @@ export function RoomView({
             source="camera"
             name={participant.name}
             mirrored
+            muted
+            volume={0}
+            outputDeviceId={settings.outputDeviceId}
             onExpand={() => setExpandedMedia({ type: 'camera', participantId: participant.id })}
           />
         )}
@@ -266,6 +269,15 @@ export function RoomView({
                 stream={participantMedia(screenPresenter).screen!}
                 source="screen"
                 name={screenPresenter.name}
+                muted={
+                  screenPresenter.id === selfId || Boolean(settings.mutedPeers[screenPresenter.id])
+                }
+                volume={
+                  (settings.peerVolumes[screenPresenter.id] ?? 1) *
+                  settings.outputVolume *
+                  (settings.echoDucking && localSpeaking ? settings.echoDuckingLevel : 1)
+                }
+                outputDeviceId={settings.outputDeviceId}
                 onExpand={() =>
                   setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
                 }
@@ -345,7 +357,13 @@ export function RoomView({
           <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
           <span>
             <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
-            <small>{localVideo.screenEnabled ? 'Демонстрация' : 'Поделиться'}</small>
+            <small>
+              {localVideo.screenEnabled
+                ? localVideo.screenAudioEnabled
+                  ? 'Со звуком'
+                  : 'Без звука'
+                : 'Поделиться'}
+            </small>
           </span>
         </button>
         <div className="dock-divider" />
@@ -385,23 +403,35 @@ function ParticipantVideo({
   source,
   name,
   mirrored,
+  muted,
+  volume,
+  outputDeviceId,
   onExpand,
 }: {
   stream: MediaStream;
   source: VideoMediaSource;
   name: string;
   mirrored?: boolean;
+  muted: boolean;
+  volume: number;
+  outputDeviceId: string;
   onExpand(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (!element) return;
     element.srcObject = stream;
+    element.muted = muted;
+    element.volume = Math.min(1, Math.max(0, volume));
+    if (outputDeviceId && 'setSinkId' in element)
+      void (element as HTMLVideoElement & { setSinkId(deviceId: string): Promise<void> })
+        .setSinkId(outputDeviceId)
+        .catch(() => undefined);
     void element.play().catch(() => undefined);
     return () => {
       if (element.srcObject === stream) element.srcObject = null;
     };
-  }, [element, stream]);
+  }, [element, muted, outputDeviceId, stream, volume]);
 
   return (
     <div className={`participant-video ${source}`}>
@@ -410,7 +440,7 @@ function ParticipantVideo({
         className={mirrored ? 'mirrored' : undefined}
         aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
         autoPlay
-        muted
+        muted={muted}
         playsInline
       />
       <button

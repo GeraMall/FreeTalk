@@ -5,13 +5,13 @@ import { VideoManager } from './video-manager';
 
 class FakeTrack {
   id = crypto.randomUUID();
-  kind = 'video';
   contentHint = '';
   onended: (() => void) | null = null;
   stop = vi.fn();
   getSettings() {
     return { width: 1920, height: 1080, frameRate: 60, deviceId: 'camera-1' };
   }
+  constructor(public readonly kind: 'audio' | 'video' = 'video') {}
 }
 
 class FakeStream {
@@ -20,17 +20,24 @@ class FakeStream {
     return this.tracks;
   }
   getVideoTracks() {
-    return this.tracks;
+    return this.tracks.filter((track) => track.kind === 'video');
+  }
+  getAudioTracks() {
+    return this.tracks.filter((track) => track.kind === 'audio');
   }
 }
 
 describe('VideoManager', () => {
   const cameraTracks: FakeTrack[] = [];
   const screenTracks: FakeTrack[] = [];
+  const screenAudioTracks: FakeTrack[] = [];
+  const screenStreams: FakeStream[] = [];
 
   beforeEach(() => {
     cameraTracks.length = 0;
     screenTracks.length = 0;
+    screenAudioTracks.length = 0;
+    screenStreams.length = 0;
     vi.stubGlobal('MediaStream', FakeStream);
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -41,9 +48,13 @@ describe('VideoManager', () => {
           return new FakeStream([track]);
         }),
         getDisplayMedia: vi.fn(async () => {
-          const track = new FakeTrack();
-          screenTracks.push(track);
-          return new FakeStream([track]);
+          const videoTrack = new FakeTrack();
+          const audioTrack = new FakeTrack('audio');
+          const stream = new FakeStream([videoTrack, audioTrack]);
+          screenTracks.push(videoTrack);
+          screenAudioTracks.push(audioTrack);
+          screenStreams.push(stream);
+          return stream;
         }),
       },
     });
@@ -78,11 +89,16 @@ describe('VideoManager', () => {
     const camera = cameraTracks[0]!;
     await manager.toggleScreen();
     expect(manager.getCurrent()).toEqual({ track: screenTracks[0], source: 'screen' });
-    expect(manager.getTracks()).toEqual({ camera, screen: screenTracks[0] });
+    expect(manager.getTracks()).toEqual({
+      camera,
+      screen: screenTracks[0],
+      screenStream: screenStreams[0],
+    });
     await manager.toggleScreen();
 
     expect(manager.getCurrent()).toEqual({ track: camera, source: 'camera' });
     expect(screenTracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(screenAudioTracks[0]!.stop).toHaveBeenCalledOnce();
     expect(camera.stop).not.toHaveBeenCalled();
     expect(publish.mock.calls).toContainEqual([camera, 'camera']);
     expect(publish.mock.calls.at(-1)).toEqual([null, 'screen']);
@@ -129,15 +145,47 @@ describe('VideoManager', () => {
     });
   });
 
+  it('requests and publishes system audio together with the screen stream', async () => {
+    const publish = vi.fn(async () => undefined);
+    const onState = vi.fn();
+    const manager = new VideoManager(publish, onState);
+
+    await manager.toggleScreen();
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: false,
+        echoCancellation: false,
+        noiseSuppression: false,
+        channelCount: { ideal: 2 },
+      },
+      video: { frameRate: { ideal: 30, max: 30 } },
+      systemAudio: 'include',
+    });
+    expect(publish).toHaveBeenCalledWith(screenTracks[0], 'screen', screenStreams[0]);
+    expect(screenAudioTracks[0]!.contentHint).toBe('music');
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ screenEnabled: true, screenAudioEnabled: true }),
+    );
+  });
+
   it('can start camera while screen sharing and leaves screen active when camera stops', async () => {
     const publish = vi.fn(async () => undefined);
     const manager = new VideoManager(publish, vi.fn());
 
     await manager.toggleScreen();
     await manager.toggleCamera();
-    expect(manager.getTracks()).toEqual({ camera: cameraTracks[0], screen: screenTracks[0] });
+    expect(manager.getTracks()).toEqual({
+      camera: cameraTracks[0],
+      screen: screenTracks[0],
+      screenStream: screenStreams[0],
+    });
     await manager.toggleCamera();
-    expect(manager.getTracks()).toEqual({ camera: null, screen: screenTracks[0] });
+    expect(manager.getTracks()).toEqual({
+      camera: null,
+      screen: screenTracks[0],
+      screenStream: screenStreams[0],
+    });
     expect(screenTracks[0]!.stop).not.toHaveBeenCalled();
   });
 });

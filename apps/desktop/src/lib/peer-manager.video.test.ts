@@ -101,12 +101,16 @@ function track(kind: 'audio' | 'video', id: string) {
 }
 
 class FakeStream {
+  readonly id = crypto.randomUUID();
   constructor(private readonly tracks: MediaStreamTrack[]) {}
   getAudioTracks() {
     return this.tracks.filter((item) => item.kind === 'audio');
   }
   getTracks() {
     return this.tracks;
+  }
+  getVideoTracks() {
+    return this.tracks.filter((item) => item.kind === 'video');
   }
 }
 
@@ -202,6 +206,61 @@ describe('PeerManager video sender lifecycle', () => {
 
     expect(VideoPeerConnection.instances[0]!.senders[0]!.track).toBe(screen);
     expect(VideoPeerConnection.instances[0]!.channels).toHaveLength(1);
+  });
+
+  it('sends captured system audio in the same screen stream and reuses its sender', async () => {
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const screen = track('video', 'screen');
+    const systemAudio = track('audio', 'system-audio');
+    const screenStream = new FakeStream([screen, systemAudio]) as unknown as MediaStream;
+
+    await manager.setVideoTrack(screen, 'screen', screenStream);
+    const connection = VideoPeerConnection.instances[0]!;
+    expect(connection.transceivers.map(({ sender }) => sender.track)).toEqual([
+      screen,
+      systemAudio,
+    ]);
+    expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encodings: [expect.objectContaining({ maxBitrate: 160_000, priority: 'medium' })],
+      }),
+    );
+
+    await manager.setVideoTrack(null, 'screen');
+    expect(connection.transceivers[0]!.sender.track).toBeNull();
+    expect(connection.transceivers[1]!.sender.track).toBeNull();
+  });
+
+  it('does not replace the voice stream when remote screen audio arrives', () => {
+    const onTrack = vi.fn();
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack, onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    const screen = track('video', 'remote-screen');
+    const systemAudio = track('audio', 'remote-system-audio');
+    const screenStream = new FakeStream([screen, systemAudio]) as unknown as MediaStream;
+
+    const onRemoteTrack = connection.ontrack as ((event: RTCTrackEvent) => void) | null;
+    onRemoteTrack?.({
+      track: systemAudio,
+      streams: [screenStream],
+      transceiver: { mid: 'screen-audio' },
+    } as unknown as RTCTrackEvent);
+
+    expect(onTrack).not.toHaveBeenCalled();
   });
 
   it('reports remote video tracks and validated camera/screen state metadata', () => {

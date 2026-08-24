@@ -26,6 +26,7 @@ const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/
 const NO_LOCAL_VIDEO: LocalVideoState = {
   cameraEnabled: false,
   screenEnabled: false,
+  screenAudioEnabled: false,
   source: 'none',
 };
 
@@ -70,7 +71,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.16');
+  const [appVersion, setAppVersion] = useState('0.3.17');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
@@ -363,7 +364,8 @@ export function App() {
         peers.current = peerManager;
         const currentVideo = video.current?.getTracks();
         if (currentVideo?.camera) void peerManager.setVideoTrack(currentVideo.camera, 'camera');
-        if (currentVideo?.screen) void peerManager.setVideoTrack(currentVideo.screen, 'screen');
+        if (currentVideo?.screen)
+          void peerManager.setVideoTrack(currentVideo.screen, 'screen', currentVideo.screenStream);
         for (const participant of message.participants)
           if (participant.id !== selfId.current) peerManager.ensure(participant.id);
         return;
@@ -490,8 +492,8 @@ export function App() {
       manager.setMuted(false);
       audio.current = manager;
       video.current = new VideoManager(
-        async (track, source) => {
-          await peers.current?.setVideoTrack(track, source);
+        async (track, source, stream) => {
+          await peers.current?.setVideoTrack(track, source, stream);
         },
         setLocalVideo,
         setError,

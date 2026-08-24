@@ -34,7 +34,7 @@ pnpm tauri:dev
 - создание и вход по криптографически случайному 12-символьному коду/ссылке;
 - mesh WebRTC, perfect negotiation (offer glare), ICE deduplication, Opus 64 kbit/s, STUN и опциональный TURN;
 - список до 6 участников, connection/audio-ready states и индикатор говорящего;
-- независимые видеопотоки камеры и демонстрации экрана: камера запрашивает до 1080p60 и адаптирует детализацию ради низкой задержки, одновременная передача camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
+- независимые видеопотоки камеры и демонстрации экрана: камера запрашивает до 1080p60 и адаптирует детализацию ради низкой задержки, экран передаётся вместе с доступным системным звуком, поддерживаются одновременные camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
 - встроенные звуковые уведомления о входе и выходе друзей с выровненной громкостью;
 - владелец комнаты с короной, автоматическая передача владения и серверно проверяемое удалённое выключение микрофона участника;
 - режимы VAD/PTT/постоянной передачи, изменяемая PTT-клавиша и настраиваемый порог голоса;
@@ -95,7 +95,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.16 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.17 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
@@ -160,4 +160,4 @@ docs                      architecture/deployment/security/testing
 .github/workflows         checks + Windows/macOS bundles
 ```
 
-Лицензия: [MIT](LICENSE).
+Код FreeTalk распространяется по [MIT](LICENSE). Встроенный шрифт Geist распространяется по SIL Open Font License 1.1; текст лицензии включён в `apps/desktop/public/licenses` и попадает в каждую сборку приложения.
