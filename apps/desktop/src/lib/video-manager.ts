@@ -17,7 +17,7 @@ type PublishVideo = (track: MediaStreamTrack | null, source: VideoMediaSource) =
 export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 1920 },
   height: { ideal: 1080 },
-  frameRate: { ideal: 30, max: 30 },
+  frameRate: { ideal: 60, max: 60 },
 };
 
 export class VideoManager {

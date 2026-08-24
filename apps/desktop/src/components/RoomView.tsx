@@ -142,7 +142,7 @@ export function RoomView({
 
     return (
       <article
-        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? 'camera-tile media-surface' : 'audio-tile'} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? 'camera-tile media-surface' : 'audio-tile'} ${!isSelf || canModerate ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
         role="listitem"
         key={participant.id}
       >
@@ -151,6 +151,7 @@ export function RoomView({
             stream={media.camera!}
             source="camera"
             name={participant.name}
+            mirrored
             onExpand={() => setExpandedMedia({ type: 'camera', participantId: participant.id })}
           />
         )}
@@ -305,6 +306,7 @@ export function RoomView({
           type={expandedMedia.type}
           stream={expandedStream}
           participantName={expandedParticipant.name}
+          mirrored={expandedMedia.type === 'camera'}
           speaking={
             expandedParticipant.id === selfId
               ? localSpeaking
@@ -382,11 +384,13 @@ function ParticipantVideo({
   stream,
   source,
   name,
+  mirrored,
   onExpand,
 }: {
   stream: MediaStream;
   source: VideoMediaSource;
   name: string;
+  mirrored?: boolean;
   onExpand(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
@@ -403,6 +407,7 @@ function ParticipantVideo({
     <div className={`participant-video ${source}`}>
       <video
         ref={setElement}
+        className={mirrored ? 'mirrored' : undefined}
         aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
         autoPlay
         muted
@@ -423,12 +428,14 @@ function ExpandedMediaView({
   type,
   stream,
   participantName,
+  mirrored,
   speaking,
   onClose,
 }: {
   type: VideoMediaSource;
   stream: MediaStream;
   participantName: string;
+  mirrored: boolean;
   speaking: boolean;
   onClose(): void;
 }) {
@@ -453,7 +460,12 @@ function ExpandedMediaView({
       }}
     >
       <div className={`expanded-media-view ${type}`} ref={surface}>
-        <ParticipantVideoSurface stream={stream} source={type} name={participantName} />
+        <ParticipantVideoSurface
+          stream={stream}
+          source={type}
+          name={participantName}
+          mirrored={mirrored}
+        />
         <div className="expanded-media-header">
           <span>
             {type === 'screen' ? <MonitorUp size={17} /> : <Camera size={17} />}
@@ -485,10 +497,12 @@ function ParticipantVideoSurface({
   stream,
   source,
   name,
+  mirrored,
 }: {
   stream: MediaStream;
   source: VideoMediaSource;
   name: string;
+  mirrored: boolean;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -502,7 +516,7 @@ function ParticipantVideoSurface({
   return (
     <video
       ref={setElement}
-      className="expanded-media-video"
+      className={`expanded-media-video ${mirrored ? 'mirrored' : ''}`}
       aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
       autoPlay
       muted

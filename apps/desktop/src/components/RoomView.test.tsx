@@ -104,18 +104,22 @@ describe('RoomView media layouts', () => {
     expect(container.querySelectorAll('video')).toHaveLength(2);
   });
 
-  it('opens camera tiles in the shared expanded media viewer without mirroring', () => {
+  it('mirrors camera video in tiles and expanded view', () => {
     const { container, getByRole } = render(view('camera'));
     const camera = getByRole('button', { name: /Раскрыть камеру Гера/ });
     fireEvent.click(camera);
     const dialog = getByRole('dialog');
     expect(dialog).not.toBeNull();
+    expect(container.querySelectorAll('video.mirrored')).toHaveLength(2);
     fireEvent.click(getByRole('button', { name: 'Закрыть раскрытое видео' }));
     expect(dialog.classList.contains('closing')).toBe(true);
     fireEvent.animationEnd(dialog);
     expect(container.querySelector('[role="dialog"]')).toBeNull();
-    for (const video of container.querySelectorAll('video'))
-      expect(video.style.transform).not.toContain('scaleX(-1)');
+  });
+
+  it('mirrors a remote participant camera too', () => {
+    const { getByLabelText } = render(view('none', { [peerId]: { camera: stream } }));
+    expect(getByLabelText('Камера Друг').classList.contains('mirrored')).toBe(true);
   });
 
   it('lets the user switch the primary stage when two screens are shared', () => {

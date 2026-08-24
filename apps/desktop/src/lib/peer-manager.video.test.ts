@@ -160,6 +160,24 @@ describe('PeerManager video sender lifecycle', () => {
     const connection = VideoPeerConnection.instances[0]!;
     expect(connection.transceivers).toHaveLength(2);
     expect(connection.transceivers.map(({ sender }) => sender.track)).toEqual([camera, screen]);
+    expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        degradationPreference: 'maintain-framerate',
+        encodings: [
+          expect.objectContaining({
+            maxBitrate: 3_500_000,
+            maxFramerate: 60,
+            priority: 'medium',
+          }),
+        ],
+      }),
+    );
+    expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        degradationPreference: 'maintain-resolution',
+        encodings: [expect.objectContaining({ maxFramerate: 30, priority: 'low' })],
+      }),
+    );
 
     for (let index = 0; index < 5; index += 1) {
       await manager.setVideoTrack(null, 'screen');

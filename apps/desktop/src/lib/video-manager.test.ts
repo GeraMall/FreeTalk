@@ -10,7 +10,7 @@ class FakeTrack {
   onended: (() => void) | null = null;
   stop = vi.fn();
   getSettings() {
-    return { width: 1920, height: 1080, frameRate: 30, deviceId: 'camera-1' };
+    return { width: 1920, height: 1080, frameRate: 60, deviceId: 'camera-1' };
   }
 }
 
@@ -124,7 +124,7 @@ describe('VideoManager', () => {
       video: {
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        frameRate: { ideal: 30, max: 30 },
+        frameRate: { ideal: 60, max: 60 },
       },
     });
   });

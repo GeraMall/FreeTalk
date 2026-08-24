@@ -136,6 +136,7 @@ export class PeerManager {
       const parameters = sender.getParameters();
       if (!parameters.encodings?.length) parameters.encodings = [{}];
       parameters.encodings[0].maxBitrate = 64_000;
+      parameters.encodings[0].priority = 'high';
       void sender.setParameters(parameters).catch(() => undefined);
     }
     const transceiver = connection
@@ -660,9 +661,11 @@ export class PeerManager {
     const parameters = videoSender.sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
     parameters.encodings[0]!.maxBitrate = source === 'screen' ? 4_000_000 : 3_500_000;
-    parameters.encodings[0]!.maxFramerate = 30;
+    parameters.encodings[0]!.maxFramerate = source === 'screen' ? 30 : 60;
     parameters.encodings[0]!.scaleResolutionDownBy = 1;
-    parameters.degradationPreference = source === 'screen' ? 'maintain-resolution' : 'balanced';
+    parameters.encodings[0]!.priority = source === 'screen' ? 'low' : 'medium';
+    parameters.degradationPreference =
+      source === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
     void videoSender.sender
       .setParameters(parameters)
       .then(() =>
@@ -670,6 +673,7 @@ export class PeerManager {
           mediaSource: source,
           maxBitrate: parameters.encodings?.[0]?.maxBitrate ?? 0,
           maxFramerate: parameters.encodings?.[0]?.maxFramerate ?? 0,
+          priority: parameters.encodings?.[0]?.priority ?? 'unknown',
           degradationPreference: parameters.degradationPreference ?? 'unknown',
         }),
       )
