@@ -17,7 +17,7 @@ type NativeSignalEvent =
       cfRay?: string;
     }
   | { kind: 'message'; data: string }
-  | { kind: 'sent'; messageType: string; timestamp: number }
+  | { kind: 'sent'; messageType: string; timestamp?: number; nativeSentAt: number }
   | {
       kind: 'close';
       code: number;
@@ -28,7 +28,8 @@ type NativeSignalEvent =
 
 export interface NativeSendConfirmation {
   messageType: string;
-  timestamp: number;
+  timestamp?: number;
+  nativeSentAt: number;
 }
 
 export interface SignalOpenDetails {
@@ -108,7 +109,11 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
       if (this.readyState === SIGNAL_SOCKET_OPEN)
         this.dispatchEvent(
           new MessageEvent<NativeSendConfirmation>('native-send', {
-            data: { messageType: event.messageType, timestamp: event.timestamp },
+            data: {
+              messageType: event.messageType,
+              timestamp: event.timestamp,
+              nativeSentAt: event.nativeSentAt,
+            },
           }),
         );
       return;

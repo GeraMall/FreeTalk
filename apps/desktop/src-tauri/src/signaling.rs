@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::{mpsc, Mutex};
@@ -48,7 +49,9 @@ pub enum NativeSignalEvent {
     Sent {
         #[serde(rename = "messageType")]
         message_type: String,
-        timestamp: u64,
+        timestamp: Option<u64>,
+        #[serde(rename = "nativeSentAt")]
+        native_sent_at: u64,
     },
     Close {
         code: u16,
@@ -61,11 +64,21 @@ pub enum NativeSignalEvent {
     },
 }
 
-fn ping_timestamp(message: &str) -> Option<u64> {
+fn message_metadata(message: &str) -> Option<(String, Option<u64>)> {
     let value = serde_json::from_str::<serde_json::Value>(message).ok()?;
-    (value.get("type")?.as_str()? == "ping")
-        .then(|| value.get("timestamp")?.as_u64())
-        .flatten()
+    Some((
+        value.get("type")?.as_str()?.to_owned(),
+        value
+            .get("timestamp")
+            .and_then(|timestamp| timestamp.as_u64()),
+    ))
+}
+
+fn unix_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn validate_url(raw: &str) -> Result<(), String> {
@@ -227,17 +240,20 @@ async fn run_connection(
                     command = commands.recv() => match command {
                         Some(NativeCommand::Send(value)) => {
                             debug_message("out", &value);
-                            let ping_timestamp = ping_timestamp(&value);
+                            let metadata = message_metadata(&value);
                             if writer.send(Message::Text(value.into())).await.is_err() {
                                 let _ = events.send(NativeSignalEvent::Error {
                                     message: "Не удалось отправить сообщение через нативный сигналинг".into(),
                                 });
                                 break;
                             }
-                            if let Some(timestamp) = ping_timestamp {
+                            if let Some((message_type, timestamp)) = metadata
+                                .filter(|(message_type, _)| message_type != "ice-candidate")
+                            {
                                 let _ = events.send(NativeSignalEvent::Sent {
-                                    message_type: "ping".into(),
+                                    message_type,
                                     timestamp,
+                                    native_sent_at: unix_time_ms(),
                                 });
                             }
                         }
@@ -306,7 +322,7 @@ async fn run_connection(
 
 #[cfg(test)]
 mod tests {
-    use super::{ping_timestamp, validate_message, validate_url, NativeSignalEvent};
+    use super::{message_metadata, validate_message, validate_url, NativeSignalEvent};
 
     #[test]
     fn only_allows_freetalk_or_local_signaling() {
@@ -330,13 +346,16 @@ mod tests {
     }
 
     #[test]
-    fn extracts_only_ping_timestamps_for_native_send_confirmation() {
+    fn extracts_message_metadata_for_native_send_confirmation() {
         assert_eq!(
-            ping_timestamp(r#"{"type":"ping","timestamp":1787565956}"#),
-            Some(1787565956)
+            message_metadata(r#"{"type":"ping","timestamp":1787565956}"#),
+            Some(("ping".into(), Some(1787565956)))
         );
-        assert_eq!(ping_timestamp(r#"{"type":"leave-room"}"#), None);
-        assert_eq!(ping_timestamp("not-json"), None);
+        assert_eq!(
+            message_metadata(r#"{"type":"leave-room"}"#),
+            Some(("leave-room".into(), None))
+        );
+        assert_eq!(message_metadata("not-json"), None);
     }
 
     #[test]
@@ -353,12 +372,14 @@ mod tests {
 
         let sent = serde_json::to_value(NativeSignalEvent::Sent {
             message_type: "ping".into(),
-            timestamp: 123,
+            timestamp: Some(123),
+            native_sent_at: 456,
         })
         .unwrap();
         assert_eq!(sent["kind"], "sent");
         assert_eq!(sent["messageType"], "ping");
         assert_eq!(sent["timestamp"], 123);
+        assert_eq!(sent["nativeSentAt"], 456);
 
         let closed = serde_json::to_value(NativeSignalEvent::Close {
             code: 1006,

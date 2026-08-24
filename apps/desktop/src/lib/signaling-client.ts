@@ -46,7 +46,9 @@ export class SignalingClient {
 
   send(message: ClientMessage) {
     if (this.socket?.readyState !== SIGNAL_SOCKET_OPEN) return false;
-    connectionDiagnostics.record(`signal-sent:${message.type}`);
+    connectionDiagnostics.record(`signal-sent:${message.type}`, undefined, {
+      socketId: this.socket.correlationId,
+    });
     this.socket.send(JSON.stringify(message));
     return true;
   }
@@ -122,7 +124,9 @@ export class SignalingClient {
       if (this.socket !== socket || typeof data !== 'string') return;
       try {
         const message = parseServerMessage(data);
-        connectionDiagnostics.record(`signal-received:${message.type}`);
+        connectionDiagnostics.record(`signal-received:${message.type}`, undefined, {
+          socketId: socket.correlationId,
+        });
         if (message.type === 'pong') {
           this.lastPongReceivedAt = Date.now();
           connectionDiagnostics.record('signaling-pong:received', undefined, {
@@ -158,7 +162,14 @@ export class SignalingClient {
     socket.addEventListener('native-send', (event) => {
       if (this.socket !== socket) return;
       const confirmation = (event as MessageEvent<NativeSendConfirmation>).data;
-      if (confirmation?.messageType !== 'ping') return;
+      if (!confirmation?.messageType) return;
+      connectionDiagnostics.record('signaling-native:sent', undefined, {
+        socketId: socket.correlationId,
+        messageType: confirmation.messageType,
+        messageTimestamp: confirmation.timestamp ?? null,
+        nativeSentAt: new Date(confirmation.nativeSentAt).toISOString(),
+      });
+      if (confirmation.messageType !== 'ping' || confirmation.timestamp === undefined) return;
       this.lastPingNativeSentAt = Date.now();
       connectionDiagnostics.record('signaling-ping:native-sent', undefined, {
         pingTimestamp: confirmation.timestamp,

@@ -45,8 +45,12 @@ class FakeWebSocket extends EventTarget {
     this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(value) }));
   }
 
-  confirmNativeSend(messageType: string, timestamp: number) {
-    this.dispatchEvent(new MessageEvent('native-send', { data: { messageType, timestamp } }));
+  confirmNativeSend(messageType: string, timestamp?: number) {
+    this.dispatchEvent(
+      new MessageEvent('native-send', {
+        data: { messageType, timestamp, nativeSentAt: Date.now() },
+      }),
+    );
   }
 
   failNative(message: string) {
