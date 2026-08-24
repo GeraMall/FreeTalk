@@ -4,12 +4,18 @@ export const SIGNAL_SOCKET_OPEN = 1;
 
 export interface SignalSocket extends EventTarget {
   readonly readyState: number;
+  readonly correlationId: string;
   send(message: string): void;
   close(code?: number, reason?: string): void;
 }
 
 type NativeSignalEvent =
-  | { kind: 'open' }
+  | {
+      kind: 'open';
+      serverConnectionId?: string;
+      edgeColo?: string;
+      cfRay?: string;
+    }
   | { kind: 'message'; data: string }
   | { kind: 'sent'; messageType: string; timestamp: number }
   | {
@@ -23,6 +29,12 @@ type NativeSignalEvent =
 export interface NativeSendConfirmation {
   messageType: string;
   timestamp: number;
+}
+
+export interface SignalOpenDetails {
+  serverConnectionId?: string;
+  edgeColo?: string;
+  cfRay?: string;
 }
 
 export interface SignalCloseDetails {
@@ -41,12 +53,13 @@ function isTauri() {
 
 class NativeSignalSocket extends EventTarget implements SignalSocket {
   readyState: number = WebSocket.CONNECTING;
-  private readonly connectionId = crypto.randomUUID();
+  readonly correlationId: string;
   private commandQueue: Promise<unknown> = Promise.resolve();
   private closeDispatched = false;
 
-  constructor(url: string) {
+  constructor(url: string, correlationId: string) {
     super();
+    this.correlationId = correlationId;
     void this.connect(url);
   }
 
@@ -55,7 +68,7 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
     // Tauri invokes are asynchronous IPC calls. Serialize them so an offer is
     // never overtaken by its answer/ICE candidates on the way to Rust.
     this.commandQueue = this.commandQueue
-      .then(() => invoke('signaling_send', { connectionId: this.connectionId, message }))
+      .then(() => invoke('signaling_send', { connectionId: this.correlationId, message }))
       .catch((error: unknown) => this.fail(errorText(error)));
   }
 
@@ -64,7 +77,7 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
     this.readyState = WebSocket.CLOSING;
     // Flush a queued leave-room before closing the native socket.
     this.commandQueue = this.commandQueue
-      .then(() => invoke('signaling_close', { connectionId: this.connectionId }))
+      .then(() => invoke('signaling_close', { connectionId: this.correlationId }))
       .then(
         () => this.dispatchClose({ code, reason, initiatedBy: 'client' }),
         () => this.dispatchClose({ code, reason, initiatedBy: 'client' }),
@@ -75,7 +88,15 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
     if (event.kind === 'open') {
       if (this.readyState !== WebSocket.CONNECTING) return;
       this.readyState = SIGNAL_SOCKET_OPEN;
-      this.dispatchEvent(new Event('open'));
+      this.dispatchEvent(
+        new MessageEvent<SignalOpenDetails>('open', {
+          data: {
+            serverConnectionId: event.serverConnectionId,
+            edgeColo: event.edgeColo,
+            cfRay: event.cfRay,
+          },
+        }),
+      );
       return;
     }
     if (event.kind === 'message') {
@@ -120,10 +141,10 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
 
   private async connect(url: string) {
     try {
-      await invoke('signaling_connect', { connectionId: this.connectionId, url });
+      await invoke('signaling_connect', { connectionId: this.correlationId, url });
       while (this.readyState !== WebSocket.CLOSED) {
         const event = await invoke<NativeSignalEvent>('signaling_receive', {
-          connectionId: this.connectionId,
+          connectionId: this.correlationId,
         });
         this.handle(event);
       }
@@ -134,5 +155,11 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
 }
 
 export function createSignalSocket(url: string): SignalSocket {
-  return isTauri() ? new NativeSignalSocket(url) : new WebSocket(url);
+  const correlationId = crypto.randomUUID();
+  const target = new URL(url);
+  target.searchParams.set('cid', correlationId);
+  if (isTauri()) return new NativeSignalSocket(target.toString(), correlationId);
+  const socket = new WebSocket(target.toString()) as WebSocket & { correlationId: string };
+  Object.defineProperty(socket, 'correlationId', { value: correlationId });
+  return socket;
 }

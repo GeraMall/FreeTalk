@@ -34,7 +34,14 @@ enum NativeCommand {
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum NativeSignalEvent {
-    Open,
+    Open {
+        #[serde(rename = "serverConnectionId")]
+        server_connection_id: Option<String>,
+        #[serde(rename = "edgeColo")]
+        edge_colo: Option<String>,
+        #[serde(rename = "cfRay")]
+        cf_ray: Option<String>,
+    },
     Message {
         data: String,
     },
@@ -201,8 +208,19 @@ async fn run_connection(
     events: mpsc::UnboundedSender<NativeSignalEvent>,
 ) {
     match connect_async(&url).await {
-        Ok((socket, _response)) => {
-            let _ = events.send(NativeSignalEvent::Open);
+        Ok((socket, response)) => {
+            let header = |name: &str| {
+                response
+                    .headers()
+                    .get(name)
+                    .and_then(|value| value.to_str().ok())
+                    .map(ToOwned::to_owned)
+            };
+            let _ = events.send(NativeSignalEvent::Open {
+                server_connection_id: header("x-freetalk-server-connection-id"),
+                edge_colo: header("x-freetalk-edge-colo"),
+                cf_ray: header("cf-ray"),
+            });
             let (mut writer, mut reader) = socket.split();
             loop {
                 tokio::select! {
@@ -323,6 +341,16 @@ mod tests {
 
     #[test]
     fn serializes_native_diagnostic_fields_for_typescript() {
+        let opened = serde_json::to_value(NativeSignalEvent::Open {
+            server_connection_id: Some("server-connection".into()),
+            edge_colo: Some("SVO".into()),
+            cf_ray: Some("ray-SVO".into()),
+        })
+        .unwrap();
+        assert_eq!(opened["serverConnectionId"], "server-connection");
+        assert_eq!(opened["edgeColo"], "SVO");
+        assert_eq!(opened["cfRay"], "ray-SVO");
+
         let sent = serde_json::to_value(NativeSignalEvent::Sent {
             message_type: "ping".into(),
             timestamp: 123,

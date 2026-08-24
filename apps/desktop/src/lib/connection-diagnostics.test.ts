@@ -10,7 +10,10 @@ describe('connection diagnostics', () => {
     connectionDiagnostics.record('connection:connected', 'real-peer-id');
 
     const report = connectionDiagnostics.snapshot();
-    expect(report.schema).toBe(1);
+    expect(report.schema).toBe(2);
+    expect(report.diagnosticSchemaVersion).toBe(2);
+    expect(report.appVersion).toBeTypeOf('string');
+    expect(report.buildCommit).toBeTypeOf('string');
     expect(report.entries.map((entry) => entry.event)).toEqual([
       'session-start',
       'peer-created',

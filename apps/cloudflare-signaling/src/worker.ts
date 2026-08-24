@@ -12,6 +12,7 @@ import { parseClientMessage, type Participant, type ServerMessage } from '@freet
 
 interface Env {
   ROOMS: DurableObjectNamespace;
+  BUILD_COMMIT?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   TURN_CREDENTIAL_TTL_SECONDS?: string;
@@ -29,6 +30,13 @@ interface SocketAttachment {
   connectedAt?: number;
   lastSeen: number;
   timestamps: number[];
+  clientConnectionId: string;
+  serverConnectionId: string;
+  edgeColo: string;
+  clientAsn: number | null;
+  serverCloseCode?: number;
+  serverCloseReason?: string;
+  serverCloseCause?: string;
 }
 
 export default {
@@ -58,19 +66,39 @@ export class VoiceRoom implements DurableObject {
       return new Response('Expected websocket', { status: 426 });
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
+    const url = new URL(request.url);
+    const requestedConnectionId = url.searchParams.get('cid') ?? '';
+    const clientConnectionId = /^[0-9a-f-]{36}$/i.test(requestedConnectionId)
+      ? requestedConnectionId
+      : 'missing-or-invalid';
+    const serverConnectionId = crypto.randomUUID();
+    const edgeColo = typeof request.cf?.colo === 'string' ? request.cf.colo : 'unknown';
+    const clientAsn = typeof request.cf?.asn === 'number' ? request.cf.asn : null;
     this.state.acceptWebSocket(server);
     server.serializeAttachment({
       joined: false,
-      roomId: new URL(request.url).searchParams.get('room')?.toUpperCase() ?? '',
+      roomId: url.searchParams.get('room')?.toUpperCase() ?? '',
       lastSeen: Date.now(),
       timestamps: [],
+      clientConnectionId,
+      serverConnectionId,
+      edgeColo,
+      clientAsn,
     } satisfies SocketAttachment);
-    return new Response(null, { status: 101, webSocket: client });
+    this.trace('socket.accepted', server);
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+      headers: {
+        'x-freetalk-server-connection-id': serverConnectionId,
+        'x-freetalk-edge-colo': edgeColo,
+      },
+    });
   }
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer) {
     if (typeof raw !== 'string' || new TextEncoder().encode(raw).byteLength > MAX_SIGNAL_BYTES) {
-      socket.close(1009, 'Message too large');
+      this.closeSocket(socket, 1009, 'Message too large', 'invalid-payload');
       return;
     }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
@@ -85,7 +113,7 @@ export class VoiceRoom implements DurableObject {
         message: 'Слишком много сообщений',
         fatal: true,
       });
-      socket.close(1008, 'Rate limit');
+      this.closeSocket(socket, 1008, 'Rate limit', 'rate-limit');
       return;
     }
     attachment.timestamps.push(now);
@@ -93,6 +121,11 @@ export class VoiceRoom implements DurableObject {
     socket.serializeAttachment(attachment);
     try {
       const message = parseClientMessage(raw);
+      this.trace('message.received', socket, {
+        messageType: message.type,
+        ...(message.type === 'ping' ? { pingTimestamp: message.timestamp } : {}),
+        ...('to' in message ? { targetPeerId: message.to } : {}),
+      });
       if (message.type === 'create-room' || message.type === 'join-room') {
         await this.join(socket, message, attachment);
         return;
@@ -106,7 +139,7 @@ export class VoiceRoom implements DurableObject {
         return;
       }
       if (message.type === 'leave-room') {
-        socket.close(1000, 'Leave');
+        this.closeSocket(socket, 1000, 'Leave', 'client-request');
         return;
       }
       if (message.type === 'ping') {
@@ -174,6 +207,13 @@ export class VoiceRoom implements DurableObject {
               description: message.description,
             } as const);
       this.send(target, relayed);
+      const targetAttachment = target.deserializeAttachment() as SocketAttachment;
+      this.trace('signal.forwarded', socket, {
+        messageType: message.type,
+        targetPeerId: message.to,
+        targetClientConnectionId: targetAttachment.clientConnectionId,
+        targetServerConnectionId: targetAttachment.serverConnectionId,
+      });
     } catch {
       this.send(socket, {
         type: 'error',
@@ -183,10 +223,21 @@ export class VoiceRoom implements DurableObject {
     }
   }
 
-  async webSocketClose(socket: WebSocket) {
+  async webSocketClose(socket: WebSocket, code: number, reason: string, wasClean: boolean) {
+    const attachment = socket.deserializeAttachment() as SocketAttachment;
+    this.trace('socket.close-callback', socket, {
+      code,
+      reason,
+      wasClean,
+      initiatedBy: attachment.serverCloseCause ? 'server' : 'client-or-transport',
+      serverCloseCause: attachment.serverCloseCause ?? null,
+    });
     await this.leave(socket);
   }
-  async webSocketError(socket: WebSocket) {
+  async webSocketError(socket: WebSocket, error: unknown) {
+    this.trace('socket.error', socket, {
+      error: error instanceof Error ? error.message : String(error),
+    });
     await this.leave(socket);
   }
 
@@ -195,7 +246,7 @@ export class VoiceRoom implements DurableObject {
     for (const socket of this.active()) {
       const attachment = socket.deserializeAttachment() as SocketAttachment;
       if (now - attachment.lastSeen > CLIENT_STALE_AFTER_MS)
-        socket.close(4000, 'Heartbeat timeout');
+        this.closeSocket(socket, 4000, 'Heartbeat timeout', 'stale-alarm');
     }
     if (this.active().length > 0) await this.state.storage.setAlarm(now + 60_000);
     else {
@@ -273,7 +324,7 @@ export class VoiceRoom implements DurableObject {
       // participant-left event for the replacement.
       sameAttachment.joined = false;
       same.serializeAttachment(sameAttachment);
-      same.close(4001, 'Reconnected');
+      this.closeSocket(same, 4001, 'Reconnected', 'connection-replaced');
     }
     Object.assign(attachment, {
       joined: true,
@@ -287,6 +338,7 @@ export class VoiceRoom implements DurableObject {
       connectedAt: sameAttachment?.connectedAt ?? Date.now(),
     });
     socket.serializeAttachment(attachment);
+    this.trace('participant.joined', socket, { peerId: message.clientId });
     await this.state.storage.put('grace', {
       sessionId: message.sessionId,
       expiresAt: Date.now() + 30_000,
@@ -374,9 +426,49 @@ export class VoiceRoom implements DurableObject {
   private send(socket: WebSocket, message: ServerMessage) {
     try {
       socket.send(JSON.stringify(message));
-    } catch {
-      /* closing socket */
+      this.trace('message.sent', socket, {
+        messageType: message.type,
+        ...(message.type === 'pong' ? { pingTimestamp: message.timestamp } : {}),
+      });
+    } catch (error) {
+      this.trace('message.send-error', socket, {
+        messageType: message.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
+  }
+
+  private closeSocket(socket: WebSocket, code: number, reason: string, cause: string) {
+    const attachment = socket.deserializeAttachment() as SocketAttachment;
+    attachment.serverCloseCode = code;
+    attachment.serverCloseReason = reason;
+    attachment.serverCloseCause = cause;
+    socket.serializeAttachment(attachment);
+    this.trace('socket.close-initiated', socket, { code, reason, cause });
+    socket.close(code, reason);
+  }
+
+  private trace(
+    event: string,
+    socket: WebSocket,
+    details: Record<string, string | number | boolean | null> = {},
+  ) {
+    const attachment = socket.deserializeAttachment() as SocketAttachment;
+    console.log(
+      JSON.stringify({
+        source: 'freetalk-signaling',
+        serverBuildCommit: this.env.BUILD_COMMIT ?? 'unknown',
+        timestamp: new Date().toISOString(),
+        event,
+        roomId: attachment.roomId,
+        peerId: attachment.clientId ?? null,
+        clientConnectionId: attachment.clientConnectionId,
+        serverConnectionId: attachment.serverConnectionId,
+        edgeColo: attachment.edgeColo,
+        clientAsn: attachment.clientAsn,
+        ...details,
+      }),
+    );
   }
 
   private async iceConfig(): Promise<Extract<ServerMessage, { type: 'ice-config' }>> {

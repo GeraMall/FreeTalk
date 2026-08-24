@@ -6,6 +6,7 @@ import {
   SIGNAL_SOCKET_OPEN,
   type NativeSendConfirmation,
   type SignalCloseDetails,
+  type SignalOpenDetails,
   type SignalSocket,
 } from './signaling-transport';
 import { connectionDiagnostics } from './connection-diagnostics';
@@ -90,14 +91,26 @@ export class SignalingClient {
         `${this.url}${separator}room=${encodeURIComponent(this.joined.roomId)}`,
       );
       this.socket = socket;
+      connectionDiagnostics.record('signaling-socket:created', undefined, {
+        socketId: socket.correlationId,
+        roomId: this.joined.roomId,
+        peerId: this.joined.clientId,
+      });
     } catch {
       this.scheduleRetry();
       return;
     }
 
-    socket.addEventListener('open', () => {
+    socket.addEventListener('open', (event) => {
       if (this.socket !== socket) return;
+      const handshake = (event as MessageEvent<SignalOpenDetails>).data;
       if (reconnecting) connectionDiagnostics.record('signaling-reconnect:socket-open');
+      connectionDiagnostics.record('signaling-socket:open', undefined, {
+        socketId: socket.correlationId,
+        serverConnectionId: handshake?.serverConnectionId ?? null,
+        edgeColo: handshake?.edgeColo ?? null,
+        cfRay: handshake?.cfRay ?? null,
+      });
       this.onState('connected');
       const message = reconnecting ? { ...this.joined!, type: 'join-room' as const } : this.joined!;
       this.send(message);
@@ -171,6 +184,7 @@ export class SignalingClient {
         ? 'client'
         : (native?.initiatedBy ?? (closeCode === 1006 ? 'transport' : 'server'));
       connectionDiagnostics.record('signaling-socket:closed', undefined, {
+        socketId: socket.correlationId,
         closeCode,
         closeReason,
         initiatedBy,

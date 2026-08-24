@@ -10,6 +10,7 @@ class FakeWebSocket extends EventTarget {
   static instances: FakeWebSocket[] = [];
 
   readonly sent: string[] = [];
+  readonly correlationId = crypto.randomUUID();
   readyState = FakeWebSocket.CONNECTING;
   closeCode?: number;
   closeReason?: string;
@@ -124,6 +125,17 @@ describe('SignalingClient', () => {
     client.connect(join);
     const socket = FakeWebSocket.instances[0]!;
     socket.open();
+
+    expect(new URL(socket.url).searchParams.get('cid')).toBe(socket.correlationId);
+    expect(
+      connectionDiagnostics
+        .snapshot()
+        .entries.find((entry) => entry.event === 'signaling-socket:created')?.details,
+    ).toMatchObject({
+      socketId: socket.correlationId,
+      roomId: join.roomId,
+      peerId: join.clientId,
+    });
 
     vi.advanceTimersByTime(15_000);
     const ping = socket.sent

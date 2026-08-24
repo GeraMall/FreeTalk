@@ -14,6 +14,10 @@ interface TestAttachment {
   connectedAt?: number;
   lastSeen: number;
   timestamps: number[];
+  clientConnectionId: string;
+  serverConnectionId: string;
+  edgeColo: string;
+  clientAsn: number | null;
 }
 
 class FakeSocket {
@@ -45,6 +49,10 @@ function attachment(overrides: Partial<TestAttachment>): TestAttachment {
     roomId: 'ABCDEFGHIJKL',
     lastSeen: Date.now(),
     timestamps: [],
+    clientConnectionId: crypto.randomUUID(),
+    serverConnectionId: crypto.randomUUID(),
+    edgeColo: 'TEST',
+    clientAsn: 64512,
     ...overrides,
   };
 }

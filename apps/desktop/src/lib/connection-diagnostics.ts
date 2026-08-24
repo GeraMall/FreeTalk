@@ -8,7 +8,10 @@ export interface ConnectionDiagnosticEntry {
 }
 
 interface DiagnosticExport {
-  schema: 1;
+  schema: 2;
+  diagnosticSchemaVersion: 2;
+  appVersion: string;
+  buildCommit: string;
   generatedAt: string;
   sessionStartedAt: string;
   entries: ConnectionDiagnosticEntry[];
@@ -66,7 +69,10 @@ class ConnectionDiagnostics {
 
   snapshot(): DiagnosticExport {
     return {
-      schema: 1,
+      schema: 2,
+      diagnosticSchemaVersion: 2,
+      appVersion: __FREETALK_APP_VERSION__,
+      buildCommit: __FREETALK_BUILD_COMMIT__,
       generatedAt: new Date().toISOString(),
       sessionStartedAt: new Date(this.startedWallTime).toISOString(),
       entries: this.entries.map((entry) => ({

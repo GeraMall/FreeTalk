@@ -419,7 +419,11 @@ export function App() {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
     }
-    connectionDiagnostics.startSession({ action: create ? 'create-room' : 'join-room' });
+    connectionDiagnostics.startSession({
+      action: create ? 'create-room' : 'join-room',
+      roomId: code,
+      peerId: selfId.current,
+    });
     void notificationSounds.current.prepare(settings.outputDeviceId);
     setJoining(true);
     try {
