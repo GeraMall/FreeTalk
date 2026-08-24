@@ -1,5 +1,8 @@
 import type { ServerMessage } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
+import type { LocalVideoSource } from './video-manager';
+
+const VIDEO_STATE_CHANNEL = 'freetalk-video-state-v1';
 
 interface PeerContext {
   connection: RTCPeerConnection;
@@ -18,12 +21,20 @@ interface PeerContext {
   firstConnectivityCheckRecorded: boolean;
   selectedPairRecorded: boolean;
   firstInboundRtpRecorded: boolean;
+  firstInboundVideoRecorded: boolean;
+  firstOutboundVideoRecorded: boolean;
+  videoSender?: RTCRtpSender;
+  videoStateChannel?: RTCDataChannel;
+  remoteVideoStateChannel?: RTCDataChannel;
+  remoteVideoActive: boolean;
 }
 
 const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
 
 export interface PeerEvents {
   onTrack(peerId: string, stream: MediaStream): void;
+  onVideoTrack?(peerId: string, stream: MediaStream, track: MediaStreamTrack): void;
+  onVideoState?(peerId: string, source: LocalVideoSource): void;
   onState(peerId: string, state: RTCPeerConnectionState): void;
 }
 
@@ -45,6 +56,8 @@ interface CandidatePairStats extends RTCStats {
 
 export class PeerManager {
   private readonly peers = new Map<string, PeerContext>();
+  private localVideoTrack: MediaStreamTrack | null = null;
+  private localVideoSource: LocalVideoSource = 'none';
 
   constructor(
     private readonly selfId: string,
@@ -79,6 +92,9 @@ export class PeerManager {
       firstConnectivityCheckRecorded: false,
       selectedPairRecorded: false,
       firstInboundRtpRecorded: false,
+      firstInboundVideoRecorded: false,
+      firstOutboundVideoRecorded: false,
+      remoteVideoActive: false,
     };
     this.peers.set(peerId, context);
     connectionDiagnostics.record('peer-created', peerId, {
@@ -94,7 +110,7 @@ export class PeerManager {
       connectionDiagnostics.record('add-track:end', peerId, { kind: track.kind });
       void sender.getParameters().encodings?.length;
       const parameters = sender.getParameters();
-      if (!parameters.encodings) parameters.encodings = [{}];
+      if (!parameters.encodings?.length) parameters.encodings = [{}];
       parameters.encodings[0].maxBitrate = 64_000;
       void sender.setParameters(parameters).catch(() => undefined);
     }
@@ -105,6 +121,15 @@ export class PeerManager {
       (codec) => codec.mimeType.toLowerCase() === 'audio/opus',
     );
     if (transceiver?.setCodecPreferences && opus?.length) transceiver.setCodecPreferences(opus);
+
+    if (this.localVideoTrack) {
+      context.videoSender = connection.addTrack(
+        this.localVideoTrack,
+        new MediaStream([this.localVideoTrack]),
+      );
+      this.configureVideoSender(context.videoSender, this.localVideoSource);
+      this.ensureVideoStateChannel(peerId, context);
+    }
 
     connection.onicecandidate = ({ candidate }) => {
       if (candidate) {
@@ -150,7 +175,25 @@ export class PeerManager {
     connection.ontrack = ({ streams, track }) => {
       connectionDiagnostics.record('remote-track', peerId, { kind: track.kind });
       const stream = streams[0] ?? new MediaStream([track]);
-      this.events.onTrack(peerId, stream);
+      if (track.kind === 'video') {
+        connectionDiagnostics.record('video-ontrack-fired', peerId);
+        track.onended = () => {
+          context.remoteVideoActive = false;
+          connectionDiagnostics.record('remote-video-track:ended', peerId);
+          this.events.onVideoState?.(peerId, 'none');
+        };
+        this.events.onVideoTrack?.(peerId, stream, track);
+        context.remoteVideoActive = true;
+        this.startDiagnosticTimer(peerId, context);
+      } else {
+        this.events.onTrack(peerId, stream);
+      }
+    };
+    connection.ondatachannel = ({ channel }) => {
+      if (channel.label !== VIDEO_STATE_CHANNEL) return;
+      context.remoteVideoStateChannel?.close();
+      context.remoteVideoStateChannel = channel;
+      channel.onmessage = ({ data }) => this.handleVideoStateMessage(peerId, context, data);
     };
     connection.onconnectionstatechange = () => {
       connectionDiagnostics.record(`connection:${connection.connectionState}`, peerId);
@@ -206,13 +249,7 @@ export class PeerManager {
         }
       }).catch(() => this.events.onState(peerId, 'failed'));
     };
-    context.diagnosticTimer = window.setInterval(() => {
-      if (performance.now() - context.diagnosticStartedAt > 120_000) {
-        this.clearDiagnosticTimer(context);
-        return;
-      }
-      void this.pollConnectionStats(peerId, context);
-    }, 250);
+    this.startDiagnosticTimer(peerId, context);
     return connection;
   }
 
@@ -337,6 +374,27 @@ export class PeerManager {
     );
   }
 
+  async setVideoTrack(track: MediaStreamTrack | null, source: LocalVideoSource) {
+    this.localVideoTrack = track;
+    this.localVideoSource = source;
+    connectionDiagnostics.record('local-video-source', undefined, { source });
+    await Promise.all(
+      [...this.peers.entries()].map(([peerId, context]) =>
+        this.enqueue(context, async () => {
+          if (source !== 'none') this.ensureVideoStateChannel(peerId, context);
+          if (context.videoSender) {
+            await context.videoSender.replaceTrack(track);
+          } else if (track) {
+            context.videoSender = context.connection.addTrack(track, new MediaStream([track]));
+          }
+          if (context.videoSender && track) this.configureVideoSender(context.videoSender, source);
+          this.sendVideoState(context);
+          this.startDiagnosticTimer(peerId, context);
+        }),
+      ),
+    );
+  }
+
   updateIceServers(iceServers: RTCIceServer[]) {
     if (JSON.stringify(this.iceServers) === JSON.stringify(iceServers)) return;
     this.iceServers = iceServers;
@@ -358,8 +416,11 @@ export class PeerManager {
     if (!context) return;
     if (context.disconnectTimer) window.clearTimeout(context.disconnectTimer);
     this.clearDiagnosticTimer(context);
+    context.videoStateChannel?.close();
+    context.remoteVideoStateChannel?.close();
     context.connection.close();
     this.peers.delete(peerId);
+    this.events.onVideoState?.(peerId, 'none');
   }
 
   closeAll() {
@@ -429,6 +490,56 @@ export class PeerManager {
     context.diagnosticTimer = undefined;
   }
 
+  private startDiagnosticTimer(peerId: string, context: PeerContext) {
+    context.diagnosticStartedAt = performance.now();
+    if (context.diagnosticTimer) return;
+    context.diagnosticTimer = window.setInterval(() => {
+      if (performance.now() - context.diagnosticStartedAt > 120_000) {
+        this.clearDiagnosticTimer(context);
+        return;
+      }
+      void this.pollConnectionStats(peerId, context);
+    }, 250);
+  }
+
+  private ensureVideoStateChannel(peerId: string, context: PeerContext) {
+    if (context.videoStateChannel) return;
+    const channel = context.connection.createDataChannel(VIDEO_STATE_CHANNEL, { ordered: true });
+    context.videoStateChannel = channel;
+    channel.onopen = () => {
+      connectionDiagnostics.record('video-state-channel:open', peerId);
+      this.sendVideoState(context);
+    };
+    channel.onclose = () => connectionDiagnostics.record('video-state-channel:closed', peerId);
+  }
+
+  private sendVideoState(context: PeerContext) {
+    if (context.videoStateChannel?.readyState !== 'open') return;
+    context.videoStateChannel.send(JSON.stringify({ source: this.localVideoSource }));
+  }
+
+  private handleVideoStateMessage(peerId: string, context: PeerContext, raw: unknown) {
+    if (typeof raw !== 'string' || raw.length > 128) return;
+    try {
+      const value = JSON.parse(raw) as { source?: unknown };
+      if (value.source !== 'none' && value.source !== 'camera' && value.source !== 'screen') return;
+      context.remoteVideoActive = value.source !== 'none';
+      if (context.remoteVideoActive) this.startDiagnosticTimer(peerId, context);
+      connectionDiagnostics.record('remote-video-source', peerId, { source: value.source });
+      this.events.onVideoState?.(peerId, value.source);
+    } catch {
+      // Ignore malformed peer metadata. It never affects the media connection.
+    }
+  }
+
+  private configureVideoSender(sender: RTCRtpSender, source: LocalVideoSource) {
+    const parameters = sender.getParameters();
+    if (!parameters.encodings?.length) parameters.encodings = [{}];
+    parameters.encodings[0]!.maxBitrate = source === 'screen' ? 2_500_000 : 1_500_000;
+    parameters.degradationPreference = source === 'screen' ? 'maintain-resolution' : 'balanced';
+    void sender.setParameters(parameters).catch(() => undefined);
+  }
+
   private candidateType(candidate: string) {
     return candidate.match(/\btyp\s+(host|srflx|prflx|relay)\b/i)?.[1]?.toLowerCase();
   }
@@ -442,6 +553,14 @@ export class PeerManager {
       let inboundPackets = 0;
       let outboundBytes = 0;
       let outboundPackets = 0;
+      let inboundVideoBytes = 0;
+      let inboundVideoPackets = 0;
+      let inboundFramesDecoded = 0;
+      let inboundFramesReceived = 0;
+      let outboundVideoBytes = 0;
+      let outboundVideoPackets = 0;
+      let outboundFramesEncoded = 0;
+      let outboundFramesSent = 0;
       for (const report of stats.values()) {
         if (
           report.type === 'candidate-pair' &&
@@ -468,6 +587,18 @@ export class PeerManager {
           outboundBytes += Number(report.bytesSent ?? 0);
           outboundPackets += Number(report.packetsSent ?? 0);
         }
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          inboundVideoBytes += Number(report.bytesReceived ?? 0);
+          inboundVideoPackets += Number(report.packetsReceived ?? 0);
+          inboundFramesDecoded += Number(report.framesDecoded ?? 0);
+          inboundFramesReceived += Number(report.framesReceived ?? 0);
+        }
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          outboundVideoBytes += Number(report.bytesSent ?? 0);
+          outboundVideoPackets += Number(report.packetsSent ?? 0);
+          outboundFramesEncoded += Number(report.framesEncoded ?? 0);
+          outboundFramesSent += Number(report.framesSent ?? 0);
+        }
       }
       if (selectedPair && !context.selectedPairRecorded) {
         context.selectedPairRecorded = true;
@@ -490,7 +621,39 @@ export class PeerManager {
           packetsSent: outboundPackets,
         });
       }
-      if (context.selectedPairRecorded && context.firstInboundRtpRecorded)
+      if (
+        (outboundVideoBytes > 0 || outboundVideoPackets > 0) &&
+        !context.firstOutboundVideoRecorded
+      ) {
+        context.firstOutboundVideoRecorded = true;
+        connectionDiagnostics.record('first-video-outbound-rtp', peerId, {
+          bytesSent: outboundVideoBytes,
+          packetsSent: outboundVideoPackets,
+          framesEncoded: outboundFramesEncoded,
+          framesSent: outboundFramesSent,
+        });
+      }
+      if (
+        (inboundVideoBytes > 0 || inboundVideoPackets > 0) &&
+        !context.firstInboundVideoRecorded
+      ) {
+        context.firstInboundVideoRecorded = true;
+        connectionDiagnostics.record('first-video-inbound-rtp', peerId, {
+          bytesReceived: inboundVideoBytes,
+          packetsReceived: inboundVideoPackets,
+          framesDecoded: inboundFramesDecoded,
+          framesReceived: inboundFramesReceived,
+        });
+      }
+      const localVideoActive = this.localVideoSource !== 'none';
+      const videoDiagnosticsComplete =
+        (!localVideoActive || context.firstOutboundVideoRecorded) &&
+        (!context.remoteVideoActive || context.firstInboundVideoRecorded);
+      if (
+        context.selectedPairRecorded &&
+        context.firstInboundRtpRecorded &&
+        videoDiagnosticsComplete
+      )
         this.clearDiagnosticTimer(context);
     } catch {
       // Diagnostics must never affect call setup.

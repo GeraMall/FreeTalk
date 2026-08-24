@@ -19,6 +19,7 @@ class PerfectNegotiationPeerConnection {
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   onnegotiationneeded: RTCPeerConnection['onnegotiationneeded'] = null;
   ontrack: RTCPeerConnection['ontrack'] = null;
+  ondatachannel: RTCPeerConnection['ondatachannel'] = null;
   readonly operations: string[] = [];
 
   constructor(private configuration: RTCConfiguration) {
@@ -70,11 +71,24 @@ class PerfectNegotiationPeerConnection {
 
   restartIce() {}
 
-  addTrack() {
+  addTrack(track: MediaStreamTrack) {
     return {
+      track,
+      replaceTrack: () => Promise.resolve(),
       getParameters: () => ({ encodings: [] }),
       setParameters: () => Promise.resolve(),
     } as unknown as RTCRtpSender;
+  }
+
+  createDataChannel() {
+    return {
+      label: 'freetalk-video-state-v1',
+      readyState: 'connecting',
+      close: () => undefined,
+      send: () => undefined,
+      onopen: null,
+      onclose: null,
+    } as unknown as RTCDataChannel;
   }
 
   getTransceivers() {
@@ -101,6 +115,15 @@ describe('PeerManager perfect negotiation glare resolution', () => {
     PerfectNegotiationPeerConnection.instances = [];
     vi.stubGlobal('RTCPeerConnection', PerfectNegotiationPeerConnection);
     vi.stubGlobal('RTCRtpReceiver', { getCapabilities: () => ({ codecs: [] }) });
+    vi.stubGlobal(
+      'MediaStream',
+      class {
+        constructor(private readonly tracks: MediaStreamTrack[] = []) {}
+        getTracks() {
+          return this.tracks;
+        }
+      },
+    );
   });
 
   afterEach(() => {
@@ -185,4 +208,49 @@ describe('PeerManager perfect negotiation glare resolution', () => {
       managerB.closeAll();
     },
   );
+
+  it('resolves glare when A enables camera while B starts screen sharing', async () => {
+    const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
+    const signals: PeerSignal[] = [];
+    const managerA = new PeerManager(peerA, [], stream, (message) => signals.push(message), {
+      onTrack: vi.fn(),
+      onState: vi.fn(),
+    });
+    const managerB = new PeerManager(peerB, [], stream, (message) => signals.push(message), {
+      onTrack: vi.fn(),
+      onState: vi.fn(),
+    });
+    const connectionA = managerA.ensure(peerB) as unknown as PerfectNegotiationPeerConnection;
+    const connectionB = managerB.ensure(peerA) as unknown as PerfectNegotiationPeerConnection;
+    const camera = { kind: 'video', id: 'camera' } as MediaStreamTrack;
+    const screen = { kind: 'video', id: 'screen' } as MediaStreamTrack;
+
+    await Promise.all([
+      managerA.setVideoTrack(camera, 'camera'),
+      managerB.setVideoTrack(screen, 'screen'),
+    ]);
+    const negotiateA = connectionA.onnegotiationneeded as ((event: Event) => void) | null;
+    const negotiateB = connectionB.onnegotiationneeded as ((event: Event) => void) | null;
+    negotiateA?.(new Event('negotiationneeded'));
+    negotiateB?.(new Event('negotiationneeded'));
+    await vi.waitFor(() =>
+      expect(signals.filter((message) => message.type === 'offer')).toHaveLength(2),
+    );
+
+    const offers = signals.splice(0).filter((message) => message.type === 'offer');
+    await Promise.all(
+      offers.map((message) =>
+        message.from === peerA
+          ? managerB.handle(incoming(message))
+          : managerA.handle(incoming(message)),
+      ),
+    );
+    const answer = signals.find((message) => message.type === 'answer')!;
+    await managerA.handle(incoming(answer));
+
+    expect(connectionA.signalingState).toBe('stable');
+    expect(connectionB.signalingState).toBe('stable');
+    expect(connectionB.operations).toContain('setLocalDescription:rollback');
+    expect(connectionB.operations).toContain('setLocalDescription:answer');
+  });
 });
