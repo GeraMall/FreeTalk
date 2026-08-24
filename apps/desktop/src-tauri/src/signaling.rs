@@ -35,9 +35,30 @@ enum NativeCommand {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum NativeSignalEvent {
     Open,
-    Message { data: String },
-    Close { reason: String },
-    Error { message: String },
+    Message {
+        data: String,
+    },
+    Sent {
+        #[serde(rename = "messageType")]
+        message_type: String,
+        timestamp: u64,
+    },
+    Close {
+        code: u16,
+        reason: String,
+        #[serde(rename = "initiatedBy")]
+        initiated_by: String,
+    },
+    Error {
+        message: String,
+    },
+}
+
+fn ping_timestamp(message: &str) -> Option<u64> {
+    let value = serde_json::from_str::<serde_json::Value>(message).ok()?;
+    (value.get("type")?.as_str()? == "ping")
+        .then(|| value.get("timestamp")?.as_u64())
+        .flatten()
 }
 
 fn validate_url(raw: &str) -> Result<(), String> {
@@ -188,11 +209,18 @@ async fn run_connection(
                     command = commands.recv() => match command {
                         Some(NativeCommand::Send(value)) => {
                             debug_message("out", &value);
+                            let ping_timestamp = ping_timestamp(&value);
                             if writer.send(Message::Text(value.into())).await.is_err() {
                                 let _ = events.send(NativeSignalEvent::Error {
                                     message: "Не удалось отправить сообщение через нативный сигналинг".into(),
                                 });
                                 break;
+                            }
+                            if let Some(timestamp) = ping_timestamp {
+                                let _ = events.send(NativeSignalEvent::Sent {
+                                    message_type: "ping".into(),
+                                    timestamp,
+                                });
                             }
                         }
                         Some(NativeCommand::Close) | None => {
@@ -206,8 +234,14 @@ async fn run_connection(
                             let _ = events.send(NativeSignalEvent::Message { data: value.to_string() });
                         }
                         Some(Ok(Message::Close(frame))) => {
-                            let reason = frame.map(|item| item.reason.to_string()).unwrap_or_default();
-                            let _ = events.send(NativeSignalEvent::Close { reason });
+                            let (code, reason) = frame
+                                .map(|item| (u16::from(item.code), item.reason.to_string()))
+                                .unwrap_or((1005, String::new()));
+                            let _ = events.send(NativeSignalEvent::Close {
+                                code,
+                                reason,
+                                initiated_by: "server".into(),
+                            });
                             break;
                         }
                         Some(Ok(Message::Ping(value))) => {
@@ -218,7 +252,14 @@ async fn run_connection(
                             let _ = events.send(NativeSignalEvent::Error { message: error.to_string() });
                             break;
                         }
-                        None => break,
+                        None => {
+                            let _ = events.send(NativeSignalEvent::Close {
+                                code: 1006,
+                                reason: "Поток WebSocket завершился без close frame".into(),
+                                initiated_by: "transport".into(),
+                            });
+                            break;
+                        },
                     }
                 }
             }
@@ -238,14 +279,16 @@ async fn run_connection(
     {
         connections.remove(&connection_id);
         let _ = events.send(NativeSignalEvent::Close {
-            reason: "Соединение закрыто".into(),
+            code: 1006,
+            reason: "Задача нативного WebSocket завершена".into(),
+            initiated_by: "transport".into(),
         });
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_message, validate_url};
+    use super::{ping_timestamp, validate_message, validate_url, NativeSignalEvent};
 
     #[test]
     fn only_allows_freetalk_or_local_signaling() {
@@ -266,5 +309,35 @@ mod tests {
         assert!(validate_message(r#"{"type":"ping","timestamp":1}"#).is_ok());
         assert!(validate_message("not json").is_err());
         assert!(validate_message(&format!(r#"{{"value":"{}"}}"#, "x".repeat(33_000))).is_err());
+    }
+
+    #[test]
+    fn extracts_only_ping_timestamps_for_native_send_confirmation() {
+        assert_eq!(
+            ping_timestamp(r#"{"type":"ping","timestamp":1787565956}"#),
+            Some(1787565956)
+        );
+        assert_eq!(ping_timestamp(r#"{"type":"leave-room"}"#), None);
+        assert_eq!(ping_timestamp("not-json"), None);
+    }
+
+    #[test]
+    fn serializes_native_diagnostic_fields_for_typescript() {
+        let sent = serde_json::to_value(NativeSignalEvent::Sent {
+            message_type: "ping".into(),
+            timestamp: 123,
+        })
+        .unwrap();
+        assert_eq!(sent["kind"], "sent");
+        assert_eq!(sent["messageType"], "ping");
+        assert_eq!(sent["timestamp"], 123);
+
+        let closed = serde_json::to_value(NativeSignalEvent::Close {
+            code: 1006,
+            reason: "reset".into(),
+            initiated_by: "transport".into(),
+        })
+        .unwrap();
+        assert_eq!(closed["initiatedBy"], "transport");
     }
 }

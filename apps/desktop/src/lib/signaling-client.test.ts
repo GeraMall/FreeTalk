@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { connectionDiagnostics } from './connection-diagnostics';
 import { SignalingClient, type SignalingState } from './signaling-client';
 
 class FakeWebSocket extends EventTarget {
@@ -32,11 +33,29 @@ class FakeWebSocket extends EventTarget {
     this.closeCode = code;
     this.closeReason = reason;
     this.readyState = FakeWebSocket.CLOSED;
-    this.dispatchEvent(new Event('close'));
+    this.dispatchEvent(
+      new MessageEvent('close', {
+        data: { code: code ?? 1000, reason: reason ?? '', initiatedBy: 'client' },
+      }),
+    );
   }
 
   receive(value: unknown) {
     this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(value) }));
+  }
+
+  confirmNativeSend(messageType: string, timestamp: number) {
+    this.dispatchEvent(new MessageEvent('native-send', { data: { messageType, timestamp } }));
+  }
+
+  failNative(message: string) {
+    this.dispatchEvent(new MessageEvent('native-error', { data: message }));
+    this.readyState = FakeWebSocket.CLOSED;
+    this.dispatchEvent(
+      new MessageEvent('close', {
+        data: { code: 1006, reason: 'Transport error', initiatedBy: 'transport' },
+      }),
+    );
   }
 }
 
@@ -55,6 +74,7 @@ describe('SignalingClient', () => {
     FakeWebSocket.instances = [];
     vi.stubGlobal('window', globalThis);
     vi.stubGlobal('WebSocket', FakeWebSocket);
+    connectionDiagnostics.startSession({ action: 'test' });
   });
 
   afterEach(() => {
@@ -97,6 +117,37 @@ describe('SignalingClient', () => {
         .map((message) => JSON.parse(message) as { type: string })
         .filter((message) => message.type === 'ping'),
     ).toHaveLength(5);
+  });
+
+  it('records native ping confirmation, pong time, and transport close evidence', () => {
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), vi.fn());
+    client.connect(join);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+
+    vi.advanceTimersByTime(15_000);
+    const ping = socket.sent
+      .map((value) => JSON.parse(value) as { type: string; timestamp: number })
+      .find((message) => message.type === 'ping')!;
+    socket.confirmNativeSend('ping', ping.timestamp);
+    socket.receive({ type: 'pong', timestamp: ping.timestamp });
+    socket.failNative('Connection reset without closing handshake');
+
+    const entries = connectionDiagnostics.snapshot().entries;
+    expect(
+      entries.find((entry) => entry.event === 'signaling-ping:native-sent')?.details,
+    ).toMatchObject({ pingTimestamp: ping.timestamp });
+    expect(
+      entries.find((entry) => entry.event === 'signaling-pong:received')?.details,
+    ).toMatchObject({ pingTimestamp: ping.timestamp });
+    expect(
+      entries.find((entry) => entry.event === 'signaling-socket:closed')?.details,
+    ).toMatchObject({
+      closeCode: 1006,
+      closeReason: 'Transport error',
+      initiatedBy: 'transport',
+      nativeError: 'Connection reset without closing handshake',
+    });
   });
 
   it('immediately replaces the socket and rejoins after a network change', () => {

@@ -11,8 +11,29 @@ export interface SignalSocket extends EventTarget {
 type NativeSignalEvent =
   | { kind: 'open' }
   | { kind: 'message'; data: string }
-  | { kind: 'close'; reason: string }
+  | { kind: 'sent'; messageType: string; timestamp: number }
+  | {
+      kind: 'close';
+      code: number;
+      reason: string;
+      initiatedBy: 'client' | 'server' | 'transport';
+    }
   | { kind: 'error'; message: string };
+
+export interface NativeSendConfirmation {
+  messageType: string;
+  timestamp: number;
+}
+
+export interface SignalCloseDetails {
+  code: number;
+  reason: string;
+  initiatedBy: 'client' | 'server' | 'transport';
+}
+
+function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function isTauri() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -35,16 +56,19 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
     // never overtaken by its answer/ICE candidates on the way to Rust.
     this.commandQueue = this.commandQueue
       .then(() => invoke('signaling_send', { connectionId: this.connectionId, message }))
-      .catch(() => this.fail());
+      .catch((error: unknown) => this.fail(errorText(error)));
   }
 
-  close() {
+  close(code = 1000, reason = '') {
     if (this.readyState === WebSocket.CLOSED || this.readyState === WebSocket.CLOSING) return;
     this.readyState = WebSocket.CLOSING;
     // Flush a queued leave-room before closing the native socket.
     this.commandQueue = this.commandQueue
       .then(() => invoke('signaling_close', { connectionId: this.connectionId }))
-      .finally(() => this.dispatchClose());
+      .then(
+        () => this.dispatchClose({ code, reason, initiatedBy: 'client' }),
+        () => this.dispatchClose({ code, reason, initiatedBy: 'client' }),
+      );
   }
 
   private handle(event: NativeSignalEvent) {
@@ -59,24 +83,39 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
         this.dispatchEvent(new MessageEvent('message', { data: event.data }));
       return;
     }
-    if (event.kind === 'error') {
-      this.fail();
+    if (event.kind === 'sent') {
+      if (this.readyState === SIGNAL_SOCKET_OPEN)
+        this.dispatchEvent(
+          new MessageEvent<NativeSendConfirmation>('native-send', {
+            data: { messageType: event.messageType, timestamp: event.timestamp },
+          }),
+        );
       return;
     }
-    this.dispatchClose();
+    if (event.kind === 'error') {
+      this.fail(event.message);
+      return;
+    }
+    this.dispatchClose({
+      code: event.code,
+      reason: event.reason,
+      initiatedBy: event.initiatedBy,
+    });
   }
 
-  private fail() {
+  private fail(message = 'Неизвестная ошибка нативного WebSocket') {
     if (this.readyState === WebSocket.CLOSED) return;
+    this.readyState = WebSocket.CLOSING;
+    this.dispatchEvent(new MessageEvent<string>('native-error', { data: message }));
     this.dispatchEvent(new Event('error'));
-    this.dispatchClose();
+    this.dispatchClose({ code: 1006, reason: 'Transport error', initiatedBy: 'transport' });
   }
 
-  private dispatchClose() {
+  private dispatchClose(details: SignalCloseDetails) {
     if (this.closeDispatched) return;
     this.closeDispatched = true;
     this.readyState = WebSocket.CLOSED;
-    this.dispatchEvent(new Event('close'));
+    this.dispatchEvent(new MessageEvent<SignalCloseDetails>('close', { data: details }));
   }
 
   private async connect(url: string) {
@@ -88,8 +127,8 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
         });
         this.handle(event);
       }
-    } catch {
-      this.fail();
+    } catch (error) {
+      this.fail(errorText(error));
     }
   }
 }

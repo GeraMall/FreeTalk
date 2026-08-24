@@ -1,7 +1,13 @@
 import { HEARTBEAT_INTERVAL_MS } from '@freetalk/config';
 import { parseServerMessage, type ClientMessage, type ServerMessage } from '@freetalk/protocol';
 import { ReconnectSchedule } from './reconnect';
-import { createSignalSocket, SIGNAL_SOCKET_OPEN, type SignalSocket } from './signaling-transport';
+import {
+  createSignalSocket,
+  SIGNAL_SOCKET_OPEN,
+  type NativeSendConfirmation,
+  type SignalCloseDetails,
+  type SignalSocket,
+} from './signaling-transport';
 import { connectionDiagnostics } from './connection-diagnostics';
 
 export type SignalingState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
@@ -14,6 +20,12 @@ export class SignalingClient {
   private retryTimer?: number;
   private closedByUser = false;
   private lastServerActivity = 0;
+  private lastPingQueuedAt?: number;
+  private lastPingNativeSentAt?: number;
+  private lastPongReceivedAt?: number;
+  private lastNativeError?: string;
+  private reconnectPending = false;
+  private readonly clientClosing = new WeakSet<SignalSocket>();
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
   private readonly schedule = new ReconnectSchedule();
@@ -42,6 +54,7 @@ export class SignalingClient {
     this.closedByUser = true;
     this.clearTimers();
     this.send({ type: 'leave-room' });
+    if (this.socket) this.clientClosing.add(this.socket);
     this.socket?.close(1000, 'Выход');
     this.socket = undefined;
     this.onState('offline');
@@ -54,12 +67,19 @@ export class SignalingClient {
     this.schedule.reset();
     const previous = this.socket;
     this.socket = undefined;
+    if (previous) this.clientClosing.add(previous);
     previous?.close(4001, 'Network changed');
     this.open(true);
   }
 
   private open(reconnecting: boolean) {
     if (!this.joined) return;
+    this.reconnectPending = reconnecting;
+    this.lastPingQueuedAt = undefined;
+    this.lastPingNativeSentAt = undefined;
+    this.lastPongReceivedAt = undefined;
+    this.lastNativeError = undefined;
+    if (reconnecting) connectionDiagnostics.record('signaling-reconnect:start');
     if (this.retryTimer) window.clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
     this.onState(reconnecting ? 'reconnecting' : 'connecting', this.schedule.attempts);
@@ -77,6 +97,7 @@ export class SignalingClient {
 
     socket.addEventListener('open', () => {
       if (this.socket !== socket) return;
+      if (reconnecting) connectionDiagnostics.record('signaling-reconnect:socket-open');
       this.onState('connected');
       const message = reconnecting ? { ...this.joined!, type: 'join-room' as const } : this.joined!;
       this.send(message);
@@ -89,6 +110,17 @@ export class SignalingClient {
       try {
         const message = parseServerMessage(data);
         connectionDiagnostics.record(`signal-received:${message.type}`);
+        if (message.type === 'pong') {
+          this.lastPongReceivedAt = Date.now();
+          connectionDiagnostics.record('signaling-pong:received', undefined, {
+            pingTimestamp: message.timestamp,
+            receivedAt: new Date(this.lastPongReceivedAt).toISOString(),
+          });
+        }
+        if (message.type === 'joined-room' && this.reconnectPending) {
+          this.reconnectPending = false;
+          connectionDiagnostics.record('signaling-reconnect:success');
+        }
         this.lastServerActivity = Date.now();
         this.schedule.reset();
         // SDP state transitions are order-sensitive. EventTarget does not wait
@@ -110,10 +142,43 @@ export class SignalingClient {
           .catch(() => undefined);
       }
     });
-    socket.addEventListener('close', () => {
+    socket.addEventListener('native-send', (event) => {
+      if (this.socket !== socket) return;
+      const confirmation = (event as MessageEvent<NativeSendConfirmation>).data;
+      if (confirmation?.messageType !== 'ping') return;
+      this.lastPingNativeSentAt = Date.now();
+      connectionDiagnostics.record('signaling-ping:native-sent', undefined, {
+        pingTimestamp: confirmation.timestamp,
+        confirmedAt: new Date(this.lastPingNativeSentAt).toISOString(),
+      });
+    });
+    socket.addEventListener('native-error', (event) => {
+      if (this.socket !== socket) return;
+      const message = String((event as MessageEvent<unknown>).data ?? 'Unknown native error').slice(
+        0,
+        1_000,
+      );
+      this.lastNativeError = message;
+      connectionDiagnostics.record('signaling-native:error', undefined, { message });
+    });
+    socket.addEventListener('close', (event) => {
       if (this.socket !== socket) return;
       this.socket = undefined;
-      connectionDiagnostics.record('signaling-socket:closed');
+      const native = (event as MessageEvent<SignalCloseDetails>).data;
+      const closeCode = native?.code ?? (event as CloseEvent).code ?? 1006;
+      const closeReason = native?.reason ?? (event as CloseEvent).reason ?? '';
+      const initiatedBy = this.clientClosing.has(socket)
+        ? 'client'
+        : (native?.initiatedBy ?? (closeCode === 1006 ? 'transport' : 'server'));
+      connectionDiagnostics.record('signaling-socket:closed', undefined, {
+        closeCode,
+        closeReason,
+        initiatedBy,
+        nativeError: this.lastNativeError ?? null,
+        lastPingQueuedAt: this.toTimestamp(this.lastPingQueuedAt),
+        lastPingNativeSentAt: this.toTimestamp(this.lastPingNativeSentAt),
+        lastPongReceivedAt: this.toTimestamp(this.lastPongReceivedAt),
+      });
       if (this.heartbeat) window.clearInterval(this.heartbeat);
       this.heartbeat = undefined;
       if (!this.closedByUser) this.scheduleRetry();
@@ -131,10 +196,17 @@ export class SignalingClient {
         connectionDiagnostics.record('signaling-heartbeat:timeout', undefined, {
           inactivityMs: Date.now() - this.lastServerActivity,
         });
+        this.clientClosing.add(socket);
         socket.close(4000, 'Heartbeat timeout');
         return;
       }
-      this.send({ type: 'ping', timestamp: Date.now() });
+      const timestamp = Date.now();
+      this.lastPingQueuedAt = timestamp;
+      connectionDiagnostics.record('signaling-ping:queued', undefined, {
+        pingTimestamp: timestamp,
+        queuedAt: new Date(timestamp).toISOString(),
+      });
+      this.send({ type: 'ping', timestamp });
     }, HEARTBEAT_INTERVAL_MS);
   }
 
@@ -152,7 +224,15 @@ export class SignalingClient {
       return;
     }
     const delay = this.schedule.next();
+    connectionDiagnostics.record('signaling-reconnect:scheduled', undefined, {
+      attempt: this.schedule.attempts,
+      delayMs: delay,
+    });
     this.onState('reconnecting', this.schedule.attempts);
     this.retryTimer = window.setTimeout(() => this.open(true), delay);
+  }
+
+  private toTimestamp(value?: number) {
+    return value ? new Date(value).toISOString() : null;
   }
 }
