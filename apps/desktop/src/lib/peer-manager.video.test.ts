@@ -41,6 +41,7 @@ class VideoPeerConnection {
   ontrack: RTCPeerConnection['ontrack'] = null;
   ondatachannel: RTCPeerConnection['ondatachannel'] = null;
   readonly senders: FakeSender[] = [];
+  readonly transceivers: Array<{ mid: string; sender: FakeSender }> = [];
   readonly channels: FakeDataChannel[] = [];
 
   constructor(private configuration: RTCConfiguration) {
@@ -51,6 +52,13 @@ class VideoPeerConnection {
     this.senders.push(sender);
     return sender as unknown as RTCRtpSender;
   }
+  addTransceiver(track: MediaStreamTrack) {
+    const sender = new FakeSender(track);
+    const transceiver = { mid: `video-${this.transceivers.length}`, sender };
+    this.senders.push(sender);
+    this.transceivers.push(transceiver);
+    return transceiver as unknown as RTCRtpTransceiver;
+  }
   getSenders() {
     return this.senders as unknown as RTCRtpSender[];
   }
@@ -60,7 +68,7 @@ class VideoPeerConnection {
     return channel as unknown as RTCDataChannel;
   }
   getTransceivers() {
-    return [];
+    return this.transceivers as unknown as RTCRtpTransceiver[];
   }
   getConfiguration() {
     return this.configuration;
@@ -111,7 +119,7 @@ describe('PeerManager video sender lifecycle', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('preserves audio and reuses exactly one video sender across repeated toggles', async () => {
+  it('preserves audio and reuses one camera transceiver across repeated toggles', async () => {
     const audio = track('audio', 'audio');
     const manager = new PeerManager(
       '286d39ef-61af-4aca-84b8-47f78b0f554a',
@@ -125,7 +133,7 @@ describe('PeerManager video sender lifecycle', () => {
 
     for (let index = 0; index < 5; index += 1) {
       await manager.setVideoTrack(track('video', `camera-${index}`), 'camera');
-      await manager.setVideoTrack(null, 'none');
+      await manager.setVideoTrack(null, 'camera');
     }
 
     expect(connection.senders.filter((sender) => sender.track?.kind === 'audio')).toHaveLength(1);
@@ -133,6 +141,33 @@ describe('PeerManager video sender lifecycle', () => {
     expect(connection.channels).toHaveLength(1);
     expect(connection.senders[1]!.replaceTrack).toHaveBeenCalledTimes(9);
     expect(connection.signalingState).toBe('stable');
+  });
+
+  it('keeps independent camera and screen senders active simultaneously', async () => {
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const camera = track('video', 'camera');
+    const screen = track('video', 'screen');
+
+    await manager.setVideoTrack(camera, 'camera');
+    await manager.setVideoTrack(screen, 'screen');
+    const connection = VideoPeerConnection.instances[0]!;
+    expect(connection.transceivers).toHaveLength(2);
+    expect(connection.transceivers.map(({ sender }) => sender.track)).toEqual([camera, screen]);
+
+    for (let index = 0; index < 5; index += 1) {
+      await manager.setVideoTrack(null, 'screen');
+      expect(connection.transceivers[0]!.sender.track).toBe(camera);
+      expect(connection.transceivers[1]!.sender.track).toBeNull();
+      await manager.setVideoTrack(track('video', `screen-${index}`), 'screen');
+    }
+    expect(connection.transceivers).toHaveLength(2);
   });
 
   it('adds the current screen source to a participant joining later', async () => {
@@ -163,19 +198,39 @@ describe('PeerManager video sender lifecycle', () => {
     );
     manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
     const connection = VideoPeerConnection.instances[0]!;
-    const video = track('video', 'remote-video');
-    const stream = new FakeStream([video]) as unknown as MediaStream;
+    const camera = track('video', 'remote-camera');
+    const screen = track('video', 'remote-screen');
+    const cameraStream = new FakeStream([camera]) as unknown as MediaStream;
+    const screenStream = new FakeStream([screen]) as unknown as MediaStream;
 
     const onTrack = connection.ontrack as ((event: RTCTrackEvent) => void) | null;
-    onTrack?.({ track: video, streams: [stream] } as unknown as RTCTrackEvent);
+    onTrack?.({
+      track: camera,
+      streams: [cameraStream],
+      transceiver: { mid: 'remote-camera' },
+    } as unknown as RTCTrackEvent);
+    onTrack?.({
+      track: screen,
+      streams: [screenStream],
+      transceiver: { mid: 'remote-screen' },
+    } as unknown as RTCTrackEvent);
     const channel = new FakeDataChannel();
     const onDataChannel = connection.ondatachannel as ((event: RTCDataChannelEvent) => void) | null;
     onDataChannel?.({ channel } as unknown as RTCDataChannelEvent);
     const onMessage = channel.onmessage as ((event: MessageEvent) => void) | null;
-    onMessage?.({ data: JSON.stringify({ source: 'screen' }) } as MessageEvent);
-    onMessage?.({ data: JSON.stringify({ source: 'none' }) } as MessageEvent);
+    onMessage?.({
+      data: JSON.stringify({
+        version: 2,
+        sources: {
+          camera: { active: true, mid: 'remote-camera', trackId: 'remote-camera' },
+          screen: { active: true, mid: 'remote-screen', trackId: 'remote-screen' },
+        },
+      }),
+    } as MessageEvent);
 
-    expect(onVideoTrack).toHaveBeenCalledWith(expect.any(String), stream, video);
-    expect(onVideoState.mock.calls.map((call) => call[1])).toEqual(['screen', 'none']);
+    expect(onVideoTrack).toHaveBeenCalledWith(expect.any(String), 'camera', cameraStream, camera);
+    expect(onVideoTrack).toHaveBeenCalledWith(expect.any(String), 'screen', screenStream, screen);
+    expect(onVideoState).toHaveBeenCalledWith(expect.any(String), 'camera', true);
+    expect(onVideoState).toHaveBeenCalledWith(expect.any(String), 'screen', true);
   });
 });

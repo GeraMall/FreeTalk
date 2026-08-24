@@ -1,8 +1,19 @@
 import type { ServerMessage } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
-import type { LocalVideoSource } from './video-manager';
+import type { VideoMediaSource } from './video-manager';
 
 const VIDEO_STATE_CHANNEL = 'freetalk-video-state-v1';
+
+interface VideoSenderContext {
+  transceiver: RTCRtpTransceiver;
+  sender: RTCRtpSender;
+}
+
+interface RemoteVideoSourceState {
+  active: boolean;
+  mid: string | null;
+  trackId: string | null;
+}
 
 interface PeerContext {
   connection: RTCPeerConnection;
@@ -21,20 +32,26 @@ interface PeerContext {
   firstConnectivityCheckRecorded: boolean;
   selectedPairRecorded: boolean;
   firstInboundRtpRecorded: boolean;
-  firstInboundVideoRecorded: boolean;
-  firstOutboundVideoRecorded: boolean;
-  videoSender?: RTCRtpSender;
+  inboundVideoRecorded: Set<VideoMediaSource>;
+  outboundVideoRecorded: Set<VideoMediaSource>;
+  videoSenders: Partial<Record<VideoMediaSource, VideoSenderContext>>;
   videoStateChannel?: RTCDataChannel;
   remoteVideoStateChannel?: RTCDataChannel;
-  remoteVideoActive: boolean;
+  remoteVideoState: Record<VideoMediaSource, RemoteVideoSourceState>;
+  remoteVideoTracksByMid: Map<string, { stream: MediaStream; track: MediaStreamTrack }>;
 }
 
 const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
 
 export interface PeerEvents {
   onTrack(peerId: string, stream: MediaStream): void;
-  onVideoTrack?(peerId: string, stream: MediaStream, track: MediaStreamTrack): void;
-  onVideoState?(peerId: string, source: LocalVideoSource): void;
+  onVideoTrack?(
+    peerId: string,
+    source: VideoMediaSource,
+    stream: MediaStream,
+    track: MediaStreamTrack,
+  ): void;
+  onVideoState?(peerId: string, source: VideoMediaSource, active: boolean): void;
   onState(peerId: string, state: RTCPeerConnectionState): void;
 }
 
@@ -56,8 +73,10 @@ interface CandidatePairStats extends RTCStats {
 
 export class PeerManager {
   private readonly peers = new Map<string, PeerContext>();
-  private localVideoTrack: MediaStreamTrack | null = null;
-  private localVideoSource: LocalVideoSource = 'none';
+  private readonly localVideoTracks: Record<VideoMediaSource, MediaStreamTrack | null> = {
+    camera: null,
+    screen: null,
+  };
 
   constructor(
     private readonly selfId: string,
@@ -92,9 +111,14 @@ export class PeerManager {
       firstConnectivityCheckRecorded: false,
       selectedPairRecorded: false,
       firstInboundRtpRecorded: false,
-      firstInboundVideoRecorded: false,
-      firstOutboundVideoRecorded: false,
-      remoteVideoActive: false,
+      inboundVideoRecorded: new Set(),
+      outboundVideoRecorded: new Set(),
+      videoSenders: {},
+      remoteVideoState: {
+        camera: { active: false, mid: null, trackId: null },
+        screen: { active: false, mid: null, trackId: null },
+      },
+      remoteVideoTracksByMid: new Map(),
     };
     this.peers.set(peerId, context);
     connectionDiagnostics.record('peer-created', peerId, {
@@ -122,14 +146,12 @@ export class PeerManager {
     );
     if (transceiver?.setCodecPreferences && opus?.length) transceiver.setCodecPreferences(opus);
 
-    if (this.localVideoTrack) {
-      context.videoSender = connection.addTrack(
-        this.localVideoTrack,
-        new MediaStream([this.localVideoTrack]),
-      );
-      this.configureVideoSender(context.videoSender, this.localVideoSource);
-      this.ensureVideoStateChannel(peerId, context);
+    for (const source of ['camera', 'screen'] as const) {
+      const track = this.localVideoTracks[source];
+      if (track) this.createVideoSender(peerId, context, source, track);
     }
+    if (this.localVideoTracks.camera || this.localVideoTracks.screen)
+      this.ensureVideoStateChannel(peerId, context);
 
     connection.onicecandidate = ({ candidate }) => {
       if (candidate) {
@@ -172,18 +194,26 @@ export class PeerManager {
       }
       void this.pollConnectionStats(peerId, context);
     };
-    connection.ontrack = ({ streams, track }) => {
+    connection.ontrack = ({ streams, track, transceiver }) => {
       connectionDiagnostics.record('remote-track', peerId, { kind: track.kind });
       const stream = streams[0] ?? new MediaStream([track]);
       if (track.kind === 'video') {
-        connectionDiagnostics.record('video-ontrack-fired', peerId);
+        const mid = transceiver.mid;
+        connectionDiagnostics.record('video-ontrack-fired', peerId, {
+          mid: mid ?? 'unassigned',
+          trackId: track.id,
+        });
+        if (mid) context.remoteVideoTracksByMid.set(mid, { stream, track });
         track.onended = () => {
-          context.remoteVideoActive = false;
-          connectionDiagnostics.record('remote-video-track:ended', peerId);
-          this.events.onVideoState?.(peerId, 'none');
+          const source = this.remoteSourceForMid(context, mid);
+          connectionDiagnostics.record('remote-video-track:ended', peerId, {
+            mediaSource: source ?? 'unknown',
+            mid: mid ?? 'unassigned',
+          });
+          if (mid) context.remoteVideoTracksByMid.delete(mid);
+          if (source) this.events.onVideoState?.(peerId, source, false);
         };
-        this.events.onVideoTrack?.(peerId, stream, track);
-        context.remoteVideoActive = true;
+        this.publishMappedRemoteVideo(peerId, context, mid);
         this.startDiagnosticTimer(peerId, context);
       } else {
         this.events.onTrack(peerId, stream);
@@ -234,6 +264,7 @@ export class PeerManager {
           connectionDiagnostics.record('set-local-description:end', peerId, {
             type: connection.localDescription?.type ?? 'unknown',
           });
+          this.sendVideoState(peerId, context);
           if (connection.localDescription?.type === 'offer') {
             this.trace(peerId, 'set-local-offer', connection);
             this.signal({
@@ -352,6 +383,7 @@ export class PeerManager {
       connectionDiagnostics.record('set-local-description:end', message.from, {
         type: connection.localDescription?.type ?? 'unknown',
       });
+      this.sendVideoState(message.from, context);
       if (connection.localDescription?.type === 'answer') {
         this.trace(message.from, 'set-local-answer', connection);
         this.signal({
@@ -374,21 +406,25 @@ export class PeerManager {
     );
   }
 
-  async setVideoTrack(track: MediaStreamTrack | null, source: LocalVideoSource) {
-    this.localVideoTrack = track;
-    this.localVideoSource = source;
-    connectionDiagnostics.record('local-video-source', undefined, { source });
+  async setVideoTrack(track: MediaStreamTrack | null, source: VideoMediaSource) {
+    this.localVideoTracks[source] = track;
+    connectionDiagnostics.record('local-video-source', undefined, {
+      mediaSource: source,
+      active: Boolean(track),
+      trackId: track?.id ?? 'none',
+    });
     await Promise.all(
       [...this.peers.entries()].map(([peerId, context]) =>
         this.enqueue(context, async () => {
-          if (source !== 'none') this.ensureVideoStateChannel(peerId, context);
-          if (context.videoSender) {
-            await context.videoSender.replaceTrack(track);
+          if (track) this.ensureVideoStateChannel(peerId, context);
+          const existing = context.videoSenders[source];
+          if (existing) {
+            await existing.sender.replaceTrack(track);
+            if (track) this.configureVideoSender(peerId, existing, source);
           } else if (track) {
-            context.videoSender = context.connection.addTrack(track, new MediaStream([track]));
+            this.createVideoSender(peerId, context, source, track);
           }
-          if (context.videoSender && track) this.configureVideoSender(context.videoSender, source);
-          this.sendVideoState(context);
+          this.sendVideoState(peerId, context);
           this.startDiagnosticTimer(peerId, context);
         }),
       ),
@@ -420,7 +456,8 @@ export class PeerManager {
     context.remoteVideoStateChannel?.close();
     context.connection.close();
     this.peers.delete(peerId);
-    this.events.onVideoState?.(peerId, 'none');
+    this.events.onVideoState?.(peerId, 'camera', false);
+    this.events.onVideoState?.(peerId, 'screen', false);
   }
 
   closeAll() {
@@ -508,36 +545,151 @@ export class PeerManager {
     context.videoStateChannel = channel;
     channel.onopen = () => {
       connectionDiagnostics.record('video-state-channel:open', peerId);
-      this.sendVideoState(context);
+      this.sendVideoState(peerId, context);
     };
     channel.onclose = () => connectionDiagnostics.record('video-state-channel:closed', peerId);
   }
 
-  private sendVideoState(context: PeerContext) {
+  private sendVideoState(peerId: string, context: PeerContext) {
     if (context.videoStateChannel?.readyState !== 'open') return;
-    context.videoStateChannel.send(JSON.stringify({ source: this.localVideoSource }));
+    const sources = Object.fromEntries(
+      (['camera', 'screen'] as const).map((source) => {
+        const sender = context.videoSenders[source];
+        const track = this.localVideoTracks[source];
+        return [
+          source,
+          {
+            active: Boolean(track),
+            mid: sender?.transceiver.mid ?? null,
+            trackId: track?.id ?? null,
+          },
+        ];
+      }),
+    ) as Record<VideoMediaSource, RemoteVideoSourceState>;
+    context.videoStateChannel.send(JSON.stringify({ version: 2, sources }));
+    connectionDiagnostics.record('video-source-map:sent', peerId, {
+      cameraActive: sources.camera.active,
+      cameraMid: sources.camera.mid ?? 'unassigned',
+      screenActive: sources.screen.active,
+      screenMid: sources.screen.mid ?? 'unassigned',
+    });
   }
 
   private handleVideoStateMessage(peerId: string, context: PeerContext, raw: unknown) {
-    if (typeof raw !== 'string' || raw.length > 128) return;
+    if (typeof raw !== 'string' || raw.length > 512) return;
     try {
-      const value = JSON.parse(raw) as { source?: unknown };
-      if (value.source !== 'none' && value.source !== 'camera' && value.source !== 'screen') return;
-      context.remoteVideoActive = value.source !== 'none';
-      if (context.remoteVideoActive) this.startDiagnosticTimer(peerId, context);
-      connectionDiagnostics.record('remote-video-source', peerId, { source: value.source });
-      this.events.onVideoState?.(peerId, value.source);
+      const value = JSON.parse(raw) as {
+        version?: unknown;
+        sources?: Partial<Record<VideoMediaSource, Partial<RemoteVideoSourceState>>>;
+        source?: unknown;
+      };
+      if (value.version !== 2 || !value.sources) {
+        // Compatibility with 0.3.x peers that exposed one replaceTrack-based source.
+        if (value.source !== 'none' && value.source !== 'camera' && value.source !== 'screen')
+          return;
+        for (const source of ['camera', 'screen'] as const) {
+          const active = value.source === source;
+          context.remoteVideoState[source] = { active, mid: null, trackId: null };
+          this.events.onVideoState?.(peerId, source, active);
+        }
+        if (value.source === 'camera' || value.source === 'screen') {
+          const onlyRemoteTrack = [...context.remoteVideoTracksByMid.entries()].at(-1);
+          if (onlyRemoteTrack) {
+            context.remoteVideoState[value.source].mid = onlyRemoteTrack[0];
+            this.publishMappedRemoteVideo(peerId, context, onlyRemoteTrack[0]);
+          }
+        }
+        return;
+      }
+      for (const source of ['camera', 'screen'] as const) {
+        const next = value.sources[source];
+        if (
+          !next ||
+          typeof next.active !== 'boolean' ||
+          (next.mid !== null && typeof next.mid !== 'string') ||
+          (next.trackId !== null && typeof next.trackId !== 'string')
+        )
+          return;
+        context.remoteVideoState[source] = {
+          active: next.active,
+          mid: next.mid ?? null,
+          trackId: next.trackId ?? null,
+        };
+        connectionDiagnostics.record('remote-video-source', peerId, {
+          mediaSource: source,
+          active: next.active,
+          mid: next.mid ?? 'unassigned',
+          trackId: next.trackId ?? 'none',
+        });
+        this.events.onVideoState?.(peerId, source, next.active);
+        if (next.active) {
+          this.publishMappedRemoteVideo(peerId, context, next.mid ?? null);
+          this.startDiagnosticTimer(peerId, context);
+        }
+      }
     } catch {
       // Ignore malformed peer metadata. It never affects the media connection.
     }
   }
 
-  private configureVideoSender(sender: RTCRtpSender, source: LocalVideoSource) {
-    const parameters = sender.getParameters();
+  private createVideoSender(
+    peerId: string,
+    context: PeerContext,
+    source: VideoMediaSource,
+    track: MediaStreamTrack,
+  ) {
+    const transceiver = context.connection.addTransceiver(track, {
+      direction: 'sendonly',
+      streams: [new MediaStream([track])],
+    });
+    const videoSender = { transceiver, sender: transceiver.sender };
+    context.videoSenders[source] = videoSender;
+    this.configureVideoSender(peerId, videoSender, source);
+    connectionDiagnostics.record('video-transceiver:created', peerId, {
+      mediaSource: source,
+      trackId: track.id,
+      mid: transceiver.mid ?? 'unassigned',
+    });
+  }
+
+  private configureVideoSender(
+    peerId: string,
+    videoSender: VideoSenderContext,
+    source: VideoMediaSource,
+  ) {
+    const parameters = videoSender.sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
-    parameters.encodings[0]!.maxBitrate = source === 'screen' ? 2_500_000 : 1_500_000;
+    parameters.encodings[0]!.maxBitrate = source === 'screen' ? 4_000_000 : 3_500_000;
+    parameters.encodings[0]!.maxFramerate = 30;
+    parameters.encodings[0]!.scaleResolutionDownBy = 1;
     parameters.degradationPreference = source === 'screen' ? 'maintain-resolution' : 'balanced';
-    void sender.setParameters(parameters).catch(() => undefined);
+    void videoSender.sender
+      .setParameters(parameters)
+      .then(() =>
+        connectionDiagnostics.record('video-sender:configured', peerId, {
+          mediaSource: source,
+          maxBitrate: parameters.encodings?.[0]?.maxBitrate ?? 0,
+          maxFramerate: parameters.encodings?.[0]?.maxFramerate ?? 0,
+          degradationPreference: parameters.degradationPreference ?? 'unknown',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
+  private remoteSourceForMid(context: PeerContext, mid: string | null) {
+    if (!mid) return undefined;
+    return (['camera', 'screen'] as const).find(
+      (source) => context.remoteVideoState[source].mid === mid,
+    );
+  }
+
+  private publishMappedRemoteVideo(peerId: string, context: PeerContext, mid: string | null) {
+    const source = this.remoteSourceForMid(context, mid);
+    if (!source || !context.remoteVideoState[source].active || !mid) return;
+    const media = context.remoteVideoTracksByMid.get(mid);
+    if (!media) return;
+    this.events.onVideoTrack?.(peerId, source, media.stream, media.track);
+    this.events.onVideoState?.(peerId, source, true);
   }
 
   private candidateType(candidate: string) {
@@ -553,14 +705,14 @@ export class PeerManager {
       let inboundPackets = 0;
       let outboundBytes = 0;
       let outboundPackets = 0;
-      let inboundVideoBytes = 0;
-      let inboundVideoPackets = 0;
-      let inboundFramesDecoded = 0;
-      let inboundFramesReceived = 0;
-      let outboundVideoBytes = 0;
-      let outboundVideoPackets = 0;
-      let outboundFramesEncoded = 0;
-      let outboundFramesSent = 0;
+      const inboundVideoBySource = new Map<
+        VideoMediaSource,
+        { bytes: number; packets: number; framesDecoded: number; framesReceived: number }
+      >();
+      const outboundVideoBySource = new Map<
+        VideoMediaSource,
+        { bytes: number; packets: number; framesEncoded: number; framesSent: number }
+      >();
       for (const report of stats.values()) {
         if (
           report.type === 'candidate-pair' &&
@@ -588,16 +740,27 @@ export class PeerManager {
           outboundPackets += Number(report.packetsSent ?? 0);
         }
         if (report.type === 'inbound-rtp' && report.kind === 'video') {
-          inboundVideoBytes += Number(report.bytesReceived ?? 0);
-          inboundVideoPackets += Number(report.packetsReceived ?? 0);
-          inboundFramesDecoded += Number(report.framesDecoded ?? 0);
-          inboundFramesReceived += Number(report.framesReceived ?? 0);
+          const source = this.remoteSourceForMid(context, String(report.mid ?? ''));
+          if (source)
+            inboundVideoBySource.set(source, {
+              bytes: Number(report.bytesReceived ?? 0),
+              packets: Number(report.packetsReceived ?? 0),
+              framesDecoded: Number(report.framesDecoded ?? 0),
+              framesReceived: Number(report.framesReceived ?? 0),
+            });
         }
         if (report.type === 'outbound-rtp' && report.kind === 'video') {
-          outboundVideoBytes += Number(report.bytesSent ?? 0);
-          outboundVideoPackets += Number(report.packetsSent ?? 0);
-          outboundFramesEncoded += Number(report.framesEncoded ?? 0);
-          outboundFramesSent += Number(report.framesSent ?? 0);
+          const mid = String(report.mid ?? '');
+          const source = (['camera', 'screen'] as const).find(
+            (candidate) => context.videoSenders[candidate]?.transceiver.mid === mid,
+          );
+          if (source)
+            outboundVideoBySource.set(source, {
+              bytes: Number(report.bytesSent ?? 0),
+              packets: Number(report.packetsSent ?? 0),
+              framesEncoded: Number(report.framesEncoded ?? 0),
+              framesSent: Number(report.framesSent ?? 0),
+            });
         }
       }
       if (selectedPair && !context.selectedPairRecorded) {
@@ -621,34 +784,56 @@ export class PeerManager {
           packetsSent: outboundPackets,
         });
       }
-      if (
-        (outboundVideoBytes > 0 || outboundVideoPackets > 0) &&
-        !context.firstOutboundVideoRecorded
-      ) {
-        context.firstOutboundVideoRecorded = true;
+      for (const [source, values] of outboundVideoBySource) {
+        if ((values.bytes <= 0 && values.packets <= 0) || context.outboundVideoRecorded.has(source))
+          continue;
+        context.outboundVideoRecorded.add(source);
+        const track = this.localVideoTracks[source];
+        const settings = track?.getSettings();
         connectionDiagnostics.record('first-video-outbound-rtp', peerId, {
-          bytesSent: outboundVideoBytes,
-          packetsSent: outboundVideoPackets,
-          framesEncoded: outboundFramesEncoded,
-          framesSent: outboundFramesSent,
+          mediaSource: source,
+          trackId: track?.id ?? 'none',
+          mid: context.videoSenders[source]?.transceiver.mid ?? 'unassigned',
+          width: settings?.width ?? 0,
+          height: settings?.height ?? 0,
+          frameRate: settings?.frameRate ?? 0,
+          bytesSent: values.bytes,
+          packetsSent: values.packets,
+          framesEncoded: values.framesEncoded,
+          framesSent: values.framesSent,
         });
       }
-      if (
-        (inboundVideoBytes > 0 || inboundVideoPackets > 0) &&
-        !context.firstInboundVideoRecorded
-      ) {
-        context.firstInboundVideoRecorded = true;
+      for (const [source, values] of inboundVideoBySource) {
+        if ((values.bytes <= 0 && values.packets <= 0) || context.inboundVideoRecorded.has(source))
+          continue;
+        context.inboundVideoRecorded.add(source);
+        const remote = context.remoteVideoState[source];
+        const track = remote.mid
+          ? context.remoteVideoTracksByMid.get(remote.mid)?.track
+          : undefined;
+        const settings = track?.getSettings();
         connectionDiagnostics.record('first-video-inbound-rtp', peerId, {
-          bytesReceived: inboundVideoBytes,
-          packetsReceived: inboundVideoPackets,
-          framesDecoded: inboundFramesDecoded,
-          framesReceived: inboundFramesReceived,
+          mediaSource: source,
+          trackId: track?.id ?? remote.trackId ?? 'none',
+          mid: remote.mid ?? 'unassigned',
+          width: settings?.width ?? 0,
+          height: settings?.height ?? 0,
+          frameRate: settings?.frameRate ?? 0,
+          bytesReceived: values.bytes,
+          packetsReceived: values.packets,
+          framesDecoded: values.framesDecoded,
+          framesReceived: values.framesReceived,
         });
       }
-      const localVideoActive = this.localVideoSource !== 'none';
+      const activeLocalSources = (['camera', 'screen'] as const).filter((source) =>
+        Boolean(this.localVideoTracks[source]),
+      );
+      const activeRemoteSources = (['camera', 'screen'] as const).filter(
+        (source) => context.remoteVideoState[source].active,
+      );
       const videoDiagnosticsComplete =
-        (!localVideoActive || context.firstOutboundVideoRecorded) &&
-        (!context.remoteVideoActive || context.firstInboundVideoRecorded);
+        activeLocalSources.every((source) => context.outboundVideoRecorded.has(source)) &&
+        activeRemoteSources.every((source) => context.inboundVideoRecorded.has(source));
       if (
         context.selectedPairRecorded &&
         context.firstInboundRtpRecorded &&

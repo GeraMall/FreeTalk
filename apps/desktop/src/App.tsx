@@ -12,7 +12,7 @@ import { RemoteAudio } from './lib/remote-audio';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
 import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
-import { VideoManager, type LocalVideoState } from './lib/video-manager';
+import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
 import {
   checkForUpdate,
   currentVersion,
@@ -70,7 +70,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.14');
+  const [appVersion, setAppVersion] = useState('0.3.15');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
@@ -79,7 +79,9 @@ export function App() {
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
   const video = useRef<VideoManager | undefined>(undefined);
-  const remoteVideoStreams = useRef(new Map<string, MediaStream>());
+  const remoteVideoStreams = useRef(
+    new Map<string, Partial<Record<VideoMediaSource, MediaStream>>>(),
+  );
   const peers = useRef<PeerManager | undefined>(undefined);
   const signaling = useRef<SignalingClient | undefined>(undefined);
   const currentIceServers = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
@@ -291,6 +293,8 @@ export function App() {
           message.participants.map((participant) => participant.id),
         );
         peers.current?.closeAll();
+        remoteVideoStreams.current.clear();
+        setRemoteVideos({});
         const localStream = audio.current?.getStream();
         if (!localStream) return;
         const peerManager = new PeerManager(
@@ -324,25 +328,24 @@ export function App() {
                 .then(() => connectionDiagnostics.record('remote-audio-attach:end', peerId))
                 .catch(() => connectionDiagnostics.record('remote-audio-attach:error', peerId));
             },
-            onVideoTrack: (peerId, stream) => {
-              remoteVideoStreams.current.set(peerId, stream);
+            onVideoTrack: (peerId, source, stream) => {
+              const streams = remoteVideoStreams.current.get(peerId) ?? {};
+              streams[source] = stream;
+              remoteVideoStreams.current.set(peerId, streams);
               setRemoteVideos((old) => ({
                 ...old,
                 [peerId]: {
-                  source:
-                    old[peerId]?.source && old[peerId].source !== 'none'
-                      ? old[peerId].source
-                      : 'camera',
-                  stream,
+                  ...old[peerId],
+                  [source]: stream,
                 },
               }));
             },
-            onVideoState: (peerId, source) => {
+            onVideoState: (peerId, source, active) => {
               setRemoteVideos((old) => ({
                 ...old,
                 [peerId]: {
-                  source,
-                  stream: source === 'none' ? undefined : remoteVideoStreams.current.get(peerId),
+                  ...old[peerId],
+                  [source]: active ? remoteVideoStreams.current.get(peerId)?.[source] : undefined,
                 },
               }));
             },
@@ -358,9 +361,9 @@ export function App() {
           },
         );
         peers.current = peerManager;
-        const currentVideo = video.current?.getCurrent();
-        if (currentVideo?.track)
-          void peerManager.setVideoTrack(currentVideo.track, currentVideo.source);
+        const currentVideo = video.current?.getTracks();
+        if (currentVideo?.camera) void peerManager.setVideoTrack(currentVideo.camera, 'camera');
+        if (currentVideo?.screen) void peerManager.setVideoTrack(currentVideo.screen, 'screen');
         for (const participant of message.participants)
           if (participant.id !== selfId.current) peerManager.ensure(participant.id);
         return;

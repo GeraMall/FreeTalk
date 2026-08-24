@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Participant } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
 import { RoomView, type RemoteVideoUiState } from './RoomView';
@@ -21,8 +21,10 @@ beforeAll(() => {
   });
 });
 
+afterEach(cleanup);
+
 function view(
-  localSource: 'none' | 'camera' | 'screen' = 'none',
+  localSource: 'none' | 'camera' | 'screen' | 'both' = 'none',
   remoteVideos: RemoteVideoUiState = {},
 ) {
   return (
@@ -35,10 +37,12 @@ function view(
       }}
       localSpeaking={false}
       localVideo={{
-        source: localSource,
-        cameraEnabled: localSource === 'camera',
-        screenEnabled: localSource === 'screen',
+        source: localSource === 'both' ? 'screen' : localSource,
+        cameraEnabled: localSource === 'camera' || localSource === 'both',
+        screenEnabled: localSource === 'screen' || localSource === 'both',
         previewStream: localSource === 'none' ? undefined : stream,
+        cameraStream: localSource === 'camera' || localSource === 'both' ? stream : undefined,
+        screenStream: localSource === 'screen' || localSource === 'both' ? stream : undefined,
       }}
       remoteVideos={remoteVideos}
       videoBusy={false}
@@ -81,9 +85,7 @@ describe('RoomView media layouts', () => {
   });
 
   it('uses a primary stage and secondary participant strip for screen sharing', () => {
-    const { container, getByText } = render(
-      view('none', { [peerId]: { source: 'screen', stream } }),
-    );
+    const { container, getByText } = render(view('none', { [peerId]: { screen: stream } }));
     expect(container.querySelector('.room-mode-presentation .screen-stage')).not.toBeNull();
     expect(container.querySelectorAll('.participant-strip .participant-card')).toHaveLength(2);
     expect(getByText('Демонстрация экрана')).not.toBeNull();
@@ -93,5 +95,36 @@ describe('RoomView media layouts', () => {
   it('keeps the active screen control label compact', () => {
     const { getByRole } = render(view('screen'));
     expect(getByRole('button', { name: /Стоп/ })).not.toBeNull();
+  });
+
+  it('shows screen as the stage and keeps the camera in the participant strip', () => {
+    const { container } = render(view('both'));
+    expect(container.querySelector('.screen-stage')).not.toBeNull();
+    expect(container.querySelector('.participant-strip .camera-tile')).not.toBeNull();
+    expect(container.querySelectorAll('video')).toHaveLength(2);
+  });
+
+  it('opens camera tiles in the shared expanded media viewer without mirroring', () => {
+    const { container, getByRole } = render(view('camera'));
+    const camera = getByRole('button', { name: /Раскрыть камеру Гера/ });
+    fireEvent.click(camera);
+    const dialog = getByRole('dialog');
+    expect(dialog).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Закрыть раскрытое видео' }));
+    expect(dialog.classList.contains('closing')).toBe(true);
+    fireEvent.animationEnd(dialog);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    for (const video of container.querySelectorAll('video'))
+      expect(video.style.transform).not.toContain('scaleX(-1)');
+  });
+
+  it('lets the user switch the primary stage when two screens are shared', () => {
+    const remoteScreen = {} as MediaStream;
+    const { getByRole, getByLabelText } = render(
+      view('both', { [peerId]: { camera: stream, screen: remoteScreen } }),
+    );
+    expect(getByLabelText('Экран Гера')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Показать экран Друг' }));
+    expect(getByLabelText('Экран Друг')).not.toBeNull();
   });
 });

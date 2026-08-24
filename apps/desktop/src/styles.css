@@ -1079,7 +1079,10 @@ input[type='range']::-webkit-slider-thumb {
   margin: 0 0 7px;
 }
 .compact-tile.camera-tile .video-fullscreen {
-  display: none;
+  top: 7px;
+  right: 42px;
+  width: 28px;
+  height: 28px;
 }
 .compact-tile .participant-overlay {
   padding: 36px 10px 10px;
@@ -1094,6 +1097,26 @@ input[type='range']::-webkit-slider-thumb {
 .compact-tile .participant-status {
   font-size: 8px;
 }
+.participant-screen-switch {
+  position: absolute;
+  z-index: 7;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid rgba(94, 214, 188, 0.36);
+  border-radius: 8px;
+  color: #c9fff1;
+  background: rgba(4, 18, 27, 0.8);
+  font-size: 8px;
+  backdrop-filter: blur(8px);
+}
+.participant-screen-switch:hover {
+  border-color: rgba(94, 214, 188, 0.68);
+  background: rgba(16, 52, 56, 0.9);
+}
 .participant-strip .invite-empty {
   grid-column: auto;
   justify-self: stretch;
@@ -1104,6 +1127,129 @@ input[type='range']::-webkit-slider-thumb {
 .participant-strip .invite-empty .invite-copy small,
 .participant-strip .invite-empty > svg {
   display: none;
+}
+
+/* Shared in-app viewer for cameras and screen sharing. */
+.expanded-media-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  padding: clamp(16px, 3vw, 42px);
+  place-items: center;
+  background: rgba(1, 6, 12, 0.88);
+  backdrop-filter: blur(14px);
+  animation: expanded-media-backdrop-in 0.2s ease-out;
+}
+.expanded-media-view {
+  position: relative;
+  width: min(1500px, 100%);
+  height: min(900px, 100%);
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid rgba(94, 214, 188, 0.45);
+  border-radius: 18px;
+  background: #02070d;
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.58);
+  animation: expanded-media-view-in 0.22s ease-out;
+}
+.expanded-media-backdrop.closing {
+  animation: expanded-media-backdrop-out 0.16s ease-in forwards;
+}
+.expanded-media-backdrop.closing .expanded-media-view {
+  animation: expanded-media-view-out 0.16s ease-in forwards;
+}
+.expanded-media-view:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+.expanded-media-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #02070d;
+}
+.expanded-media-view.screen .expanded-media-video {
+  object-fit: contain;
+}
+.expanded-media-header {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(1, 7, 12, 0.9), transparent);
+}
+.expanded-media-header > span,
+.expanded-media-header > span > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.expanded-media-header > span > span {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+.expanded-media-header svg {
+  color: var(--mint);
+}
+.expanded-media-header strong {
+  font-size: 13px;
+}
+.expanded-media-header small {
+  color: #9cafc2;
+  font-size: 10px;
+}
+.expanded-media-header > div {
+  display: flex;
+  gap: 8px;
+}
+.expanded-media-header button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  color: #e8fff9;
+  background: rgba(3, 11, 19, 0.72);
+  backdrop-filter: blur(10px);
+}
+.expanded-media-header button:hover {
+  border-color: rgba(94, 214, 188, 0.58);
+  background: rgba(20, 53, 59, 0.85);
+}
+@keyframes expanded-media-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes expanded-media-view-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0.55;
+  }
+}
+@keyframes expanded-media-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes expanded-media-view-out {
+  to {
+    transform: scale(0.98);
+    opacity: 0;
+  }
 }
 .voice-dock {
   position: fixed;

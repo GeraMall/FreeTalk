@@ -1,19 +1,22 @@
 import { connectionDiagnostics } from './connection-diagnostics';
 
 export type LocalVideoSource = 'none' | 'camera' | 'screen';
+export type VideoMediaSource = Exclude<LocalVideoSource, 'none'>;
 
 export interface LocalVideoState {
   cameraEnabled: boolean;
   screenEnabled: boolean;
   source: LocalVideoSource;
   previewStream?: MediaStream;
+  cameraStream?: MediaStream;
+  screenStream?: MediaStream;
 }
 
-type PublishVideo = (track: MediaStreamTrack | null, source: LocalVideoSource) => Promise<void>;
+type PublishVideo = (track: MediaStreamTrack | null, source: VideoMediaSource) => Promise<void>;
 
-const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
+export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
+  width: { ideal: 1920 },
+  height: { ideal: 1080 },
   frameRate: { ideal: 30, max: 30 },
 };
 
@@ -40,6 +43,10 @@ export class VideoManager {
   getCurrent() {
     const track = this.screenTrack ?? this.cameraTrack ?? null;
     return { track, source: this.source() };
+  }
+
+  getTracks() {
+    return { camera: this.cameraTrack ?? null, screen: this.screenTrack ?? null };
   }
 
   dispose() {
@@ -76,12 +83,13 @@ export class VideoManager {
       return;
     }
     this.cameraTrack = track;
+    track.contentHint = 'motion';
     track.onended = () => {
       void this.enqueue(async () => {
         if (this.cameraTrack !== track) return;
         this.cameraTrack = undefined;
         connectionDiagnostics.record('camera-track:ended');
-        if (!this.screenTrack) await this.publish(null, 'none');
+        await this.publish(null, 'camera');
         this.emitState();
         this.onError(
           'Камера была отключена или перестала быть доступна. Голосовая связь сохранена.',
@@ -89,14 +97,14 @@ export class VideoManager {
       });
     };
     connectionDiagnostics.record('camera-capture:ready', undefined, videoTrackDetails(track));
-    if (!this.screenTrack) await this.publish(track, 'camera');
+    await this.publish(track, 'camera');
     this.emitState();
   }
 
   private async stopCamera() {
     const track = this.cameraTrack;
     this.cameraTrack = undefined;
-    if (!this.screenTrack) await this.publish(null, 'none');
+    await this.publish(null, 'camera');
     this.detachAndStop(track);
     connectionDiagnostics.record('camera-capture:stopped');
     this.emitState();
@@ -144,12 +152,11 @@ export class VideoManager {
     if (!track || this.screenTrack !== track) return;
     this.screenTrack = undefined;
     track.onended = null;
-    const fallback = this.cameraTrack ?? null;
-    await this.publish(fallback, fallback ? 'camera' : 'none');
+    await this.publish(null, 'screen');
     if (stopTrack) track.stop();
     connectionDiagnostics.record('screen-capture:stopped', undefined, {
       initiatedBy: stopTrack ? 'app' : 'system',
-      restoredCamera: Boolean(fallback),
+      cameraPreserved: Boolean(this.cameraTrack),
     });
     this.emitState();
   }
@@ -167,6 +174,8 @@ export class VideoManager {
       screenEnabled: Boolean(this.screenTrack),
       source: this.source(),
       previewStream: current ? new MediaStream([current]) : undefined,
+      cameraStream: this.cameraTrack ? new MediaStream([this.cameraTrack]) : undefined,
+      screenStream: this.screenTrack ? new MediaStream([this.screenTrack]) : undefined,
     });
   }
 
@@ -192,6 +201,8 @@ function videoTrackDetails(track: MediaStreamTrack) {
     width: settings.width ?? 0,
     height: settings.height ?? 0,
     frameRate: settings.frameRate ?? 0,
+    deviceId: settings.deviceId ?? 'unknown',
+    trackId: track.id,
   };
 }
 

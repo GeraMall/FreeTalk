@@ -80,6 +80,11 @@ class PerfectNegotiationPeerConnection {
     } as unknown as RTCRtpSender;
   }
 
+  addTransceiver(track: MediaStreamTrack) {
+    const sender = this.addTrack(track);
+    return { mid: null, sender } as unknown as RTCRtpTransceiver;
+  }
+
   createDataChannel() {
     return {
       label: 'freetalk-video-state-v1',

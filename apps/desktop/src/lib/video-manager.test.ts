@@ -4,12 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VideoManager } from './video-manager';
 
 class FakeTrack {
+  id = crypto.randomUUID();
   kind = 'video';
   contentHint = '';
   onended: (() => void) | null = null;
   stop = vi.fn();
   getSettings() {
-    return { width: 1280, height: 720, frameRate: 30 };
+    return { width: 1920, height: 1080, frameRate: 30, deviceId: 'camera-1' };
   }
 }
 
@@ -65,11 +66,11 @@ describe('VideoManager', () => {
     expect(cameraTracks).toHaveLength(5);
     expect(cameraTracks.every((track) => track.stop.mock.calls.length === 1)).toBe(true);
     const calls = publish.mock.calls as unknown as Array<[MediaStreamTrack | null, string]>;
-    expect(calls.filter(([, source]) => source === 'camera')).toHaveLength(5);
-    expect(calls.filter(([, source]) => source === 'none')).toHaveLength(5);
+    expect(calls.filter(([, source]) => source === 'camera')).toHaveLength(10);
+    expect(calls.filter(([track]) => track === null)).toHaveLength(5);
   });
 
-  it('restores an active camera after screen sharing ends in the app', async () => {
+  it('keeps camera and screen as independent simultaneous tracks', async () => {
     const publish = vi.fn(async () => undefined);
     const manager = new VideoManager(publish, vi.fn());
 
@@ -77,12 +78,14 @@ describe('VideoManager', () => {
     const camera = cameraTracks[0]!;
     await manager.toggleScreen();
     expect(manager.getCurrent()).toEqual({ track: screenTracks[0], source: 'screen' });
+    expect(manager.getTracks()).toEqual({ camera, screen: screenTracks[0] });
     await manager.toggleScreen();
 
     expect(manager.getCurrent()).toEqual({ track: camera, source: 'camera' });
     expect(screenTracks[0]!.stop).toHaveBeenCalledOnce();
     expect(camera.stop).not.toHaveBeenCalled();
-    expect(publish.mock.calls.at(-1)).toEqual([camera, 'camera']);
+    expect(publish.mock.calls).toContainEqual([camera, 'camera']);
+    expect(publish.mock.calls.at(-1)).toEqual([null, 'screen']);
   });
 
   it('handles the system Stop sharing event and keeps video off without a camera', async () => {
@@ -93,7 +96,7 @@ describe('VideoManager', () => {
     screenTracks[0]!.onended?.();
     await vi.waitFor(() => expect(manager.getCurrent().source).toBe('none'));
 
-    expect(publish.mock.calls.at(-1)).toEqual([null, 'none']);
+    expect(publish.mock.calls.at(-1)).toEqual([null, 'screen']);
   });
 
   it('keeps screen sharing active when the camera is turned off underneath it', async () => {
@@ -107,5 +110,34 @@ describe('VideoManager', () => {
     expect(manager.getCurrent().source).toBe('screen');
     await manager.toggleScreen();
     expect(manager.getCurrent().source).toBe('none');
+  });
+
+  it('requests a high-quality camera mode without exact constraints', async () => {
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+    );
+    await manager.toggleCamera();
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30, max: 30 },
+      },
+    });
+  });
+
+  it('can start camera while screen sharing and leaves screen active when camera stops', async () => {
+    const publish = vi.fn(async () => undefined);
+    const manager = new VideoManager(publish, vi.fn());
+
+    await manager.toggleScreen();
+    await manager.toggleCamera();
+    expect(manager.getTracks()).toEqual({ camera: cameraTracks[0], screen: screenTracks[0] });
+    await manager.toggleCamera();
+    expect(manager.getTracks()).toEqual({ camera: null, screen: screenTracks[0] });
+    expect(screenTracks[0]!.stop).not.toHaveBeenCalled();
   });
 });

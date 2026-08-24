@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Participant } from '@freetalk/protocol';
 import {
   Check,
@@ -20,17 +20,23 @@ import {
   Volume2,
   VolumeX,
   Waves,
+  X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
-import type { LocalVideoSource, LocalVideoState } from '../lib/video-manager';
+import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 
 export type PeerUiState = Record<
   string,
   { connection: RTCPeerConnectionState | 'new'; speaking: boolean; hasAudio: boolean }
 >;
 
-export type RemoteVideoUiState = Record<string, { source: LocalVideoSource; stream?: MediaStream }>;
+export type RemoteVideoUiState = Record<string, { camera?: MediaStream; screen?: MediaStream }>;
+
+interface ExpandedMedia {
+  type: VideoMediaSource;
+  participantId: string;
+}
 
 interface RoomViewProps {
   roomId: string;
@@ -88,6 +94,8 @@ export function RoomView({
   onModerationMute,
 }: RoomViewProps) {
   const [menuFor, setMenuFor] = useState<string>();
+  const [expandedMedia, setExpandedMedia] = useState<ExpandedMedia>();
+  const [presentedScreenId, setPresentedScreenId] = useState<string>();
   const ordered = [...participants].sort(
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
@@ -95,15 +103,27 @@ export function RoomView({
   const openSlots = Math.max(0, 6 - participants.length);
   const participantMedia = (participant: Participant) =>
     participant.id === selfId
-      ? { source: localVideo.source, stream: localVideo.previewStream }
-      : (remoteVideos[participant.id] ?? { source: 'none' as const });
-  const screenPresenter = ordered.find(
-    (participant) => participantMedia(participant).source === 'screen',
+      ? { camera: localVideo.cameraStream, screen: localVideo.screenStream }
+      : (remoteVideos[participant.id] ?? {});
+  const screenPresenters = ordered.filter((participant) =>
+    Boolean(participantMedia(participant).screen),
   );
-  const hasCamera = ordered.some(
-    (participant) => participantMedia(participant).source === 'camera',
-  );
+  const screenPresenter =
+    screenPresenters.find((participant) => participant.id === presentedScreenId) ??
+    screenPresenters[0];
+  const hasCamera = ordered.some((participant) => Boolean(participantMedia(participant).camera));
   const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
+  const expandedParticipant = expandedMedia
+    ? participants.find((participant) => participant.id === expandedMedia.participantId)
+    : undefined;
+  const expandedStream =
+    expandedParticipant && expandedMedia
+      ? participantMedia(expandedParticipant)[expandedMedia.type]
+      : undefined;
+
+  useEffect(() => {
+    if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
+  }, [expandedMedia, expandedParticipant, expandedStream]);
 
   const renderParticipant = (participant: Participant, compact = false) => {
     const isSelf = participant.id === selfId;
@@ -113,7 +133,7 @@ export function RoomView({
     const locallyMuted = settings.mutedPeers[participant.id] ?? false;
     const canModerate = Boolean(self?.isOwner && !isSelf);
     const media = participantMedia(participant);
-    const showCamera = media.source === 'camera' && Boolean(media.stream);
+    const showCamera = Boolean(media.camera);
     const status = participant.muted
       ? 'Микрофон выключен'
       : speaking
@@ -127,7 +147,21 @@ export function RoomView({
         key={participant.id}
       >
         {showCamera && (
-          <ParticipantVideo stream={media.stream!} source="camera" name={participant.name} />
+          <ParticipantVideo
+            stream={media.camera!}
+            source="camera"
+            name={participant.name}
+            onExpand={() => setExpandedMedia({ type: 'camera', participantId: participant.id })}
+          />
+        )}
+        {compact && media.screen && participant.id !== screenPresenter?.id && (
+          <button
+            className="participant-screen-switch"
+            aria-label={`Показать экран ${participant.name}`}
+            onClick={() => setPresentedScreenId(participant.id)}
+          >
+            <MonitorUp size={13} /> Экран
+          </button>
         )}
 
         <div className="participant-card-top media-overlay-top">
@@ -228,9 +262,12 @@ export function RoomView({
           <div className="presentation-layout">
             <article className="screen-stage media-surface">
               <ParticipantVideo
-                stream={participantMedia(screenPresenter).stream!}
+                stream={participantMedia(screenPresenter).screen!}
                 source="screen"
                 name={screenPresenter.name}
+                onExpand={() =>
+                  setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
+                }
               />
               <div className="screen-stage-top">
                 <span className="screen-stage-title">
@@ -262,6 +299,20 @@ export function RoomView({
           </div>
         )}
       </section>
+
+      {expandedMedia && expandedParticipant && expandedStream && (
+        <ExpandedMediaView
+          type={expandedMedia.type}
+          stream={expandedStream}
+          participantName={expandedParticipant.name}
+          speaking={
+            expandedParticipant.id === selfId
+              ? localSpeaking
+              : Boolean(peerState[expandedParticipant.id]?.speaking)
+          }
+          onClose={() => setExpandedMedia(undefined)}
+        />
+      )}
 
       <footer className="voice-dock">
         <button className={`dock-control mic-control ${muted ? 'muted' : ''}`} onClick={onMute}>
@@ -331,10 +382,12 @@ function ParticipantVideo({
   stream,
   source,
   name,
+  onExpand,
 }: {
   stream: MediaStream;
-  source: Exclude<LocalVideoSource, 'none'>;
+  source: VideoMediaSource;
   name: string;
+  onExpand(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -357,15 +410,104 @@ function ParticipantVideo({
       />
       <button
         className="video-fullscreen"
-        aria-label="Открыть видео на весь экран"
-        onClick={(event) => {
-          const container = event.currentTarget.closest<HTMLElement>('.media-surface');
-          void container?.requestFullscreen?.();
-        }}
+        aria-label={`Раскрыть ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
+        onClick={onExpand}
       >
         <Maximize2 size={16} />
       </button>
     </div>
+  );
+}
+
+function ExpandedMediaView({
+  type,
+  stream,
+  participantName,
+  speaking,
+  onClose,
+}: {
+  type: VideoMediaSource;
+  stream: MediaStream;
+  participantName: string;
+  speaking: boolean;
+  onClose(): void;
+}) {
+  const surface = useRef<HTMLDivElement>(null);
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !document.fullscreenElement) setClosing(true);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className={`expanded-media-backdrop ${closing ? 'closing' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${type === 'screen' ? 'Демонстрация экрана' : 'Камера'} ${participantName}`}
+      onAnimationEnd={(event) => {
+        if (closing && event.currentTarget === event.target) onClose();
+      }}
+    >
+      <div className={`expanded-media-view ${type}`} ref={surface}>
+        <ParticipantVideoSurface stream={stream} source={type} name={participantName} />
+        <div className="expanded-media-header">
+          <span>
+            {type === 'screen' ? <MonitorUp size={17} /> : <Camera size={17} />}
+            <span>
+              <strong>{participantName}</strong>
+              <small>
+                {speaking ? 'Говорит' : type === 'screen' ? 'Демонстрация экрана' : 'Камера'}
+              </small>
+            </span>
+          </span>
+          <div>
+            <button
+              aria-label="Открыть в полноэкранном режиме"
+              onClick={() => void surface.current?.requestFullscreen?.()}
+            >
+              <Maximize2 size={17} />
+            </button>
+            <button aria-label="Закрыть раскрытое видео" onClick={() => setClosing(true)}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParticipantVideoSurface({
+  stream,
+  source,
+  name,
+}: {
+  stream: MediaStream;
+  source: VideoMediaSource;
+  name: string;
+}) {
+  const [element, setElement] = useState<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (!element) return;
+    element.srcObject = stream;
+    void element.play().catch(() => undefined);
+    return () => {
+      if (element.srcObject === stream) element.srcObject = null;
+    };
+  }, [element, stream]);
+  return (
+    <video
+      ref={setElement}
+      className="expanded-media-video"
+      aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
+      autoPlay
+      muted
+      playsInline
+    />
   );
 }
 

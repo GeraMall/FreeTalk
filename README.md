@@ -19,7 +19,7 @@ pnpm dev:signaling
 pnpm dev:desktop
 ```
 
-Откройте `http://127.0.0.1:1420` в двух отдельных браузерных профилях. В первом задайте имя и нажмите «Создать комнату», во втором вставьте 12-символьный код или `freetalk://join/CODE`. Разрешите только микрофон; камера никогда не запрашивается.
+Откройте `http://127.0.0.1:1420` в двух отдельных браузерных профилях. В первом задайте имя и нажмите «Создать комнату», во втором вставьте 12-символьный код или `freetalk://join/CODE`. При входе запрашивается только микрофон; доступ к камере запрашивается отдельно при нажатии кнопки «Камера».
 
 Для нативного окна после установки [Rust](https://rustup.rs/) и [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/):
 
@@ -34,6 +34,7 @@ pnpm tauri:dev
 - создание и вход по криптографически случайному 12-символьному коду/ссылке;
 - mesh WebRTC, perfect negotiation (offer glare), ICE deduplication, Opus 64 kbit/s, STUN и опциональный TURN;
 - список до 6 участников, connection/audio-ready states и индикатор говорящего;
+- независимые видеопотоки камеры и демонстрации экрана: 1080p30 ideal-режим камеры, одновременная передача camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
 - встроенные звуковые уведомления о входе и выходе друзей с выровненной громкостью;
 - владелец комнаты с короной, автоматическая передача владения и серверно проверяемое удалённое выключение микрофона участника;
 - режимы VAD/PTT/постоянной передачи, изменяемая PTT-клавиша и настраиваемый порог голоса;
@@ -94,7 +95,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.14 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.15 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
