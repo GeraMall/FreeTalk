@@ -1,0 +1,35 @@
+// @vitest-environment jsdom
+
+import { describe, expect, it } from 'vitest';
+import { connectionDiagnostics } from './connection-diagnostics';
+
+describe('connection diagnostics', () => {
+  it('keeps a relative timeline and anonymises stable peer identifiers', () => {
+    connectionDiagnostics.startSession({ action: 'join-room' });
+    connectionDiagnostics.record('peer-created', 'real-peer-id', { icePolicy: 'all' });
+    connectionDiagnostics.record('connection:connected', 'real-peer-id');
+
+    const report = connectionDiagnostics.snapshot();
+    expect(report.schema).toBe(1);
+    expect(report.entries.map((entry) => entry.event)).toEqual([
+      'session-start',
+      'peer-created',
+      'connection:connected',
+    ]);
+    expect(report.entries[1]?.peer).toBe('peer-1');
+    expect(report.entries[2]?.peer).toBe('peer-1');
+    expect(JSON.stringify(report)).not.toContain('real-peer-id');
+  });
+
+  it('starts a clean session without carrying identifiers from the previous call', () => {
+    connectionDiagnostics.startSession();
+    connectionDiagnostics.record('peer-created', 'first');
+    connectionDiagnostics.startSession();
+    connectionDiagnostics.record('peer-created', 'second');
+
+    const report = connectionDiagnostics.snapshot();
+    expect(report.entries).toHaveLength(2);
+    expect(report.entries[1]?.peer).toBe('peer-1');
+    expect(report.entries.map((entry) => entry.sequence)).toEqual([1, 2]);
+  });
+});

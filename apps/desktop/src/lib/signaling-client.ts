@@ -2,6 +2,7 @@ import { HEARTBEAT_INTERVAL_MS } from '@freetalk/config';
 import { parseServerMessage, type ClientMessage, type ServerMessage } from '@freetalk/protocol';
 import { ReconnectSchedule } from './reconnect';
 import { createSignalSocket, SIGNAL_SOCKET_OPEN, type SignalSocket } from './signaling-transport';
+import { connectionDiagnostics } from './connection-diagnostics';
 
 export type SignalingState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -32,6 +33,7 @@ export class SignalingClient {
 
   send(message: ClientMessage) {
     if (this.socket?.readyState !== SIGNAL_SOCKET_OPEN) return false;
+    connectionDiagnostics.record(`signal-sent:${message.type}`);
     this.socket.send(JSON.stringify(message));
     return true;
   }
@@ -45,8 +47,9 @@ export class SignalingClient {
     this.onState('offline');
   }
 
-  reconnectNow() {
+  reconnectNow(reason = 'manual') {
     if (this.closedByUser || !this.joined) return;
+    connectionDiagnostics.record('signaling-reconnect:requested', undefined, { reason });
     this.clearTimers();
     this.schedule.reset();
     const previous = this.socket;
@@ -85,6 +88,7 @@ export class SignalingClient {
       if (this.socket !== socket || typeof data !== 'string') return;
       try {
         const message = parseServerMessage(data);
+        connectionDiagnostics.record(`signal-received:${message.type}`);
         this.lastServerActivity = Date.now();
         this.schedule.reset();
         // SDP state transitions are order-sensitive. EventTarget does not wait
@@ -109,6 +113,7 @@ export class SignalingClient {
     socket.addEventListener('close', () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      connectionDiagnostics.record('signaling-socket:closed');
       if (this.heartbeat) window.clearInterval(this.heartbeat);
       this.heartbeat = undefined;
       if (!this.closedByUser) this.scheduleRetry();
@@ -123,6 +128,9 @@ export class SignalingClient {
     this.heartbeat = window.setInterval(() => {
       if (this.socket !== socket) return;
       if (Date.now() - this.lastServerActivity >= SERVER_ACTIVITY_TIMEOUT_MS) {
+        connectionDiagnostics.record('signaling-heartbeat:timeout', undefined, {
+          inactivityMs: Date.now() - this.lastServerActivity,
+        });
         socket.close(4000, 'Heartbeat timeout');
         return;
       }

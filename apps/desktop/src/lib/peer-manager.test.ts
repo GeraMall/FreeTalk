@@ -144,4 +144,22 @@ describe('PeerManager ICE recovery', () => {
       connection.addIceCandidate.mock.invocationCallOrder[0]!,
     );
   });
+
+  it('ignores a late duplicate answer after the peer is already stable', async () => {
+    const peers = manager();
+    const peerId = '386d39ef-61af-4aca-84b8-47f78b0f554b';
+    peers.ensure(peerId);
+    const connection = FakePeerConnection.instances[0]!;
+    connection.signalingState = 'stable';
+
+    await expect(
+      peers.handle({
+        type: 'answer',
+        from: peerId,
+        description: { type: 'answer', sdp: 'late-answer-sdp' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(connection.setRemoteDescription).not.toHaveBeenCalled();
+  });
 });

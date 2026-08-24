@@ -7,6 +7,7 @@ import {
   MonitorSpeaker,
   RefreshCw,
   RotateCcw,
+  Save,
   X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
@@ -30,6 +31,7 @@ interface SettingsPanelProps {
   onReset(): void;
   onCheckUpdate(): void;
   onInstallUpdate(): void;
+  onSaveDiagnostics(): Promise<string>;
 }
 
 export function SettingsPanel({
@@ -48,12 +50,15 @@ export function SettingsPanel({
   onReset,
   onCheckUpdate,
   onInstallUpdate,
+  onSaveDiagnostics,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>('audio');
   const [capturing, setCapturing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
   const [testError, setTestError] = useState('');
+  const [diagnosticPath, setDiagnosticPath] = useState('');
+  const [diagnosticError, setDiagnosticError] = useState('');
   const testStream = useRef<MediaStream | undefined>(undefined);
   const testRecorder = useRef<MediaRecorder | undefined>(undefined);
   const recordingUrlRef = useRef('');
@@ -202,6 +207,17 @@ export function SettingsPanel({
                 turnAvailable={turnAvailable}
                 onCheckUpdate={onCheckUpdate}
                 onInstallUpdate={onInstallUpdate}
+                diagnosticPath={diagnosticPath}
+                diagnosticError={diagnosticError}
+                onSaveDiagnostics={async () => {
+                  setDiagnosticError('');
+                  try {
+                    setDiagnosticPath(await onSaveDiagnostics());
+                  } catch {
+                    setDiagnosticPath('');
+                    setDiagnosticError('Не удалось сохранить журнал');
+                  }
+                }}
               />
             )}
           </div>
@@ -461,12 +477,18 @@ function AboutTab({
   turnAvailable,
   onCheckUpdate,
   onInstallUpdate,
+  diagnosticPath,
+  diagnosticError,
+  onSaveDiagnostics,
 }: {
   appVersion: string;
   updateStatus: UpdateStatus;
   turnAvailable: boolean;
   onCheckUpdate(): void;
   onInstallUpdate(): void;
+  diagnosticPath: string;
+  diagnosticError: string;
+  onSaveDiagnostics(): void;
 }) {
   return (
     <section className="settings-section about-section">
@@ -516,6 +538,17 @@ function AboutTab({
             {updateStatus.kind === 'checking' ? 'Проверяем…' : 'Проверить'}
           </button>
         )}
+      </div>
+      <div className="update-section">
+        <div>
+          <strong>Диагностика подключения</strong>
+          <small>Обезличенный таймлайн ICE и RTP без адресов, SDP и секретов.</small>
+          {diagnosticPath && <small>Сохранено: {diagnosticPath}</small>}
+          {diagnosticError && <small className="error-text">{diagnosticError}</small>}
+        </div>
+        <button className="secondary compact" onClick={onSaveDiagnostics}>
+          <Save size={16} /> Сохранить на рабочий стол
+        </button>
       </div>
     </section>
   );

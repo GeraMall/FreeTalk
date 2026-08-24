@@ -1,3 +1,5 @@
+import { connectionDiagnostics } from './connection-diagnostics';
+
 export interface AudioProcessingSettings {
   transmissionMode: 'voice-activation' | 'push-to-talk' | 'continuous';
   vadThreshold: number;
@@ -27,6 +29,9 @@ export class AudioManager {
 
   async start(inputDeviceId = '') {
     this.stop();
+    connectionDiagnostics.record('get-user-media:start', undefined, {
+      selectedInput: Boolean(inputDeviceId),
+    });
     try {
       this.sourceStream = await navigator.mediaDevices.getUserMedia({
         video: false,
@@ -39,11 +44,18 @@ export class AudioManager {
           sampleRate: 48_000,
         },
       });
+      connectionDiagnostics.record('get-user-media:end', undefined, {
+        tracks: this.sourceStream.getAudioTracks().length,
+      });
       this.buildProcessingGraph();
+      connectionDiagnostics.record('audio-processing-graph:ready');
       this.applyEnabled();
       this.watchLevel();
       return this.stream!;
     } catch (error) {
+      connectionDiagnostics.record('get-user-media:error', undefined, {
+        name: error instanceof DOMException ? error.name : 'unknown',
+      });
       if (error instanceof DOMException) {
         if (error.name === 'NotAllowedError')
           throw new Error('Доступ к микрофону запрещён. Разрешите его в настройках системы.');

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
 import type { ClientMessage, Participant, ServerMessage } from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
+import { connectionDiagnostics } from './lib/connection-diagnostics';
 import { hasTurnServer } from './lib/ice-config';
 import { NotificationSounds, ParticipantNotificationTracker } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
@@ -62,7 +64,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.9');
+  const [appVersion, setAppVersion] = useState('0.3.11');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
@@ -74,8 +76,10 @@ export function App() {
   const participantNotifications = useRef(new ParticipantNotificationTracker());
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
+  const listeningDiagnostics = useRef(new Set<string>());
   const pendingRoomId = useRef<string | undefined>(undefined);
   const joinedRoom = useRef(false);
+  const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
   const remoteAudio = useRef(
     new RemoteAudio((peerId, speaking) =>
@@ -103,6 +107,7 @@ export function App() {
     joinTimer.current = undefined;
     pendingRoomId.current = undefined;
     joinedRoom.current = false;
+    awaitingRejoin.current = false;
     signaling.current?.close();
     signaling.current = undefined;
     peers.current?.closeAll();
@@ -112,6 +117,7 @@ export function App() {
     remoteAudio.current.closeAll();
     notificationSounds.current.stop();
     participantNotifications.current.clear();
+    listeningDiagnostics.current.clear();
     currentIceServers.current = DEFAULT_ICE_SERVERS;
     setRoomId(undefined);
     setParticipants([]);
@@ -159,18 +165,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const recoverAfterNetworkChange = () => signaling.current?.reconnectNow();
-    const connection = (
-      navigator as Navigator & {
-        connection?: EventTarget;
-      }
-    ).connection;
-    window.addEventListener('online', recoverAfterNetworkChange);
-    connection?.addEventListener('change', recoverAfterNetworkChange);
-    return () => {
-      window.removeEventListener('online', recoverAfterNetworkChange);
-      connection?.removeEventListener('change', recoverAfterNetworkChange);
-    };
+    // NetworkInformation.change also fires when WebView merely updates its
+    // estimated RTT/downlink. Reconnecting on that signal caused a complete
+    // room rejoin roughly every 35 seconds on otherwise healthy calls.
+    const recoverAfterNetworkReturn = () => signaling.current?.reconnectNow('online');
+    window.addEventListener('online', recoverAfterNetworkReturn);
+    return () => window.removeEventListener('online', recoverAfterNetworkReturn);
   }, []);
 
   useEffect(() => {
@@ -231,6 +231,19 @@ export function App() {
     return () => navigator.mediaDevices?.removeEventListener('devicechange', refreshDevices);
   }, [refreshDevices]);
 
+  useEffect(() => {
+    for (const [peerId, state] of Object.entries(peerState)) {
+      if (
+        state.connection === 'connected' &&
+        state.hasAudio &&
+        !listeningDiagnostics.current.has(peerId)
+      ) {
+        listeningDiagnostics.current.add(peerId);
+        connectionDiagnostics.record('ui-listening', peerId);
+      }
+    }
+  }, [peerState]);
+
   const handleServerMessage = useCallback(
     async (message: ServerMessage) => {
       if (message.type === 'error') {
@@ -242,10 +255,14 @@ export function App() {
       if (message.type === 'ice-config') {
         currentIceServers.current = message.iceServers;
         setTurnAvailable(hasTurnServer(message.iceServers));
-        peers.current?.updateIceServers(message.iceServers);
+        // During a signaling rejoin the next joined-room message replaces all
+        // peer connections. Restarting the old peer here creates a ghost offer
+        // whose late answer can be delivered to the replacement connection.
+        if (!awaitingRejoin.current) peers.current?.updateIceServers(message.iceServers);
         return;
       }
       if (message.type === 'joined-room') {
+        awaitingRejoin.current = false;
         joinedRoom.current = true;
         if (joinTimer.current) window.clearTimeout(joinTimer.current);
         joinTimer.current = undefined;
@@ -277,13 +294,17 @@ export function App() {
                   hasAudio: true,
                 },
               }));
-              void remoteAudio.current.attach(
-                peerId,
-                stream,
-                settings.peerVolumes[peerId] ?? 1,
-                settings.mutedPeers[peerId] ?? false,
-                settings.outputDeviceId,
-              );
+              connectionDiagnostics.record('remote-audio-attach:start', peerId);
+              void remoteAudio.current
+                .attach(
+                  peerId,
+                  stream,
+                  settings.peerVolumes[peerId] ?? 1,
+                  settings.mutedPeers[peerId] ?? false,
+                  settings.outputDeviceId,
+                )
+                .then(() => connectionDiagnostics.record('remote-audio-attach:end', peerId))
+                .catch(() => connectionDiagnostics.record('remote-audio-attach:error', peerId));
             },
             onState: (peerId, connection) =>
               setPeerState((old) => ({
@@ -398,6 +419,7 @@ export function App() {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
     }
+    connectionDiagnostics.startSession({ action: create ? 'create-room' : 'join-room' });
     void notificationSounds.current.prepare(settings.outputDeviceId);
     setJoining(true);
     try {
@@ -416,6 +438,7 @@ export function App() {
       pendingRoomId.current = code;
       joinedRoom.current = false;
       const client = new SignalingClient(signalingUrl, handleServerMessage, (state, attempt) => {
+        if (state === 'reconnecting') awaitingRejoin.current = true;
         setSignalState(state);
         setReconnectAttempt(attempt ?? 0);
         if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
@@ -553,6 +576,11 @@ export function App() {
     updateSettings({ mutedPeers });
     remoteAudio.current.setMuted(peerId, value);
   };
+  const saveConnectionDiagnostics = async () => {
+    return invoke<string>('save_connection_diagnostics', {
+      contents: connectionDiagnostics.toText(),
+    });
+  };
 
   const settingsPanel = settingsOpen ? (
     <SettingsPanel
@@ -571,6 +599,7 @@ export function App() {
       onReset={resetAudioSettings}
       onCheckUpdate={() => void runUpdateCheck()}
       onInstallUpdate={() => void installUpdate()}
+      onSaveDiagnostics={saveConnectionDiagnostics}
     />
   ) : null;
 
