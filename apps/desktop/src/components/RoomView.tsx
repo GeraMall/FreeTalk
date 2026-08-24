@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   Radio,
   Settings,
+  ShieldCheck,
   Square,
   UserPlus,
   Volume2,
@@ -92,6 +93,94 @@ export function RoomView({
   );
   const self = participants.find((participant) => participant.id === selfId);
   const openSlots = Math.max(0, 6 - participants.length);
+  const participantMedia = (participant: Participant) =>
+    participant.id === selfId
+      ? { source: localVideo.source, stream: localVideo.previewStream }
+      : (remoteVideos[participant.id] ?? { source: 'none' as const });
+  const screenPresenter = ordered.find(
+    (participant) => participantMedia(participant).source === 'screen',
+  );
+  const hasCamera = ordered.some(
+    (participant) => participantMedia(participant).source === 'camera',
+  );
+  const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
+
+  const renderParticipant = (participant: Participant, compact = false) => {
+    const isSelf = participant.id === selfId;
+    const speaking = isSelf ? localSpeaking : peerState[participant.id]?.speaking;
+    const connection = isSelf ? 'connected' : (peerState[participant.id]?.connection ?? 'new');
+    const hasAudio = isSelf || (peerState[participant.id]?.hasAudio ?? false);
+    const locallyMuted = settings.mutedPeers[participant.id] ?? false;
+    const canModerate = Boolean(self?.isOwner && !isSelf);
+    const media = participantMedia(participant);
+    const showCamera = media.source === 'camera' && Boolean(media.stream);
+    const status = participant.muted
+      ? 'Микрофон выключен'
+      : speaking
+        ? 'Говорит'
+        : connectionLabel(connection, hasAudio);
+
+    return (
+      <article
+        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? 'camera-tile media-surface' : 'audio-tile'} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        role="listitem"
+        key={participant.id}
+      >
+        {showCamera && (
+          <ParticipantVideo stream={media.stream!} source="camera" name={participant.name} />
+        )}
+
+        <div className="participant-card-top media-overlay-top">
+          {participant.isOwner ? <CreatorBadge compact={showCamera || compact} /> : <span />}
+          <ParticipantActions
+            participant={participant}
+            isSelf={isSelf}
+            canModerate={canModerate}
+            locallyMuted={locallyMuted}
+            open={menuFor === participant.id}
+            onToggle={() =>
+              setMenuFor((old) => (old === participant.id ? undefined : participant.id))
+            }
+            onClose={() => setMenuFor(undefined)}
+            onPeerMute={onPeerMute}
+            onModerationMute={onModerationMute}
+          />
+        </div>
+
+        {!showCamera && (
+          <ParticipantAvatar participant={participant} speaking={Boolean(speaking)} />
+        )}
+
+        <div
+          className={showCamera ? 'participant-overlay media-overlay-bottom' : 'participant-info'}
+        >
+          <div className="participant-name-row">
+            <div className="participant-name">
+              <strong>{participant.name}</strong>
+              {isSelf && <span>вы</span>}
+            </div>
+            {!compact && <VoiceWave active={Boolean(speaking)} compact />}
+          </div>
+          <div
+            className={`participant-status ${participant.muted ? 'muted' : speaking ? 'live' : ''}`}
+          >
+            {participant.muted ? <MicOff size={13} /> : <i />}
+            {status}
+          </div>
+        </div>
+
+        {!isSelf && !compact && (
+          <ParticipantVolume
+            participant={participant}
+            locallyMuted={locallyMuted}
+            value={settings.peerVolumes[participant.id] ?? 1}
+            onPeerMute={onPeerMute}
+            onPeerVolume={onPeerVolume}
+          />
+        )}
+      </article>
+    );
+  };
 
   return (
     <main className="room-shell">
@@ -121,149 +210,57 @@ export function RoomView({
         </button>
       </header>
 
-      <section className="room-main">
+      <section className={`room-main room-mode-${roomMode}`}>
         <div className="participants-heading">
           <div>
             <h1>Участники</h1>
             <p>{participants.length} из 6</p>
           </div>
-          <span className="room-security">
-            <Radio size={14} /> {turnAvailable ? 'WebRTC · TURN резерв' : 'WebRTC · прямое'}
+          <span
+            className="room-security"
+            title={turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'}
+          >
+            <ShieldCheck size={14} /> Приватное соединение
           </span>
         </div>
 
-        <div className="participants-grid" data-count={participants.length} role="list">
-          {ordered.map((participant) => {
-            const isSelf = participant.id === selfId;
-            const speaking = isSelf ? localSpeaking : peerState[participant.id]?.speaking;
-            const connection = isSelf
-              ? 'connected'
-              : (peerState[participant.id]?.connection ?? 'new');
-            const hasAudio = isSelf || (peerState[participant.id]?.hasAudio ?? false);
-            const locallyMuted = settings.mutedPeers[participant.id] ?? false;
-            const canModerate = Boolean(self?.isOwner && !isSelf);
-            const participantVideo = isSelf
-              ? { source: localVideo.source, stream: localVideo.previewStream }
-              : (remoteVideos[participant.id] ?? { source: 'none' as const });
-            const hasVisibleVideo =
-              participantVideo.source !== 'none' && Boolean(participantVideo.stream);
-            return (
-              <article
-                className={`participant-card ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''} ${hasVisibleVideo ? 'has-video' : ''} ${participantVideo.source === 'screen' ? 'screen-sharing' : ''}`}
-                role="listitem"
-                key={participant.id}
-              >
-                <div className="participant-card-top">
-                  {participant.isOwner ? <CreatorBadge /> : <span />}
-                  {(canModerate || !isSelf) && (
-                    <button
-                      className="icon-button participant-menu-button"
-                      aria-label={`Действия для ${participant.name}`}
-                      aria-expanded={menuFor === participant.id}
-                      onClick={() =>
-                        setMenuFor((old) => (old === participant.id ? undefined : participant.id))
-                      }
-                    >
-                      <MoreHorizontal size={19} />
-                    </button>
-                  )}
-                  {menuFor === participant.id && (
-                    <div className="participant-menu" role="menu">
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          onPeerMute(participant.id);
-                          setMenuFor(undefined);
-                        }}
-                      >
-                        {locallyMuted ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                        {locallyMuted ? 'Вернуть звук' : 'Не слышать локально'}
-                      </button>
-                      {canModerate && (
-                        <button
-                          className="danger-action"
-                          role="menuitem"
-                          disabled={participant.muted}
-                          onClick={() => {
-                            onModerationMute(participant.id, participant.name);
-                            setMenuFor(undefined);
-                          }}
-                        >
-                          <MicOff size={16} />
-                          {participant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {hasVisibleVideo ? (
-                  <ParticipantVideo
-                    stream={participantVideo.stream!}
-                    source={participantVideo.source as Exclude<LocalVideoSource, 'none'>}
-                    name={participant.name}
-                    local={isSelf}
-                  />
-                ) : (
-                  <ParticipantAvatar participant={participant} speaking={Boolean(speaking)} />
-                )}
-                <div className="participant-name">
-                  <strong>{participant.name}</strong>
-                  {isSelf && <span>вы</span>}
-                </div>
-                <div
-                  className={`participant-status ${participant.muted ? 'muted' : speaking ? 'live' : ''}`}
-                >
-                  {participant.muted ? <MicOff size={14} /> : <i />}
-                  {participantVideo.source === 'screen'
-                    ? 'Демонстрация экрана'
-                    : participant.muted
-                      ? 'Микрофон выключен'
-                      : speaking
-                        ? 'Говорит'
-                        : connectionLabel(connection, hasAudio)}
-                </div>
-                <VoiceWave active={Boolean(speaking)} />
-
-                {!isSelf && (
-                  <div className="participant-volume">
-                    <button
-                      className="inline-icon"
-                      aria-label={
-                        locallyMuted ? 'Включить звук участника' : 'Заглушить участника локально'
-                      }
-                      onClick={() => onPeerMute(participant.id)}
-                    >
-                      {locallyMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                    </button>
-                    <input
-                      aria-label={`Громкость ${participant.name}`}
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={settings.peerVolumes[participant.id] ?? 1}
-                      onChange={(event) => onPeerVolume(participant.id, Number(event.target.value))}
-                    />
-                  </div>
-                )}
-              </article>
-            );
-          })}
-
-          {openSlots > 0 && (
-            <button className="invite-empty" onClick={onCopyInvite}>
-              <span className="invite-empty-icon">
-                <UserPlus size={24} />
-              </span>
-              <strong>Пригласите друзей</strong>
-              <span>В комнате ещё {slotsLabel(openSlots)}</span>
-              <em>
-                <Copy size={15} /> Скопировать приглашение
-              </em>
-            </button>
-          )}
-        </div>
+        {screenPresenter ? (
+          <div className="presentation-layout">
+            <article className="screen-stage media-surface">
+              <ParticipantVideo
+                stream={participantMedia(screenPresenter).stream!}
+                source="screen"
+                name={screenPresenter.name}
+              />
+              <div className="screen-stage-top">
+                <span className="screen-stage-title">
+                  <MonitorUp size={15} />
+                  <span>
+                    <strong>{screenPresenter.name}</strong>
+                    <small>Демонстрация экрана</small>
+                  </span>
+                </span>
+                {screenPresenter.isOwner && <CreatorBadge compact />}
+              </div>
+            </article>
+            <div className="participant-strip" role="list" aria-label="Участники комнаты">
+              {ordered.map((participant) => renderParticipant(participant, true))}
+              {openSlots > 0 && (
+                <InviteCallout compact openSlots={openSlots} onCopyInvite={onCopyInvite} />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="participants-grid"
+            data-count={participants.length}
+            data-mode={roomMode}
+            role="list"
+          >
+            {ordered.map((participant) => renderParticipant(participant))}
+            {openSlots > 0 && <InviteCallout openSlots={openSlots} onCopyInvite={onCopyInvite} />}
+          </div>
+        )}
       </section>
 
       <footer className="voice-dock">
@@ -294,10 +291,8 @@ export function RoomView({
         >
           <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
           <span>
-            <strong>{localVideo.screenEnabled ? 'Остановить экран' : 'Показать экран'}</strong>
-            <small>
-              {localVideo.screenEnabled ? 'Идёт демонстрация' : 'Выбрать окно или экран'}
-            </small>
+            <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
+            <small>{localVideo.screenEnabled ? 'Демонстрация' : 'Поделиться'}</small>
           </span>
         </button>
         <div className="dock-divider" />
@@ -336,12 +331,10 @@ function ParticipantVideo({
   stream,
   source,
   name,
-  local,
 }: {
   stream: MediaStream;
   source: Exclude<LocalVideoSource, 'none'>;
   name: string;
-  local: boolean;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -362,21 +355,139 @@ function ParticipantVideo({
         muted
         playsInline
       />
-      <span className="video-source-badge">
-        {source === 'screen' ? <MonitorUp size={13} /> : <Camera size={13} />}
-        {source === 'screen' ? 'Демонстрация экрана' : local ? 'Ваша камера' : 'Камера'}
-      </span>
       <button
         className="video-fullscreen"
         aria-label="Открыть видео на весь экран"
         onClick={(event) => {
-          const container = event.currentTarget.parentElement;
+          const container = event.currentTarget.closest<HTMLElement>('.media-surface');
           void container?.requestFullscreen?.();
         }}
       >
-        <Maximize2 size={14} />
+        <Maximize2 size={16} />
       </button>
     </div>
+  );
+}
+
+function ParticipantActions({
+  participant,
+  isSelf,
+  canModerate,
+  locallyMuted,
+  open,
+  onToggle,
+  onClose,
+  onPeerMute,
+  onModerationMute,
+}: {
+  participant: Participant;
+  isSelf: boolean;
+  canModerate: boolean;
+  locallyMuted: boolean;
+  open: boolean;
+  onToggle(): void;
+  onClose(): void;
+  onPeerMute(peerId: string): void;
+  onModerationMute(peerId: string, name: string): void;
+}) {
+  if (!canModerate && isSelf) return null;
+  return (
+    <>
+      <button
+        className="icon-button participant-menu-button"
+        aria-label={`Действия для ${participant.name}`}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <MoreHorizontal size={19} />
+      </button>
+      {open && (
+        <div className="participant-menu" role="menu">
+          <button
+            role="menuitem"
+            onClick={() => {
+              onPeerMute(participant.id);
+              onClose();
+            }}
+          >
+            {locallyMuted ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {locallyMuted ? 'Вернуть звук' : 'Не слышать локально'}
+          </button>
+          {canModerate && (
+            <button
+              className="danger-action"
+              role="menuitem"
+              disabled={participant.muted}
+              onClick={() => {
+                onModerationMute(participant.id, participant.name);
+                onClose();
+              }}
+            >
+              <MicOff size={16} />
+              {participant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ParticipantVolume({
+  participant,
+  locallyMuted,
+  value,
+  onPeerMute,
+  onPeerVolume,
+}: {
+  participant: Participant;
+  locallyMuted: boolean;
+  value: number;
+  onPeerMute(peerId: string): void;
+  onPeerVolume(peerId: string, value: number): void;
+}) {
+  return (
+    <div className="participant-volume">
+      <button
+        className="inline-icon"
+        aria-label={locallyMuted ? 'Включить звук участника' : 'Заглушить участника локально'}
+        onClick={() => onPeerMute(participant.id)}
+      >
+        {locallyMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+      </button>
+      <input
+        aria-label={`Громкость ${participant.name}`}
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={value}
+        onChange={(event) => onPeerVolume(participant.id, Number(event.target.value))}
+      />
+    </div>
+  );
+}
+
+function InviteCallout({
+  compact = false,
+  openSlots,
+  onCopyInvite,
+}: {
+  compact?: boolean;
+  openSlots: number;
+  onCopyInvite(): void;
+}) {
+  return (
+    <button className={`invite-empty ${compact ? 'compact' : ''}`} onClick={onCopyInvite}>
+      <span className="invite-empty-icon">
+        <UserPlus size={compact ? 18 : 20} />
+      </span>
+      <span className="invite-copy">
+        <strong>{compact ? 'Пригласить' : 'Добавить друзей'}</strong>
+        <small>{slotsLabel(openSlots)}</small>
+      </span>
+      <Copy size={15} />
+    </button>
   );
 }
 
@@ -393,10 +504,10 @@ function ConnectionStatus({ state, attempt }: { state: SignalingState; attempt: 
   );
 }
 
-function CreatorBadge() {
+function CreatorBadge({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="creator-badge">
-      <Crown size={14} /> Создатель комнаты
+    <span className={`creator-badge ${compact ? 'compact' : ''}`}>
+      <Crown size={13} /> {compact ? 'Создатель' : 'Создатель комнаты'}
     </span>
   );
 }
@@ -417,10 +528,13 @@ function ParticipantAvatar({
   );
 }
 
-function VoiceWave({ active }: { active: boolean }) {
+function VoiceWave({ active, compact = false }: { active: boolean; compact?: boolean }) {
   return (
-    <div className={`voice-wave ${active ? 'active' : ''}`} aria-hidden="true">
-      {Array.from({ length: 18 }, (_, index) => (
+    <div
+      className={`voice-wave ${compact ? 'compact' : ''} ${active ? 'active' : ''}`}
+      aria-hidden="true"
+    >
+      {Array.from({ length: compact ? 8 : 18 }, (_, index) => (
         <span key={index} />
       ))}
     </div>
