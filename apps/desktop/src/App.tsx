@@ -70,7 +70,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.11');
+  const [appVersion, setAppVersion] = useState('0.3.13');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});

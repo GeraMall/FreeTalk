@@ -288,7 +288,7 @@ export function RoomView({
         </button>
         <div className="dock-divider" />
         <button
-          className={`dock-control video-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
+          className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
           disabled={videoBusy}
           onClick={onScreen}
         >
@@ -302,7 +302,7 @@ export function RoomView({
         </button>
         <div className="dock-divider" />
         <button
-          className={`dock-control ${pttPressed ? 'pressed' : ''}`}
+          className={`dock-control ptt-control ${pttPressed ? 'pressed' : ''}`}
           onClick={onTransmissionMode}
         >
           <span className="dock-icon">
@@ -314,7 +314,7 @@ export function RoomView({
           </span>
         </button>
         <div className="dock-divider" />
-        <button className="dock-control" onClick={onSettings}>
+        <button className="dock-control settings-control" onClick={onSettings}>
           <span className="dock-icon">
             <Settings />
           </span>
