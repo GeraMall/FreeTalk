@@ -1,43 +1,36 @@
 # Развёртывание сигналинга
 
-## Текущий production Worker
+## Текущий production
 
-23.08.2026 Worker развёрнут по адресу
-`https://freetalk-signaling.freetalk-cloudflare-signaling.workers.dev`.
-Клиент использует `wss://freetalk-signaling.freetalk-cloudflare-signaling.workers.dev/ws`.
-Аудио через Worker не проходит; он передаёт только сигналинг и состояние комнаты.
+С 24.08.2026 клиент использует `wss://freetalk.191-44-38-60.sslip.io/ws` на VPS в Санкт-Петербурге. Caddy принимает HTTPS/WSS на TCP 443 и передаёт запросы Node.js-сервису на `127.0.0.1:8787`. Публичный health endpoint: `https://freetalk.191-44-38-60.sslip.io/health`.
 
-Актуальность тарифов проверена 23.08.2026 по официальной документации Cloudflare.
+Комнаты и присутствие хранятся только в памяти. Аудио через VPS не проходит. После перезапуска службы комнаты очищаются.
 
-## Бесплатный сценарий
+Файлы установки находятся в `deploy/vps`: Caddyfile, systemd unit и SSH hardening drop-in. Служба работает от отдельного непривилегированного пользователя `freetalk`; firewall разрешает только SSH, HTTP для выпуска сертификата и HTTPS/WSS. Вход по SSH-паролю отключён после проверки отдельного ключа.
 
-Cloudflare Durable Objects с SQLite backend доступны на Workers Free. На Free plan указано 100 000 DO requests/day и 13 000 GB-s/day; при превышении операции прекращаются, а не создают гарантированно бесплатный безлимит. WebSocket Hibernation не тарифицирует время простоя как active duration. Источники: [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [WebSocket Hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/).
+Сборка server bundle:
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm --filter @freetalk/cloudflare-signaling exec wrangler login
-pnpm --filter @freetalk/cloudflare-signaling run deploy
+pnpm --filter @freetalk/signaling bundle
 ```
 
-`wrangler login` и `deploy` создают/изменяют внешний ресурс и требуют явного разрешения. Для новой сборки используйте адрес Worker в `VITE_SIGNALING_URL`.
+Bundle устанавливается как `/opt/freetalk/server.bundle.cjs`, затем перезапускается `freetalk-signaling.service`. Секреты находятся в `/etc/freetalk/signaling.env` с режимом `0600` и не копируются в Git.
 
-## TURN
+## TURN broker
 
-Cloudflare указывает бесплатный unlimited STUN `stun.cloudflare.com` и 1000 GB free tier для Realtime TURN, затем $0.05/GB; стоимость не является бессрочной гарантией. Источники: [TURN FAQ](https://developers.cloudflare.com/realtime/turn/faq/), [credential generation](https://developers.cloudflare.com/realtime/turn/generate-credentials/).
+Cloudflare Worker больше не обслуживает клиентский signaling. Он используется только как закрытый HTTPS broker, который обменивает серверные Cloudflare TURN keys на краткоживущую ICE-конфигурацию. Клиент получает эту конфигурацию от VPS через уже установленный WSS.
 
-Создайте TURN key в Cloudflare и сохраните secrets только в Worker:
+Основные секреты хранятся только в Worker:
 
 ```powershell
 pnpm --filter @freetalk/cloudflare-signaling exec wrangler secret put TURN_KEY_ID
 pnpm --filter @freetalk/cloudflare-signaling exec wrangler secret put TURN_KEY_API_TOKEN
 pnpm --filter @freetalk/cloudflare-signaling exec wrangler secret put TURN_CREDENTIAL_TTL_SECONDS
+pnpm --filter @freetalk/cloudflare-signaling exec wrangler secret put TURN_BROKER_TOKEN
+pnpm --filter @freetalk/cloudflare-signaling run deploy
 ```
 
-Worker обменивает server-side key на краткоживущие ICE credentials. В клиент и Git они не попадают. Без этих переменных выдаётся только STUN-конфигурация и прямое соединение может не пройти через symmetric NAT/строгий корпоративный firewall.
+На VPS задаются только `TURN_BROKER_URL` и тот же случайный `TURN_BROKER_TOKEN`. При недоступности broker сервер отдаёт STUN fallback, но соединение через symmetric NAT или строгий firewall тогда не гарантируется.
 
-В production эти secrets настроены 23.08.2026. Проверка через настоящий production WSS
-подтвердила выдачу UDP/TCP/TLS TURN URLs, временных username/credential и срока действия.
-Дополнительный forced-relay Chromium-тест подтвердил передачу данных и синтетического
-аудиосигнала через relay; сами credentials тест не выводит.
-
-`ALLOWED_ORIGIN` опционально ограничивает WebSocket Origin. Для Tauri production origin зависит от платформы; проверяйте фактический origin перед включением строгого значения.
+24.08.2026 production-проверка подтвердила валидный TLS-сертификат, WSS upgrade 101, корреляционные заголовки, создание комнаты, ping/pong и выдачу UDP/TCP/TLS TURN URLs без вывода credentials. Сам VPS является платным ресурсом пользователя; нулевая стоимость production больше не заявляется.

@@ -1,7 +1,7 @@
 import type { ServerMessage } from '@freetalk/protocol';
 import { parseDnsIpv4Answers, withCloudflareTurnIpFallbacks } from '@freetalk/config';
 import { describe, expect, it } from 'vitest';
-import { VoiceRoom } from '../src/worker';
+import worker, { generateIceConfig, VoiceRoom } from '../src/worker';
 
 interface TestAttachment {
   joined: boolean;
@@ -155,6 +155,24 @@ describe('Cloudflare voice room reconnects', () => {
 });
 
 describe('Cloudflare TURN IP fallback', () => {
+  it('does not expose credentials without the broker authorization token', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example/turn-credentials', { method: 'POST' }),
+      { TURN_BROKER_TOKEN: 'expected-secret' } as never,
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it('returns the safe STUN fallback when TURN provider secrets are absent', async () => {
+    const response = await generateIceConfig({});
+
+    expect(response.iceServers).toEqual([
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:stun.l.google.com:19302' },
+    ]);
+  });
+
   it('accepts only valid IPv4 answers from DNS over HTTPS', () => {
     expect(
       parseDnsIpv4Answers({

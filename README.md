@@ -27,7 +27,7 @@ pnpm dev:desktop
 pnpm tauri:dev
 ```
 
-Локальный сигналинг слушает только `127.0.0.1:8787`, хранит комнаты в памяти и запускается без облачного аккаунта. Development URL задан в `apps/desktop/.env.development`, а production-сборка использует опубликованный Cloudflare WSS из `apps/desktop/.env.production`.
+Локальный сигналинг слушает только `127.0.0.1:8787`, хранит комнаты в памяти и запускается без облачного аккаунта. Development URL задан в `apps/desktop/.env.development`, а production-сборка использует WSS на отдельном VPS из `apps/desktop/.env.production`.
 
 ## Реализовано
 
@@ -94,17 +94,17 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.11 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены `NSMicrophoneUsageDescription`, audio-input/network entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.12 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
 Для будущего signed/notarized release используйте Apple Developer ID Application certificate, App Store Connect issuer/key и переменные CI `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`, затем включите signing/notarization по [Tauri macOS signing guide](https://v2.tauri.app/distribute/sign/macos/). Платная Apple account для локальной unsigned разработки не нужна.
 
-## Бесплатный production signaling и TURN
+## Production signaling и TURN
 
-Рекомендуется `apps/cloudflare-signaling`: один Durable Object на room code, WebSocket Hibernation, без БД и аудио. На 23.08.2026 SQLite-backed DO доступны на Workers Free; Free limits не являются SLA и при превышении запросы могут отклоняться. Развёртывание описано в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Production-сигналинг работает на Node.js-сервисе в VPS Санкт-Петербурга за Caddy/WSS. Комнаты находятся только в памяти, аудио на VPS не передаётся. Cloudflare Worker оставлен как закрытый server-to-server broker краткоживущих TURN-данных: клиенты к `workers.dev` больше не подключаются. Развёртывание описано в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-Production Worker развёрнут и проверен по адресу `freetalk-signaling.freetalk-cloudflare-signaling.workers.dev`. Production build:
+Production WSS развёрнут и проверен по адресу `wss://freetalk.191-44-38-60.sslip.io/ws`. Production build:
 
 ```powershell
 pnpm tauri:build
@@ -112,11 +112,13 @@ pnpm tauri:build
 
 Проверка сетевых точек через обычный Ethernet без VPN и ограничения для сложных NAT описаны в [docs/RUSSIA-NETWORK.md](docs/RUSSIA-NETWORK.md).
 
-TURN secrets задаются только Worker:
+Основные TURN secrets задаются только Worker:
 
 - `TURN_KEY_ID`;
 - `TURN_KEY_API_TOKEN`;
 - `TURN_CREDENTIAL_TTL_SECONDS` (например, `86400`).
+
+Worker и VPS дополнительно используют одинаковый `TURN_BROKER_TOKEN`; он не попадает в клиент или репозиторий. На VPS задаётся `TURN_BROKER_URL`. Сам VPS является платным ресурсом пользователя, поэтому production-сценарий больше не заявляется как полностью бесплатный.
 
 Без TURN FreeTalk продолжает использовать бесплатный STUN, но не обещает соединение через symmetric NAT и строгие корпоративные firewalls. В репозитории есть только `.env.example` без ключей.
 

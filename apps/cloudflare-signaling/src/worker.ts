@@ -16,7 +16,64 @@ interface Env {
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   TURN_CREDENTIAL_TTL_SECONDS?: string;
+  TURN_BROKER_TOKEN?: string;
   ALLOWED_ORIGIN?: string;
+}
+
+const fallbackIceServers: RTCIceServer[] = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+];
+
+async function turnIpv4Addresses() {
+  try {
+    const response = await fetch(
+      'https://cloudflare-dns.com/dns-query?name=turn.cloudflare.com&type=A',
+      {
+        headers: { Accept: 'application/dns-json' },
+      },
+    );
+    if (!response.ok) return [];
+    return parseDnsIpv4Answers(await response.json<unknown>());
+  } catch {
+    return [];
+  }
+}
+
+export async function generateIceConfig(
+  env: Pick<Env, 'TURN_KEY_ID' | 'TURN_KEY_API_TOKEN' | 'TURN_CREDENTIAL_TTL_SECONDS'>,
+): Promise<Extract<ServerMessage, { type: 'ice-config' }>> {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN)
+    return { type: 'ice-config', iceServers: fallbackIceServers };
+  const ttl = Number(env.TURN_CREDENTIAL_TTL_SECONDS ?? 86_400);
+  try {
+    const [response, turnAddresses] = await Promise.all([
+      fetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(env.TURN_KEY_ID)}/credentials/generate-ice-servers`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ttl }),
+        },
+      ),
+      turnIpv4Addresses(),
+    ]);
+    if (!response.ok) throw new Error(`TURN provider returned ${response.status}`);
+    const result = await response.json<{ iceServers: RTCIceServer[] }>();
+    return {
+      type: 'ice-config',
+      iceServers: [
+        ...fallbackIceServers,
+        ...withCloudflareTurnIpFallbacks(result.iceServers, turnAddresses),
+      ],
+      expiresAt: Date.now() + ttl * 1000,
+    };
+  } catch {
+    return { type: 'ice-config', iceServers: fallbackIceServers };
+  }
 }
 
 interface SocketAttachment {
@@ -44,6 +101,17 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/health')
       return Response.json({ ok: true, service: 'freetalk-cloudflare-signaling' });
+    if (url.pathname === '/turn-credentials') {
+      if (
+        request.method !== 'POST' ||
+        !env.TURN_BROKER_TOKEN ||
+        request.headers.get('Authorization') !== `Bearer ${env.TURN_BROKER_TOKEN}`
+      )
+        return new Response('Forbidden', { status: 403 });
+      return Response.json(await generateIceConfig(env), {
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    }
     if (url.pathname !== '/ws' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return new Response('Not found', { status: 404 });
     const origin = request.headers.get('Origin');
@@ -472,59 +540,6 @@ export class VoiceRoom implements DurableObject {
   }
 
   private async iceConfig(): Promise<Extract<ServerMessage, { type: 'ice-config' }>> {
-    const fallback: RTCIceServer[] = [
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'stun:stun.l.google.com:19302' },
-    ];
-    if (!this.env.TURN_KEY_ID || !this.env.TURN_KEY_API_TOKEN) {
-      console.warn('TURN credentials unavailable: Worker secrets are missing');
-      return { type: 'ice-config', iceServers: fallback };
-    }
-    const ttl = Number(this.env.TURN_CREDENTIAL_TTL_SECONDS ?? 86_400);
-    try {
-      const [response, turnIpv4Addresses] = await Promise.all([
-        fetch(
-          `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(this.env.TURN_KEY_ID)}/credentials/generate-ice-servers`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${this.env.TURN_KEY_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ttl }),
-          },
-        ),
-        this.turnIpv4Addresses(),
-      ]);
-      if (!response.ok) {
-        console.warn(`TURN credential request failed with HTTP ${response.status}`);
-        throw new Error('TURN error');
-      }
-      const result = await response.json<{ iceServers: RTCIceServer[] }>();
-      return {
-        type: 'ice-config',
-        iceServers: [
-          ...fallback,
-          ...withCloudflareTurnIpFallbacks(result.iceServers, turnIpv4Addresses),
-        ],
-        expiresAt: Date.now() + ttl * 1000,
-      };
-    } catch {
-      console.warn('TURN credentials unavailable: using STUN fallback');
-      return { type: 'ice-config', iceServers: fallback };
-    }
-  }
-
-  private async turnIpv4Addresses() {
-    try {
-      const response = await fetch(
-        'https://cloudflare-dns.com/dns-query?name=turn.cloudflare.com&type=A',
-        { headers: { Accept: 'application/dns-json' } },
-      );
-      if (!response.ok) return [];
-      return parseDnsIpv4Answers(await response.json<unknown>());
-    } catch {
-      return [];
-    }
+    return generateIceConfig(this.env);
   }
 }

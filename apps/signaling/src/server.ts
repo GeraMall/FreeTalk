@@ -1,4 +1,5 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import {
   CLIENT_STALE_AFTER_MS,
   MAX_SIGNAL_BYTES,
@@ -15,7 +16,17 @@ const allowedOrigin = process.env.ALLOWED_ORIGIN ?? '*';
 const manager = new RoomManager();
 const metadata = new WeakMap<
   WebSocket,
-  { roomId?: string; clientId?: string; timestamps: number[] }
+  {
+    roomId?: string;
+    clientId?: string;
+    timestamps: number[];
+    clientConnectionId: string;
+    serverConnectionId: string;
+  }
+>();
+const upgradeMetadata = new WeakMap<
+  IncomingMessage,
+  { clientConnectionId: string; serverConnectionId: string }
 >();
 
 const httpServer = createServer(async (request, response) => {
@@ -41,13 +52,40 @@ httpServer.on('upgrade', (request, socket, head) => {
     socket.destroy();
     return;
   }
+  const url = new URL(request.url, 'http://127.0.0.1');
+  const requestedConnectionId = url.searchParams.get('cid') ?? '';
+  const connectionInfo = {
+    clientConnectionId: /^[0-9a-f-]{36}$/i.test(requestedConnectionId)
+      ? requestedConnectionId
+      : 'missing-or-invalid',
+    serverConnectionId: randomUUID(),
+  };
+  upgradeMetadata.set(request, connectionInfo);
   sockets.handleUpgrade(request, socket, head, (webSocket) =>
-    sockets.emit('connection', webSocket),
+    sockets.emit('connection', webSocket, request),
   );
 });
 
-sockets.on('connection', (socket) => {
-  metadata.set(socket, { timestamps: [] });
+sockets.on('headers', (headers, request) => {
+  const info = upgradeMetadata.get(request);
+  if (!info) return;
+  headers.push(`x-freetalk-server-connection-id: ${info.serverConnectionId}`);
+  headers.push('x-freetalk-edge-colo: VPS-SPB');
+});
+
+sockets.on('connection', (socket, request) => {
+  const connectionInfo = upgradeMetadata.get(request) ?? {
+    clientConnectionId: 'missing-or-invalid',
+    serverConnectionId: randomUUID(),
+  };
+  metadata.set(socket, { timestamps: [], ...connectionInfo });
+  console.info(
+    JSON.stringify({
+      event: 'socket.accepted',
+      timestamp: new Date().toISOString(),
+      ...connectionInfo,
+    }),
+  );
   const connection: PeerConnection = {
     send: (message) => send(socket, message),
     close: (code, reason) => socket.close(code, reason),
@@ -70,6 +108,7 @@ sockets.on('connection', (socket) => {
 
     try {
       const message = parseClientMessage(data.toString());
+      logSocketEvent(socket, 'message.received', { messageType: message.type });
       if (message.type === 'create-room' || message.type === 'join-room') {
         if (meta.roomId)
           return send(socket, {
@@ -173,8 +212,18 @@ sockets.on('connection', (socket) => {
     }
   });
 
-  socket.on('close', () => {
+  socket.on('close', (code, reason) => {
     const meta = metadata.get(socket);
+    console.info(
+      JSON.stringify({
+        event: 'socket.closed',
+        timestamp: new Date().toISOString(),
+        clientConnectionId: meta?.clientConnectionId ?? null,
+        serverConnectionId: meta?.serverConnectionId ?? null,
+        code,
+        reason: reason.toString(),
+      }),
+    );
     if (meta?.roomId && meta.clientId) {
       // A short grace period lets the same authenticated in-memory session replace
       // this connection. RoomManager ignores this delayed leave after replacement.
@@ -184,10 +233,30 @@ sockets.on('connection', (socket) => {
       ).unref();
     }
   });
+
+  socket.on('error', (error) => {
+    logSocketEvent(socket, 'socket.error', { error: error.message });
+  });
 });
 
 function send(socket: WebSocket, message: ServerMessage) {
-  if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+  if (socket.readyState === socket.OPEN) {
+    socket.send(JSON.stringify(message));
+    logSocketEvent(socket, 'message.sent', { messageType: message.type });
+  }
+}
+
+function logSocketEvent(socket: WebSocket, event: string, details: Record<string, unknown>) {
+  const meta = metadata.get(socket);
+  console.info(
+    JSON.stringify({
+      event,
+      timestamp: new Date().toISOString(),
+      clientConnectionId: meta?.clientConnectionId ?? null,
+      serverConnectionId: meta?.serverConnectionId ?? null,
+      ...details,
+    }),
+  );
 }
 
 setInterval(() => manager.removeStale(CLIENT_STALE_AFTER_MS), 15_000).unref();

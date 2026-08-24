@@ -1,0 +1,9 @@
+freetalk.191-44-38-60.sslip.io {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+
+	log {
+		output stdout
+		format json
+	}
+}
