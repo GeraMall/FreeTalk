@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>FreeTalk использует микрофон только для передачи вашего голоса участникам текущей комнаты.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>FreeTalk использует камеру только когда вы сами включаете видео в текущей комнате.</string>
 </dict>
 </plist>

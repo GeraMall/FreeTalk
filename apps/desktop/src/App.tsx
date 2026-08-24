@@ -12,16 +12,22 @@ import { RemoteAudio } from './lib/remote-audio';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
 import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
+import { VideoManager, type LocalVideoState } from './lib/video-manager';
 import {
   checkForUpdate,
   currentVersion,
   installPendingUpdate,
   type UpdateStatus,
 } from './lib/updater';
-import { RoomView, type PeerUiState } from './components/RoomView';
+import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
+const NO_LOCAL_VIDEO: LocalVideoState = {
+  cameraEnabled: false,
+  screenEnabled: false,
+  source: 'none',
+};
 
 function processingSettings(settings: LocalSettings) {
   return {
@@ -66,9 +72,14 @@ export function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
   const [appVersion, setAppVersion] = useState('0.3.11');
   const [turnAvailable, setTurnAvailable] = useState(false);
+  const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
+  const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
+  const [videoBusy, setVideoBusy] = useState(false);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
+  const video = useRef<VideoManager | undefined>(undefined);
+  const remoteVideoStreams = useRef(new Map<string, MediaStream>());
   const peers = useRef<PeerManager | undefined>(undefined);
   const signaling = useRef<SignalingClient | undefined>(undefined);
   const currentIceServers = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
@@ -112,12 +123,15 @@ export function App() {
     signaling.current = undefined;
     peers.current?.closeAll();
     peers.current = undefined;
+    video.current?.dispose();
+    video.current = undefined;
     audio.current?.stop();
     audio.current = undefined;
     remoteAudio.current.closeAll();
     notificationSounds.current.stop();
     participantNotifications.current.clear();
     listeningDiagnostics.current.clear();
+    remoteVideoStreams.current.clear();
     currentIceServers.current = DEFAULT_ICE_SERVERS;
     setRoomId(undefined);
     setParticipants([]);
@@ -126,6 +140,9 @@ export function App() {
     setSignalState('offline');
     setJoining(false);
     setTurnAvailable(false);
+    setLocalVideo(NO_LOCAL_VIDEO);
+    setRemoteVideos({});
+    setVideoBusy(false);
   }, []);
 
   useEffect(() => {
@@ -156,6 +173,7 @@ export function App() {
     const leave = () => {
       signaling.current?.close();
       peers.current?.closeAll();
+      video.current?.dispose();
       audio.current?.stop();
       remoteAudio.current.closeAll();
       notificationSounds.current.stop();
@@ -275,7 +293,7 @@ export function App() {
         peers.current?.closeAll();
         const localStream = audio.current?.getStream();
         if (!localStream) return;
-        peers.current = new PeerManager(
+        const peerManager = new PeerManager(
           selfId.current,
           currentIceServers.current,
           localStream,
@@ -306,6 +324,28 @@ export function App() {
                 .then(() => connectionDiagnostics.record('remote-audio-attach:end', peerId))
                 .catch(() => connectionDiagnostics.record('remote-audio-attach:error', peerId));
             },
+            onVideoTrack: (peerId, stream) => {
+              remoteVideoStreams.current.set(peerId, stream);
+              setRemoteVideos((old) => ({
+                ...old,
+                [peerId]: {
+                  source:
+                    old[peerId]?.source && old[peerId].source !== 'none'
+                      ? old[peerId].source
+                      : 'camera',
+                  stream,
+                },
+              }));
+            },
+            onVideoState: (peerId, source) => {
+              setRemoteVideos((old) => ({
+                ...old,
+                [peerId]: {
+                  source,
+                  stream: source === 'none' ? undefined : remoteVideoStreams.current.get(peerId),
+                },
+              }));
+            },
             onState: (peerId, connection) =>
               setPeerState((old) => ({
                 ...old,
@@ -317,8 +357,12 @@ export function App() {
               })),
           },
         );
+        peers.current = peerManager;
+        const currentVideo = video.current?.getCurrent();
+        if (currentVideo?.track)
+          void peerManager.setVideoTrack(currentVideo.track, currentVideo.source);
         for (const participant of message.participants)
-          if (participant.id !== selfId.current) peers.current.ensure(participant.id);
+          if (participant.id !== selfId.current) peerManager.ensure(participant.id);
         return;
       }
       if (message.type === 'participant-joined') {
@@ -342,6 +386,12 @@ export function App() {
         setParticipants((old) => old.filter((item) => item.id !== message.participantId));
         peers.current?.remove(message.participantId);
         remoteAudio.current.remove(message.participantId);
+        remoteVideoStreams.current.delete(message.participantId);
+        setRemoteVideos((old) => {
+          const next = { ...old };
+          delete next[message.participantId];
+          return next;
+        });
         if (shouldNotify) void notificationSounds.current.playDisconnected();
         return;
       }
@@ -389,7 +439,7 @@ export function App() {
         try {
           await peers.current?.handle(message);
         } catch {
-          setError('Не удалось согласовать прямое аудиосоединение. Возможно, сети требуется TURN.');
+          setError('Не удалось согласовать прямое медиасоединение. Возможно, сети требуется TURN.');
         }
       }
       if (message.type === 'room-closed' || message.type === 'participant-disconnected') {
@@ -436,6 +486,13 @@ export function App() {
       void stream;
       manager.setMuted(false);
       audio.current = manager;
+      video.current = new VideoManager(
+        async (track, source) => {
+          await peers.current?.setVideoTrack(track, source);
+        },
+        setLocalVideo,
+        setError,
+      );
       await refreshDevices();
       updateSettings({ displayName: cleanName });
       setName(cleanName);
@@ -476,6 +533,20 @@ export function App() {
     setMuted(next);
     audio.current?.setMuted(next);
     signaling.current?.send({ type: 'mute-changed', muted: next });
+  };
+
+  const runVideoAction = async (action: 'camera' | 'screen') => {
+    if (!video.current || videoBusy) return;
+    setError('');
+    setVideoBusy(true);
+    try {
+      if (action === 'camera') await video.current.toggleCamera();
+      else await video.current.toggleScreen();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
+    } finally {
+      setVideoBusy(false);
+    }
   };
 
   const setTransmissionMode = (mode: LocalSettings['transmissionMode']) => {
@@ -636,6 +707,9 @@ export function App() {
         selfId={selfId.current}
         peerState={peerState}
         localSpeaking={localSpeaking}
+        localVideo={localVideo}
+        remoteVideos={remoteVideos}
+        videoBusy={videoBusy}
         muted={muted}
         pttPressed={pttPressed}
         settings={settings}
@@ -645,6 +719,8 @@ export function App() {
         turnAvailable={turnAvailable}
         onCopyInvite={() => void copyInvite()}
         onMute={toggleMute}
+        onCamera={() => void runVideoAction('camera')}
+        onScreen={() => void runVideoAction('screen')}
         onTransmissionMode={() =>
           setTransmissionMode(
             settings.transmissionMode === 'push-to-talk' ? 'voice-activation' : 'push-to-talk',

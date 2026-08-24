@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Participant } from '@freetalk/protocol';
 import {
   Check,
+  Camera,
+  CameraOff,
   Copy,
   Crown,
   LogOut,
+  Maximize2,
   Mic,
   MicOff,
+  MonitorUp,
   MoreHorizontal,
   Radio,
   Settings,
+  Square,
   UserPlus,
   Volume2,
   VolumeX,
@@ -17,11 +22,14 @@ import {
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
+import type { LocalVideoSource, LocalVideoState } from '../lib/video-manager';
 
 export type PeerUiState = Record<
   string,
   { connection: RTCPeerConnectionState | 'new'; speaking: boolean; hasAudio: boolean }
 >;
+
+export type RemoteVideoUiState = Record<string, { source: LocalVideoSource; stream?: MediaStream }>;
 
 interface RoomViewProps {
   roomId: string;
@@ -29,6 +37,9 @@ interface RoomViewProps {
   participants: Participant[];
   peerState: PeerUiState;
   localSpeaking: boolean;
+  localVideo: LocalVideoState;
+  remoteVideos: RemoteVideoUiState;
+  videoBusy: boolean;
   muted: boolean;
   pttPressed: boolean;
   signalingState: SignalingState;
@@ -38,6 +49,8 @@ interface RoomViewProps {
   turnAvailable: boolean;
   onCopyInvite(): void;
   onMute(): void;
+  onCamera(): void;
+  onScreen(): void;
   onTransmissionMode(): void;
   onSettings(): void;
   onLeave(): void;
@@ -52,6 +65,9 @@ export function RoomView({
   participants,
   peerState,
   localSpeaking,
+  localVideo,
+  remoteVideos,
+  videoBusy,
   muted,
   pttPressed,
   signalingState,
@@ -61,6 +77,8 @@ export function RoomView({
   turnAvailable,
   onCopyInvite,
   onMute,
+  onCamera,
+  onScreen,
   onTransmissionMode,
   onSettings,
   onLeave,
@@ -124,9 +142,14 @@ export function RoomView({
             const hasAudio = isSelf || (peerState[participant.id]?.hasAudio ?? false);
             const locallyMuted = settings.mutedPeers[participant.id] ?? false;
             const canModerate = Boolean(self?.isOwner && !isSelf);
+            const participantVideo = isSelf
+              ? { source: localVideo.source, stream: localVideo.previewStream }
+              : (remoteVideos[participant.id] ?? { source: 'none' as const });
+            const hasVisibleVideo =
+              participantVideo.source !== 'none' && Boolean(participantVideo.stream);
             return (
               <article
-                className={`participant-card ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+                className={`participant-card ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''} ${hasVisibleVideo ? 'has-video' : ''} ${participantVideo.source === 'screen' ? 'screen-sharing' : ''}`}
                 role="listitem"
                 key={participant.id}
               >
@@ -174,7 +197,16 @@ export function RoomView({
                   )}
                 </div>
 
-                <ParticipantAvatar participant={participant} speaking={Boolean(speaking)} />
+                {hasVisibleVideo ? (
+                  <ParticipantVideo
+                    stream={participantVideo.stream!}
+                    source={participantVideo.source as Exclude<LocalVideoSource, 'none'>}
+                    name={participant.name}
+                    local={isSelf}
+                  />
+                ) : (
+                  <ParticipantAvatar participant={participant} speaking={Boolean(speaking)} />
+                )}
                 <div className="participant-name">
                   <strong>{participant.name}</strong>
                   {isSelf && <span>вы</span>}
@@ -183,11 +215,13 @@ export function RoomView({
                   className={`participant-status ${participant.muted ? 'muted' : speaking ? 'live' : ''}`}
                 >
                   {participant.muted ? <MicOff size={14} /> : <i />}
-                  {participant.muted
-                    ? 'Микрофон выключен'
-                    : speaking
-                      ? 'Говорит'
-                      : connectionLabel(connection, hasAudio)}
+                  {participantVideo.source === 'screen'
+                    ? 'Демонстрация экрана'
+                    : participant.muted
+                      ? 'Микрофон выключен'
+                      : speaking
+                        ? 'Говорит'
+                        : connectionLabel(connection, hasAudio)}
                 </div>
                 <VoiceWave active={Boolean(speaking)} />
 
@@ -242,6 +276,32 @@ export function RoomView({
         </button>
         <div className="dock-divider" />
         <button
+          className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
+          disabled={videoBusy}
+          onClick={onCamera}
+        >
+          <span className="dock-icon">{localVideo.cameraEnabled ? <Camera /> : <CameraOff />}</span>
+          <span>
+            <strong>Камера</strong>
+            <small>{localVideo.cameraEnabled ? 'Включена' : 'Выключена'}</small>
+          </span>
+        </button>
+        <div className="dock-divider" />
+        <button
+          className={`dock-control video-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
+          disabled={videoBusy}
+          onClick={onScreen}
+        >
+          <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
+          <span>
+            <strong>{localVideo.screenEnabled ? 'Остановить экран' : 'Показать экран'}</strong>
+            <small>
+              {localVideo.screenEnabled ? 'Идёт демонстрация' : 'Выбрать окно или экран'}
+            </small>
+          </span>
+        </button>
+        <div className="dock-divider" />
+        <button
           className={`dock-control ${pttPressed ? 'pressed' : ''}`}
           onClick={onTransmissionMode}
         >
@@ -269,6 +329,54 @@ export function RoomView({
         </button>
       </footer>
     </main>
+  );
+}
+
+function ParticipantVideo({
+  stream,
+  source,
+  name,
+  local,
+}: {
+  stream: MediaStream;
+  source: Exclude<LocalVideoSource, 'none'>;
+  name: string;
+  local: boolean;
+}) {
+  const [element, setElement] = useState<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (!element) return;
+    element.srcObject = stream;
+    void element.play().catch(() => undefined);
+    return () => {
+      if (element.srcObject === stream) element.srcObject = null;
+    };
+  }, [element, stream]);
+
+  return (
+    <div className={`participant-video ${source}`}>
+      <video
+        ref={setElement}
+        aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
+        autoPlay
+        muted
+        playsInline
+      />
+      <span className="video-source-badge">
+        {source === 'screen' ? <MonitorUp size={13} /> : <Camera size={13} />}
+        {source === 'screen' ? 'Демонстрация экрана' : local ? 'Ваша камера' : 'Камера'}
+      </span>
+      <button
+        className="video-fullscreen"
+        aria-label="Открыть видео на весь экран"
+        onClick={(event) => {
+          const container = event.currentTarget.parentElement;
+          void container?.requestFullscreen?.();
+        }}
+      >
+        <Maximize2 size={14} />
+      </button>
+    </div>
   );
 }
 
