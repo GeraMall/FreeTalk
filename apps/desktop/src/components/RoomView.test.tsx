@@ -26,6 +26,7 @@ afterEach(cleanup);
 function view(
   localSource: 'none' | 'camera' | 'screen' | 'both' = 'none',
   remoteVideos: RemoteVideoUiState = {},
+  remoteSpeaking = false,
 ) {
   return (
     <RoomView
@@ -33,7 +34,7 @@ function view(
       selfId={selfId}
       participants={participants}
       peerState={{
-        [peerId]: { connection: 'connected', speaking: false, hasAudio: true },
+        [peerId]: { connection: 'connected', speaking: remoteSpeaking, hasAudio: true },
       }}
       localSpeaking={false}
       localVideo={{
@@ -91,6 +92,28 @@ describe('RoomView media layouts', () => {
     expect(container.querySelectorAll('.participant-strip .participant-card')).toHaveLength(2);
     expect(getByText('Демонстрация экрана')).not.toBeNull();
     expect(container.querySelector('.participants-grid')).toBeNull();
+  });
+
+  it('does not detach the active screen stream when speaking state changes', () => {
+    const { getByLabelText, rerender } = render(
+      view('none', { [peerId]: { screen: stream } }, false),
+    );
+    const video = getByLabelText('Экран Друг') as HTMLVideoElement;
+    let current = video.srcObject;
+    const assignments: Array<MediaProvider | null> = [];
+    Object.defineProperty(video, 'srcObject', {
+      configurable: true,
+      get: () => current,
+      set: (value: MediaProvider | null) => {
+        current = value;
+        assignments.push(value);
+      },
+    });
+
+    rerender(view('none', { [peerId]: { screen: stream } }, true));
+
+    expect(getByLabelText('Экран Друг')).toBe(video);
+    expect(assignments).toEqual([]);
   });
 
   it('plays remote screen audio but keeps the local preview muted', () => {

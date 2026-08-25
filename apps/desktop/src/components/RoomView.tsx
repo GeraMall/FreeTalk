@@ -421,17 +421,20 @@ function ParticipantVideo({
   useEffect(() => {
     if (!element) return;
     element.srcObject = stream;
+    void element.play().catch(() => undefined);
+    return () => {
+      if (element.srcObject === stream) element.srcObject = null;
+    };
+  }, [element, stream]);
+  useEffect(() => {
+    if (!element) return;
     element.muted = muted;
     element.volume = Math.min(1, Math.max(0, volume));
     if (outputDeviceId && 'setSinkId' in element)
       void (element as HTMLVideoElement & { setSinkId(deviceId: string): Promise<void> })
         .setSinkId(outputDeviceId)
         .catch(() => undefined);
-    void element.play().catch(() => undefined);
-    return () => {
-      if (element.srcObject === stream) element.srcObject = null;
-    };
-  }, [element, muted, outputDeviceId, stream, volume]);
+  }, [element, muted, outputDeviceId, volume]);
 
   return (
     <div className={`participant-video ${source}`}>

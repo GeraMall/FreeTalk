@@ -132,9 +132,15 @@ export class VideoManager {
           echoCancellation: false,
           noiseSuppression: false,
           channelCount: { ideal: 2 },
+          restrictOwnAudio: true,
         },
-        video: { frameRate: { ideal: 30, max: 30 } },
-        systemAudio: 'include',
+        video: {
+          displaySurface: 'window',
+          frameRate: { ideal: 30, max: 30 },
+        },
+        selfBrowserSurface: 'exclude',
+        systemAudio: 'exclude',
+        windowAudio: 'window',
       } as DisplayMediaStreamOptions);
     } catch (error) {
       connectionDiagnostics.record('screen-capture:error', undefined, {

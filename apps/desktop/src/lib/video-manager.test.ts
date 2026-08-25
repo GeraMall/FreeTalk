@@ -158,9 +158,15 @@ describe('VideoManager', () => {
         echoCancellation: false,
         noiseSuppression: false,
         channelCount: { ideal: 2 },
+        restrictOwnAudio: true,
       },
-      video: { frameRate: { ideal: 30, max: 30 } },
-      systemAudio: 'include',
+      video: {
+        displaySurface: 'window',
+        frameRate: { ideal: 30, max: 30 },
+      },
+      selfBrowserSurface: 'exclude',
+      systemAudio: 'exclude',
+      windowAudio: 'window',
     });
     expect(publish).toHaveBeenCalledWith(screenTracks[0], 'screen', screenStreams[0]);
     expect(screenAudioTracks[0]!.contentHint).toBe('music');

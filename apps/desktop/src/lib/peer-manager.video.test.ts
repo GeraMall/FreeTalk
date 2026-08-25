@@ -208,6 +208,93 @@ describe('PeerManager video sender lifecycle', () => {
     expect(VideoPeerConnection.instances[0]!.channels).toHaveLength(1);
   });
 
+  it('sends all active video sources to a participant joining later and answers sync requests', async () => {
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    const camera = track('video', 'camera-already-active');
+    const screen = track('video', 'screen-already-active');
+    await manager.setVideoTrack(camera, 'camera');
+    await manager.setVideoTrack(screen, 'screen');
+
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const channel = VideoPeerConnection.instances[0]!.channels[0]!;
+    const sentStates = channel.send.mock.calls
+      .map(([value]) => JSON.parse(String(value)) as Record<string, unknown>)
+      .filter((value) => value.sources) as Array<{
+      sources: Record<string, { active: boolean; trackId: string | null }>;
+    }>;
+
+    expect(sentStates.at(-1)?.sources.camera).toMatchObject({
+      active: true,
+      trackId: camera.id,
+    });
+    expect(sentStates.at(-1)?.sources.screen).toMatchObject({
+      active: true,
+      trackId: screen.id,
+    });
+
+    const statesBeforeRequest = sentStates.length;
+    const onSyncRequest = channel.onmessage as ((event: MessageEvent) => void) | null;
+    onSyncRequest?.({
+      data: JSON.stringify({ version: 2, request: 'video-state' }),
+    } as MessageEvent);
+    const statesAfterRequest = channel.send.mock.calls.filter(([value]) => {
+      try {
+        return Boolean((JSON.parse(String(value)) as { sources?: unknown }).sources);
+      } catch {
+        return false;
+      }
+    });
+    expect(statesAfterRequest).toHaveLength(statesBeforeRequest + 1);
+  });
+
+  it('maps an already received remote video track by track id after a late state sync', () => {
+    const onVideoTrack = vi.fn();
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn(), onVideoTrack, onVideoState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    const remoteScreen = track('video', 'late-remote-screen');
+    const remoteStream = new FakeStream([remoteScreen]) as unknown as MediaStream;
+    const onRemoteTrack = connection.ontrack as ((event: RTCTrackEvent) => void) | null;
+    onRemoteTrack?.({
+      track: remoteScreen,
+      streams: [remoteStream],
+      transceiver: { mid: null },
+    } as unknown as RTCTrackEvent);
+
+    const incomingChannel = new FakeDataChannel();
+    const onDataChannel = connection.ondatachannel as ((event: RTCDataChannelEvent) => void) | null;
+    onDataChannel?.({ channel: incomingChannel } as unknown as RTCDataChannelEvent);
+    const onStateSync = incomingChannel.onmessage as ((event: MessageEvent) => void) | null;
+    onStateSync?.({
+      data: JSON.stringify({
+        version: 2,
+        sources: {
+          camera: { active: false, mid: null, trackId: null },
+          screen: { active: true, mid: null, trackId: remoteScreen.id },
+        },
+      }),
+    } as MessageEvent);
+
+    expect(onVideoTrack).toHaveBeenCalledWith(
+      expect.any(String),
+      'screen',
+      remoteStream,
+      remoteScreen,
+    );
+  });
+
   it('sends captured system audio in the same screen stream and reuses its sender', async () => {
     const manager = new PeerManager(
       '286d39ef-61af-4aca-84b8-47f78b0f554a',

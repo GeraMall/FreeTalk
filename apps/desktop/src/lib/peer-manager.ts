@@ -3,6 +3,7 @@ import { connectionDiagnostics } from './connection-diagnostics';
 import type { VideoMediaSource } from './video-manager';
 
 const VIDEO_STATE_CHANNEL = 'freetalk-video-state-v1';
+const VIDEO_STATE_REQUEST = JSON.stringify({ version: 2, request: 'video-state' });
 
 interface VideoSenderContext {
   transceiver: RTCRtpTransceiver;
@@ -40,6 +41,7 @@ interface PeerContext {
   remoteVideoStateChannel?: RTCDataChannel;
   remoteVideoState: Record<VideoMediaSource, RemoteVideoSourceState>;
   remoteVideoTracksByMid: Map<string, { stream: MediaStream; track: MediaStreamTrack }>;
+  remoteVideoTracksById: Map<string, { stream: MediaStream; track: MediaStreamTrack }>;
 }
 
 const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
@@ -121,6 +123,7 @@ export class PeerManager {
         screen: { active: false, mid: null, trackId: null },
       },
       remoteVideoTracksByMid: new Map(),
+      remoteVideoTracksById: new Map(),
     };
     this.peers.set(peerId, context);
     connectionDiagnostics.record('peer-created', peerId, {
@@ -217,16 +220,18 @@ export class PeerManager {
           trackId: track.id,
         });
         if (mid) context.remoteVideoTracksByMid.set(mid, { stream, track });
+        context.remoteVideoTracksById.set(track.id, { stream, track });
         track.onended = () => {
-          const source = this.remoteSourceForMid(context, mid);
+          const source = this.remoteSourceForMedia(context, mid, track.id);
           connectionDiagnostics.record('remote-video-track:ended', peerId, {
             mediaSource: source ?? 'unknown',
             mid: mid ?? 'unassigned',
           });
           if (mid) context.remoteVideoTracksByMid.delete(mid);
+          context.remoteVideoTracksById.delete(track.id);
           if (source) this.events.onVideoState?.(peerId, source, false);
         };
-        this.publishMappedRemoteVideo(peerId, context, mid);
+        this.publishMappedRemoteVideo(peerId, context, mid, track.id);
         this.startDiagnosticTimer(peerId, context);
       } else if (stream.getVideoTracks().length > 0) {
         connectionDiagnostics.record('remote-screen-audio-track', peerId, {
@@ -242,7 +247,7 @@ export class PeerManager {
       if (channel.label !== VIDEO_STATE_CHANNEL) return;
       context.remoteVideoStateChannel?.close();
       context.remoteVideoStateChannel = channel;
-      channel.onmessage = ({ data }) => this.handleVideoStateMessage(peerId, context, data);
+      this.configureVideoStateChannel(peerId, context, channel, true);
     };
     connection.onconnectionstatechange = () => {
       connectionDiagnostics.record(`connection:${connection.connectionState}`, peerId);
@@ -250,6 +255,8 @@ export class PeerManager {
       if (connection.connectionState === 'connected') {
         context.iceRestartAttempts = 0;
         this.clearDisconnectTimer(context);
+        this.sendVideoState(peerId, context);
+        this.requestVideoState(context);
       } else if (
         connection.connectionState === 'disconnected' ||
         connection.connectionState === 'failed'
@@ -580,15 +587,16 @@ export class PeerManager {
     if (context.videoStateChannel) return;
     const channel = context.connection.createDataChannel(VIDEO_STATE_CHANNEL, { ordered: true });
     context.videoStateChannel = channel;
-    channel.onopen = () => {
-      connectionDiagnostics.record('video-state-channel:open', peerId);
-      this.sendVideoState(peerId, context);
-    };
-    channel.onclose = () => connectionDiagnostics.record('video-state-channel:closed', peerId);
+    this.configureVideoStateChannel(peerId, context, channel, false);
   }
 
   private sendVideoState(peerId: string, context: PeerContext) {
-    if (context.videoStateChannel?.readyState !== 'open') return;
+    const channels = new Set([context.videoStateChannel, context.remoteVideoStateChannel]);
+    for (const channel of channels)
+      if (channel?.readyState === 'open') this.sendVideoStateOn(peerId, context, channel);
+  }
+
+  private sendVideoStateOn(peerId: string, context: PeerContext, channel: RTCDataChannel) {
     const sources = Object.fromEntries(
       (['camera', 'screen'] as const).map((source) => {
         const sender = context.videoSenders[source];
@@ -603,13 +611,57 @@ export class PeerManager {
         ];
       }),
     ) as Record<VideoMediaSource, RemoteVideoSourceState>;
-    context.videoStateChannel.send(JSON.stringify({ version: 2, sources }));
+    if (!this.sendChannelMessage(channel, JSON.stringify({ version: 2, sources }))) return;
     connectionDiagnostics.record('video-source-map:sent', peerId, {
       cameraActive: sources.camera.active,
       cameraMid: sources.camera.mid ?? 'unassigned',
       screenActive: sources.screen.active,
       screenMid: sources.screen.mid ?? 'unassigned',
     });
+  }
+
+  private configureVideoStateChannel(
+    peerId: string,
+    context: PeerContext,
+    channel: RTCDataChannel,
+    incoming: boolean,
+  ) {
+    const synchronize = () => {
+      connectionDiagnostics.record('video-state-channel:open', peerId, {
+        direction: incoming ? 'incoming' : 'outgoing',
+      });
+      this.sendVideoStateOn(peerId, context, channel);
+      this.sendChannelMessage(channel, VIDEO_STATE_REQUEST);
+    };
+    channel.onmessage = ({ data }) => {
+      if (data === VIDEO_STATE_REQUEST) {
+        connectionDiagnostics.record('video-state-request:received', peerId);
+        this.sendVideoStateOn(peerId, context, channel);
+        return;
+      }
+      this.handleVideoStateMessage(peerId, context, data);
+    };
+    channel.onopen = synchronize;
+    channel.onclose = () => connectionDiagnostics.record('video-state-channel:closed', peerId);
+    if (channel.readyState === 'open') synchronize();
+  }
+
+  private requestVideoState(context: PeerContext) {
+    const channels = new Set([context.videoStateChannel, context.remoteVideoStateChannel]);
+    for (const channel of channels)
+      if (channel) this.sendChannelMessage(channel, VIDEO_STATE_REQUEST);
+  }
+
+  private sendChannelMessage(channel: RTCDataChannel, message: string) {
+    if (channel.readyState !== 'open') return false;
+    try {
+      channel.send(message);
+      return true;
+    } catch {
+      // The data channel can close between checking readyState and send(). Media
+      // stays connected and the next open/connected event requests state again.
+      return false;
+    }
   }
 
   private handleVideoStateMessage(peerId: string, context: PeerContext, raw: unknown) {
@@ -633,7 +685,12 @@ export class PeerManager {
           const onlyRemoteTrack = [...context.remoteVideoTracksByMid.entries()].at(-1);
           if (onlyRemoteTrack) {
             context.remoteVideoState[value.source].mid = onlyRemoteTrack[0];
-            this.publishMappedRemoteVideo(peerId, context, onlyRemoteTrack[0]);
+            this.publishMappedRemoteVideo(
+              peerId,
+              context,
+              onlyRemoteTrack[0],
+              onlyRemoteTrack[1].track.id,
+            );
           }
         }
         return;
@@ -660,7 +717,7 @@ export class PeerManager {
         });
         this.events.onVideoState?.(peerId, source, next.active);
         if (next.active) {
-          this.publishMappedRemoteVideo(peerId, context, next.mid ?? null);
+          this.publishMappedRemoteVideo(peerId, context, next.mid ?? null, next.trackId ?? null);
           this.startDiagnosticTimer(peerId, context);
         }
       }
@@ -757,17 +814,25 @@ export class PeerManager {
       .catch(() => undefined);
   }
 
-  private remoteSourceForMid(context: PeerContext, mid: string | null) {
-    if (!mid) return undefined;
+  private remoteSourceForMedia(context: PeerContext, mid: string | null, trackId: string | null) {
     return (['camera', 'screen'] as const).find(
-      (source) => context.remoteVideoState[source].mid === mid,
+      (source) =>
+        (mid && context.remoteVideoState[source].mid === mid) ||
+        (trackId && context.remoteVideoState[source].trackId === trackId),
     );
   }
 
-  private publishMappedRemoteVideo(peerId: string, context: PeerContext, mid: string | null) {
-    const source = this.remoteSourceForMid(context, mid);
-    if (!source || !context.remoteVideoState[source].active || !mid) return;
-    const media = context.remoteVideoTracksByMid.get(mid);
+  private publishMappedRemoteVideo(
+    peerId: string,
+    context: PeerContext,
+    mid: string | null,
+    trackId: string | null,
+  ) {
+    const source = this.remoteSourceForMedia(context, mid, trackId);
+    if (!source || !context.remoteVideoState[source].active) return;
+    const media =
+      (mid ? context.remoteVideoTracksByMid.get(mid) : undefined) ??
+      (trackId ? context.remoteVideoTracksById.get(trackId) : undefined);
     if (!media) return;
     this.events.onVideoTrack?.(peerId, source, media.stream, media.track);
     this.events.onVideoState?.(peerId, source, true);
@@ -821,7 +886,7 @@ export class PeerManager {
           outboundPackets += Number(report.packetsSent ?? 0);
         }
         if (report.type === 'inbound-rtp' && report.kind === 'video') {
-          const source = this.remoteSourceForMid(context, String(report.mid ?? ''));
+          const source = this.remoteSourceForMedia(context, String(report.mid ?? ''), null);
           if (source)
             inboundVideoBySource.set(source, {
               bytes: Number(report.bytesReceived ?? 0),
