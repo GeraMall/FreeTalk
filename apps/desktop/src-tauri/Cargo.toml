@@ -1,6 +1,6 @@
 [package]
 name = "freetalk"
-version = "0.3.20"
+version = "0.3.21"
 description = "FreeTalk desktop voice chat"
 authors = ["FreeTalk contributors"]
 license = "MIT"

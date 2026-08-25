@@ -18,6 +18,7 @@ interface RemoteVideoSourceState {
 
 interface PeerContext {
   connection: RTCPeerConnection;
+  voiceSender?: RTCRtpSender;
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
@@ -136,6 +137,7 @@ export class PeerManager {
     for (const track of this.localStream.getAudioTracks()) {
       connectionDiagnostics.record('add-track:start', peerId, { kind: track.kind });
       const sender = connection.addTrack(track, this.localStream);
+      context.voiceSender = sender;
       connectionDiagnostics.record('add-track:end', peerId, { kind: track.kind });
       void sender.getParameters().encodings?.length;
       const parameters = sender.getParameters();
@@ -233,7 +235,11 @@ export class PeerManager {
         };
         this.publishMappedRemoteVideo(peerId, context, mid, track.id);
         this.startDiagnosticTimer(peerId, context);
-      } else if (stream.getVideoTracks().length > 0) {
+      } else if (
+        context.voiceSender
+          ? transceiver.sender !== context.voiceSender
+          : stream.getVideoTracks().length > 0
+      ) {
         connectionDiagnostics.record('remote-screen-audio-track', peerId, {
           trackId: track.id,
           streamId: stream.id,
@@ -425,9 +431,8 @@ export class PeerManager {
 
   async replaceAudioTrack(track: MediaStreamTrack) {
     await Promise.all(
-      [...this.peers.values()].map(async ({ connection }) => {
-        const sender = connection.getSenders().find((item) => item.track?.kind === 'audio');
-        if (sender) await sender.replaceTrack(track);
+      [...this.peers.values()].map(async (context) => {
+        if (context.voiceSender) await context.voiceSender.replaceTrack(track);
       }),
     );
   }

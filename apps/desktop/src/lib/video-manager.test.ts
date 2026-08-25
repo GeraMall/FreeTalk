@@ -168,7 +168,7 @@ describe('VideoManager', () => {
         frameRate: { ideal: 30, max: 30 },
       },
       selfBrowserSurface: 'exclude',
-      systemAudio: 'exclude',
+      systemAudio: 'include',
       windowAudio: 'window',
     });
     expect(publish).toHaveBeenCalledWith(screenTracks[0], 'screen', screenStreams[0]);

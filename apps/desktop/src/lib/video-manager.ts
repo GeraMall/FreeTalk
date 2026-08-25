@@ -143,7 +143,7 @@ export class VideoManager {
           frameRate: { ideal: 30, max: 30 },
         },
         selfBrowserSurface: 'exclude',
-        systemAudio: 'exclude',
+        systemAudio: includeAudio ? 'include' : 'exclude',
         windowAudio: includeAudio ? 'window' : 'exclude',
       } as DisplayMediaStreamOptions);
     } catch (error) {

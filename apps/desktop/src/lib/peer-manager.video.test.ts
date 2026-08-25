@@ -325,6 +325,68 @@ describe('PeerManager video sender lifecycle', () => {
     expect(connection.transceivers[1]!.sender.track).toBeNull();
   });
 
+  it('keeps microphone replacement bound to the voice sender while screen audio is active', async () => {
+    const voice = track('audio', 'voice');
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([voice]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    const screen = track('video', 'screen');
+    const systemAudio = track('audio', 'system-audio');
+    await manager.setVideoTrack(
+      screen,
+      'screen',
+      new FakeStream([screen, systemAudio]) as unknown as MediaStream,
+    );
+    const voiceSender = connection.senders[0]!;
+    const screenAudioSender = connection.transceivers[1]!.sender;
+    connection.senders.reverse();
+
+    const replacement = track('audio', 'replacement-voice');
+    await manager.replaceAudioTrack(replacement);
+
+    expect(voiceSender.replaceTrack).toHaveBeenCalledWith(replacement);
+    expect(screenAudioSender.replaceTrack).not.toHaveBeenCalledWith(replacement);
+  });
+
+  it('identifies screen audio by its transceiver even before its stream contains video', () => {
+    const voice = track('audio', 'voice');
+    const onTrack = vi.fn();
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([voice]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack, onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    const onRemoteTrack = connection.ontrack as ((event: RTCTrackEvent) => void) | null;
+    const remoteVoice = track('audio', 'remote-voice');
+    const remoteScreenAudio = track('audio', 'remote-system-audio');
+    const voiceStream = new FakeStream([remoteVoice]) as unknown as MediaStream;
+    const incompleteScreenStream = new FakeStream([remoteScreenAudio]) as unknown as MediaStream;
+
+    onRemoteTrack?.({
+      track: remoteVoice,
+      streams: [voiceStream],
+      transceiver: { sender: connection.senders[0], mid: 'voice' },
+    } as unknown as RTCTrackEvent);
+    onRemoteTrack?.({
+      track: remoteScreenAudio,
+      streams: [incompleteScreenStream],
+      transceiver: { sender: new FakeSender(null), mid: 'screen-audio' },
+    } as unknown as RTCTrackEvent);
+
+    expect(onTrack).toHaveBeenCalledOnce();
+    expect(onTrack).toHaveBeenCalledWith(expect.any(String), voiceStream);
+  });
+
   it('does not replace the voice stream when remote screen audio arrives', () => {
     const onTrack = vi.fn();
     const manager = new PeerManager(
