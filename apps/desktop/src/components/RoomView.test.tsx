@@ -121,11 +121,11 @@ describe('RoomView media layouts', () => {
     expect(assignments).toEqual([]);
   });
 
-  it('plays remote screen audio but keeps the local preview muted', () => {
+  it('keeps screen video muted because dedicated audio playback handles screen sound', () => {
     const remote = render(view('none', { [peerId]: { screen: stream } }));
     const remoteScreen = remote.getByLabelText('Экран Друг') as HTMLVideoElement;
-    expect(remoteScreen.muted).toBe(false);
-    expect(remoteScreen.volume).toBe(0.85);
+    expect(remoteScreen.muted).toBe(true);
+    expect(remoteScreen.volume).toBe(0);
     remote.unmount();
 
     const local = render(view('screen'));

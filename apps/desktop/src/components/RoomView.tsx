@@ -283,14 +283,8 @@ export function RoomView({
                 stream={participantMedia(screenPresenter).screen!}
                 source="screen"
                 name={screenPresenter.name}
-                muted={
-                  screenPresenter.id === selfId || Boolean(settings.mutedPeers[screenPresenter.id])
-                }
-                volume={
-                  (settings.screenVolumes[screenPresenter.id] ?? 1) *
-                  settings.outputVolume *
-                  (settings.echoDucking && localSpeaking ? settings.echoDuckingLevel : 1)
-                }
+                muted
+                volume={0}
                 outputDeviceId={settings.outputDeviceId}
                 onExpand={() =>
                   setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })

@@ -36,6 +36,7 @@ export class VideoManager {
     private readonly publish: PublishVideo,
     private readonly onState: (state: LocalVideoState) => void,
     private readonly onError: (message: string) => void = () => undefined,
+    private readonly onNotice: (message: string) => void = () => undefined,
   ) {}
 
   toggleCamera() {
@@ -140,6 +141,8 @@ export class VideoManager {
           : false,
         video: {
           displaySurface: 'window',
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
         },
         selfBrowserSurface: 'exclude',
@@ -179,7 +182,13 @@ export class VideoManager {
       ...videoTrackDetails(track),
       audioIncluded: Boolean(audioTrack),
       audioTrackId: audioTrack?.id ?? 'none',
+      displaySurface: track.getSettings().displaySurface ?? 'unknown',
     });
+    if (includeAudio && !audioTrack) {
+      this.onNotice(
+        'Экран включён, но система не предоставила аудиодорожку. Выберите окно со звуком; на macOS системный звук может быть недоступен в системном окне выбора.',
+      );
+    }
     await this.publish(track, 'screen', stream);
     this.emitState();
   }

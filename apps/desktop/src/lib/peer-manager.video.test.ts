@@ -164,22 +164,28 @@ describe('PeerManager video sender lifecycle', () => {
     const connection = VideoPeerConnection.instances[0]!;
     expect(connection.transceivers).toHaveLength(2);
     expect(connection.transceivers.map(({ sender }) => sender.track)).toEqual([camera, screen]);
-    expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(
+    expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
         degradationPreference: 'maintain-framerate',
         encodings: [
           expect.objectContaining({
-            maxBitrate: 3_500_000,
-            maxFramerate: 60,
+            maxBitrate: 1_500_000,
+            maxFramerate: 30,
             priority: 'medium',
           }),
         ],
       }),
     );
-    expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenCalledWith(
+    expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
         degradationPreference: 'maintain-resolution',
-        encodings: [expect.objectContaining({ maxFramerate: 30, priority: 'low' })],
+        encodings: [
+          expect.objectContaining({
+            maxBitrate: 6_000_000,
+            maxFramerate: 30,
+            priority: 'high',
+          }),
+        ],
       }),
     );
 
@@ -187,6 +193,11 @@ describe('PeerManager video sender lifecycle', () => {
       await manager.setVideoTrack(null, 'screen');
       expect(connection.transceivers[0]!.sender.track).toBe(camera);
       expect(connection.transceivers[1]!.sender.track).toBeNull();
+      expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          encodings: [expect.objectContaining({ maxBitrate: 3_500_000, maxFramerate: 60 })],
+        }),
+      );
       await manager.setVideoTrack(track('video', `screen-${index}`), 'screen');
     }
     expect(connection.transceivers).toHaveLength(2);
@@ -357,12 +368,13 @@ describe('PeerManager video sender lifecycle', () => {
   it('identifies screen audio by its transceiver even before its stream contains video', () => {
     const voice = track('audio', 'voice');
     const onTrack = vi.fn();
+    const onScreenAudioTrack = vi.fn();
     const manager = new PeerManager(
       '286d39ef-61af-4aca-84b8-47f78b0f554a',
       [],
       new FakeStream([voice]) as unknown as MediaStream,
       vi.fn(),
-      { onTrack, onState: vi.fn() },
+      { onTrack, onState: vi.fn(), onScreenAudioTrack },
     );
     manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
     const connection = VideoPeerConnection.instances[0]!;
@@ -385,16 +397,22 @@ describe('PeerManager video sender lifecycle', () => {
 
     expect(onTrack).toHaveBeenCalledOnce();
     expect(onTrack).toHaveBeenCalledWith(expect.any(String), voiceStream);
+    expect(onScreenAudioTrack).toHaveBeenCalledOnce();
+    expect(onScreenAudioTrack).toHaveBeenCalledWith(expect.any(String), expect.any(MediaStream));
+    expect((onScreenAudioTrack.mock.calls[0]![1] as MediaStream).getAudioTracks()).toEqual([
+      remoteScreenAudio,
+    ]);
   });
 
   it('does not replace the voice stream when remote screen audio arrives', () => {
     const onTrack = vi.fn();
+    const onScreenAudioTrack = vi.fn();
     const manager = new PeerManager(
       '286d39ef-61af-4aca-84b8-47f78b0f554a',
       [],
       new FakeStream([]) as unknown as MediaStream,
       vi.fn(),
-      { onTrack, onState: vi.fn() },
+      { onTrack, onState: vi.fn(), onScreenAudioTrack },
     );
     manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
     const connection = VideoPeerConnection.instances[0]!;
@@ -410,6 +428,10 @@ describe('PeerManager video sender lifecycle', () => {
     } as unknown as RTCTrackEvent);
 
     expect(onTrack).not.toHaveBeenCalled();
+    expect(onScreenAudioTrack).toHaveBeenCalledOnce();
+    expect((onScreenAudioTrack.mock.calls[0]![1] as MediaStream).getAudioTracks()).toEqual([
+      systemAudio,
+    ]);
   });
 
   it('reports remote video tracks and validated camera/screen state metadata', () => {

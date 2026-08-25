@@ -49,6 +49,7 @@ const ICE_RESTART_DELAYS_MS = [1_000, 3_000, 7_000] as const;
 
 export interface PeerEvents {
   onTrack(peerId: string, stream: MediaStream): void;
+  onScreenAudioTrack?(peerId: string, stream: MediaStream): void;
   onVideoTrack?(
     peerId: string,
     source: VideoMediaSource,
@@ -245,6 +246,7 @@ export class PeerManager {
           streamId: stream.id,
           mid: transceiver.mid ?? 'unassigned',
         });
+        this.events.onScreenAudioTrack?.(peerId, new MediaStream([track]));
       } else {
         this.events.onTrack(peerId, stream);
       }
@@ -456,7 +458,6 @@ export class PeerManager {
           const existing = context.videoSenders[source];
           if (existing) {
             await existing.sender.replaceTrack(track);
-            if (track) this.configureVideoSender(peerId, existing, source);
           } else if (track) {
             this.createVideoSender(peerId, context, source, track, stream);
           }
@@ -472,6 +473,10 @@ export class PeerManager {
               active: Boolean(audioTrack),
               trackId: audioTrack?.id ?? 'none',
             });
+          }
+          for (const activeSource of ['camera', 'screen'] as const) {
+            const sender = context.videoSenders[activeSource];
+            if (sender?.sender.track) this.configureVideoSender(peerId, sender, activeSource);
           }
           this.sendVideoState(peerId, context);
           this.startDiagnosticTimer(peerId, context);
@@ -799,10 +804,12 @@ export class PeerManager {
   ) {
     const parameters = videoSender.sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
-    parameters.encodings[0]!.maxBitrate = source === 'screen' ? 4_000_000 : 3_500_000;
-    parameters.encodings[0]!.maxFramerate = source === 'screen' ? 30 : 60;
+    const screenActive = Boolean(this.localVideoTracks.screen);
+    parameters.encodings[0]!.maxBitrate =
+      source === 'screen' ? 6_000_000 : screenActive ? 1_500_000 : 3_500_000;
+    parameters.encodings[0]!.maxFramerate = source === 'screen' || screenActive ? 30 : 60;
     parameters.encodings[0]!.scaleResolutionDownBy = 1;
-    parameters.encodings[0]!.priority = source === 'screen' ? 'low' : 'medium';
+    parameters.encodings[0]!.priority = source === 'screen' ? 'high' : 'medium';
     parameters.degradationPreference =
       source === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
     void videoSender.sender

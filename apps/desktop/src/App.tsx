@@ -71,7 +71,7 @@ export function App() {
   );
   const [muted, setMuted] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.21');
+  const [appVersion, setAppVersion] = useState('0.3.22');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
@@ -112,6 +112,7 @@ export function App() {
       })),
     ),
   );
+  const remoteScreenAudio = useRef(new RemoteAudio());
 
   const updateSettings = useCallback((patch: Partial<LocalSettings>) => {
     setSettings((current) => {
@@ -136,6 +137,7 @@ export function App() {
     audio.current?.stop();
     audio.current = undefined;
     remoteAudio.current.closeAll();
+    remoteScreenAudio.current.closeAll();
     notificationSounds.current.stop();
     participantNotifications.current.clear();
     listeningDiagnostics.current.clear();
@@ -159,6 +161,7 @@ export function App() {
 
   useEffect(() => {
     remoteAudio.current.setMasterVolume(settings.outputVolume);
+    remoteScreenAudio.current.setMasterVolume(settings.outputVolume);
   }, [settings.outputVolume]);
 
   useEffect(() => {
@@ -188,6 +191,7 @@ export function App() {
       video.current?.dispose();
       audio.current?.stop();
       remoteAudio.current.closeAll();
+      remoteScreenAudio.current.closeAll();
       notificationSounds.current.stop();
     };
     window.addEventListener('beforeunload', leave);
@@ -301,6 +305,8 @@ export function App() {
           message.participants.map((participant) => participant.id),
         );
         peers.current?.closeAll();
+        remoteAudio.current.closeAll();
+        remoteScreenAudio.current.closeAll();
         remoteVideoStreams.current.clear();
         setRemoteVideos({});
         const localStream = audio.current?.getStream();
@@ -336,6 +342,21 @@ export function App() {
                 .then(() => connectionDiagnostics.record('remote-audio-attach:end', peerId))
                 .catch(() => connectionDiagnostics.record('remote-audio-attach:error', peerId));
             },
+            onScreenAudioTrack: (peerId, stream) => {
+              connectionDiagnostics.record('remote-screen-audio-attach:start', peerId);
+              void remoteScreenAudio.current
+                .attach(
+                  peerId,
+                  stream,
+                  settings.screenVolumes[peerId] ?? 1,
+                  settings.mutedPeers[peerId] ?? false,
+                  settings.outputDeviceId,
+                )
+                .then(() => connectionDiagnostics.record('remote-screen-audio-attach:end', peerId))
+                .catch(() =>
+                  connectionDiagnostics.record('remote-screen-audio-attach:error', peerId),
+                );
+            },
             onVideoTrack: (peerId, source, stream) => {
               const streams = remoteVideoStreams.current.get(peerId) ?? {};
               streams[source] = stream;
@@ -349,6 +370,7 @@ export function App() {
               }));
             },
             onVideoState: (peerId, source, active) => {
+              if (source === 'screen' && !active) remoteScreenAudio.current.remove(peerId);
               setRemoteVideos((old) => ({
                 ...old,
                 [peerId]: {
@@ -419,6 +441,7 @@ export function App() {
         setParticipants((old) => old.filter((item) => item.id !== message.participantId));
         peers.current?.remove(message.participantId);
         remoteAudio.current.remove(message.participantId);
+        remoteScreenAudio.current.remove(message.participantId);
         remoteVideoStreams.current.delete(message.participantId);
         setRemoteVideos((old) => {
           const next = { ...old };
@@ -480,7 +503,13 @@ export function App() {
         cleanup();
       }
     },
-    [cleanup, settings.mutedPeers, settings.outputDeviceId, settings.peerVolumes],
+    [
+      cleanup,
+      settings.mutedPeers,
+      settings.outputDeviceId,
+      settings.peerVolumes,
+      settings.screenVolumes,
+    ],
   );
 
   const enterRoom = async (create: boolean) => {
@@ -525,6 +554,7 @@ export function App() {
         },
         setLocalVideo,
         setError,
+        setNotice,
       );
       await refreshDevices();
       updateSettings({ displayName: cleanName });
@@ -697,6 +727,7 @@ export function App() {
     updateSettings({ outputDeviceId: deviceId });
     await Promise.all([
       remoteAudio.current.setOutput(deviceId),
+      remoteScreenAudio.current.setOutput(deviceId),
       notificationSounds.current.setOutput(deviceId),
     ]);
   };
@@ -707,12 +738,14 @@ export function App() {
   };
   const setScreenVolume = (peerId: string, value: number) => {
     updateSettings({ screenVolumes: { ...settings.screenVolumes, [peerId]: value } });
+    remoteScreenAudio.current.setVolume(peerId, value);
   };
   const togglePeerMute = (peerId: string) => {
     const value = !(settings.mutedPeers[peerId] ?? false);
     const mutedPeers = { ...settings.mutedPeers, [peerId]: value };
     updateSettings({ mutedPeers });
     remoteAudio.current.setMuted(peerId, value);
+    remoteScreenAudio.current.setMuted(peerId, value);
   };
   const saveConnectionDiagnostics = async () => {
     return invoke<string>('save_connection_diagnostics', {

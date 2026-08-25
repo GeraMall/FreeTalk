@@ -19,6 +19,8 @@ export class AudioManager {
   private muted = false;
   private pttPressed = false;
   private voiceActive = false;
+  private lastVoiceAt = 0;
+  private resumePending = false;
   private typingSuppressed = false;
 
   constructor(
@@ -123,6 +125,12 @@ export class AudioManager {
 
   private buildProcessingGraph() {
     this.context = new AudioContext({ sampleRate: 48_000 });
+    this.context.onstatechange = () => {
+      connectionDiagnostics.record('audio-context:state', undefined, {
+        state: this.context?.state ?? 'closed',
+      });
+      this.ensureContextRunning();
+    };
     const source = this.context.createMediaStreamSource(this.sourceStream!);
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 512;
@@ -175,7 +183,13 @@ export class AudioManager {
         lastLevelUpdate = time;
         this.onLevel(Math.min(1, rms / 0.18));
       }
-      this.voiceActive = rms > this.settings.vadThreshold;
+      const now = performance.now();
+      if (rms > this.settings.vadThreshold) {
+        this.lastVoiceAt = now;
+        this.voiceActive = true;
+      } else if (now - this.lastVoiceAt > 350) {
+        this.voiceActive = false;
+      }
       this.applyEnabled();
       const speaking = Boolean(
         this.getTrack()?.enabled && rms > Math.min(0.035, this.settings.vadThreshold),
@@ -185,8 +199,27 @@ export class AudioManager {
         this.onSpeaking(speaking);
       }
       this.speakingFrame = requestAnimationFrame(tick);
+      this.ensureContextRunning();
     };
     tick();
+  }
+
+  private ensureContextRunning() {
+    const context = this.context;
+    if (!context || context.state === 'running' || context.state === 'closed' || this.resumePending)
+      return;
+    this.resumePending = true;
+    void context
+      .resume()
+      .then(() =>
+        connectionDiagnostics.record('audio-context:resumed', undefined, {
+          state: context.state,
+        }),
+      )
+      .catch(() => undefined)
+      .finally(() => {
+        this.resumePending = false;
+      });
   }
 }
 

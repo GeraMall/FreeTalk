@@ -165,6 +165,8 @@ describe('VideoManager', () => {
       },
       video: {
         displaySurface: 'window',
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 },
         frameRate: { ideal: 30, max: 30 },
       },
       selfBrowserSurface: 'exclude',
@@ -189,6 +191,8 @@ describe('VideoManager', () => {
       audio: false,
       video: {
         displaySurface: 'window',
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 },
         frameRate: { ideal: 30, max: 30 },
       },
       selfBrowserSurface: 'exclude',
@@ -200,6 +204,24 @@ describe('VideoManager', () => {
     expect(onState).toHaveBeenLastCalledWith(
       expect.objectContaining({ screenEnabled: true, screenAudioEnabled: false }),
     );
+  });
+
+  it('warns when the platform does not return a requested screen audio track', async () => {
+    const streamWithoutAudio = new FakeStream([new FakeTrack()]);
+    vi.mocked(navigator.mediaDevices.getDisplayMedia).mockResolvedValueOnce(
+      streamWithoutAudio as unknown as MediaStream,
+    );
+    const onNotice = vi.fn();
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+      vi.fn(),
+      onNotice,
+    );
+
+    await manager.toggleScreen(true);
+
+    expect(onNotice).toHaveBeenCalledWith(expect.stringContaining('не предоставила аудиодорожку'));
   });
 
   it('can start camera while screen sharing and leaves screen active when camera stops', async () => {
