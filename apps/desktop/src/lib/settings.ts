@@ -1,5 +1,7 @@
 export interface LocalSettings {
   displayName: string;
+  avatarDataUrl: string;
+  profileChangeTimestamps: number[];
   inputDeviceId: string;
   outputDeviceId: string;
   transmissionMode: 'voice-activation' | 'push-to-talk' | 'continuous';
@@ -14,12 +16,15 @@ export interface LocalSettings {
   typingAttenuation: boolean;
   comfortNoise: boolean;
   peerVolumes: Record<string, number>;
+  screenVolumes: Record<string, number>;
   mutedPeers: Record<string, boolean>;
 }
 
 const KEY = 'freetalk.settings.v1';
 const defaults: LocalSettings = {
   displayName: '',
+  avatarDataUrl: '',
+  profileChangeTimestamps: [],
   inputDeviceId: '',
   outputDeviceId: '',
   transmissionMode: 'voice-activation',
@@ -34,11 +39,12 @@ const defaults: LocalSettings = {
   typingAttenuation: false,
   comfortNoise: false,
   peerVolumes: {},
+  screenVolumes: {},
   mutedPeers: {},
 };
 
 export function defaultSettings(): LocalSettings {
-  return { ...defaults, peerVolumes: {}, mutedPeers: {} };
+  return { ...defaults, peerVolumes: {}, screenVolumes: {}, mutedPeers: {} };
 }
 
 export function loadSettings(): LocalSettings {
@@ -51,7 +57,11 @@ export function loadSettings(): LocalSettings {
       transmissionMode:
         value.transmissionMode ?? (legacy.pushToTalk ? 'push-to-talk' : 'voice-activation'),
       peerVolumes: value.peerVolumes ?? {},
+      screenVolumes: value.screenVolumes ?? {},
       mutedPeers: value.mutedPeers ?? {},
+      profileChangeTimestamps: Array.isArray(value.profileChangeTimestamps)
+        ? value.profileChangeTimestamps.filter((time) => Number.isFinite(time))
+        : [],
     };
   } catch {
     return { ...defaults };

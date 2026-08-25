@@ -20,3 +20,4 @@ outputs/
 output/
 artifacts/
 .playwright-cli/
+node_modules.corrupt-backup/

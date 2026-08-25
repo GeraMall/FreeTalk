@@ -82,11 +82,14 @@ interface SocketAttachment {
   clientId?: string;
   sessionId?: string;
   name?: string;
+  avatar?: string;
   muted?: boolean;
   isOwner?: boolean;
   connectedAt?: number;
   lastSeen: number;
   timestamps: number[];
+  profileChanges?: number[];
+  lastReactionAt?: number;
   clientConnectionId: string;
   serverConnectionId: string;
   edgeColo: string;
@@ -222,6 +225,44 @@ export class VoiceRoom implements DurableObject {
           participantId: attachment.clientId,
           muted: message.muted,
         });
+        return;
+      }
+      if (message.type === 'update-profile') {
+        const changes = (attachment.profileChanges ?? []).filter(
+          (time) => now - time < 5 * 60 * 60 * 1000,
+        );
+        if (attachment.name !== message.name || attachment.avatar !== message.avatar) {
+          if (changes.length >= 3) {
+            this.send(socket, {
+              type: 'error',
+              code: 'PROFILE_RATE_LIMITED',
+              message: 'Профиль можно изменить не более трёх раз за пять часов',
+            });
+            return;
+          }
+          changes.push(now);
+          attachment.name = message.name;
+          attachment.avatar = message.avatar;
+          attachment.profileChanges = changes;
+          socket.serializeAttachment(attachment);
+          this.broadcast({
+            type: 'participant-updated',
+            participant: this.participant(attachment),
+          });
+        }
+        return;
+      }
+      if (message.type === 'reaction') {
+        if (now - (attachment.lastReactionAt ?? 0) >= 500) {
+          attachment.lastReactionAt = now;
+          socket.serializeAttachment(attachment);
+          this.broadcast({
+            type: 'reaction',
+            id: message.id,
+            participantId: attachment.clientId,
+            reaction: message.reaction,
+          });
+        }
         return;
       }
       if (message.type === 'moderation-mute') {
@@ -399,7 +440,10 @@ export class VoiceRoom implements DurableObject {
       clientId: message.clientId,
       sessionId: message.sessionId,
       name: message.name,
+      avatar: message.avatar,
       muted: sameAttachment?.muted ?? false,
+      profileChanges: sameAttachment?.profileChanges ?? [],
+      lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
       isOwner:
         sameAttachment?.isOwner ??
         (message.type === 'create-room' && active.filter((entry) => entry !== same).length === 0),
@@ -413,11 +457,15 @@ export class VoiceRoom implements DurableObject {
     });
     await this.state.storage.setAlarm(Date.now() + 60_000);
     const participant = this.participant(attachment);
+    const storedRoomStartedAt = await this.state.storage.get<number>('roomStartedAt');
+    const roomStartedAt = storedRoomStartedAt ?? Date.now();
+    if (!storedRoomStartedAt) await this.state.storage.put('roomStartedAt', roomStartedAt);
     this.send(socket, iceConfig);
     this.send(socket, {
       type: 'joined-room',
       roomId: message.roomId,
       selfId: message.clientId,
+      roomStartedAt,
       participants: this.active().map((entry) =>
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
@@ -480,6 +528,7 @@ export class VoiceRoom implements DurableObject {
     return {
       id: value.clientId!,
       name: value.name!,
+      avatar: value.avatar,
       muted: value.muted ?? false,
       isOwner: value.isOwner ?? false,
       connectedAt: value.connectedAt!,

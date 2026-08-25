@@ -59,4 +59,24 @@ describe('protocol validation', () => {
       }).success,
     ).toBe(true);
   });
+
+  it('validates profile updates and the fixed reaction set', () => {
+    expect(
+      clientMessageSchema.safeParse({ type: 'update-profile', name: 'Новое имя' }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'reaction',
+        id: base.clientId,
+        reaction: '🎉',
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'reaction',
+        id: base.clientId,
+        reaction: '💣',
+      }).success,
+    ).toBe(false);
+  });
 });

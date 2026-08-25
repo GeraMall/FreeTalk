@@ -133,6 +133,7 @@ sockets.on('connection', (socket, request) => {
             message.sessionId,
             message.name,
             connection,
+            message.avatar,
           );
         else
           manager.join(
@@ -141,6 +142,7 @@ sockets.on('connection', (socket, request) => {
             message.sessionId,
             message.name,
             connection,
+            message.avatar,
           );
         meta.roomId = message.roomId;
         meta.clientId = message.clientId;
@@ -163,6 +165,24 @@ sockets.on('connection', (socket, request) => {
           break;
         case 'mute-changed':
           manager.setMuted(meta.roomId, meta.clientId, message.muted);
+          break;
+        case 'update-profile': {
+          const result = manager.updateProfile(
+            meta.roomId,
+            meta.clientId,
+            message.name,
+            message.avatar,
+          );
+          if (result === 'RATE_LIMITED')
+            send(socket, {
+              type: 'error',
+              code: 'PROFILE_RATE_LIMITED',
+              message: 'Профиль можно изменить не более трёх раз за пять часов',
+            });
+          break;
+        }
+        case 'reaction':
+          manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
           break;
         case 'moderation-mute': {
           const result = manager.moderationMute(

@@ -95,4 +95,31 @@ describe('RoomManager', () => {
     ).toBe(true);
     expect(manager.moderationMute(room, id(2), id(1))).toBe('TARGET_NOT_FOUND');
   });
+
+  it('broadcasts profile changes and limits them to three per five hours', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    const member = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    manager.join(room, id(2), 'session-223456789', 'Member', member);
+    expect(manager.updateProfile(room, id(2), 'Member 1', undefined, 1_000)).toBe('OK');
+    expect(manager.updateProfile(room, id(2), 'Member 2', undefined, 2_000)).toBe('OK');
+    expect(manager.updateProfile(room, id(2), 'Member 3', undefined, 3_000)).toBe('OK');
+    expect(manager.updateProfile(room, id(2), 'Member 4', undefined, 4_000)).toBe('RATE_LIMITED');
+    expect(
+      owner.messages.some(
+        (message) =>
+          message.type === 'participant-updated' && message.participant.name === 'Member 3',
+      ),
+    ).toBe(true);
+  });
+
+  it('broadcasts reactions but throttles rapid repeats', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    expect(manager.react(room, id(1), id(8), '🎉', 1_000)).toBe(true);
+    expect(manager.react(room, id(1), id(9), '🔥', 1_200)).toBe(false);
+    expect(owner.messages.some((message) => message.type === 'reaction')).toBe(true);
+  });
 });

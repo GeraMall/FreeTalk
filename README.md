@@ -34,6 +34,8 @@ pnpm tauri:dev
 - создание и вход по криптографически случайному 12-символьному коду/ссылке;
 - mesh WebRTC, perfect negotiation (offer glare), ICE deduplication, Opus 64 kbit/s, STUN и опциональный TURN;
 - список до 6 участников, connection/audio-ready states и индикатор говорящего;
+- профиль с ником и локально подготовленным аватаром, мгновенная синхронизация в комнате и лимит 3 сохранения за 5 часов;
+- пять быстрых реакций с короткой анимацией и общий таймер текущей комнаты;
 - независимые видеопотоки камеры и демонстрации экрана: камера запрашивает до 1080p60 и адаптирует детализацию ради низкой задержки, для выбранного окна передаётся его звук без общего системного звука и звуков FreeTalk, поддерживаются одновременные camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
 - встроенные звуковые уведомления о входе и выходе друзей с выровненной громкостью;
 - владелец комнаты с короной, автоматическая передача владения и серверно проверяемое удалённое выключение микрофона участника;
@@ -41,7 +43,7 @@ pnpm tauri:dev
 - input/output device selection, общая и индивидуальная громкость, local mute;
 - WebRTC echo cancellation, noise suppression, AGC, output ducking, подавление щелчков клавиатуры, комфортный шум и тестовая запись;
 - нативный WSS-транспорт desktop-клиента, exponential reconnect 0.5–30 s, heartbeat, session replacement и краткий reconnect grace;
-- сохранение имени, устройств и всех аудиопараметров в localStorage;
+- сохранение профиля, устройств и всех аудиопараметров в localStorage;
 - встроенная проверка подписанных обновлений Tauri, уведомление, прогресс и установка из приложения;
 - понятные ошибки permission/no device/network/room full/NAT;
 - закрытие tracks, audio contexts, peer connections и WebSocket при выходе/закрытии;
@@ -52,16 +54,16 @@ pnpm tauri:dev
 
 ## Команды
 
-| Команда                                            | Назначение                                        |
-| -------------------------------------------------- | ------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                   | воспроизводимая установка                         |
-| `pnpm dev:signaling`                               | локальный WebSocket server                        |
-| `pnpm dev:desktop`                                 | React/Vite client                                 |
-| `pnpm tauri:dev`                                   | native development window                         |
-| `pnpm check`                                       | format, lint, TS, tests, frontend/server builds   |
-| `pnpm tauri:build`                                 | platform release bundles                          |
-| `pnpm package:windows`                             | fallback NSIS installer + portable Windows `.exe` |
-| `pnpm --filter @freetalk/cloudflare-signaling dev` | локальный Miniflare/Worker                        |
+| Команда                                            | Назначение                                      |
+| -------------------------------------------------- | ----------------------------------------------- |
+| `pnpm install --frozen-lockfile`                   | воспроизводимая установка                       |
+| `pnpm dev:signaling`                               | локальный WebSocket server                      |
+| `pnpm dev:desktop`                                 | React/Vite client                               |
+| `pnpm tauri:dev`                                   | native development window                       |
+| `pnpm check`                                       | format, lint, TS, tests, frontend/server builds |
+| `pnpm tauri:build`                                 | platform release bundles                        |
+| `pnpm package:windows`                             | штатный Tauri NSIS + portable Windows `.exe`    |
+| `pnpm --filter @freetalk/cloudflare-signaling dev` | локальный Miniflare/Worker                      |
 
 ## Windows 10/11
 
@@ -76,7 +78,7 @@ pnpm package:windows
 Результаты:
 
 - официальный NSIS installer: `apps/desktop/src-tauri/target/release/bundle/nsis/`;
-- fallback installer и portable executable: `outputs/`.
+- копия штатного установщика и portable executable: `outputs/`.
 
 NSIS использует WebView2 download bootstrapper и показывает установку runtime, если Evergreen WebView2 отсутствует. Portable `.exe` не устанавливает runtime: при его отсутствии сначала установите официальный [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 
@@ -95,7 +97,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/desktop tauri build --bundles app,dmg
 ```
 
-CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.19 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
+CI отдельно создаёт Intel (`x86_64-apple-darwin`) и Apple Silicon (`aarch64-apple-darwin`) `.app/.dmg` и загружает их как artifacts. Включены описания доступа к микрофону и камере, необходимые entitlements и ad-hoc подпись (`signingIdentity: "-"`). Сборки 0.3.20 создаются на GitHub macOS runners, а наличие `_CodeSignature/CodeResources` проверяется в CI. Фактический первый запуск, видео и слышимость на физическом Mac ещё должен подтвердить пользователь Mac.
 
 Ad-hoc подпись предотвращает ошибку macOS «app is damaged» у полностью неподписанного bundle, но не заменяет платные Developer ID и notarization. Для первого безопасного запуска: перетащите FreeTalk в Applications, затем в Finder сделайте Control-click по FreeTalk → «Открыть» → «Открыть». Альтернатива: System Settings → Privacy & Security → сообщение о FreeTalk → «Open Anyway». Не отключайте Gatekeeper целиком.
 
@@ -125,14 +127,14 @@ Worker и VPS дополнительно используют одинаковы
 
 ## Проверки
 
-Локально выполнены 24.08.2026 на Windows:
+Локально выполнены 25.08.2026 на Windows:
 
 - TypeScript всех workspace packages — пройден;
 - ESLint и Prettier check — пройдены;
-- unit tests protocol/validation/rooms/limit/cleanup/reconnect/audio gate/owner moderation — пройдены;
+- 82 TypeScript-теста protocol/validation/rooms/limit/cleanup/reconnect/audio/video/profile/reactions/owner moderation — пройдены;
 - signaling/protocol/frontend production builds — пройдены;
 - `cargo check` (Rust 1.98.0, Tauri 2.11.5) — пройден;
-- `cargo test --lib` — пройдены ограничения нативного WSS URL и размера/формата сообщений;
+- 7 Rust-тестов — пройдены ограничения нативного WSS URL, диагностики и размера/формата сообщений;
 - звонок между двумя реальными устройствами без VPN подтверждён пользователем: звук работал в обе стороны;
 - исправлены ложные переподключения из-за изменения оценки сети WebView и запоздалые дублирующие WebRTC answer; диагностический журнал соединения сохраняется из настроек на рабочий стол;
 - принудительный TURN relay без VPN отдельно прошёл через UDP, TCP и TLS, включая ненулевой синтетический аудиосигнал;

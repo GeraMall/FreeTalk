@@ -11,6 +11,8 @@ interface Peer {
   sessionId: string;
   connection: PeerConnection;
   lastSeen: number;
+  profileChanges: number[];
+  lastReactionAt: number;
 }
 
 interface Room {
@@ -38,6 +40,7 @@ export class RoomManager {
     sessionId: string,
     name: string,
     connection: PeerConnection,
+    avatar?: string,
   ) {
     if (this.rooms.has(roomId)) throw new RoomError('ROOM_EXISTS', 'Комната уже существует');
     this.rooms.set(roomId, {
@@ -46,7 +49,7 @@ export class RoomManager {
       peers: new Map(),
       createdAt: Date.now(),
     });
-    return this.join(roomId, clientId, sessionId, name, connection);
+    return this.join(roomId, clientId, sessionId, name, connection, avatar);
   }
 
   join(
@@ -55,6 +58,7 @@ export class RoomManager {
     sessionId: string,
     name: string,
     connection: PeerConnection,
+    avatar?: string,
   ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
@@ -70,20 +74,30 @@ export class RoomManager {
     const participant: Participant = existing?.participant ?? {
       id: clientId,
       name,
+      avatar,
       muted: false,
       isOwner: clientId === room.ownerId,
       connectedAt: Date.now(),
     };
     if (existing) existing.connection.close(4001, 'Соединение заменено после переподключения');
     participant.name = name;
+    participant.avatar = avatar;
     participant.isOwner = clientId === room.ownerId;
-    const peer: Peer = { participant, sessionId, connection, lastSeen: Date.now() };
+    const peer: Peer = {
+      participant,
+      sessionId,
+      connection,
+      lastSeen: Date.now(),
+      profileChanges: existing?.profileChanges ?? [],
+      lastReactionAt: existing?.lastReactionAt ?? 0,
+    };
     room.peers.set(clientId, peer);
 
     connection.send({
       type: 'joined-room',
       roomId,
       selfId: clientId,
+      roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
@@ -129,6 +143,42 @@ export class RoomManager {
     if (!room || !peer) return false;
     peer.participant.muted = muted;
     this.broadcast(room, { type: 'mute-changed', participantId: clientId, muted });
+    return true;
+  }
+
+  updateProfile(
+    roomId: string,
+    clientId: string,
+    name: string,
+    avatar: string | undefined,
+    now = Date.now(),
+  ) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return 'TARGET_NOT_FOUND' as const;
+    if (peer.participant.name === name && peer.participant.avatar === avatar) return 'OK' as const;
+    peer.profileChanges = peer.profileChanges.filter((time) => now - time < 5 * 60 * 60 * 1000);
+    if (peer.profileChanges.length >= 3) return 'RATE_LIMITED' as const;
+    peer.profileChanges.push(now);
+    peer.participant.name = name;
+    peer.participant.avatar = avatar;
+    this.broadcast(room, { type: 'participant-updated', participant: peer.participant });
+    return 'OK' as const;
+  }
+
+  react(
+    roomId: string,
+    clientId: string,
+    id: string,
+    reaction: '👍' | '❤️' | '😂' | '🎉' | '🔥',
+    now = Date.now(),
+  ) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return false;
+    if (now - peer.lastReactionAt < 500) return false;
+    peer.lastReactionAt = now;
+    this.broadcast(room, { type: 'reaction', id, participantId: clientId, reaction });
     return true;
   }
 

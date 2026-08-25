@@ -3,17 +3,21 @@ import {
   AudioLines,
   Download,
   Info,
+  ImagePlus,
   Mic2,
   MonitorSpeaker,
   RefreshCw,
   RotateCcw,
   Save,
+  Trash2,
+  UserRound,
   X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
+import { prepareAvatar, remainingProfileChanges } from '../lib/profile';
 import type { UpdateStatus } from '../lib/updater';
 
-type SettingsTab = 'audio' | 'devices' | 'about';
+type SettingsTab = 'audio' | 'profile' | 'devices' | 'about';
 
 interface SettingsPanelProps {
   settings: LocalSettings;
@@ -32,6 +36,7 @@ interface SettingsPanelProps {
   onCheckUpdate(): void;
   onInstallUpdate(): void;
   onSaveDiagnostics(): Promise<string>;
+  onSaveProfile(name: string, avatar: string): Promise<void>;
 }
 
 export function SettingsPanel({
@@ -51,6 +56,7 @@ export function SettingsPanel({
   onCheckUpdate,
   onInstallUpdate,
   onSaveDiagnostics,
+  onSaveProfile,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>('audio');
   const [capturing, setCapturing] = useState(false);
@@ -139,6 +145,12 @@ export function SettingsPanel({
               onClick={() => setTab('audio')}
             />
             <TabButton
+              active={tab === 'profile'}
+              icon={<UserRound />}
+              label="Профиль"
+              onClick={() => setTab('profile')}
+            />
+            <TabButton
               active={tab === 'devices'}
               icon={<MonitorSpeaker />}
               label="Устройства"
@@ -160,14 +172,22 @@ export function SettingsPanel({
           <header className="settings-header">
             <div>
               <p className="eyebrow">
-                {tab === 'audio' ? 'АУДИО' : tab === 'devices' ? 'УСТРОЙСТВА' : 'FREETALK'}
+                {tab === 'audio'
+                  ? 'АУДИО'
+                  : tab === 'profile'
+                    ? 'ПРОФИЛЬ'
+                    : tab === 'devices'
+                      ? 'УСТРОЙСТВА'
+                      : 'FREETALK'}
               </p>
               <h2 id="settings-title">
                 {tab === 'audio'
                   ? 'Настройки звука'
-                  : tab === 'devices'
-                    ? 'Аудиоустройства'
-                    : 'О приложении'}
+                  : tab === 'profile'
+                    ? 'Ваш профиль'
+                    : tab === 'devices'
+                      ? 'Аудиоустройства'
+                      : 'О приложении'}
               </h2>
             </div>
             <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
@@ -190,6 +210,7 @@ export function SettingsPanel({
                 onRecord={() => void recordSample()}
               />
             )}
+            {tab === 'profile' && <ProfileTab settings={settings} onSaveProfile={onSaveProfile} />}
             {tab === 'devices' && (
               <DevicesTab
                 settings={settings}
@@ -230,6 +251,123 @@ export function SettingsPanel({
         </div>
       </section>
     </div>
+  );
+}
+
+function ProfileTab({
+  settings,
+  onSaveProfile,
+}: {
+  settings: LocalSettings;
+  onSaveProfile(name: string, avatar: string): Promise<void>;
+}) {
+  const [draftName, setDraftName] = useState(settings.displayName);
+  const [draftAvatar, setDraftAvatar] = useState(settings.avatarDataUrl);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
+  const changed =
+    draftName.trim() !== settings.displayName || draftAvatar !== settings.avatarDataUrl;
+
+  useEffect(() => {
+    setDraftName(settings.displayName);
+    setDraftAvatar(settings.avatarDataUrl);
+  }, [settings.avatarDataUrl, settings.displayName]);
+
+  const save = async () => {
+    const name = draftName.trim();
+    setError('');
+    setSaved(false);
+    const hasUnsafeCharacter = [...name].some((character) => {
+      const code = character.charCodeAt(0);
+      return character === '<' || character === '>' || code <= 31 || code === 127;
+    });
+    if (!name || name.length > 32 || hasUnsafeCharacter) {
+      setError('Имя должно содержать от 1 до 32 символов без < и >.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSaveProfile(name, draftAvatar);
+      setSaved(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить профиль.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section profile-section">
+      <div className="profile-editor">
+        <div className="profile-avatar-preview">
+          {draftAvatar ? (
+            <img src={draftAvatar} alt="Предпросмотр аватара" />
+          ) : (
+            <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
+          )}
+        </div>
+        <div className="profile-avatar-actions">
+          <strong>Аватар</strong>
+          <small>Квадратное изображение до 5 МБ. FreeTalk уменьшит его автоматически.</small>
+          <div>
+            <label className="secondary compact profile-file-button">
+              <ImagePlus size={16} /> Выбрать фото
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = '';
+                  if (!file) return;
+                  setError('');
+                  void prepareAvatar(file)
+                    .then(setDraftAvatar)
+                    .catch((caught) =>
+                      setError(
+                        caught instanceof Error ? caught.message : 'Не удалось обработать фото.',
+                      ),
+                    );
+                }}
+              />
+            </label>
+            {draftAvatar && (
+              <button className="secondary compact" onClick={() => setDraftAvatar('')}>
+                <Trash2 size={15} /> Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <label className="field-label">
+        Отображаемое имя
+        <input
+          maxLength={32}
+          value={draftName}
+          placeholder="Ваше имя"
+          onChange={(event) => {
+            setDraftName(event.target.value);
+            setSaved(false);
+          }}
+        />
+      </label>
+      <div className="profile-limit">
+        <span>
+          {remaining > 0 ? `Осталось изменений: ${remaining} из 3` : 'Лимит изменений исчерпан'}
+        </span>
+        <small>Ник и аватар вместе можно сохранять не более трёх раз за пять часов.</small>
+      </div>
+      {error && <small className="inline-error">{error}</small>}
+      {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
+      <button
+        className="primary profile-save"
+        disabled={!changed || remaining === 0 || busy}
+        onClick={() => void save()}
+      >
+        <Save size={16} /> {busy ? 'Сохраняем…' : 'Сохранить профиль'}
+      </button>
+    </section>
   );
 }
 

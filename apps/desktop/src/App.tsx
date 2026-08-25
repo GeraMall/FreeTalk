@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
-import type { ClientMessage, Participant, ServerMessage } from '@freetalk/protocol';
+import type { ClientMessage, Participant, Reaction, ServerMessage } from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
 import { connectionDiagnostics } from './lib/connection-diagnostics';
 import { hasTurnServer } from './lib/ice-config';
@@ -11,6 +11,7 @@ import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
 import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
+import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
 import {
@@ -69,13 +70,16 @@ export function App() {
     { inputs: [], outputs: [] },
   );
   const [muted, setMuted] = useState(false);
-  const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.19');
+  const [appVersion, setAppVersion] = useState('0.3.20');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
+  const [roomStartedAt, setRoomStartedAt] = useState(0);
+  const [reactions, setReactions] = useState<
+    Array<{ id: string; participantId: string; reaction: Reaction }>
+  >([]);
   const selfId = useRef(storedIdentity('freetalk.clientId'));
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
@@ -95,6 +99,7 @@ export function App() {
   const joinedRoom = useRef(false);
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
+  const reactionTimers = useRef(new Map<string, number>());
   const remoteAudio = useRef(
     new RemoteAudio((peerId, speaking) =>
       setPeerState((old) => ({
@@ -136,6 +141,8 @@ export function App() {
     listeningDiagnostics.current.clear();
     remoteVideoStreams.current.clear();
     currentIceServers.current = DEFAULT_ICE_SERVERS;
+    for (const timer of reactionTimers.current.values()) window.clearTimeout(timer);
+    reactionTimers.current.clear();
     setRoomId(undefined);
     setParticipants([]);
     setPeerState({});
@@ -146,6 +153,8 @@ export function App() {
     setLocalVideo(NO_LOCAL_VIDEO);
     setRemoteVideos({});
     setVideoBusy(false);
+    setRoomStartedAt(0);
+    setReactions([]);
   }, []);
 
   useEffect(() => {
@@ -213,18 +222,15 @@ export function App() {
         return;
       }
       event.preventDefault();
-      setPttPressed(true);
       audio.current?.setPushToTalkPressed(true);
     };
     const up = (event: KeyboardEvent) => {
       if (settings.transmissionMode !== 'push-to-talk' || event.code !== settings.pushToTalkKey)
         return;
       event.preventDefault();
-      setPttPressed(false);
       audio.current?.setPushToTalkPressed(false);
     };
     const blur = () => {
-      setPttPressed(false);
       audio.current?.setPushToTalkPressed(false);
       audio.current?.setTypingSuppressed(false);
     };
@@ -290,6 +296,7 @@ export function App() {
         if (pendingRoomId.current) setRoomId(pendingRoomId.current);
         setJoining(false);
         setParticipants(message.participants);
+        setRoomStartedAt(message.roomStartedAt ?? Date.now());
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
         );
@@ -381,6 +388,27 @@ export function App() {
         ]);
         peers.current?.ensure(message.participant.id);
         if (shouldNotify) void notificationSounds.current.playJoined();
+        return;
+      }
+      if (message.type === 'participant-updated') {
+        setParticipants((old) =>
+          old.map((participant) =>
+            participant.id === message.participant.id ? message.participant : participant,
+          ),
+        );
+        return;
+      }
+      if (message.type === 'reaction') {
+        setReactions((old) => [...old.filter((item) => item.id !== message.id), message]);
+        const existing = reactionTimers.current.get(message.id);
+        if (existing) window.clearTimeout(existing);
+        reactionTimers.current.set(
+          message.id,
+          window.setTimeout(() => {
+            setReactions((old) => old.filter((item) => item.id !== message.id));
+            reactionTimers.current.delete(message.id);
+          }, 2_850),
+        );
         return;
       }
       if (message.type === 'participant-left') {
@@ -520,6 +548,7 @@ export function App() {
         clientId: selfId.current,
         sessionId: sessionId.current,
         name: cleanName,
+        avatar: settings.avatarDataUrl || undefined,
       });
       joinTimer.current = window.setTimeout(() => {
         if (joinedRoom.current) return;
@@ -540,24 +569,18 @@ export function App() {
     signaling.current?.send({ type: 'mute-changed', muted: next });
   };
 
-  const runVideoAction = async (action: 'camera' | 'screen', screenAudio = true) => {
+  const runVideoAction = async (action: 'camera' | 'screen') => {
     if (!video.current || videoBusy) return;
     setError('');
     setVideoBusy(true);
     try {
       if (action === 'camera') await video.current.toggleCamera();
-      else await video.current.toggleScreen(screenAudio);
+      else await video.current.toggleScreen(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
     } finally {
       setVideoBusy(false);
     }
-  };
-
-  const setTransmissionMode = (mode: LocalSettings['transmissionMode']) => {
-    updateSettings({ transmissionMode: mode });
-    audio.current?.setSettings(processingSettings({ ...settings, transmissionMode: mode }));
-    setPttPressed(false);
   };
 
   const copyInvite = async () => {
@@ -633,9 +656,41 @@ export function App() {
   };
 
   const resetAudioSettings = () => {
-    const reset = { ...defaultSettings(), displayName: settings.displayName };
+    const reset = {
+      ...defaultSettings(),
+      displayName: settings.displayName,
+      avatarDataUrl: settings.avatarDataUrl,
+      profileChangeTimestamps: settings.profileChangeTimestamps,
+    };
     void changeAudioSettings(reset, true);
     setNotice('Настройки звука сброшены');
+  };
+  const saveProfile = async (displayName: string, avatarDataUrl: string) => {
+    if (displayName === settings.displayName && avatarDataUrl === settings.avatarDataUrl) return;
+    const history = nextProfileChangeHistory(settings.profileChangeTimestamps);
+    if (!history) throw new Error('Профиль можно изменить не более трёх раз за пять часов.');
+    if (roomId) {
+      const sent = signaling.current?.send({
+        type: 'update-profile',
+        name: displayName,
+        avatar: avatarDataUrl || undefined,
+      });
+      if (!sent) throw new Error('Нет соединения с сервером. Попробуйте ещё раз.');
+    }
+    updateSettings({ displayName, avatarDataUrl, profileChangeTimestamps: history });
+    setName(displayName);
+    setParticipants((old) =>
+      old.map((participant) =>
+        participant.id === selfId.current
+          ? { ...participant, name: displayName, avatar: avatarDataUrl || undefined }
+          : participant,
+      ),
+    );
+  };
+
+  const sendReaction = (reaction: Reaction) => {
+    const sent = signaling.current?.send({ type: 'reaction', id: crypto.randomUUID(), reaction });
+    if (!sent) setNotice('Не удалось отправить реакцию');
   };
 
   const selectOutput = async (deviceId: string) => {
@@ -649,6 +704,9 @@ export function App() {
     const peerVolumes = { ...settings.peerVolumes, [peerId]: value };
     updateSettings({ peerVolumes });
     remoteAudio.current.setVolume(peerId, value);
+  };
+  const setScreenVolume = (peerId: string, value: number) => {
+    updateSettings({ screenVolumes: { ...settings.screenVolumes, [peerId]: value } });
   };
   const togglePeerMute = (peerId: string) => {
     const value = !(settings.mutedPeers[peerId] ?? false);
@@ -680,6 +738,7 @@ export function App() {
       onCheckUpdate={() => void runUpdateCheck()}
       onInstallUpdate={() => void installUpdate()}
       onSaveDiagnostics={saveConnectionDiagnostics}
+      onSaveProfile={saveProfile}
     />
   ) : null;
 
@@ -716,7 +775,8 @@ export function App() {
         remoteVideos={remoteVideos}
         videoBusy={videoBusy}
         muted={muted}
-        pttPressed={pttPressed}
+        roomStartedAt={roomStartedAt}
+        reactions={reactions}
         settings={settings}
         signalingState={signalState}
         reconnectAttempt={reconnectAttempt}
@@ -725,15 +785,12 @@ export function App() {
         onCopyInvite={() => void copyInvite()}
         onMute={toggleMute}
         onCamera={() => void runVideoAction('camera')}
-        onScreen={(includeAudio) => void runVideoAction('screen', includeAudio)}
-        onTransmissionMode={() =>
-          setTransmissionMode(
-            settings.transmissionMode === 'push-to-talk' ? 'voice-activation' : 'push-to-talk',
-          )
-        }
+        onScreen={() => void runVideoAction('screen')}
+        onReaction={sendReaction}
         onSettings={() => setSettingsOpen(true)}
         onLeave={cleanup}
         onPeerVolume={setPeerVolume}
+        onScreenVolume={setScreenVolume}
         onPeerMute={togglePeerMute}
         onModerationMute={moderationMute}
       />

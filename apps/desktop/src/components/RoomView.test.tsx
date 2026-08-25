@@ -28,6 +28,8 @@ function view(
   remoteVideos: RemoteVideoUiState = {},
   remoteSpeaking = false,
   onScreen = vi.fn(),
+  onReaction = vi.fn(),
+  onScreenVolume = vi.fn(),
 ) {
   return (
     <RoomView
@@ -50,7 +52,8 @@ function view(
       remoteVideos={remoteVideos}
       videoBusy={false}
       muted={false}
-      pttPressed={false}
+      roomStartedAt={Date.now() - 65_000}
+      reactions={[]}
       signalingState="connected"
       reconnectAttempt={0}
       settings={defaultSettings()}
@@ -60,10 +63,11 @@ function view(
       onMute={vi.fn()}
       onCamera={vi.fn()}
       onScreen={onScreen}
-      onTransmissionMode={vi.fn()}
+      onReaction={onReaction}
       onSettings={vi.fn()}
       onLeave={vi.fn()}
       onPeerVolume={vi.fn()}
+      onScreenVolume={onScreenVolume}
       onPeerMute={vi.fn()}
       onModerationMute={vi.fn()}
     />
@@ -128,23 +132,36 @@ describe('RoomView media layouts', () => {
     expect((local.getByLabelText('Экран Гера') as HTMLVideoElement).muted).toBe(true);
   });
 
-  it('keeps the active screen control label compact', () => {
-    const { getByRole } = render(view('screen'));
-    expect(getByRole('button', { name: /Стоп Со звуком/ })).not.toBeNull();
+  it('lets the listener adjust screen-share audio independently', () => {
+    const onScreenVolume = vi.fn();
+    const { getByLabelText } = render(
+      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), onScreenVolume),
+    );
+    const slider = getByLabelText('Громкость демонстрации Друг');
+    fireEvent.change(slider, { target: { value: '0.4' } });
+    expect(onScreenVolume).toHaveBeenCalledWith(peerId, 0.4);
   });
 
-  it('lets the user choose screen sharing with or without window audio', () => {
+  it('keeps the active screen control label compact', () => {
+    const { getByRole } = render(view('screen'));
+    expect(getByRole('button', { name: /Стоп Демонстрация/ })).not.toBeNull();
+  });
+
+  it('opens the native screen chooser immediately without an intermediate dialog', () => {
     const onScreen = vi.fn();
     const { getByRole } = render(view('none', {}, false, onScreen));
     fireEvent.click(getByRole('button', { name: /Экран Поделиться/ }));
+    expect(onScreen).toHaveBeenCalledOnce();
+  });
 
-    const audioSwitch = getByRole('switch', { name: 'Передавать звук выбранного окна' });
-    expect(audioSwitch.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(audioSwitch);
-    expect(audioSwitch.getAttribute('aria-checked')).toBe('false');
-    fireEvent.click(getByRole('button', { name: 'Выбрать окно или экран' }));
-
-    expect(onScreen).toHaveBeenCalledWith(false);
+  it('shows the call timer and sends one of five reactions', () => {
+    const onReaction = vi.fn();
+    const { getByRole, getByLabelText } = render(view('none', {}, false, vi.fn(), onReaction));
+    expect(getByLabelText(/Длительность звонка 01:05/)).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: /Реакция Ответить эмоцией/ }));
+    expect(getByRole('menu', { name: 'Реакции' }).querySelectorAll('button')).toHaveLength(5);
+    fireEvent.click(getByRole('menuitem', { name: 'Отправить реакцию 🎉' }));
+    expect(onReaction).toHaveBeenCalledWith('🎉');
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

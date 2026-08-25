@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Participant } from '@freetalk/protocol';
+import type { Participant, Reaction } from '@freetalk/protocol';
 import {
   Check,
   Camera,
@@ -13,13 +13,13 @@ import {
   MonitorUp,
   MoreHorizontal,
   Radio,
+  SmilePlus,
   Settings,
   ShieldCheck,
   Square,
   UserPlus,
   Volume2,
   VolumeX,
-  Waves,
   X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
@@ -49,7 +49,8 @@ interface RoomViewProps {
   remoteVideos: RemoteVideoUiState;
   videoBusy: boolean;
   muted: boolean;
-  pttPressed: boolean;
+  roomStartedAt: number;
+  reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   signalingState: SignalingState;
   reconnectAttempt: number;
   settings: LocalSettings;
@@ -58,11 +59,12 @@ interface RoomViewProps {
   onCopyInvite(): void;
   onMute(): void;
   onCamera(): void;
-  onScreen(includeAudio: boolean): void;
-  onTransmissionMode(): void;
+  onScreen(): void;
+  onReaction(reaction: Reaction): void;
   onSettings(): void;
   onLeave(): void;
   onPeerVolume(peerId: string, value: number): void;
+  onScreenVolume(peerId: string, value: number): void;
   onPeerMute(peerId: string): void;
   onModerationMute(peerId: string, name: string): void;
 }
@@ -77,7 +79,8 @@ export function RoomView({
   remoteVideos,
   videoBusy,
   muted,
-  pttPressed,
+  roomStartedAt,
+  reactions,
   signalingState,
   reconnectAttempt,
   settings,
@@ -87,18 +90,19 @@ export function RoomView({
   onMute,
   onCamera,
   onScreen,
-  onTransmissionMode,
+  onReaction,
   onSettings,
   onLeave,
   onPeerVolume,
+  onScreenVolume,
   onPeerMute,
   onModerationMute,
 }: RoomViewProps) {
   const [menuFor, setMenuFor] = useState<string>();
   const [expandedMedia, setExpandedMedia] = useState<ExpandedMedia>();
   const [presentedScreenId, setPresentedScreenId] = useState<string>();
-  const [screenShareOpen, setScreenShareOpen] = useState(false);
-  const [screenShareAudio, setScreenShareAudio] = useState(true);
+  const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const elapsed = useCallDuration(roomStartedAt);
   const ordered = [...participants].sort(
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
@@ -257,11 +261,18 @@ export function RoomView({
             <h1>Участники</h1>
             <p>{participants.length} из 6</p>
           </div>
-          <span
-            className="room-security"
-            title={turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'}
-          >
-            <ShieldCheck size={14} /> Приватное соединение
+          <span className="room-session-meta">
+            <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+              <i /> {elapsed}
+            </span>
+            <span
+              className="room-security"
+              title={
+                turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
+              }
+            >
+              <ShieldCheck size={14} /> Приватное соединение
+            </span>
           </span>
         </div>
 
@@ -276,7 +287,7 @@ export function RoomView({
                   screenPresenter.id === selfId || Boolean(settings.mutedPeers[screenPresenter.id])
                 }
                 volume={
-                  (settings.peerVolumes[screenPresenter.id] ?? 1) *
+                  (settings.screenVolumes[screenPresenter.id] ?? 1) *
                   settings.outputVolume *
                   (settings.echoDucking && localSpeaking ? settings.echoDuckingLevel : 1)
                 }
@@ -295,6 +306,26 @@ export function RoomView({
                 </span>
                 {screenPresenter.isOwner && <CreatorBadge compact />}
               </div>
+              {screenPresenter.id !== selfId && (
+                <label className="screen-stage-volume">
+                  <Volume2 size={15} aria-hidden="true" />
+                  <span>Звук демонстрации</span>
+                  <input
+                    aria-label={`Громкость демонстрации ${screenPresenter.name}`}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={settings.screenVolumes[screenPresenter.id] ?? 1}
+                    onChange={(event) =>
+                      onScreenVolume(screenPresenter.id, Number(event.target.value))
+                    }
+                  />
+                  <output>
+                    {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
+                  </output>
+                </label>
+              )}
             </article>
             <div className="participant-strip" role="list" aria-label="Участники комнаты">
               {ordered.map((participant) => renderParticipant(participant, true))}
@@ -331,6 +362,18 @@ export function RoomView({
         />
       )}
 
+      <div className="reaction-burst-layer" aria-live="polite">
+        {reactions.map((item) => {
+          const participant = participants.find((entry) => entry.id === item.participantId);
+          return (
+            <span className="reaction-burst" key={item.id}>
+              <b>{item.reaction}</b>
+              <small>{participant?.name ?? 'Участник'}</small>
+            </span>
+          );
+        })}
+      </div>
+
       <footer className="voice-dock">
         <button className={`dock-control mic-control ${muted ? 'muted' : ''}`} onClick={onMute}>
           <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
@@ -352,91 +395,50 @@ export function RoomView({
           </span>
         </button>
         <div className="dock-divider" />
-        <div className="screen-share-control">
+        <button
+          className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
+          disabled={videoBusy}
+          onClick={onScreen}
+        >
+          <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
+          <span>
+            <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
+            <small>{localVideo.screenEnabled ? 'Демонстрация' : 'Поделиться'}</small>
+          </span>
+        </button>
+        <div className="dock-divider" />
+        <div className="reaction-control">
           <button
-            className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
-            disabled={videoBusy}
-            aria-expanded={localVideo.screenEnabled ? undefined : screenShareOpen}
-            onClick={() => {
-              if (localVideo.screenEnabled) onScreen(false);
-              else setScreenShareOpen((open) => !open);
-            }}
+            className={`dock-control reaction-button ${reactionMenuOpen ? 'active' : ''}`}
+            aria-expanded={reactionMenuOpen}
+            onClick={() => setReactionMenuOpen((open) => !open)}
           >
             <span className="dock-icon">
-              {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
+              <SmilePlus />
             </span>
             <span>
-              <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
-              <small>
-                {localVideo.screenEnabled
-                  ? localVideo.screenAudioEnabled
-                    ? 'Со звуком'
-                    : 'Без звука'
-                  : 'Поделиться'}
-              </small>
+              <strong>Реакция</strong>
+              <small>Ответить эмоцией</small>
             </span>
           </button>
-          {screenShareOpen && !localVideo.screenEnabled && (
-            <div className="screen-share-popover" role="dialog" aria-label="Настройка демонстрации">
-              <div className="screen-share-popover-header">
-                <span className="screen-share-popover-icon">
-                  <MonitorUp size={18} />
-                </span>
-                <span>
-                  <strong>Демонстрация экрана</strong>
-                  <small>Выберите, передавать ли звук окна</small>
-                </span>
+          {reactionMenuOpen && (
+            <div className="reaction-menu" role="menu" aria-label="Реакции">
+              {(['👍', '❤️', '😂', '🎉', '🔥'] as const).map((reaction) => (
                 <button
-                  className="screen-share-popover-close"
-                  aria-label="Закрыть настройку демонстрации"
-                  onClick={() => setScreenShareOpen(false)}
+                  key={reaction}
+                  role="menuitem"
+                  aria-label={`Отправить реакцию ${reaction}`}
+                  onClick={() => {
+                    onReaction(reaction);
+                    setReactionMenuOpen(false);
+                  }}
                 >
-                  <X size={15} />
+                  {reaction}
                 </button>
-              </div>
-              <div className="screen-share-audio-row">
-                <span>
-                  <strong>Звук выбранного окна</strong>
-                  <small>Звуки FreeTalk не передаются</small>
-                </span>
-                <button
-                  className={`switch ${screenShareAudio ? 'on' : ''}`}
-                  role="switch"
-                  aria-checked={screenShareAudio}
-                  aria-label="Передавать звук выбранного окна"
-                  onClick={() => setScreenShareAudio((enabled) => !enabled)}
-                >
-                  <span />
-                </button>
-              </div>
-              <button
-                className="screen-share-start"
-                onClick={() => {
-                  setScreenShareOpen(false);
-                  onScreen(screenShareAudio);
-                }}
-              >
-                <MonitorUp size={16} /> Выбрать окно или экран
-              </button>
-              <small className="screen-share-hint">
-                Звук доступен при выборе отдельного окна. Весь экран передаётся без звука.
-              </small>
+              ))}
             </div>
           )}
         </div>
-        <div className="dock-divider" />
-        <button
-          className={`dock-control ptt-control ${pttPressed ? 'pressed' : ''}`}
-          onClick={onTransmissionMode}
-        >
-          <span className="dock-icon">
-            <Waves />
-          </span>
-          <span>
-            <strong>{transmissionLabel(settings.transmissionMode)}</strong>
-            <small>Режим передачи</small>
-          </span>
-        </button>
         <div className="dock-divider" />
         <button className="dock-control settings-control" onClick={onSettings}>
           <span className="dock-icon">
@@ -454,6 +456,22 @@ export function RoomView({
       </footer>
     </main>
   );
+}
+
+function useCallDuration(startedAt: number) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const totalSeconds = startedAt > 0 ? Math.max(0, Math.floor((now - startedAt) / 1_000)) : 0;
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds]
+    .filter((_, index) => hours > 0 || index > 0)
+    .map((value) => value.toString().padStart(2, '0'))
+    .join(':');
 }
 
 function ParticipantVideo({
@@ -788,7 +806,11 @@ function ParticipantAvatar({
   const variant = [...participant.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
   return (
     <div className={`participant-avatar ${speaking ? 'speaking' : ''}`} data-variant={variant}>
-      <span>{initials(participant.name)}</span>
+      {participant.avatar ? (
+        <img src={participant.avatar} alt={`Аватар ${participant.name}`} />
+      ) : (
+        <span>{initials(participant.name)}</span>
+      )}
       <i aria-label="В сети" />
     </div>
   );
@@ -834,10 +856,4 @@ function slotsLabel(value: number) {
   if (value === 1) return '1 свободное место';
   if (value < 5) return `${value} свободных места`;
   return `${value} свободных мест`;
-}
-
-function transmissionLabel(mode: LocalSettings['transmissionMode']) {
-  if (mode === 'push-to-talk') return 'Нажми и говори';
-  if (mode === 'continuous') return 'Постоянная передача';
-  return 'По голосу (VAD)';
 }
