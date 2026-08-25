@@ -71,7 +71,7 @@ export function App() {
   const [muted, setMuted] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.18');
+  const [appVersion, setAppVersion] = useState('0.3.19');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
@@ -540,13 +540,13 @@ export function App() {
     signaling.current?.send({ type: 'mute-changed', muted: next });
   };
 
-  const runVideoAction = async (action: 'camera' | 'screen') => {
+  const runVideoAction = async (action: 'camera' | 'screen', screenAudio = true) => {
     if (!video.current || videoBusy) return;
     setError('');
     setVideoBusy(true);
     try {
       if (action === 'camera') await video.current.toggleCamera();
-      else await video.current.toggleScreen();
+      else await video.current.toggleScreen(screenAudio);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
     } finally {
@@ -725,7 +725,7 @@ export function App() {
         onCopyInvite={() => void copyInvite()}
         onMute={toggleMute}
         onCamera={() => void runVideoAction('camera')}
-        onScreen={() => void runVideoAction('screen')}
+        onScreen={(includeAudio) => void runVideoAction('screen', includeAudio)}
         onTransmissionMode={() =>
           setTransmissionMode(
             settings.transmissionMode === 'push-to-talk' ? 'voice-activation' : 'push-to-talk',

@@ -42,8 +42,10 @@ export class VideoManager {
     return this.enqueue(() => (this.cameraTrack ? this.stopCamera() : this.startCamera()));
   }
 
-  toggleScreen() {
-    return this.enqueue(() => (this.screenTrack ? this.stopScreen() : this.startScreen()));
+  toggleScreen(includeAudio = true) {
+    return this.enqueue(() =>
+      this.screenTrack ? this.stopScreen() : this.startScreen(includeAudio),
+    );
   }
 
   getCurrent() {
@@ -121,26 +123,28 @@ export class VideoManager {
     this.emitState();
   }
 
-  private async startScreen() {
+  private async startScreen(includeAudio: boolean) {
     if (this.disposed) return;
     connectionDiagnostics.record('screen-capture:start');
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        audio: {
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false,
-          channelCount: { ideal: 2 },
-          restrictOwnAudio: true,
-        },
+        audio: includeAudio
+          ? {
+              autoGainControl: false,
+              echoCancellation: false,
+              noiseSuppression: false,
+              channelCount: { ideal: 2 },
+              restrictOwnAudio: true,
+            }
+          : false,
         video: {
           displaySurface: 'window',
           frameRate: { ideal: 30, max: 30 },
         },
         selfBrowserSurface: 'exclude',
         systemAudio: 'exclude',
-        windowAudio: 'window',
+        windowAudio: includeAudio ? 'window' : 'exclude',
       } as DisplayMediaStreamOptions);
     } catch (error) {
       connectionDiagnostics.record('screen-capture:error', undefined, {
@@ -156,6 +160,12 @@ export class VideoManager {
     if (this.disposed) {
       stream.getTracks().forEach((item) => item.stop());
       return;
+    }
+    if (!includeAudio) {
+      stream.getAudioTracks().forEach((item) => {
+        item.stop();
+        stream.removeTrack(item);
+      });
     }
     this.screenTrack = track;
     this.screenStream = stream;

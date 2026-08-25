@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Participant } from '@freetalk/protocol';
 import {
   Check,
@@ -25,6 +25,7 @@ import {
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
+import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
 
 export type PeerUiState = Record<
   string,
@@ -57,7 +58,7 @@ interface RoomViewProps {
   onCopyInvite(): void;
   onMute(): void;
   onCamera(): void;
-  onScreen(): void;
+  onScreen(includeAudio: boolean): void;
   onTransmissionMode(): void;
   onSettings(): void;
   onLeave(): void;
@@ -96,6 +97,8 @@ export function RoomView({
   const [menuFor, setMenuFor] = useState<string>();
   const [expandedMedia, setExpandedMedia] = useState<ExpandedMedia>();
   const [presentedScreenId, setPresentedScreenId] = useState<string>();
+  const [screenShareOpen, setScreenShareOpen] = useState(false);
+  const [screenShareAudio, setScreenShareAudio] = useState(true);
   const ordered = [...participants].sort(
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
@@ -349,23 +352,78 @@ export function RoomView({
           </span>
         </button>
         <div className="dock-divider" />
-        <button
-          className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
-          disabled={videoBusy}
-          onClick={onScreen}
-        >
-          <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
-          <span>
-            <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
-            <small>
-              {localVideo.screenEnabled
-                ? localVideo.screenAudioEnabled
-                  ? 'Со звуком'
-                  : 'Без звука'
-                : 'Поделиться'}
-            </small>
-          </span>
-        </button>
+        <div className="screen-share-control">
+          <button
+            className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
+            disabled={videoBusy}
+            aria-expanded={localVideo.screenEnabled ? undefined : screenShareOpen}
+            onClick={() => {
+              if (localVideo.screenEnabled) onScreen(false);
+              else setScreenShareOpen((open) => !open);
+            }}
+          >
+            <span className="dock-icon">
+              {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
+            </span>
+            <span>
+              <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
+              <small>
+                {localVideo.screenEnabled
+                  ? localVideo.screenAudioEnabled
+                    ? 'Со звуком'
+                    : 'Без звука'
+                  : 'Поделиться'}
+              </small>
+            </span>
+          </button>
+          {screenShareOpen && !localVideo.screenEnabled && (
+            <div className="screen-share-popover" role="dialog" aria-label="Настройка демонстрации">
+              <div className="screen-share-popover-header">
+                <span className="screen-share-popover-icon">
+                  <MonitorUp size={18} />
+                </span>
+                <span>
+                  <strong>Демонстрация экрана</strong>
+                  <small>Выберите, передавать ли звук окна</small>
+                </span>
+                <button
+                  className="screen-share-popover-close"
+                  aria-label="Закрыть настройку демонстрации"
+                  onClick={() => setScreenShareOpen(false)}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="screen-share-audio-row">
+                <span>
+                  <strong>Звук выбранного окна</strong>
+                  <small>Звуки FreeTalk не передаются</small>
+                </span>
+                <button
+                  className={`switch ${screenShareAudio ? 'on' : ''}`}
+                  role="switch"
+                  aria-checked={screenShareAudio}
+                  aria-label="Передавать звук выбранного окна"
+                  onClick={() => setScreenShareAudio((enabled) => !enabled)}
+                >
+                  <span />
+                </button>
+              </div>
+              <button
+                className="screen-share-start"
+                onClick={() => {
+                  setScreenShareOpen(false);
+                  onScreen(screenShareAudio);
+                }}
+              >
+                <MonitorUp size={16} /> Выбрать окно или экран
+              </button>
+              <small className="screen-share-hint">
+                Звук доступен при выборе отдельного окна. Весь экран передаётся без звука.
+              </small>
+            </div>
+          )}
+        </div>
         <div className="dock-divider" />
         <button
           className={`dock-control ptt-control ${pttPressed ? 'pressed' : ''}`}
@@ -473,18 +531,29 @@ function ExpandedMediaView({
   onClose(): void;
 }) {
   const surface = useRef<HTMLDivElement>(null);
+  const nativeFullscreen = useRef(false);
   const [closing, setClosing] = useState(false);
+  const [windowFullscreen, setWindowFullscreen] = useState(false);
+  const close = useCallback(() => {
+    void leaveWindowFullscreen(nativeFullscreen.current);
+    nativeFullscreen.current = false;
+    setWindowFullscreen(false);
+    setClosing(true);
+  }, []);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !document.fullscreenElement) setClosing(true);
+      if (event.key === 'Escape' && !document.fullscreenElement) close();
     };
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      void leaveWindowFullscreen(nativeFullscreen.current);
+    };
+  }, [close]);
 
   return (
     <div
-      className={`expanded-media-backdrop ${closing ? 'closing' : ''}`}
+      className={`expanded-media-backdrop ${windowFullscreen ? 'native-fullscreen' : ''} ${closing ? 'closing' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={`${type === 'screen' ? 'Демонстрация экрана' : 'Камера'} ${participantName}`}
@@ -512,11 +581,19 @@ function ExpandedMediaView({
           <div>
             <button
               aria-label="Открыть в полноэкранном режиме"
-              onClick={() => void surface.current?.requestFullscreen?.()}
+              onClick={() => {
+                if (!surface.current) return;
+                void toggleMediaFullscreen(surface.current)
+                  .then((mode) => {
+                    nativeFullscreen.current = mode === 'window';
+                    setWindowFullscreen(mode === 'window');
+                  })
+                  .catch(() => undefined);
+              }}
             >
               <Maximize2 size={17} />
             </button>
-            <button aria-label="Закрыть раскрытое видео" onClick={() => setClosing(true)}>
+            <button aria-label="Закрыть раскрытое видео" onClick={close}>
               <X size={18} />
             </button>
           </div>

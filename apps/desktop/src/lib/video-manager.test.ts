@@ -15,7 +15,7 @@ class FakeTrack {
 }
 
 class FakeStream {
-  constructor(private readonly tracks: FakeTrack[]) {}
+  constructor(private tracks: FakeTrack[]) {}
   getTracks() {
     return this.tracks;
   }
@@ -24,6 +24,9 @@ class FakeStream {
   }
   getAudioTracks() {
     return this.tracks.filter((track) => track.kind === 'audio');
+  }
+  removeTrack(track: FakeTrack) {
+    this.tracks = this.tracks.filter((item) => item !== track);
   }
 }
 
@@ -145,7 +148,7 @@ describe('VideoManager', () => {
     });
   });
 
-  it('requests and publishes system audio together with the screen stream', async () => {
+  it('requests and publishes selected window audio together with the screen stream', async () => {
     const publish = vi.fn(async () => undefined);
     const onState = vi.fn();
     const manager = new VideoManager(publish, onState);
@@ -172,6 +175,30 @@ describe('VideoManager', () => {
     expect(screenAudioTracks[0]!.contentHint).toBe('music');
     expect(onState).toHaveBeenLastCalledWith(
       expect.objectContaining({ screenEnabled: true, screenAudioEnabled: true }),
+    );
+  });
+
+  it('can share without audio and removes any unexpected audio track', async () => {
+    const publish = vi.fn(async () => undefined);
+    const onState = vi.fn();
+    const manager = new VideoManager(publish, onState);
+
+    await manager.toggleScreen(false);
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: {
+        displaySurface: 'window',
+        frameRate: { ideal: 30, max: 30 },
+      },
+      selfBrowserSurface: 'exclude',
+      systemAudio: 'exclude',
+      windowAudio: 'exclude',
+    });
+    expect(screenAudioTracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(screenStreams[0]!.getAudioTracks()).toHaveLength(0);
+    expect(onState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ screenEnabled: true, screenAudioEnabled: false }),
     );
   });
 

@@ -27,6 +27,7 @@ function view(
   localSource: 'none' | 'camera' | 'screen' | 'both' = 'none',
   remoteVideos: RemoteVideoUiState = {},
   remoteSpeaking = false,
+  onScreen = vi.fn(),
 ) {
   return (
     <RoomView
@@ -58,7 +59,7 @@ function view(
       onCopyInvite={vi.fn()}
       onMute={vi.fn()}
       onCamera={vi.fn()}
-      onScreen={vi.fn()}
+      onScreen={onScreen}
       onTransmissionMode={vi.fn()}
       onSettings={vi.fn()}
       onLeave={vi.fn()}
@@ -130,6 +131,20 @@ describe('RoomView media layouts', () => {
   it('keeps the active screen control label compact', () => {
     const { getByRole } = render(view('screen'));
     expect(getByRole('button', { name: /Стоп Со звуком/ })).not.toBeNull();
+  });
+
+  it('lets the user choose screen sharing with or without window audio', () => {
+    const onScreen = vi.fn();
+    const { getByRole } = render(view('none', {}, false, onScreen));
+    fireEvent.click(getByRole('button', { name: /Экран Поделиться/ }));
+
+    const audioSwitch = getByRole('switch', { name: 'Передавать звук выбранного окна' });
+    expect(audioSwitch.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(audioSwitch);
+    expect(audioSwitch.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(getByRole('button', { name: 'Выбрать окно или экран' }));
+
+    expect(onScreen).toHaveBeenCalledWith(false);
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Минимальные разрешения главного окна FreeTalk",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "process:allow-restart"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen",
+    "updater:default",
+    "process:allow-restart"
+  ]
 }
