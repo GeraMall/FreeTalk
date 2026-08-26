@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WelcomeScreen } from './WelcomeScreen';
 
-afterEach(cleanup);
+beforeEach(() => vi.stubEnv('VITE_TURNSTILE_SITE_KEY', ''));
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 function props() {
   return {
