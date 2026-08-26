@@ -2,6 +2,21 @@ export const PROFILE_CHANGE_LIMIT = 3;
 export const PROFILE_CHANGE_WINDOW_MS = 5 * 60 * 60 * 1000;
 export const MAX_AVATAR_DATA_URL_LENGTH = 18_000;
 
+export function dataUrlToBlob(dataUrl: string) {
+  const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(dataUrl);
+  if (!match) throw new Error('Не удалось прочитать выбранное изображение.');
+  const mimeType = match[1] || 'application/octet-stream';
+  const payload = match[3];
+  try {
+    const bytes = match[2]
+      ? Uint8Array.from(atob(payload), (character) => character.charCodeAt(0))
+      : new TextEncoder().encode(decodeURIComponent(payload));
+    return new Blob([bytes], { type: mimeType });
+  } catch {
+    throw new Error('Не удалось прочитать выбранное изображение.');
+  }
+}
+
 export function activeProfileChanges(history: number[], now = Date.now()) {
   return history.filter((time) => Number.isFinite(time) && now - time < PROFILE_CHANGE_WINDOW_MS);
 }

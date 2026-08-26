@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { dataUrlToBlob } from './profile';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8790').replace(/\/$/, '');
 
@@ -189,8 +190,7 @@ export class AccountClient {
   }
 
   async uploadAvatar(dataUrl: string) {
-    const response = await fetch(dataUrl);
-    const blob = await response.blob();
+    const blob = dataUrlToBlob(dataUrl);
     const form = new FormData();
     form.append('avatar', blob, `avatar.${blob.type.split('/')[1] || 'webp'}`);
     return this.request<{ avatarUrl: string }>('/v1/me/avatar', { method: 'POST', body: form });
@@ -207,8 +207,7 @@ export class AccountClient {
   }
 
   async uploadCover(dataUrl: string) {
-    const response = await fetch(dataUrl);
-    const blob = await response.blob();
+    const blob = dataUrlToBlob(dataUrl);
     const form = new FormData();
     form.append('cover', blob, `cover.${blob.type.split('/')[1] || 'webp'}`);
     return this.request<{ coverUrl: string }>('/v1/me/cover', { method: 'POST', body: form });

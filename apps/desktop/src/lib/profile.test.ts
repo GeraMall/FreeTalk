@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PROFILE_CHANGE_WINDOW_MS,
+  dataUrlToBlob,
   nextProfileChangeHistory,
   remainingProfileChanges,
 } from './profile';
@@ -18,5 +19,17 @@ describe('profile change limiter', () => {
     const history = [now - PROFILE_CHANGE_WINDOW_MS - 1, now - 1_000];
     expect(remainingProfileChanges(history, now)).toBe(2);
     expect(nextProfileChangeHistory(history, now)).toEqual([now - 1_000, now]);
+  });
+
+  it('converts a selected data URL without making a network request', async () => {
+    const blob = dataUrlToBlob('data:image/webp;base64,SGVsbG8=');
+    expect(blob.type).toBe('image/webp');
+    expect(await blob.text()).toBe('Hello');
+  });
+
+  it('rejects malformed selected image data', () => {
+    expect(() => dataUrlToBlob('https://example.test/avatar.webp')).toThrow(
+      'Не удалось прочитать выбранное изображение.',
+    );
   });
 });

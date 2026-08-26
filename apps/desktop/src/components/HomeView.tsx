@@ -93,6 +93,41 @@ export function HomeView({
         );
       } else if (event.type === 'profile-updated') {
         setProfileRevision((revision) => revision + 1);
+        void accountClient
+          .request<{
+            profile: { displayName: string; username: string; avatarUrl: string | null };
+          }>(`/v1/users/${event.userId}/profile`)
+          .then(({ profile }) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.sender_id === event.userId
+                  ? {
+                      ...message,
+                      display_name: profile.displayName,
+                      username: profile.username,
+                      avatar_url: profile.avatarUrl,
+                    }
+                  : message,
+              ),
+            );
+            setHistory((current) =>
+              current.map((call) => ({
+                ...call,
+                participants: call.participants.map((participant) =>
+                  participant.userId === event.userId
+                    ? {
+                        ...participant,
+                        displayName: profile.displayName,
+                        avatarUrl: profile.avatarUrl,
+                      }
+                    : participant,
+                ),
+              })),
+            );
+          })
+          .catch(() => {
+            // Lists below still refresh; inaccessible profiles stay unchanged.
+          });
         void Promise.all([
           accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
           accountClient.request<{

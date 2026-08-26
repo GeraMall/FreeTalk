@@ -340,7 +340,9 @@ function ProfileTab({
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
 }) {
   const [draftName, setDraftName] = useState(settings.displayName);
-  const [draftAvatar, setDraftAvatar] = useState(settings.avatarDataUrl);
+  const persistedAvatar = accountUser?.avatarUrl ?? '';
+  const initialAvatar = persistedAvatar || settings.avatarDataUrl;
+  const [draftAvatar, setDraftAvatar] = useState(initialAvatar);
   const [draftCover, setDraftCover] = useState(accountUser?.coverUrl ?? '');
   const [draftBio, setDraftBio] = useState(accountUser?.bio ?? '');
   const [error, setError] = useState('');
@@ -355,18 +357,19 @@ function ProfileTab({
   const usernameValid = isValidUsername(draftUsername);
   const changed =
     draftName.trim() !== settings.displayName ||
-    draftAvatar !== settings.avatarDataUrl ||
+    draftAvatar !== persistedAvatar ||
     draftUsername !== accountUser?.username ||
     draftBio !== (accountUser?.bio ?? '') ||
     draftCover !== (accountUser?.coverUrl ?? '');
 
   useEffect(() => {
     setDraftName(settings.displayName);
-    setDraftAvatar(settings.avatarDataUrl);
+    setDraftAvatar(accountUser?.avatarUrl || settings.avatarDataUrl);
     setDraftCover(accountUser?.coverUrl ?? '');
     setDraftBio(accountUser?.bio ?? '');
     setDraftUsername(accountUser?.username ?? '');
   }, [
+    accountUser?.avatarUrl,
     accountUser?.bio,
     accountUser?.coverUrl,
     accountUser?.username,

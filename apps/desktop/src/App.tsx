@@ -876,7 +876,7 @@ export function App() {
   ) => {
     if (
       displayName === settings.displayName &&
-      avatarDataUrl === settings.avatarDataUrl &&
+      avatarDataUrl === (accountUser?.avatarUrl ?? settings.avatarDataUrl) &&
       (!username || username === accountUser?.username) &&
       bio === (accountUser?.bio ?? '') &&
       coverDataUrl === (accountUser?.coverUrl ?? '')
@@ -884,6 +884,7 @@ export function App() {
       return;
     const history = nextProfileChangeHistory(settings.profileChangeTimestamps);
     if (!history) throw new Error('Профиль можно изменить не более трёх раз за пять часов.');
+    let savedAccountUser = accountUser;
     if (accountUser) {
       const updated = await accountClient.updateProfile({
         displayName,
@@ -891,7 +892,7 @@ export function App() {
         bio: bio.trim() || null,
       });
       let mediaChanged = false;
-      if (avatarDataUrl !== settings.avatarDataUrl) {
+      if (avatarDataUrl !== (accountUser.avatarUrl ?? '')) {
         if (avatarDataUrl) await accountClient.uploadAvatar(avatarDataUrl);
         else await accountClient.deleteAvatar();
         mediaChanged = true;
@@ -901,22 +902,24 @@ export function App() {
         else await accountClient.deleteCover();
         mediaChanged = true;
       }
-      setAccountUser(mediaChanged ? await accountClient.getMe() : updated);
+      savedAccountUser = mediaChanged ? await accountClient.getMe() : updated;
+      setAccountUser(savedAccountUser);
     }
+    const savedAvatar = savedAccountUser?.avatarUrl ?? avatarDataUrl;
     if (roomId) {
       const sent = signaling.current?.send({
         type: 'update-profile',
         name: displayName,
-        avatar: avatarDataUrl || undefined,
+        avatar: savedAvatar || undefined,
       });
       if (!sent) throw new Error('Нет соединения с сервером. Попробуйте ещё раз.');
     }
-    updateSettings({ displayName, avatarDataUrl, profileChangeTimestamps: history });
+    updateSettings({ displayName, avatarDataUrl: savedAvatar, profileChangeTimestamps: history });
     setName(displayName);
     setParticipants((old) =>
       old.map((participant) =>
         participant.id === selfId.current
-          ? { ...participant, name: displayName, avatar: avatarDataUrl || undefined }
+          ? { ...participant, name: displayName, avatar: savedAvatar || undefined }
           : participant,
       ),
     );

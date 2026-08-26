@@ -5768,9 +5768,32 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .field-label textarea {
   width: 100%;
-  resize: vertical;
+  min-height: 96px;
+  padding: 14px 16px;
+  resize: none;
+  border: 1px solid rgba(89, 190, 249, 0.22);
+  border-radius: 13px;
+  outline: none;
   color: var(--ft-text);
   background: rgba(1, 7, 15, 0.72);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.5;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+.field-label textarea::placeholder {
+  color: var(--ft-text-muted);
+}
+.field-label textarea:hover {
+  border-color: rgba(78, 243, 242, 0.38);
+}
+.field-label textarea:focus-visible {
+  border-color: var(--ft-cyan);
+  background: rgba(2, 12, 24, 0.9);
+  box-shadow: 0 0 0 3px rgba(78, 243, 242, 0.12);
 }
 @media (max-width: 1280px) {
   .messenger-layout,
