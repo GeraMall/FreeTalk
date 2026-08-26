@@ -2,7 +2,7 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TransientNotice } from './HomeView';
+import { RecentRooms, TransientNotice } from './HomeView';
 
 afterEach(() => {
   cleanup();
@@ -24,5 +24,29 @@ describe('TransientNotice', () => {
 
     act(() => vi.advanceTimersByTime(400));
     expect(onDismiss).toHaveBeenCalledOnce();
+  });
+});
+
+describe('RecentRooms', () => {
+  it('renders actual call history and never inserts demo rooms', () => {
+    const { getByText, queryByText } = render(
+      <RecentRooms
+        selfId="self"
+        loading={false}
+        onCreateAgain={vi.fn()}
+        calls={[
+          {
+            id: 'call-1',
+            room_id: 'ROOM12345678',
+            started_at: '2026-08-26T10:00:00.000Z',
+            duration_seconds: 720,
+            participants: [{ userId: 'friend', displayName: 'Alex' }],
+          },
+        ]}
+      />,
+    );
+    expect(getByText('Комната с Alex')).toBeTruthy();
+    expect(getByText(/12 мин/)).toBeTruthy();
+    expect(queryByText('Demo room')).toBeNull();
   });
 });

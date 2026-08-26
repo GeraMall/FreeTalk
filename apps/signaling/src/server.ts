@@ -218,6 +218,12 @@ sockets.on('connection', (socket, request) => {
         send(socket, iceConfig);
         return;
       }
+      // Heartbeats can arrive while authorization/ICE configuration is still pending.
+      // Answer them without pretending the user attempted a room action.
+      if (message.type === 'ping') {
+        send(socket, { type: 'pong', timestamp: message.timestamp });
+        return;
+      }
       if (!meta.roomId || !meta.clientId)
         return send(socket, {
           type: 'error',
@@ -280,9 +286,6 @@ sockets.on('connection', (socket, request) => {
             });
           break;
         }
-        case 'ping':
-          send(socket, { type: 'pong', timestamp: message.timestamp });
-          break;
         case 'offer':
         case 'answer':
         case 'ice-candidate': {

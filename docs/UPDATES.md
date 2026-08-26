@@ -42,4 +42,4 @@ URL обязан использовать HTTPS. В manifest помещаетс�
 
 ## Текущий статус
 
-Механизм проверки при запуске, ручная проверка, уведомление, прогресс установки, Tauri permissions и подписываемые updater-artifacts реализованы. Актуальная beta-версия исходников — 0.4.0-beta.16. Production endpoint: `https://github.com/GeraMall/FreeTalk/releases/latest/download/latest.json`. Манифест и bundles публикуются в GitHub Release; подпись проверяется встроенным публичным ключом. При недоступности GitHub текущая версия продолжает работать, а интерфейс показывает понятную ошибку.
+Механизм проверки при запуске, ручная проверка, уведомление, прогресс установки, Tauri permissions и подписываемые updater-artifacts реализованы. Актуальная beta-версия исходников — 0.4.0-beta.17. Production endpoint: `https://github.com/GeraMall/FreeTalk/releases/latest/download/latest.json`. Манифест и bundles публикуются в GitHub Release; подпись проверяется встроенным публичным ключом. При недоступности GitHub текущая версия продолжает работать, а интерфейс показывает понятную ошибку.

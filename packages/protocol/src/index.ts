@@ -134,10 +134,19 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type SignalMessage = Extract<ClientMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>;
 
-export const chatRealtimeClientMessageSchema = z.object({
-  type: z.literal('authenticate'),
-  token: z.string().min(32).max(256),
-});
+export const presenceStatusSchema = z.enum(['online', 'away', 'offline']);
+export type PresenceStatus = z.infer<typeof presenceStatusSchema>;
+
+export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('authenticate'),
+    token: z.string().min(32).max(256),
+  }),
+  z.object({
+    type: z.literal('presence'),
+    status: z.enum(['online', 'away']),
+  }),
+]);
 
 const realtimeChatMessage = z.object({
   id: z.string().uuid(),
@@ -161,6 +170,11 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
   z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
+  z.object({
+    type: z.literal('presence-updated'),
+    userId: z.string().uuid(),
+    status: presenceStatusSchema,
+  }),
   z.object({
     type: z.literal('retention-changed'),
     chatId: z.string().uuid(),

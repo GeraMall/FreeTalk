@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties } from 'react';
+import type { PresenceStatus } from '@freetalk/protocol';
 import {
   Ban,
   Check,
@@ -20,9 +21,11 @@ export interface FriendItem {
   display_name: string;
   displayName?: string;
   avatarUrl?: string | null;
+  presence?: PresenceStatus;
 }
 
 export interface PendingItem extends FriendItem {
+  profile_id?: string;
   sender_id: string;
   recipient_id: string;
 }
@@ -347,8 +350,8 @@ function FriendCard({
       <div className="friend-identity">
         <strong>{name}</strong>
         <small>@{friend.username}</small>
-        <span className="friend-status unavailable">
-          <i /> В списке друзей
+        <span className={`friend-status ${friend.presence ?? 'offline'}`}>
+          <i /> {presenceLabel(friend.presence)}
         </span>
       </div>
       <div className="friend-card-actions">
@@ -379,6 +382,12 @@ function FriendCard({
       </div>
     </article>
   );
+}
+
+function presenceLabel(status: PresenceStatus = 'offline') {
+  if (status === 'online') return 'В сети';
+  if (status === 'away') return 'Нет на месте';
+  return 'Не в сети';
 }
 
 function FriendAvatar({ friend }: { friend: FriendItem }) {

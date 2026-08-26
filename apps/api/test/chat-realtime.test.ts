@@ -35,4 +35,25 @@ describe('ChatRealtimeHub', () => {
     expect(socket.send).not.toHaveBeenCalled();
     expect(socket.close).toHaveBeenCalledWith(1013, 'Client is too slow');
   });
+
+  it('aggregates online, away and offline across all user devices', () => {
+    const hub = new ChatRealtimeHub();
+    const changes = vi.fn();
+    hub.onPresenceChanged(changes);
+    const desktop = fakeSocket();
+    const laptop = fakeSocket();
+    const removeDesktop = hub.add('user-a', desktop);
+    const removeLaptop = hub.add('user-a', laptop);
+
+    expect(hub.presence('user-a')).toBe('online');
+    hub.setPresence('user-a', desktop, 'away');
+    expect(hub.presence('user-a')).toBe('online');
+    hub.setPresence('user-a', laptop, 'away');
+    expect(hub.presence('user-a')).toBe('away');
+    removeDesktop();
+    expect(hub.presence('user-a')).toBe('away');
+    removeLaptop();
+    expect(hub.presence('user-a')).toBe('offline');
+    expect(changes).toHaveBeenCalledWith('user-a', 'offline');
+  });
 });

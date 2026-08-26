@@ -1,6 +1,8 @@
 import { DoorOpen, History, LogOut, MessageCircle, PhoneCall, Settings, Users } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { AccountUser } from '../lib/api-client';
+import type { PresenceStatus } from '@freetalk/protocol';
+import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { BrandLogo } from './BrandLogo';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
@@ -21,6 +23,12 @@ export function AccountSidebar({
   onSettings(): void;
   onLogout(): void;
 }) {
+  const [presence, setPresence] = useState<PresenceStatus>('offline');
+  useEffect(() => {
+    const realtime = new ChatRealtimeClient(() => undefined, setPresence);
+    realtime.start();
+    return () => realtime.stop();
+  }, [user.id]);
   return (
     <aside className="account-sidebar">
       <BrandLogo variant="compact" />
@@ -72,7 +80,13 @@ export function AccountSidebar({
         </span>
         <span>
           <strong>{user.displayName}</strong>
-          <small>@{user.username}</small>
+          <small>
+            <i
+              className={`profile-online-indicator ${presence}`}
+              aria-label={presenceText(presence)}
+            />
+            @{user.username} · {presenceText(presence)}
+          </small>
         </span>
         <button aria-label="Настройки" onClick={onSettings}>
           <Settings size={17} />
@@ -83,6 +97,12 @@ export function AccountSidebar({
       </button>
     </aside>
   );
+}
+
+function presenceText(status: PresenceStatus) {
+  if (status === 'online') return 'В сети';
+  if (status === 'away') return 'Нет на месте';
+  return 'Не в сети';
 }
 
 function Nav({

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Clock3, DoorOpen, History, ShieldCheck, Users } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { generateRoomCode } from '../lib/room-code';
+import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
 import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
-interface CallItem {
+export interface CallItem {
   id: string;
   room_id: string;
   started_at: string;
@@ -57,6 +58,7 @@ export function HomeView({
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
   const [history, setHistory] = useState<CallItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
   const activeChatRef = useRef(activeChat);
 
@@ -150,6 +152,33 @@ export function HomeView({
           .catch(() => {
             // The next normal page refresh will retry without interrupting realtime chat.
           });
+      } else if (event.type === 'presence-updated') {
+        setFriends((current) =>
+          current.map((friend) =>
+            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+          ),
+        );
+        setPending((current) =>
+          current.map((friend) =>
+            (friend.profile_id ?? friend.id) === event.userId
+              ? { ...friend, presence: event.status }
+              : friend,
+          ),
+        );
+        setBlocked((current) =>
+          current.map((friend) =>
+            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+          ),
+        );
+        setChats((current) =>
+          current.map((chat) => ({
+            ...chat,
+            members: chat.members.map((member) =>
+              member.id === event.userId ? { ...member, presence: event.status } : member,
+            ),
+          })),
+        );
+        setProfileRevision((revision) => revision + 1);
       }
     });
     realtime.start();
@@ -170,6 +199,7 @@ export function HomeView({
       setFriendsLoadError('');
     }
     if (next === 'chats') setChatsLoading(true);
+    if (next === 'home' || next === 'history') setHistoryLoading(true);
     try {
       if (next === 'friends') {
         const result = await accountClient.request<{
@@ -189,7 +219,7 @@ export function HomeView({
         setChats(chatResult.chats);
         setFriends(friendResult.friends);
       }
-      if (next === 'history')
+      if (next === 'home' || next === 'history')
         setHistory((await accountClient.request<{ calls: CallItem[] }>('/v1/history')).calls);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Ошибка загрузки';
@@ -198,6 +228,7 @@ export function HomeView({
     } finally {
       if (next === 'friends') setFriendsLoading(false);
       if (next === 'chats') setChatsLoading(false);
+      if (next === 'home' || next === 'history') setHistoryLoading(false);
     }
   }, []);
 
@@ -416,7 +447,11 @@ export function HomeView({
   };
 
   return (
-    <main className={embedded ? 'account-view-embedded' : 'account-shell'}>
+    <main
+      className={`${embedded ? 'account-view-embedded' : 'account-shell'} ${
+        page === 'home' ? 'account-home-shell' : ''
+      }`}
+    >
       {!embedded && (
         <AccountSidebar
           user={user}
@@ -439,6 +474,7 @@ export function HomeView({
         {page === 'home' && (
           <div className="home-dashboard">
             <section className="home-hero">
+              <img className="home-hero-watermark" src={mascot} alt="" aria-hidden="true" />
               <p className="eyebrow">СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!</p>
               <h1>Добрый вечер, {user.displayName}</h1>
               <p>Создайте приватную комнату или войдите по приглашению.</p>
@@ -473,6 +509,12 @@ export function HomeView({
                 <Clock3 size={17} /> Без записи разговоров
               </span>
             </div>
+            <RecentRooms
+              calls={history}
+              selfId={user.id}
+              loading={historyLoading}
+              onCreateAgain={() => onCreateRoom()}
+            />
           </div>
         )}
         {page === 'friends' && (
@@ -648,6 +690,94 @@ export function HomeView({
   );
 }
 
+export function RecentRooms({
+  calls,
+  selfId,
+  loading,
+  onCreateAgain,
+}: {
+  calls: CallItem[];
+  selfId: string;
+  loading: boolean;
+  onCreateAgain(): void;
+}) {
+  const recent = [...calls]
+    .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))
+    .slice(0, 4);
+  return (
+    <section className="recent-rooms" aria-labelledby="recent-rooms-title" aria-busy={loading}>
+      <header>
+        <div>
+          <p>ВАШИ ЗВОНКИ</p>
+          <h2 id="recent-rooms-title">Недавние комнаты</h2>
+        </div>
+        <span>Последние {Math.min(4, recent.length) || '—'}</span>
+      </header>
+      {loading ? (
+        <div className="recent-room-grid recent-room-loading" aria-label="Загружаем историю">
+          <i />
+          <i />
+        </div>
+      ) : recent.length ? (
+        <div className="recent-room-grid">
+          {recent.map((call, index) => {
+            const others = call.participants.filter((participant) => participant.userId !== selfId);
+            const title = others.length
+              ? others.length === 1
+                ? `Комната с ${others[0].displayName}`
+                : `Групповой звонок · ${others.length + 1}`
+              : 'Приватная комната';
+            return (
+              <article
+                className="recent-room-card"
+                style={{ '--recent-index': index } as CSSProperties}
+                key={call.id}
+              >
+                <span className="recent-room-avatars" aria-hidden="true">
+                  {(others.length ? others : call.participants)
+                    .slice(0, 3)
+                    .map((participant, participantIndex) => (
+                      <i
+                        key={participant.userId ?? `${participant.displayName}-${participantIndex}`}
+                      >
+                        {participant.avatarUrl ? (
+                          <img src={participant.avatarUrl} alt="" referrerPolicy="no-referrer" />
+                        ) : (
+                          participant.displayName.slice(0, 1).toUpperCase()
+                        )}
+                      </i>
+                    ))}
+                  {!call.participants.length && <PhoneCall />}
+                </span>
+                <span className="recent-room-copy">
+                  <strong>{title}</strong>
+                  <small>
+                    {formatRecentDate(call.started_at)} ·{' '}
+                    {formatCallDuration(call.duration_seconds)}
+                  </small>
+                </span>
+                <button onClick={onCreateAgain}>
+                  <PhoneCall size={15} /> Создать снова
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="recent-rooms-empty">
+          <span>
+            <History size={20} />
+          </span>
+          <div>
+            <strong>Недавних комнат пока нет</strong>
+            <p>Создайте первую комнату — она появится здесь.</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function TransientNotice({ message, onDismiss }: { message: string; onDismiss(): void }) {
   const [closing, setClosing] = useState(false);
   const onDismissRef = useRef(onDismiss);
@@ -712,4 +842,17 @@ function historyPeriod(startedAt: string): 'Сегодня' | 'Вчера' | 'Р
   if (callDay === today) return 'Сегодня';
   if (callDay === today - 86_400_000) return 'Вчера';
   return 'Ранее';
+}
+
+function formatRecentDate(startedAt: string) {
+  const date = new Date(startedAt);
+  const period = historyPeriod(startedAt);
+  if (period === 'Сегодня' || period === 'Вчера')
+    return `${period}, ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+}
+
+function formatCallDuration(seconds: number) {
+  if (seconds < 60) return 'меньше минуты';
+  return `${Math.max(1, Math.round(seconds / 60))} мин`;
 }

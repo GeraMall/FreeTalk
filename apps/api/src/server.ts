@@ -38,10 +38,16 @@ import {
 
 const TERMS_VERSION = '2026-08-25';
 const PRIVACY_VERSION = '2026-08-25';
-const chatRealtimeClientMessageSchema = z.object({
-  type: z.literal('authenticate'),
-  token: z.string().min(32).max(256),
-});
+const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('authenticate'),
+    token: z.string().min(32).max(256),
+  }),
+  z.object({
+    type: z.literal('presence'),
+    status: z.enum(['online', 'away']),
+  }),
+]);
 const app = Fastify({ logger: true, bodyLimit: 64 * 1024, trustProxy: true });
 await app.register(websocket, {
   options: { maxPayload: 8 * 1024, perMessageDeflate: false },
@@ -104,6 +110,28 @@ async function publishProfileUpdate(userId: string) {
   );
 }
 
+async function publishPresenceUpdate(userId: string, status: 'online' | 'away' | 'offline') {
+  const recipients = await db.query<{ user_id: string }>(
+    `SELECT $1::uuid AS user_id
+     UNION SELECT CASE WHEN user_low_id=$1 THEN user_high_id ELSE user_low_id END
+       FROM friendships WHERE user_low_id=$1 OR user_high_id=$1
+     UNION SELECT members.user_id FROM chat_members self
+       JOIN chat_members members ON members.chat_id=self.chat_id AND members.left_at IS NULL
+       WHERE self.user_id=$1 AND self.left_at IS NULL`,
+    [userId],
+  );
+  chatRealtimeHub.publish(
+    recipients.rows.map((recipient) => recipient.user_id),
+    { type: 'presence-updated', userId, status },
+  );
+}
+
+chatRealtimeHub.onPresenceChanged((userId, status) => {
+  void publishPresenceUpdate(userId, status).catch((error) =>
+    app.log.warn({ err: error, userId }, 'Failed to publish presence update'),
+  );
+});
+
 app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
   const origin = request.headers.origin;
   if (origin && !allowedOrigins.includes(origin)) {
@@ -113,6 +141,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
   let authenticated = false;
   let authenticationStarted = false;
+  let authenticatedUserId: string | undefined;
   let removeFromHub: (() => void) | undefined;
   let heartbeatAlive = true;
   const authenticationTimeout = setTimeout(() => {
@@ -134,7 +163,22 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
   });
 
   socket.on('message', (data, isBinary) => {
-    if (authenticated || authenticationStarted || isBinary) {
+    if (isBinary) {
+      socket.close(1008, 'Unexpected message');
+      return;
+    }
+    if (authenticated) {
+      try {
+        const input = chatRealtimeClientMessageSchema.parse(JSON.parse(data.toString()));
+        if (input.type !== 'presence' || !authenticatedUserId)
+          throw new Error('Unexpected message');
+        chatRealtimeHub.setPresence(authenticatedUserId, socket, input.status);
+      } catch {
+        socket.close(1008, 'Invalid message');
+      }
+      return;
+    }
+    if (authenticationStarted) {
       socket.close(1008, 'Unexpected message');
       return;
     }
@@ -142,12 +186,14 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
     void (async () => {
       try {
         const input = chatRealtimeClientMessageSchema.parse(JSON.parse(data.toString()));
+        if (input.type !== 'authenticate') throw new Error('Authentication required');
         const user = await authenticateAccessToken(input.token);
         if (!user || !user.email_verified_at) {
           socket.close(4401, 'Unauthorized');
           return;
         }
         authenticated = true;
+        authenticatedUserId = user.id;
         clearTimeout(authenticationTimeout);
         removeFromHub = chatRealtimeHub.add(user.id, socket);
         socket.send(JSON.stringify({ type: 'ready' }));
@@ -169,7 +215,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.5' };
+  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.6' };
 });
 
 app.post(

@@ -31,6 +31,7 @@ import {
   type AccountPage,
 } from './components/AccountSidebar';
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
+import mascot from './assets/freetalk-mascot.png';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const NO_LOCAL_VIDEO: LocalVideoState = {
   cameraEnabled: false,
@@ -320,7 +321,9 @@ export function App() {
       if (message.type === 'error') {
         setJoining(false);
         if (message.fatal) cleanup();
-        setError(message.message);
+        setError(
+          message.code === 'ROOM_NOT_FOUND' ? 'Комнаты больше не существует' : message.message,
+        );
         return;
       }
       if (message.type === 'ice-config') {
@@ -1002,8 +1005,8 @@ export function App() {
     return (
       <>
         {!accountReady ? (
-          <main className="account-loading">
-            <span className="spinner" /> Восстанавливаем сессию…
+          <main className="account-loading" aria-label="Восстанавливаем сессию">
+            <img className="account-loading-mascot" src={mascot} alt="" aria-hidden="true" />
           </main>
         ) : accountUser ? (
           <HomeView

@@ -30,12 +30,14 @@ import {
 } from 'lucide-react';
 import { isNearBottom } from '../lib/chat-scroll';
 import { accountClient } from '../lib/api-client';
+import type { PresenceStatus } from '@freetalk/protocol';
 
 export interface ChatMember {
   id: string;
   username: string;
   displayName: string;
   avatarUrl?: string | null;
+  presence?: PresenceStatus;
 }
 
 interface ChatProfile {
@@ -48,6 +50,7 @@ interface ChatProfile {
   registeredAt: string;
   mutualFriendsCount: number;
   mutualFriends: Array<{ id: string; displayName: string; avatarUrl: string | null }>;
+  presence?: PresenceStatus;
 }
 
 export interface ChatItem {
@@ -514,7 +517,11 @@ function ChatListItem({
       <ChatAvatar name={name} group={chat.type === 'group'} avatarUrl={other?.avatarUrl} />
       <span className="conversation-card-copy">
         <strong>{name}</strong>
-        <small>{preview}</small>
+        <small>
+          {chat.type === 'direct' && other
+            ? `${presenceLabel(other.presence)} · ${preview}`
+            : preview}
+        </small>
       </span>
       <span className="conversation-meta">
         {chat.lastMessageAt && <time>{formatConversationTime(chat.lastMessageAt)}</time>}
@@ -569,6 +576,11 @@ function ChatHeader({
               ? `@${other.username}`
               : 'Личный чат'}
         </small>
+        {chat.type === 'direct' && other && (
+          <span className={`chat-presence ${other.presence ?? 'offline'}`}>
+            <i /> {presenceLabel(other.presence)}
+          </span>
+        )}
       </div>
       <div className="active-chat-actions">
         <button
@@ -672,8 +684,8 @@ function ProfilePanel({
       <section className="chat-profile-identity">
         <h2>{name}</h2>
         <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
-        <span>
-          <i /> Пользователь FreeTalk
+        <span className={`chat-presence ${profile?.presence ?? fallback?.presence ?? 'offline'}`}>
+          <i /> {presenceLabel(profile?.presence ?? fallback?.presence)}
         </span>
       </section>
       <section className="chat-profile-block">
@@ -710,6 +722,12 @@ function ProfilePanel({
       )}
     </aside>
   );
+}
+
+function presenceLabel(status: PresenceStatus = 'offline') {
+  if (status === 'online') return 'В сети';
+  if (status === 'away') return 'Нет на месте';
+  return 'Не в сети';
 }
 
 export function MessageList({

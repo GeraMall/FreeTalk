@@ -115,6 +115,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         avatarUrl: row.has_avatar
           ? publicApiUrl(`/v1/users/${row.id}/avatar?v=${row.updated_at.getTime()}`)
           : null,
+        presence: chatRealtimeHub.presence(row.id),
       })),
     };
   });
@@ -150,18 +151,21 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         avatarUrl: row.has_avatar
           ? publicApiUrl(`/v1/users/${row.id}/avatar?v=${row.updated_at.getTime()}`)
           : null,
+        presence: chatRealtimeHub.presence(row.id),
       })),
       pending: pending.rows.map((row) => ({
         ...row,
         avatarUrl: row.has_avatar
           ? publicApiUrl(`/v1/users/${row.profile_id}/avatar?v=${row.updated_at.getTime()}`)
           : null,
+        presence: chatRealtimeHub.presence(row.profile_id),
       })),
       blocked: blocked.rows.map((row) => ({
         ...row,
         avatarUrl: row.has_avatar
           ? publicApiUrl(`/v1/users/${row.id}/avatar?v=${row.updated_at.getTime()}`)
           : null,
+        presence: chatRealtimeHub.presence(row.id),
       })),
     };
   });
@@ -336,6 +340,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           ? publicApiUrl(`/v1/users/${row.id}/cover?v=${row.updated_at.getTime()}`)
           : null,
         registeredAt: row.created_at.toISOString(),
+        presence: chatRealtimeHub.presence(row.id),
         mutualFriendsCount: mutual.rowCount ?? 0,
         mutualFriends: mutual.rows.slice(0, 4).map((friend) => ({
           id: friend.id,
@@ -378,7 +383,15 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
        ORDER BY COALESCE(latest.created_at,c.created_at) DESC`,
       [user.id, publicApiUrl('').replace(/\/$/, '')],
     );
-    return { chats: chats.rows };
+    return {
+      chats: chats.rows.map((chat) => ({
+        ...chat,
+        members: (chat.members as Array<Record<string, unknown>>).map((member) => ({
+          ...member,
+          presence: chatRealtimeHub.presence(String(member.id)),
+        })),
+      })),
+    };
   });
 
   app.post('/v1/chats', async (request, reply) => {

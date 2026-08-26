@@ -2,11 +2,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountClient } from './api-client';
-import { ChatRealtimeClient } from './chat-realtime';
+import { AWAY_AFTER_MS, ChatRealtimeClient } from './chat-realtime';
 
 class FakeWebSocket extends EventTarget {
+  static OPEN = 1;
   static instances: FakeWebSocket[] = [];
   sent: string[] = [];
+  readyState = FakeWebSocket.OPEN;
 
   constructor(readonly url: string) {
     super();
@@ -38,8 +40,31 @@ describe('ChatRealtimeClient', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('reports away after ten idle minutes and returns online on activity', async () => {
+    vi.useFakeTimers();
+    const onPresence = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), onPresence);
+    client.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: 'ready' });
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
+
+    vi.advanceTimersByTime(AWAY_AFTER_MS);
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'away' });
+    expect(onPresence).toHaveBeenLastCalledWith('away');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
+    expect(onPresence).toHaveBeenLastCalledWith('online');
+    client.stop();
   });
 
   it('authenticates and delivers a message event immediately', async () => {
