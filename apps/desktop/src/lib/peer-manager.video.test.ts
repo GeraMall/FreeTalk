@@ -43,6 +43,7 @@ class VideoPeerConnection {
   readonly senders: FakeSender[] = [];
   readonly transceivers: Array<{ mid: string; sender: FakeSender }> = [];
   readonly channels: FakeDataChannel[] = [];
+  stats = new Map<string, RTCStats>();
 
   constructor(private configuration: RTCConfiguration) {
     VideoPeerConnection.instances.push(this);
@@ -83,7 +84,7 @@ class VideoPeerConnection {
   async addIceCandidate() {}
   restartIce() {}
   async getStats() {
-    return new Map();
+    return this.stats;
   }
   close() {
     this.connectionState = 'closed';
@@ -121,7 +122,10 @@ describe('PeerManager video sender lifecycle', () => {
     vi.stubGlobal('RTCRtpReceiver', { getCapabilities: () => ({ codecs: [] }) });
     vi.stubGlobal('MediaStream', FakeStream);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it('preserves audio and reuses one camera transceiver across repeated toggles', async () => {
     const audio = track('audio', 'audio');
@@ -178,7 +182,7 @@ describe('PeerManager video sender lifecycle', () => {
     );
     expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        degradationPreference: 'maintain-resolution',
+        degradationPreference: 'balanced',
         encodings: [
           expect.objectContaining({
             maxBitrate: 6_000_000,
@@ -201,6 +205,106 @@ describe('PeerManager video sender lifecycle', () => {
       await manager.setVideoTrack(track('video', `screen-${index}`), 'screen');
     }
     expect(connection.transceivers).toHaveLength(2);
+  });
+
+  it('applies a selected 2K 60 FPS screen profile to every peer sender', async () => {
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    await manager.setVideoTrack(track('video', 'screen'), 'screen');
+    manager.setVideoPreferences({
+      cameraDeviceId: '',
+      screenResolution: '1440p',
+      screenFrameRate: 60,
+      screenAudioByDefault: true,
+      screenAdaptiveQuality: true,
+    });
+
+    expect(
+      VideoPeerConnection.instances[0]!.transceivers[0]!.sender.setParameters,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        degradationPreference: 'balanced',
+        encodings: [
+          expect.objectContaining({
+            maxBitrate: 14_000_000,
+            maxFramerate: 60,
+            scaleResolutionDownBy: 1,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('automatically reduces only the congested peer screen sender', async () => {
+    vi.useFakeTimers();
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    await manager.setVideoTrack(track('video', 'screen'), 'screen');
+    connection.stats = new Map([
+      [
+        'screen-outbound',
+        {
+          id: 'screen-outbound',
+          type: 'outbound-rtp',
+          timestamp: 1,
+          kind: 'video',
+          mid: 'video-0',
+          qualityLimitationReason: 'bandwidth',
+        } as RTCStats,
+      ],
+      [
+        'selected-pair',
+        {
+          id: 'selected-pair',
+          type: 'candidate-pair',
+          timestamp: 1,
+          state: 'succeeded',
+          nominated: true,
+          availableOutgoingBitrate: 2_000_000,
+          currentRoundTripTime: 0.42,
+        } as RTCStats,
+      ],
+      [
+        'remote-screen',
+        {
+          id: 'remote-screen',
+          type: 'remote-inbound-rtp',
+          timestamp: 1,
+          kind: 'video',
+          localId: 'screen-outbound',
+          fractionLost: 0.08,
+        } as RTCStats,
+      ],
+    ]);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        encodings: [
+          expect.objectContaining({
+            maxBitrate: 3_720_000,
+            maxFramerate: 23,
+            scaleResolutionDownBy: 1.5,
+          }),
+        ],
+      }),
+    );
+    manager.closeAll();
+    vi.useRealTimers();
   });
 
   it('adds the current screen source to a participant joining later', async () => {

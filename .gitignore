@@ -1,4 +1,7 @@
 node_modules/
+.npm-cache-playwright/
+.playwright-local/
+.local-postgres/
 .pnpm-store/
 dist/
 target/

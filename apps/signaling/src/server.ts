@@ -10,6 +10,15 @@ import { parseClientMessage, type ServerMessage } from '@freetalk/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomError, RoomManager, type PeerConnection } from './room-manager.js';
 import { getIceConfig } from './turn.js';
+import {
+  assertAuthorizationConfigured,
+  authorizeRoom,
+  getRegisteredProfile,
+  recordCallEvent,
+  type RoomAuthorization,
+} from './authorization.js';
+
+assertAuthorizationConfigured();
 
 const port = Number(process.env.PORT ?? 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? '*';
@@ -22,6 +31,9 @@ const metadata = new WeakMap<
     timestamps: number[];
     clientConnectionId: string;
     serverConnectionId: string;
+    guestExpiryTimer?: NodeJS.Timeout;
+    authorization?: Extract<RoomAuthorization, { allowed: true }>;
+    displayName?: string;
   }
 >();
 const upgradeMetadata = new WeakMap<
@@ -116,6 +128,37 @@ sockets.on('connection', (socket, request) => {
             code: 'INVALID_MESSAGE',
             message: 'Вы уже находитесь в комнате',
           });
+        const authorization = await authorizeRoom(
+          message.type === 'create-room' ? 'create' : 'join',
+          message.roomId,
+          message.authToken,
+        );
+        if (!authorization.allowed)
+          return send(socket, {
+            type: 'error',
+            code:
+              authorization.reason === 'REGISTERED_ONLY'
+                ? 'REGISTERED_ONLY'
+                : authorization.reason === 'GUEST_DAILY_LIMIT'
+                  ? 'GUEST_DAILY_LIMIT'
+                  : authorization.reason === 'RATE_LIMITED'
+                    ? 'RATE_LIMITED'
+                    : authorization.reason === 'AUTH_UNAVAILABLE'
+                      ? 'INTERNAL_ERROR'
+                      : 'AUTH_REQUIRED',
+            message:
+              authorization.reason === 'REGISTERED_ONLY'
+                ? 'Создавать комнаты могут только зарегистрированные пользователи'
+                : authorization.reason === 'GUEST_DAILY_LIMIT'
+                  ? 'Лимит гостя: 5 подключений в сутки'
+                  : authorization.reason === 'RATE_LIMITED'
+                    ? 'Слишком много входов. Попробуйте позже'
+                    : authorization.reason === 'AUTH_UNAVAILABLE'
+                      ? 'Сервер авторизации временно недоступен'
+                      : 'Требуется авторизация',
+            fatal: true,
+          });
+        const authorizedName = authorization.displayName ?? message.name;
         let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
         try {
           iceConfig = await getIceConfig();
@@ -131,7 +174,7 @@ sockets.on('connection', (socket, request) => {
             message.roomId,
             message.clientId,
             message.sessionId,
-            message.name,
+            authorizedName,
             connection,
             message.avatar,
           );
@@ -140,12 +183,36 @@ sockets.on('connection', (socket, request) => {
             message.roomId,
             message.clientId,
             message.sessionId,
-            message.name,
+            authorizedName,
             connection,
             message.avatar,
           );
         meta.roomId = message.roomId;
         meta.clientId = message.clientId;
+        meta.authorization = authorization;
+        meta.displayName = authorizedName;
+        void recordCallEvent({
+          event: message.type === 'create-room' ? 'start' : 'join',
+          roomId: message.roomId,
+          displayName: authorizedName,
+          userId: 'userId' in authorization ? authorization.userId : undefined,
+          anonymousUserId:
+            'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
+        }).catch((error) => logSocketEvent(socket, 'call-event.error', { error: String(error) }));
+        if (authorization.kind === 'guest' && authorization.disconnectAt) {
+          const delay = Math.max(0, new Date(authorization.disconnectAt).getTime() - Date.now());
+          meta.guestExpiryTimer = setTimeout(() => {
+            send(socket, {
+              type: 'error',
+              code: 'GUEST_SESSION_EXPIRED',
+              message:
+                'Гостевая сессия завершена. Зарегистрируйтесь, чтобы общаться без ограничений.',
+              fatal: true,
+            });
+            socket.close(4003, 'Guest session expired');
+          }, delay);
+          meta.guestExpiryTimer.unref();
+        }
         if (message.type === 'create-room')
           send(socket, { type: 'room-created', roomId: message.roomId });
         send(socket, iceConfig);
@@ -160,17 +227,29 @@ sockets.on('connection', (socket, request) => {
       manager.touch(meta.roomId, meta.clientId);
       switch (message.type) {
         case 'leave-room':
-          manager.leave(meta.roomId, meta.clientId, connection);
+          leaveRoom(meta, connection);
           socket.close(1000, 'Выход');
           break;
         case 'mute-changed':
           manager.setMuted(meta.roomId, meta.clientId, message.muted);
           break;
         case 'update-profile': {
+          if (meta.authorization?.kind === 'guest') {
+            send(socket, {
+              type: 'error',
+              code: 'REGISTERED_ONLY',
+              message: 'Профиль доступен после регистрации',
+            });
+            break;
+          }
+          const registeredProfile =
+            meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
+              ? await getRegisteredProfile(meta.authorization.userId)
+              : null;
           const result = manager.updateProfile(
             meta.roomId,
             meta.clientId,
-            message.name,
+            registeredProfile?.displayName ?? message.name,
             message.avatar,
           );
           if (result === 'RATE_LIMITED')
@@ -234,6 +313,7 @@ sockets.on('connection', (socket, request) => {
 
   socket.on('close', (code, reason) => {
     const meta = metadata.get(socket);
+    if (meta?.guestExpiryTimer) clearTimeout(meta.guestExpiryTimer);
     console.info(
       JSON.stringify({
         event: 'socket.closed',
@@ -247,10 +327,7 @@ sockets.on('connection', (socket, request) => {
     if (meta?.roomId && meta.clientId) {
       // A short grace period lets the same authenticated in-memory session replace
       // this connection. RoomManager ignores this delayed leave after replacement.
-      setTimeout(
-        () => manager.leave(meta.roomId!, meta.clientId!, connection, 'Соединение потеряно'),
-        12_000,
-      ).unref();
+      setTimeout(() => leaveRoom(meta, connection, 'Соединение потеряно'), 12_000).unref();
     }
   });
 
@@ -258,6 +335,46 @@ sockets.on('connection', (socket, request) => {
     logSocketEvent(socket, 'socket.error', { error: error.message });
   });
 });
+
+function leaveRoom(
+  meta: NonNullable<ReturnType<typeof metadata.get>>,
+  connection: PeerConnection,
+  reason?: string,
+) {
+  if (!meta.roomId || !meta.clientId) return;
+  if (!manager.leave(meta.roomId, meta.clientId, connection, reason)) return;
+  void recordCallEvent({
+    event: 'leave',
+    roomId: meta.roomId,
+    displayName: meta.displayName,
+    userId:
+      meta.authorization && 'userId' in meta.authorization ? meta.authorization.userId : undefined,
+    anonymousUserId:
+      meta.authorization && 'anonymousUserId' in meta.authorization
+        ? meta.authorization.anonymousUserId
+        : undefined,
+  }).catch((error) => logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }));
+  if (manager.roomSize(meta.roomId) === 0)
+    void recordCallEvent({ event: 'end', roomId: meta.roomId }).catch((error) =>
+      logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }),
+    );
+}
+
+function logSocketEventForMeta(
+  meta: NonNullable<ReturnType<typeof metadata.get>>,
+  event: string,
+  details: Record<string, unknown>,
+) {
+  console.info(
+    JSON.stringify({
+      event,
+      timestamp: new Date().toISOString(),
+      clientConnectionId: meta.clientConnectionId,
+      serverConnectionId: meta.serverConnectionId,
+      ...details,
+    }),
+  );
+}
 
 function send(socket: WebSocket, message: ServerMessage) {
   if (socket.readyState === socket.OPEN) {

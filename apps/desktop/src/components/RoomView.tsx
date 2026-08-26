@@ -12,7 +12,6 @@ import {
   MicOff,
   MonitorUp,
   MoreHorizontal,
-  Radio,
   SmilePlus,
   Settings,
   ShieldCheck,
@@ -26,6 +25,7 @@ import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
+import { BrandLogo } from './BrandLogo';
 
 export type PeerUiState = Record<
   string,
@@ -40,6 +40,7 @@ interface ExpandedMedia {
 }
 
 interface RoomViewProps {
+  embedded?: boolean;
   roomId: string;
   selfId: string;
   participants: Participant[];
@@ -70,6 +71,7 @@ interface RoomViewProps {
 }
 
 export function RoomView({
+  embedded = false,
   roomId,
   selfId,
   participants,
@@ -228,12 +230,15 @@ export function RoomView({
   };
 
   return (
-    <main className="room-shell">
-      <header className="room-header">
-        <div className="wordmark room-wordmark">
-          <Radio size={20} />
-          <span>FreeTalk</span>
-        </div>
+    <main className={`room-shell ${embedded ? 'room-shell-embedded' : ''}`}>
+      <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
+        {embedded ? (
+          <span aria-hidden="true" />
+        ) : (
+          <div className="room-wordmark">
+            <BrandLogo variant="compact" />
+          </div>
+        )}
         <div className="room-identity">
           <div>
             <strong>Голосовая комната</strong>

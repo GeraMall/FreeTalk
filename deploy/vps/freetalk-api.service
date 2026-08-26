@@ -1,0 +1,31 @@
+[Unit]
+Description=FreeTalk account API (beta)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=freetalk
+Group=freetalk
+EnvironmentFile=/etc/freetalk/api.env
+WorkingDirectory=/opt/freetalk/api
+ExecStartPre=/opt/node-v22/bin/node /opt/freetalk/api/dist/migrate.js
+ExecStart=/opt/node-v22/bin/node /opt/freetalk/api/dist/server.js
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=20s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/freetalk
+MemoryMax=512M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

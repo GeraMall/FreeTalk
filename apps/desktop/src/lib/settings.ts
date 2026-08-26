@@ -1,4 +1,10 @@
-export interface LocalSettings {
+import {
+  DEFAULT_VIDEO_PREFERENCES,
+  normalizeVideoPreferences,
+  type VideoPreferences,
+} from './video-quality';
+
+export interface LocalSettings extends VideoPreferences {
   displayName: string;
   avatarDataUrl: string;
   profileChangeTimestamps: number[];
@@ -25,6 +31,7 @@ const defaults: LocalSettings = {
   displayName: '',
   avatarDataUrl: '',
   profileChangeTimestamps: [],
+  ...DEFAULT_VIDEO_PREFERENCES,
   inputDeviceId: '',
   outputDeviceId: '',
   transmissionMode: 'voice-activation',
@@ -51,9 +58,11 @@ export function loadSettings(): LocalSettings {
   try {
     const value = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<LocalSettings>;
     const legacy = value as Partial<LocalSettings> & { pushToTalk?: boolean };
+    const video = normalizeVideoPreferences(value);
     return {
       ...defaults,
       ...value,
+      ...video,
       transmissionMode:
         value.transmissionMode ?? (legacy.pushToTalk ? 'push-to-talk' : 'voice-activation'),
       peerVolumes: value.peerVolumes ?? {},

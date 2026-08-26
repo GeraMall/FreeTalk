@@ -1,6 +1,18 @@
 freetalk.191-44-38-60.sslip.io {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:8787
+
+	# `route` preserves this security-sensitive order. Internal server-to-server
+	# endpoints must be rejected before the public /api prefix is stripped.
+	route {
+		@internal_api path /api/v1/internal/*
+		respond @internal_api 404
+
+		handle_path /api/* {
+			reverse_proxy 127.0.0.1:8790
+		}
+
+		reverse_proxy 127.0.0.1:8787
+	}
 
 	log {
 		output stdout

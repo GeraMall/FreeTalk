@@ -1,25 +1,32 @@
 # FreeTalk
 
-FreeTalk — бесплатное desktop-приложение для голосовых комнат на 2–6 человек. Один код, без аккаунтов, рекламы, телеметрии и записи разговоров. Клиент: Tauri 2 + React/TypeScript; аудио: WebRTC mesh + Opus; сигналинг: WebSocket. В desktop-сборке production WSS работает в нативной Rust-части Tauri, поэтому больше не зависит от сетевого маршрута WebView2.
+FreeTalk — desktop-приложение для голосовых и видеокомнат на 2–6 человек. В beta 0.4.0 добавлены подтверждаемые аккаунты, друзья, временные чаты и история звонков; запись разговоров и рекламная телеметрия отсутствуют. Клиент: Tauri 2 + React/TypeScript; API: Fastify + PostgreSQL; медиа: WebRTC mesh; сигналинг: WebSocket. В desktop-сборке production WSS работает в нативной Rust-части Tauri, поэтому не зависит от сетевого маршрута WebView2.
 
-> Статус: функциональный MVP. Автоматически подтверждены два WebRTC peers, состояние `connected` и получение удалённых аудиотреков. Фактическая слышимость через реальные микрофоны/динамики ещё требует ручной проверки.
+> Статус: `0.4.0-beta.1`, не production. Стабильная 0.3.x и её updater не переключаются на beta автоматически. Реальный WebRTC-сценарий 0.3.22 ранее проверен пользователем без VPN; account beta требует отдельной проверки на развёрнутом PostgreSQL/API.
 
 ## Быстрый локальный запуск
 
-Нужны Node.js 22+ и pnpm 11.19.0.
+Нужны Node.js 22+, pnpm 11.19.0 и PostgreSQL 15+. Скопируйте имена переменных из `.env.example`, создайте локальную БД и задайте случайные development-секреты.
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm dev:signaling
+pnpm db:migrate
+pnpm dev:api
 ```
 
 Во втором терминале:
 
 ```powershell
+pnpm dev:signaling
+```
+
+В третьем терминале:
+
+```powershell
 pnpm dev:desktop
 ```
 
-Откройте `http://127.0.0.1:1420` в двух отдельных браузерных профилях. В первом задайте имя и нажмите «Создать комнату», во втором вставьте 12-символьный код или `freetalk://join/CODE`. При входе запрашивается только микрофон; доступ к камере запрашивается отдельно при нажатии кнопки «Камера».
+Откройте `http://127.0.0.1:1420` в двух отдельных браузерных профилях. Для локальной CAPTCHA разрешён только development-токен при `CAPTCHA_BYPASS_LOCAL=true`. Зарегистрированный и подтверждённый пользователь может создать комнату; FreeUser может войти по коду после CAPTCHA. При входе запрашивается только микрофон; камера запрашивается отдельно.
 
 Для нативного окна после установки [Rust](https://rustup.rs/) и [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/):
 
@@ -36,14 +43,17 @@ pnpm tauri:dev
 - список до 6 участников, connection/audio-ready states и индикатор говорящего;
 - профиль с ником и локально подготовленным аватаром, мгновенная синхронизация в комнате и лимит 3 сохранения за 5 часов;
 - пять быстрых реакций с короткой анимацией и общий таймер текущей комнаты;
-- независимые видеопотоки камеры и демонстрации экрана: камера запрашивает до 1080p60 и адаптирует детализацию ради низкой задержки, для выбранного окна передаётся его звук без общего системного звука и звуков FreeTalk, поддерживаются одновременные camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
+- независимые видеопотоки камеры и демонстрации экрана: в разделе «Видео» выбираются камера, разрешение и частота кадров демонстрации (по умолчанию 1080p/30 FPS, максимум 2560×1440/60 FPS), а адаптивный режим отдельно снижает битрейт, FPS и детализацию для каждого участника при ухудшении его соединения; для выбранного окна передаётся его звук без общего системного звука и звуков FreeTalk, поддерживаются одновременные camera + screen, раскрытие медиа внутри приложения и переключение между несколькими демонстрациями;
 - встроенные звуковые уведомления о входе и выходе друзей с выровненной громкостью;
 - владелец комнаты с короной, автоматическая передача владения и серверно проверяемое удалённое выключение микрофона участника;
 - режимы VAD/PTT/постоянной передачи, изменяемая PTT-клавиша и настраиваемый порог голоса;
 - input/output device selection, общая и индивидуальная громкость, local mute;
 - WebRTC echo cancellation, noise suppression, AGC, output ducking, подавление щелчков клавиатуры, комфортный шум и тестовая запись;
 - нативный WSS-транспорт desktop-клиента, exponential reconnect 0.5–30 s, heartbeat, session replacement и краткий reconnect grace;
-- сохранение профиля, устройств и всех аудиопараметров в localStorage;
+- аккаунты с Argon2id, email verification/reset, коротким access token и rotating refresh token в Windows Credential Manager/macOS Keychain;
+- зарегистрированные профили, друзья/блокировки, direct/group chats, 24-часовые сообщения, majority vote, криптографические chat invites и история звонков;
+- FreeUser с серверным guest token, CAPTCHA, лимитом 5 входов в UTC-сутки и 30 минут на сессию; camera/screen/profile/social features заблокированы;
+- сохранение несекретных аудио- и видеонастроек в localStorage; пароли и session secrets туда не записываются;
 - встроенная проверка подписанных обновлений Tauri, уведомление, прогресс и установка из приложения;
 - понятные ошибки permission/no device/network/room full/NAT;
 - закрытие tracks, audio contexts, peer connections и WebSocket при выходе/закрытии;
@@ -58,6 +68,8 @@ pnpm tauri:dev
 | -------------------------------------------------- | ----------------------------------------------- |
 | `pnpm install --frozen-lockfile`                   | воспроизводимая установка                       |
 | `pnpm dev:signaling`                               | локальный WebSocket server                      |
+| `pnpm dev:api`                                     | локальный account API                           |
+| `pnpm db:migrate`                                  | применить PostgreSQL migration                  |
 | `pnpm dev:desktop`                                 | React/Vite client                               |
 | `pnpm tauri:dev`                                   | native development window                       |
 | `pnpm check`                                       | format, lint, TS, tests, frontend/server builds |
@@ -154,6 +166,7 @@ Worker и VPS дополнительно используют одинаковы
 
 ```text
 apps/desktop              React + Tauri
+apps/api                  Fastify account/social API + PostgreSQL
 apps/signaling            local Node WebSocket signaling
 apps/cloudflare-signaling Cloudflare Worker/Durable Object
 packages/protocol         shared Zod schemas/types

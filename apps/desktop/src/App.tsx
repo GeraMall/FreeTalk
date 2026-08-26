@@ -14,6 +14,7 @@ import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from 
 import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
+import type { VideoPreferences } from './lib/video-quality';
 import {
   checkForUpdate,
   currentVersion,
@@ -23,6 +24,13 @@ import {
 import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { HomeView } from './components/HomeView';
+import {
+  AccountSidebar,
+  type AccountDestination,
+  type AccountPage,
+} from './components/AccountSidebar';
+import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const NO_LOCAL_VIDEO: LocalVideoState = {
   cameraEnabled: false,
@@ -42,6 +50,16 @@ function processingSettings(settings: LocalSettings) {
   };
 }
 
+function videoPreferences(settings: LocalSettings): VideoPreferences {
+  return {
+    cameraDeviceId: settings.cameraDeviceId,
+    screenResolution: settings.screenResolution,
+    screenFrameRate: settings.screenFrameRate,
+    screenAudioByDefault: settings.screenAudioByDefault,
+    screenAdaptiveQuality: settings.screenAdaptiveQuality,
+  };
+}
+
 function storedIdentity(key: string) {
   const existing = sessionStorage.getItem(key);
   if (existing) return existing;
@@ -52,9 +70,15 @@ function storedIdentity(key: string) {
 
 export function App() {
   const [settings, setSettings] = useState(loadSettings);
+  const [accountUser, setAccountUser] = useState<AccountUser>();
+  const [accountReady, setAccountReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
+  const [lockedFeatureOpen, setLockedFeatureOpen] = useState(false);
   const [name, setName] = useState(settings.displayName);
-  const [roomInput, setRoomInput] = useState('');
   const [roomId, setRoomId] = useState<string>();
+  const [roomDestination, setRoomDestination] = useState<AccountDestination>('room');
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [peerState, setPeerState] = useState<PeerUiState>({});
   const [localSpeaking, setLocalSpeaking] = useState(false);
@@ -66,12 +90,14 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [devices, setDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>(
-    { inputs: [], outputs: [] },
-  );
+  const [devices, setDevices] = useState<{
+    inputs: MediaDeviceInfo[];
+    outputs: MediaDeviceInfo[];
+    cameras: MediaDeviceInfo[];
+  }>({ inputs: [], outputs: [], cameras: [] });
   const [muted, setMuted] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
-  const [appVersion, setAppVersion] = useState('0.3.22');
+  const [appVersion, setAppVersion] = useState('0.4.0-beta.1');
   const [turnAvailable, setTurnAvailable] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
@@ -100,6 +126,7 @@ export function App() {
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
   const reactionTimers = useRef(new Map<string, number>());
+  const guestWarningTimer = useRef<number | undefined>(undefined);
   const remoteAudio = useRef(
     new RemoteAudio((peerId, speaking) =>
       setPeerState((old) => ({
@@ -119,6 +146,16 @@ export function App() {
       const next = { ...current, ...patch };
       saveSettings(next);
       return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    void accountClient.restore().then((user) => {
+      if (user) {
+        setAccountUser(user);
+        setName(user.displayName);
+      }
+      setAccountReady(true);
     });
   }, []);
 
@@ -144,8 +181,11 @@ export function App() {
     remoteVideoStreams.current.clear();
     currentIceServers.current = DEFAULT_ICE_SERVERS;
     for (const timer of reactionTimers.current.values()) window.clearTimeout(timer);
+    if (guestWarningTimer.current) window.clearTimeout(guestWarningTimer.current);
+    guestWarningTimer.current = undefined;
     reactionTimers.current.clear();
     setRoomId(undefined);
+    setRoomDestination('room');
     setParticipants([]);
     setPeerState({});
     setMuted(false);
@@ -298,6 +338,7 @@ export function App() {
         if (joinTimer.current) window.clearTimeout(joinTimer.current);
         joinTimer.current = undefined;
         if (pendingRoomId.current) setRoomId(pendingRoomId.current);
+        setRoomDestination('room');
         setJoining(false);
         setParticipants(message.participants);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
@@ -389,6 +430,7 @@ export function App() {
                 },
               })),
           },
+          videoPreferences(settings),
         );
         peers.current = peerManager;
         const currentVideo = video.current?.getTracks();
@@ -503,19 +545,16 @@ export function App() {
         cleanup();
       }
     },
-    [
-      cleanup,
-      settings.mutedPeers,
-      settings.outputDeviceId,
-      settings.peerVolumes,
-      settings.screenVolumes,
-    ],
+    [cleanup, settings],
   );
 
-  const enterRoom = async (create: boolean) => {
+  const enterRoom = async (
+    create: boolean,
+    options: { room?: string; authToken?: string; displayName?: string; guest?: boolean } = {},
+  ) => {
     setError('');
     setNotice('');
-    const cleanName = name.trim();
+    const cleanName = (options.displayName ?? accountUser?.displayName ?? name).trim();
     if (
       !cleanName ||
       cleanName.length > 32 ||
@@ -526,7 +565,7 @@ export function App() {
       setError('Введите имя от 1 до 32 символов без < и >.');
       return;
     }
-    const code = create ? generateRoomCode() : parseRoomCode(roomInput);
+    const code = create ? (options.room ?? generateRoomCode()) : parseRoomCode(options.room ?? '');
     if (!code) {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
@@ -555,6 +594,7 @@ export function App() {
         setLocalVideo,
         setError,
         setNotice,
+        videoPreferences(settings),
       );
       await refreshDevices();
       updateSettings({ displayName: cleanName });
@@ -577,9 +617,17 @@ export function App() {
         roomId: code,
         clientId: selfId.current,
         sessionId: sessionId.current,
+        authToken: options.authToken ?? accountClient.signalingToken,
         name: cleanName,
         avatar: settings.avatarDataUrl || undefined,
       });
+      setGuestMode(Boolean(options.guest));
+      if (options.guest) {
+        guestWarningTimer.current = window.setTimeout(
+          () => setNotice('Осталось 5 минут. Зарегистрируйтесь, чтобы общаться без ограничений.'),
+          25 * 60_000,
+        );
+      }
       joinTimer.current = window.setTimeout(() => {
         if (joinedRoom.current) return;
         cleanup();
@@ -600,17 +648,120 @@ export function App() {
   };
 
   const runVideoAction = async (action: 'camera' | 'screen') => {
+    if (guestMode) {
+      setLockedFeatureOpen(true);
+      return;
+    }
     if (!video.current || videoBusy) return;
     setError('');
     setVideoBusy(true);
     try {
       if (action === 'camera') await video.current.toggleCamera();
-      else await video.current.toggleScreen(true);
+      else await video.current.toggleScreen(settings.screenAudioByDefault);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
     } finally {
       setVideoBusy(false);
     }
+  };
+
+  const loginAccount = async (login: string, password: string, captchaToken?: string) => {
+    setAuthBusy(true);
+    setError('');
+    try {
+      const user = await accountClient.login(login, password, captchaToken);
+      setAccountUser(user);
+      setName(user.displayName);
+      setGuestMode(false);
+      setCaptchaRequired(false);
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CAPTCHA_REQUIRED')
+        setCaptchaRequired(true);
+      setError(caught instanceof Error ? caught.message : 'Не удалось войти');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const registerAccount = async (input: Parameters<typeof accountClient.register>[0]) => {
+    setAuthBusy(true);
+    setError('');
+    try {
+      await accountClient.register(input);
+      setNotice('Код подтверждения отправлен на почту');
+      return true;
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CAPTCHA_REQUIRED')
+        setCaptchaRequired(true);
+      setError(caught instanceof Error ? caught.message : 'Не удалось создать аккаунт');
+      return false;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const resendVerificationAccount = async (email: string) => {
+    setAuthBusy(true);
+    setError('');
+    try {
+      await accountClient.resendVerification(email);
+      setNotice('Новый код отправлен. Он действует 30 минут.');
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось отправить письмо');
+      return false;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const verifyEmailAccount = async (email: string, code: string) => {
+    setAuthBusy(true);
+    setError('');
+    try {
+      const user = await accountClient.verifyEmail(email, code);
+      setAccountUser(user);
+      setName(user.displayName);
+      setGuestMode(false);
+      setNotice('Почта подтверждена. Добро пожаловать в FreeTalk!');
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Код неверный или истёк');
+      return false;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const joinAsGuest = async (input: string, captchaToken: string) => {
+    const code = parseRoomCode(input);
+    if (!code) return setError('Введите корректный код или ссылку комнаты.');
+    setAuthBusy(true);
+    setError('');
+    try {
+      const anonymousUserId =
+        localStorage.getItem('freetalk.anonymousUserId') || crypto.randomUUID();
+      localStorage.setItem('freetalk.anonymousUserId', anonymousUserId);
+      const guest = await accountClient.guestJoinToken(anonymousUserId, code, captchaToken);
+      await enterRoom(false, {
+        room: code,
+        authToken: guest.guestJoinToken,
+        displayName: guest.displayName,
+        guest: true,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось войти как гость');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const logoutAccount = async () => {
+    cleanup();
+    await accountClient.logout();
+    setAccountUser(undefined);
+    setGuestMode(false);
+    setNotice('Вы вышли из аккаунта');
   };
 
   const copyInvite = async () => {
@@ -657,6 +808,25 @@ export function App() {
     }
   };
 
+  const changeVideoSettings = async (patch: Partial<LocalSettings>) => {
+    const next = { ...settings, ...patch };
+    updateSettings(patch);
+    const preferences = videoPreferences(next);
+    video.current?.setPreferences(preferences);
+    peers.current?.setVideoPreferences(preferences);
+  };
+
+  const selectCamera = async (deviceId: string) => {
+    const next = { ...settings, cameraDeviceId: deviceId };
+    updateSettings({ cameraDeviceId: deviceId });
+    video.current?.setPreferences(videoPreferences(next));
+    try {
+      await video.current?.setCameraDevice(deviceId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось переключить камеру');
+    }
+  };
+
   const runUpdateCheck = async () => {
     setUpdateStatus({ kind: 'checking' });
     setUpdateStatus(await checkForUpdate());
@@ -693,12 +863,46 @@ export function App() {
       profileChangeTimestamps: settings.profileChangeTimestamps,
     };
     void changeAudioSettings(reset, true);
-    setNotice('Настройки звука сброшены');
+    video.current?.setPreferences(videoPreferences(reset));
+    peers.current?.setVideoPreferences(videoPreferences(reset));
+    setNotice('Настройки сброшены');
   };
-  const saveProfile = async (displayName: string, avatarDataUrl: string) => {
-    if (displayName === settings.displayName && avatarDataUrl === settings.avatarDataUrl) return;
+  const saveProfile = async (
+    displayName: string,
+    avatarDataUrl: string,
+    username: string | undefined,
+    bio: string,
+    coverDataUrl: string,
+  ) => {
+    if (
+      displayName === settings.displayName &&
+      avatarDataUrl === settings.avatarDataUrl &&
+      (!username || username === accountUser?.username) &&
+      bio === (accountUser?.bio ?? '') &&
+      coverDataUrl === (accountUser?.coverUrl ?? '')
+    )
+      return;
     const history = nextProfileChangeHistory(settings.profileChangeTimestamps);
     if (!history) throw new Error('Профиль можно изменить не более трёх раз за пять часов.');
+    if (accountUser) {
+      const updated = await accountClient.updateProfile({
+        displayName,
+        ...(username && username !== accountUser.username ? { username } : {}),
+        bio: bio.trim() || null,
+      });
+      let mediaChanged = false;
+      if (avatarDataUrl !== settings.avatarDataUrl) {
+        if (avatarDataUrl) await accountClient.uploadAvatar(avatarDataUrl);
+        else await accountClient.deleteAvatar();
+        mediaChanged = true;
+      }
+      if (coverDataUrl !== (accountUser.coverUrl ?? '')) {
+        if (coverDataUrl) await accountClient.uploadCover(coverDataUrl);
+        else await accountClient.deleteCover();
+        mediaChanged = true;
+      }
+      setAccountUser(mediaChanged ? await accountClient.getMe() : updated);
+    }
     if (roomId) {
       const sent = signaling.current?.send({
         type: 'update-profile',
@@ -762,71 +966,164 @@ export function App() {
       updateStatus={updateStatus}
       turnAvailable={turnAvailable}
       outputSupported={remoteAudio.current.supportsOutputSelection()}
+      accountUser={accountUser}
+      guestMode={guestMode}
       onClose={() => setSettingsOpen(false)}
       onInput={(value) => void selectInput(value)}
       onOutput={(value) => void selectOutput(value)}
+      onCamera={(value) => void selectCamera(value)}
       onSetting={(patch, restart) => void changeAudioSettings(patch, restart)}
+      onVideoSetting={(patch) => void changeVideoSettings(patch)}
       onKey={(value) => updateSettings({ pushToTalkKey: value })}
       onReset={resetAudioSettings}
       onCheckUpdate={() => void runUpdateCheck()}
       onInstallUpdate={() => void installUpdate()}
       onSaveDiagnostics={saveConnectionDiagnostics}
       onSaveProfile={saveProfile}
+      onAccountLogout={() => void logoutAccount()}
+      onDeleteAccount={async (password) => {
+        await accountClient.deleteAccount(password);
+        cleanup();
+        setAccountUser(undefined);
+        setSettingsOpen(false);
+        setNotice('Аккаунт удалён');
+      }}
+      onChangePassword={async (currentPassword, newPassword) => {
+        await accountClient.changePassword(currentPassword, newPassword);
+        setNotice('Пароль изменён, остальные сессии завершены');
+      }}
     />
   ) : null;
 
   if (!roomId) {
     return (
       <>
-        <WelcomeScreen
-          name={name}
-          roomInput={roomInput}
-          error={error}
-          joining={joining}
-          updateStatus={updateStatus}
-          onName={setName}
-          onRoomInput={setRoomInput}
-          onCreate={() => void enterRoom(true)}
-          onJoin={() => void enterRoom(false)}
-          onSettings={() => setSettingsOpen(true)}
-        />
+        {!accountReady ? (
+          <main className="account-loading">
+            <span className="spinner" /> Восстанавливаем сессию…
+          </main>
+        ) : accountUser ? (
+          <HomeView
+            user={accountUser}
+            busy={joining}
+            error={error}
+            onClearError={() => setError('')}
+            onCreateRoom={(code) => void enterRoom(true, { room: code })}
+            onJoinRoom={(code) => void enterRoom(false, { room: code })}
+            onSettings={() => setSettingsOpen(true)}
+            onLogout={() => void logoutAccount()}
+          />
+        ) : (
+          <WelcomeScreen
+            error={error}
+            busy={authBusy || joining}
+            captchaRequired={captchaRequired}
+            updateStatus={updateStatus}
+            savedDisplayName={name}
+            onLogin={(login, password, captcha) => void loginAccount(login, password, captcha)}
+            onRegister={registerAccount}
+            onResendVerification={resendVerificationAccount}
+            onVerifyEmail={verifyEmailAccount}
+            onGuestJoin={(code, captcha) => void joinAsGuest(code, captcha)}
+            onForgotPassword={(email) =>
+              void accountClient
+                .forgotPassword(email)
+                .then((result) => setNotice(result.message))
+                .catch((caught: unknown) =>
+                  setError(
+                    caught instanceof Error ? caught.message : 'Не удалось отправить письмо',
+                  ),
+                )
+            }
+            onResetPassword={(token, password) =>
+              void accountClient
+                .resetPassword(token, password)
+                .then(() => setNotice('Пароль изменён. Теперь войдите с новым паролем.'))
+                .catch((caught: unknown) =>
+                  setError(caught instanceof Error ? caught.message : 'Не удалось изменить пароль'),
+                )
+            }
+            onSettings={() => setSettingsOpen(true)}
+          />
+        )}
         {settingsPanel}
         <AppToast message={notice} onClose={() => setNotice('')} />
       </>
     );
   }
 
+  const roomView = (
+    <RoomView
+      embedded={Boolean(accountUser)}
+      roomId={roomId}
+      participants={participants}
+      selfId={selfId.current}
+      peerState={peerState}
+      localSpeaking={localSpeaking}
+      localVideo={localVideo}
+      remoteVideos={remoteVideos}
+      videoBusy={videoBusy}
+      muted={muted}
+      roomStartedAt={roomStartedAt}
+      reactions={reactions}
+      settings={settings}
+      signalingState={signalState}
+      reconnectAttempt={reconnectAttempt}
+      inviteCopied={inviteCopied}
+      turnAvailable={turnAvailable}
+      onCopyInvite={() => void copyInvite()}
+      onMute={toggleMute}
+      onCamera={() => void runVideoAction('camera')}
+      onScreen={() => void runVideoAction('screen')}
+      onReaction={sendReaction}
+      onSettings={() => setSettingsOpen(true)}
+      onLeave={cleanup}
+      onPeerVolume={setPeerVolume}
+      onScreenVolume={setScreenVolume}
+      onPeerMute={togglePeerMute}
+      onModerationMute={moderationMute}
+    />
+  );
+
   return (
     <>
-      <RoomView
-        roomId={roomId}
-        participants={participants}
-        selfId={selfId.current}
-        peerState={peerState}
-        localSpeaking={localSpeaking}
-        localVideo={localVideo}
-        remoteVideos={remoteVideos}
-        videoBusy={videoBusy}
-        muted={muted}
-        roomStartedAt={roomStartedAt}
-        reactions={reactions}
-        settings={settings}
-        signalingState={signalState}
-        reconnectAttempt={reconnectAttempt}
-        inviteCopied={inviteCopied}
-        turnAvailable={turnAvailable}
-        onCopyInvite={() => void copyInvite()}
-        onMute={toggleMute}
-        onCamera={() => void runVideoAction('camera')}
-        onScreen={() => void runVideoAction('screen')}
-        onReaction={sendReaction}
-        onSettings={() => setSettingsOpen(true)}
-        onLeave={cleanup}
-        onPeerVolume={setPeerVolume}
-        onScreenVolume={setScreenVolume}
-        onPeerMute={togglePeerMute}
-        onModerationMute={moderationMute}
-      />
+      {accountUser ? (
+        <main className="account-shell room-account-shell">
+          <AccountSidebar
+            user={accountUser}
+            activePage={roomDestination}
+            roomActive
+            onNavigate={setRoomDestination}
+            onSettings={() => setSettingsOpen(true)}
+            onLogout={() => void logoutAccount()}
+          />
+          <section className="account-room-workspace">
+            <div className={`room-view-slot ${roomDestination === 'room' ? '' : 'is-hidden'}`}>
+              {roomView}
+            </div>
+            {roomDestination !== 'room' && (
+              <HomeView
+                embedded
+                page={roomDestination as AccountPage}
+                user={accountUser}
+                busy={joining}
+                error={error}
+                onClearError={() => setError('')}
+                onPageChange={(page) => setRoomDestination(page)}
+                onCreateRoom={() => {
+                  setNotice('Вы уже находитесь в звонке');
+                  setRoomDestination('room');
+                }}
+                onJoinRoom={() => setNotice('Сначала завершите текущий звонок')}
+                onSettings={() => setSettingsOpen(true)}
+                onLogout={() => void logoutAccount()}
+              />
+            )}
+          </section>
+        </main>
+      ) : (
+        roomView
+      )}
       {settingsPanel}
       <AppToast
         message={error || notice}
@@ -836,6 +1133,40 @@ export function App() {
           setNotice('');
         }}
       />
+      {lockedFeatureOpen && (
+        <div
+          className="modal-backdrop locked-feature-backdrop"
+          onMouseDown={() => setLockedFeatureOpen(false)}
+        >
+          <section
+            className="locked-feature-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="locked-feature-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="locked-feature-title">Эта функция доступна после регистрации</h2>
+            <p>
+              Создайте аккаунт, чтобы включать камеру и демонстрацию экрана без гостевых
+              ограничений.
+            </p>
+            <div>
+              <button className="secondary" onClick={() => setLockedFeatureOpen(false)}>
+                Остаться в комнате
+              </button>
+              <button
+                className="primary"
+                onClick={() => {
+                  setLockedFeatureOpen(false);
+                  cleanup();
+                }}
+              >
+                Создать аккаунт
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }

@@ -120,6 +120,7 @@ export class AudioManager {
     return {
       inputs: devices.filter((device) => device.kind === 'audioinput'),
       outputs: devices.filter((device) => device.kind === 'audiooutput'),
+      cameras: devices.filter((device) => device.kind === 'videoinput'),
     };
   }
 

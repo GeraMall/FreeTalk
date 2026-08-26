@@ -8,7 +8,15 @@ pnpm check
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
 ```
 
+## Account beta 0.4.0
+
+Для полного auth/social integration test требуется отдельная тестовая PostgreSQL DB, SMTP sink и Turnstile test configuration. Unit tests без внешней инфраструктуры проверяют Argon2id, схемы, quota/majority policy и migration contract. Компиляция API не считается доказательством реальной доставки email или применения migration.
+
+Beta checklist: регистрация и одноразовый код; login/CAPTCHA/logout/refresh/reset/delete; guest token и 5/30 limits; friends/block; direct/group membership; invite revoke/limits; 24h expiration/vote; call history; затем два физических клиента для audio/camera/screen/reconnect/no-VPN.
+
 Тесты покрывают схемы сообщений, опасные имена, комнату/relay, лимит 6, удаление пустой комнаты, замену WebSocket при reconnect, capped и ограниченный по числу попыток backoff, криптографический формат room code, права владельца/передачу владения, изменение реального `MediaStreamTrack.enabled` для mute/PTT, распознавание TURN-конфигурации, применение поздно полученных TURN credentials через ICE restart и предел автоматических ICE restart. Отдельно проверяются выравнивание RMS звуков входа/выхода и подавление уведомлений для собственного входа, исходного снимка комнаты и повторных событий reconnect.
+
+Для чатов отдельно проверяются типизированный realtime-протокол, аутентификация клиента, адресная рассылка только выбранным пользователям, удаление закрытого соединения, защита памяти от медленного потребителя и мгновенная передача события `message-created` без polling-таймера.
 
 23.08.2026 дополнительно выполнен browser smoke test в двух изолированных Chromium tabs с fake microphone: оба участника увидели друг друга, оба `RTCPeerConnection` стали `connected`, на обоих сработал `ontrack` («Слушает»). Только владелец получил команду модерации; после её применения целевой клиент выключил передачу, показал уведомление, а mute синхронизировался в обеих вкладках. UI проверен при 1440×900 и 900×600. PTT и mute меняют реальный `MediaStreamTrack.enabled` в unit test; фактическая слышимость не проверялась.
 

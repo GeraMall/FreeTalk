@@ -14,6 +14,8 @@ export default tseslint.config(
       'work/**',
       'outputs/**',
       '.playwright-cli/**',
+      '.playwright-local/**',
+      '.npm-cache-playwright/**',
     ],
   },
   js.configs.recommended,

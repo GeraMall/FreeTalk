@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VideoManager } from './video-manager';
+import { DEFAULT_VIDEO_PREFERENCES } from './video-quality';
 
 class FakeTrack {
   id = crypto.randomUUID();
@@ -148,6 +149,29 @@ describe('VideoManager', () => {
     });
   });
 
+  it('uses the selected camera and switches an active camera without leaving the room', async () => {
+    const publish = vi.fn(async () => undefined);
+    const manager = new VideoManager(publish, vi.fn(), vi.fn(), vi.fn(), {
+      ...DEFAULT_VIDEO_PREFERENCES,
+      cameraDeviceId: 'camera-external',
+    });
+    await manager.toggleCamera();
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({
+      audio: false,
+      video: expect.objectContaining({ deviceId: { exact: 'camera-external' } }),
+    });
+    const firstTrack = cameraTracks[0]!;
+    await manager.setCameraDevice('camera-second');
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({
+      audio: false,
+      video: expect.objectContaining({ deviceId: { exact: 'camera-second' } }),
+    });
+    expect(firstTrack.stop).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenLastCalledWith(cameraTracks[1], 'camera');
+  });
+
   it('requests and publishes selected window audio together with the screen stream', async () => {
     const publish = vi.fn(async () => undefined);
     const onState = vi.fn();
@@ -177,6 +201,33 @@ describe('VideoManager', () => {
     expect(screenAudioTracks[0]!.contentHint).toBe('music');
     expect(onState).toHaveBeenLastCalledWith(
       expect.objectContaining({ screenEnabled: true, screenAudioEnabled: true }),
+    );
+  });
+
+  it('supports the maximum 2K 60 FPS screen preset', async () => {
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      {
+        ...DEFAULT_VIDEO_PREFERENCES,
+        screenResolution: '1440p',
+        screenFrameRate: 60,
+      },
+    );
+
+    await manager.toggleScreen();
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: {
+          displaySurface: 'window',
+          width: { ideal: 2560, max: 2560 },
+          height: { ideal: 1440, max: 1440 },
+          frameRate: { ideal: 60, max: 60 },
+        },
+      }),
     );
   });
 

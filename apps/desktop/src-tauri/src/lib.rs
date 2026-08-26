@@ -1,5 +1,6 @@
 mod diagnostics;
 mod signaling;
+mod secure_session;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,7 +11,10 @@ pub fn run() {
             signaling::signaling_connect,
             signaling::signaling_receive,
             signaling::signaling_send,
-            signaling::signaling_close
+            signaling::signaling_close,
+            secure_session::secure_session_set,
+            secure_session::secure_session_get,
+            secure_session::secure_session_clear
         ])
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

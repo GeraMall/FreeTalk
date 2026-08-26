@@ -11,32 +11,55 @@ import {
   Save,
   Trash2,
   UserRound,
+  Video,
   X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
-import { prepareAvatar, remainingProfileChanges } from '../lib/profile';
+import { prepareAvatar, prepareCover, remainingProfileChanges } from '../lib/profile';
 import type { UpdateStatus } from '../lib/updater';
+import type { AccountUser } from '../lib/api-client';
+import { BrandLogo } from './BrandLogo';
+import mascotUrl from '../assets/freetalk-mascot.png';
+import {
+  isValidUsername,
+  normalizeUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+} from '../lib/username';
 
-type SettingsTab = 'audio' | 'profile' | 'devices' | 'about';
+type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'about';
 
 interface SettingsPanelProps {
   settings: LocalSettings;
-  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
+  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   inputLevel: number;
   appVersion: string;
   updateStatus: UpdateStatus;
   turnAvailable: boolean;
   outputSupported: boolean;
+  accountUser?: AccountUser;
+  guestMode: boolean;
   onClose(): void;
   onInput(value: string): void;
   onOutput(value: string): void;
+  onCamera(value: string): void;
   onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
+  onVideoSetting(patch: Partial<LocalSettings>): void;
   onKey(value: string): void;
   onReset(): void;
   onCheckUpdate(): void;
   onInstallUpdate(): void;
   onSaveDiagnostics(): Promise<string>;
-  onSaveProfile(name: string, avatar: string): Promise<void>;
+  onSaveProfile(
+    name: string,
+    avatar: string,
+    username: string | undefined,
+    bio: string,
+    cover: string,
+  ): Promise<void>;
+  onAccountLogout(): void;
+  onDeleteAccount(password: string): Promise<void>;
+  onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
 }
 
 export function SettingsPanel({
@@ -47,16 +70,23 @@ export function SettingsPanel({
   updateStatus,
   turnAvailable,
   outputSupported,
+  accountUser,
+  guestMode,
   onClose,
   onInput,
   onOutput,
+  onCamera,
   onSetting,
+  onVideoSetting,
   onKey,
   onReset,
   onCheckUpdate,
   onInstallUpdate,
   onSaveDiagnostics,
   onSaveProfile,
+  onAccountLogout,
+  onDeleteAccount,
+  onChangePassword,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<SettingsTab>('audio');
   const [capturing, setCapturing] = useState(false);
@@ -136,6 +166,9 @@ export function SettingsPanel({
         aria-labelledby="settings-title"
       >
         <aside className="settings-sidebar">
+          <div className="settings-sidebar-brand">
+            <BrandLogo variant="compact" />
+          </div>
           <div className="settings-sidebar-title">Настройки</div>
           <nav aria-label="Разделы настроек">
             <TabButton
@@ -149,6 +182,12 @@ export function SettingsPanel({
               icon={<UserRound />}
               label="Профиль"
               onClick={() => setTab('profile')}
+            />
+            <TabButton
+              active={tab === 'video'}
+              icon={<Video />}
+              label="Видео"
+              onClick={() => setTab('video')}
             />
             <TabButton
               active={tab === 'devices'}
@@ -176,18 +215,22 @@ export function SettingsPanel({
                   ? 'АУДИО'
                   : tab === 'profile'
                     ? 'ПРОФИЛЬ'
-                    : tab === 'devices'
-                      ? 'УСТРОЙСТВА'
-                      : 'FREETALK'}
+                    : tab === 'video'
+                      ? 'ВИДЕО'
+                      : tab === 'devices'
+                        ? 'УСТРОЙСТВА'
+                        : 'FREETALK'}
               </p>
               <h2 id="settings-title">
                 {tab === 'audio'
                   ? 'Настройки звука'
                   : tab === 'profile'
                     ? 'Ваш профиль'
-                    : tab === 'devices'
-                      ? 'Аудиоустройства'
-                      : 'О приложении'}
+                    : tab === 'video'
+                      ? 'Камера и демонстрация'
+                      : tab === 'devices'
+                        ? 'Аудиоустройства'
+                        : 'О приложении'}
               </h2>
             </div>
             <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
@@ -210,7 +253,26 @@ export function SettingsPanel({
                 onRecord={() => void recordSample()}
               />
             )}
-            {tab === 'profile' && <ProfileTab settings={settings} onSaveProfile={onSaveProfile} />}
+            {tab === 'profile' && (
+              <ProfileTab
+                settings={settings}
+                accountUser={accountUser}
+                guestMode={guestMode}
+                onSaveProfile={onSaveProfile}
+                onAccountLogout={onAccountLogout}
+                onDeleteAccount={onDeleteAccount}
+                onChangePassword={onChangePassword}
+              />
+            )}
+            {tab === 'video' && (
+              <VideoTab
+                settings={settings}
+                cameras={devices.cameras}
+                onCamera={onCamera}
+                onVideoSetting={onVideoSetting}
+                locked={guestMode}
+              />
+            )}
             {tab === 'devices' && (
               <DevicesTab
                 settings={settings}
@@ -256,24 +318,61 @@ export function SettingsPanel({
 
 function ProfileTab({
   settings,
+  accountUser,
+  guestMode,
   onSaveProfile,
+  onAccountLogout,
+  onDeleteAccount,
+  onChangePassword,
 }: {
   settings: LocalSettings;
-  onSaveProfile(name: string, avatar: string): Promise<void>;
+  accountUser?: AccountUser;
+  guestMode: boolean;
+  onSaveProfile(
+    name: string,
+    avatar: string,
+    username: string | undefined,
+    bio: string,
+    cover: string,
+  ): Promise<void>;
+  onAccountLogout(): void;
+  onDeleteAccount(password: string): Promise<void>;
+  onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
 }) {
   const [draftName, setDraftName] = useState(settings.displayName);
   const [draftAvatar, setDraftAvatar] = useState(settings.avatarDataUrl);
+  const [draftCover, setDraftCover] = useState(accountUser?.coverUrl ?? '');
+  const [draftBio, setDraftBio] = useState(accountUser?.bio ?? '');
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [draftUsername, setDraftUsername] = useState(accountUser?.username ?? '');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
+  const usernameValid = isValidUsername(draftUsername);
   const changed =
-    draftName.trim() !== settings.displayName || draftAvatar !== settings.avatarDataUrl;
+    draftName.trim() !== settings.displayName ||
+    draftAvatar !== settings.avatarDataUrl ||
+    draftUsername !== accountUser?.username ||
+    draftBio !== (accountUser?.bio ?? '') ||
+    draftCover !== (accountUser?.coverUrl ?? '');
 
   useEffect(() => {
     setDraftName(settings.displayName);
     setDraftAvatar(settings.avatarDataUrl);
-  }, [settings.avatarDataUrl, settings.displayName]);
+    setDraftCover(accountUser?.coverUrl ?? '');
+    setDraftBio(accountUser?.bio ?? '');
+    setDraftUsername(accountUser?.username ?? '');
+  }, [
+    accountUser?.bio,
+    accountUser?.coverUrl,
+    accountUser?.username,
+    settings.avatarDataUrl,
+    settings.displayName,
+  ]);
 
   const save = async () => {
     const name = draftName.trim();
@@ -287,9 +386,13 @@ function ProfileTab({
       setError('Имя должно содержать от 1 до 32 символов без < и >.');
       return;
     }
+    if (!usernameValid) {
+      setError('Username: минимум 5 символов, только латинские буквы, цифры и _.');
+      return;
+    }
     setBusy(true);
     try {
-      await onSaveProfile(name, draftAvatar);
+      await onSaveProfile(name, draftAvatar, draftUsername || undefined, draftBio, draftCover);
       setSaved(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось сохранить профиль.');
@@ -298,8 +401,30 @@ function ProfileTab({
     }
   };
 
+  if (guestMode || !accountUser)
+    return (
+      <section className="settings-section locked-feature-card">
+        <UserRound size={34} />
+        <h3>Профиль доступен после регистрации</h3>
+        <p>
+          Зарегистрируйтесь, чтобы пользоваться всеми функциями профиля, друзьями, чатами и
+          историей.
+        </p>
+      </section>
+    );
+
   return (
     <section className="settings-section profile-section">
+      <div className="account-profile-facts">
+        <span>
+          <small>Почта</small>
+          <strong>{accountUser.email}</strong>
+        </span>
+        <span>
+          <small>Регистрация</small>
+          <strong>{new Date(accountUser.registeredAt).toLocaleDateString('ru-RU')}</strong>
+        </span>
+      </div>
       <div className="profile-editor">
         <div className="profile-avatar-preview">
           {draftAvatar ? (
@@ -340,6 +465,45 @@ function ProfileTab({
           </div>
         </div>
       </div>
+      <div className="profile-cover-editor">
+        <div
+          className="profile-cover-preview"
+          style={draftCover ? { backgroundImage: `url(${draftCover})` } : undefined}
+        >
+          {!draftCover && <span>FreeTalk cover</span>}
+        </div>
+        <div className="profile-avatar-actions">
+          <strong>Обложка профиля</strong>
+          <small>Широкое изображение. Оно будет видно справа в профиле собеседника.</small>
+          <div>
+            <label className="secondary compact profile-file-button">
+              <ImagePlus size={16} /> {draftCover ? 'Заменить' : 'Загрузить'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = '';
+                  if (!file) return;
+                  setError('');
+                  void prepareCover(file)
+                    .then(setDraftCover)
+                    .catch((caught) =>
+                      setError(
+                        caught instanceof Error ? caught.message : 'Не удалось обработать обложку.',
+                      ),
+                    );
+                }}
+              />
+            </label>
+            {draftCover && (
+              <button className="secondary compact" onClick={() => setDraftCover('')}>
+                <Trash2 size={15} /> Удалить
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
       <label className="field-label">
         Отображаемое имя
         <input
@@ -352,6 +516,35 @@ function ProfileTab({
           }}
         />
       </label>
+      <label className="field-label">
+        Уникальный @username
+        <input
+          minLength={USERNAME_MIN_LENGTH}
+          maxLength={USERNAME_MAX_LENGTH}
+          pattern="[a-z0-9_]{5,24}"
+          aria-invalid={!usernameValid}
+          value={draftUsername}
+          onChange={(event) => {
+            setDraftUsername(normalizeUsername(event.target.value));
+            setSaved(false);
+          }}
+        />
+        <small>От 5 символов: латинские буквы, цифры и _. Изменить можно раз в 30 дней.</small>
+      </label>
+      <label className="field-label">
+        О себе
+        <textarea
+          value={draftBio}
+          maxLength={200}
+          rows={3}
+          placeholder="Несколько слов о себе"
+          onChange={(event) => {
+            setDraftBio(event.target.value);
+            setSaved(false);
+          }}
+        />
+        <small>{draftBio.length}/200</small>
+      </label>
       <div className="profile-limit">
         <span>
           {remaining > 0 ? `Осталось изменений: ${remaining} из 3` : 'Лимит изменений исчерпан'}
@@ -362,12 +555,190 @@ function ProfileTab({
       {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
       <button
         className="primary profile-save"
-        disabled={!changed || remaining === 0 || busy}
+        disabled={!changed || !usernameValid || remaining === 0 || busy}
         onClick={() => void save()}
       >
         <Save size={16} /> {busy ? 'Сохраняем…' : 'Сохранить профиль'}
       </button>
+      <div className="account-actions">
+        <details>
+          <summary>Изменить пароль</summary>
+          <div className="password-change-form">
+            <input
+              type="password"
+              value={currentPassword}
+              placeholder="Текущий пароль"
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
+            <input
+              type="password"
+              value={newPassword}
+              placeholder="Новый пароль"
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+            <button
+              disabled={!currentPassword || !newPassword}
+              onClick={() => {
+                setError('');
+                void onChangePassword(currentPassword, newPassword)
+                  .then(() => {
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setSaved(true);
+                  })
+                  .catch((caught: unknown) =>
+                    setError(
+                      caught instanceof Error ? caught.message : 'Не удалось изменить пароль',
+                    ),
+                  );
+              }}
+            >
+              Изменить пароль
+            </button>
+          </div>
+        </details>
+        <button className="secondary" onClick={onAccountLogout}>
+          Выйти из аккаунта
+        </button>
+        <details className="danger-zone">
+          <summary>Удалить аккаунт</summary>
+          <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
+          <input
+            type="password"
+            value={deletePassword}
+            placeholder="Текущий пароль"
+            onChange={(event) => setDeletePassword(event.target.value)}
+          />
+          <input
+            value={deleteConfirmation}
+            placeholder="Введите УДАЛИТЬ"
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+          />
+          <button
+            className="danger"
+            disabled={!deletePassword || deleteConfirmation !== 'УДАЛИТЬ'}
+            onClick={() => {
+              setError('');
+              void onDeleteAccount(deletePassword).catch((caught: unknown) =>
+                setError(caught instanceof Error ? caught.message : 'Не удалось удалить аккаунт'),
+              );
+            }}
+          >
+            Удалить навсегда
+          </button>
+        </details>
+      </div>
     </section>
+  );
+}
+
+function VideoTab({
+  settings,
+  cameras,
+  onCamera,
+  onVideoSetting,
+  locked,
+}: {
+  settings: LocalSettings;
+  cameras: MediaDeviceInfo[];
+  onCamera(value: string): void;
+  onVideoSetting(patch: Partial<LocalSettings>): void;
+  locked: boolean;
+}) {
+  return (
+    <fieldset className="video-settings-fieldset" disabled={locked}>
+      {locked && (
+        <div className="locked-feature-card">
+          <Video size={30} />
+          <strong>Видео доступно после регистрации</strong>
+          <small>Гости могут общаться только голосом.</small>
+        </div>
+      )}
+      <section className="settings-section video-settings-section">
+        <h3>Камера</h3>
+        <label className="field-label">
+          Устройство камеры
+          <select
+            value={settings.cameraDeviceId}
+            onChange={(event) => onCamera(event.target.value)}
+          >
+            <option value="">Системная камера по умолчанию</option>
+            {cameras.map((device, index) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label || `Камера ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          <small>Если камера уже включена, устройство переключится без выхода из комнаты.</small>
+        </label>
+      </section>
+
+      <section className="settings-section video-settings-section">
+        <div className="section-title-row">
+          <h3>Демонстрация экрана</h3>
+          <span className="quality-summary">
+            {settings.screenResolution} · {settings.screenFrameRate} FPS
+          </span>
+        </div>
+        <div className="video-quality-grid">
+          <label className="field-label">
+            Максимальное разрешение
+            <select
+              value={settings.screenResolution}
+              onChange={(event) =>
+                onVideoSetting({
+                  screenResolution: event.target.value as LocalSettings['screenResolution'],
+                })
+              }
+            >
+              <option value="720p">HD · 1280×720</option>
+              <option value="1080p">Full HD · 1920×1080</option>
+              <option value="1440p">2K · 2560×1440</option>
+            </select>
+          </label>
+          <label className="field-label">
+            Частота кадров
+            <select
+              value={settings.screenFrameRate}
+              onChange={(event) =>
+                onVideoSetting({
+                  screenFrameRate: Number(event.target.value) as LocalSettings['screenFrameRate'],
+                })
+              }
+            >
+              <option value="15">15 FPS · экономно</option>
+              <option value="30">30 FPS · рекомендуется</option>
+              <option value="60">60 FPS · плавно</option>
+            </select>
+          </label>
+        </div>
+        <div className="video-toggle-list">
+          <Toggle
+            label="Передавать звук по умолчанию"
+            description="Запрашивает звук выбранного окна или экрана при запуске демонстрации."
+            checked={settings.screenAudioByDefault}
+            onChange={(value) => onVideoSetting({ screenAudioByDefault: value })}
+          />
+          <Toggle
+            label="Адаптивное качество"
+            description="Автоматически снижает разрешение, FPS и битрейт при потерях или высоком пинге."
+            checked={settings.screenAdaptiveQuality}
+            onChange={(value) => onVideoSetting({ screenAdaptiveQuality: value })}
+          />
+        </div>
+        <div className="adaptive-quality-note">
+          <strong>Без остановок на слабой сети</strong>
+          <small>
+            Каждый собеседник получает индивидуальное качество. После восстановления соединения
+            FreeTalk автоматически возвращает выбранные параметры.
+          </small>
+        </div>
+        <small className="video-apply-note">
+          Разрешение и FPS применятся при следующем запуске демонстрации. По умолчанию — 1080p/30
+          FPS; максимум — 2K/60 FPS.
+        </small>
+      </section>
+    </fieldset>
   );
 }
 
@@ -553,7 +924,7 @@ function DevicesTab({
   onSetting,
 }: {
   settings: LocalSettings;
-  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
+  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   outputSupported: boolean;
   onInput(value: string): void;
   onOutput(value: string): void;
@@ -631,7 +1002,7 @@ function AboutTab({
   return (
     <section className="settings-section about-section">
       <div className="about-mark">
-        <AudioLines size={30} />
+        <img src={mascotUrl} alt="" />
       </div>
       <div>
         <h3>FreeTalk</h3>

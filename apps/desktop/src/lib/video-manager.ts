@@ -1,4 +1,10 @@
 import { connectionDiagnostics } from './connection-diagnostics';
+import {
+  DEFAULT_VIDEO_PREFERENCES,
+  normalizeVideoPreferences,
+  screenCaptureConstraints,
+  type VideoPreferences,
+} from './video-quality';
 
 export type LocalVideoSource = 'none' | 'camera' | 'screen';
 export type VideoMediaSource = Exclude<LocalVideoSource, 'none'>;
@@ -19,11 +25,14 @@ type PublishVideo = (
   stream?: MediaStream,
 ) => Promise<void>;
 
-export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
-  width: { ideal: 1920 },
-  height: { ideal: 1080 },
-  frameRate: { ideal: 60, max: 60 },
-};
+export function cameraConstraints(deviceId = ''): MediaTrackConstraints {
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 60, max: 60 },
+  };
+}
 
 export class VideoManager {
   private cameraTrack?: MediaStreamTrack;
@@ -31,13 +40,17 @@ export class VideoManager {
   private screenStream?: MediaStream;
   private operationQueue = Promise.resolve();
   private disposed = false;
+  private preferences: VideoPreferences;
 
   constructor(
     private readonly publish: PublishVideo,
     private readonly onState: (state: LocalVideoState) => void,
     private readonly onError: (message: string) => void = () => undefined,
     private readonly onNotice: (message: string) => void = () => undefined,
-  ) {}
+    preferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
+  ) {
+    this.preferences = normalizeVideoPreferences(preferences);
+  }
 
   toggleCamera() {
     return this.enqueue(() => (this.cameraTrack ? this.stopCamera() : this.startCamera()));
@@ -47,6 +60,18 @@ export class VideoManager {
     return this.enqueue(() =>
       this.screenTrack ? this.stopScreen() : this.startScreen(includeAudio),
     );
+  }
+
+  setPreferences(preferences: VideoPreferences) {
+    this.preferences = normalizeVideoPreferences(preferences);
+  }
+
+  setCameraDevice(deviceId: string) {
+    return this.enqueue(async () => {
+      this.preferences = { ...this.preferences, cameraDeviceId: deviceId };
+      if (!this.cameraTrack) return;
+      await this.replaceCamera();
+    });
   }
 
   getCurrent() {
@@ -79,7 +104,7 @@ export class VideoManager {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: CAMERA_CONSTRAINTS,
+        video: cameraConstraints(this.preferences.cameraDeviceId),
       });
     } catch (error) {
       connectionDiagnostics.record('camera-capture:error', undefined, {
@@ -124,6 +149,42 @@ export class VideoManager {
     this.emitState();
   }
 
+  private async replaceCamera() {
+    const previous = this.cameraTrack;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: cameraConstraints(this.preferences.cameraDeviceId),
+      });
+    } catch (error) {
+      throw new Error(cameraErrorMessage(error));
+    }
+    const replacement = stream.getVideoTracks()[0];
+    if (!replacement) {
+      this.stopStream(stream);
+      throw new Error('Выбранная камера не вернула видеопоток.');
+    }
+    replacement.contentHint = 'motion';
+    replacement.onended = () => {
+      void this.enqueue(async () => {
+        if (this.cameraTrack !== replacement) return;
+        this.cameraTrack = undefined;
+        await this.publish(null, 'camera');
+        this.emitState();
+      });
+    };
+    this.cameraTrack = replacement;
+    await this.publish(replacement, 'camera');
+    this.detachAndStop(previous);
+    connectionDiagnostics.record(
+      'camera-device:switched',
+      undefined,
+      videoTrackDetails(replacement),
+    );
+    this.emitState();
+  }
+
   private async startScreen(includeAudio: boolean) {
     if (this.disposed) return;
     connectionDiagnostics.record('screen-capture:start');
@@ -139,12 +200,7 @@ export class VideoManager {
               restrictOwnAudio: true,
             }
           : false,
-        video: {
-          displaySurface: 'window',
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-          frameRate: { ideal: 30, max: 30 },
-        },
+        video: screenCaptureConstraints(this.preferences),
         selfBrowserSurface: 'exclude',
         systemAudio: includeAudio ? 'include' : 'exclude',
         windowAudio: includeAudio ? 'window' : 'exclude',

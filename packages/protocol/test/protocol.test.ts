@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { clientMessageSchema, parseClientMessage, serverMessageSchema } from '../src';
+import {
+  chatRealtimeClientMessageSchema,
+  chatRealtimeServerMessageSchema,
+  clientMessageSchema,
+  parseClientMessage,
+  serverMessageSchema,
+} from '../src';
 
 const base = {
   roomId: 'ABCDEFGH2345',
@@ -14,6 +20,27 @@ describe('protocol validation', () => {
       type: 'join-room',
       ...base,
     });
+  });
+
+  it('accepts only opaque room authorization tokens with bounded length', () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'join-room',
+        ...base,
+        authToken: 'a'.repeat(43),
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({ type: 'join-room', ...base, authToken: 'short' }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: 'error',
+        code: 'GUEST_SESSION_EXPIRED',
+        message: 'Сессия завершена',
+        fatal: true,
+      }).success,
+    ).toBe(true);
   });
 
   it('rejects HTML-looking and control-character names', () => {
@@ -78,5 +105,38 @@ describe('protocol validation', () => {
         reaction: '💣',
       }).success,
     ).toBe(false);
+  });
+
+  it('validates authenticated realtime chat events', () => {
+    expect(
+      chatRealtimeClientMessageSchema.safeParse({
+        type: 'authenticate',
+        token: 'a'.repeat(48),
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'profile-updated',
+        userId: base.clientId,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-created',
+        chatId: base.clientId,
+        message: {
+          id: '386d39ef-61af-4aca-84b8-47f78b0f554b',
+          kind: 'text',
+          body: 'Привет',
+          metadata: {},
+          sender_id: base.clientId,
+          username: 'friend_1',
+          display_name: 'Друг',
+          avatar_url: 'https://api.example.test/v1/users/avatar',
+          created_at: new Date().toISOString(),
+          expires_at: null,
+        },
+      }).success,
+    ).toBe(true);
   });
 });

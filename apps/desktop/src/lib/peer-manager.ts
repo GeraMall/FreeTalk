@@ -1,6 +1,14 @@
 import type { ServerMessage } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
 import type { VideoMediaSource } from './video-manager';
+import {
+  DEFAULT_VIDEO_PREFERENCES,
+  nextAdaptiveQualityLevel,
+  normalizeVideoPreferences,
+  screenEncodingProfile,
+  type NetworkQualitySample,
+  type VideoPreferences,
+} from './video-quality';
 
 const VIDEO_STATE_CHANNEL = 'freetalk-video-state-v1';
 const VIDEO_STATE_REQUEST = JSON.stringify({ version: 2, request: 'video-state' });
@@ -29,6 +37,9 @@ interface PeerContext {
   disconnectTimer?: number;
   iceRestartAttempts: number;
   diagnosticTimer?: number;
+  qualityTimer?: number;
+  adaptiveQualityLevel: number;
+  adaptiveGoodSamples: number;
   diagnosticStartedAt: number;
   firstCandidateTypes: Set<string>;
   firstConnectivityCheckRecorded: boolean;
@@ -83,6 +94,7 @@ export class PeerManager {
     screen: null,
   };
   private localScreenStream?: MediaStream;
+  private videoPreferences: VideoPreferences;
 
   constructor(
     private readonly selfId: string,
@@ -94,7 +106,10 @@ export class PeerManager {
       },
     ) => void,
     private readonly events: PeerEvents,
-  ) {}
+    videoPreferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
+  ) {
+    this.videoPreferences = normalizeVideoPreferences(videoPreferences);
+  }
 
   ensure(peerId: string) {
     if (this.peers.has(peerId)) return this.peers.get(peerId)!.connection;
@@ -113,6 +128,8 @@ export class PeerManager {
       operationQueue: Promise.resolve(),
       iceRestartAttempts: 0,
       diagnosticStartedAt: performance.now(),
+      adaptiveQualityLevel: 0,
+      adaptiveGoodSamples: 0,
       firstCandidateTypes: new Set(),
       firstConnectivityCheckRecorded: false,
       selectedPairRecorded: false,
@@ -171,6 +188,7 @@ export class PeerManager {
       this.createScreenAudioSender(peerId, context, screenAudioTrack, this.localScreenStream!);
     if (this.localVideoTracks.camera || this.localVideoTracks.screen)
       this.ensureVideoStateChannel(peerId, context);
+    if (this.localVideoTracks.screen) this.startQualityTimer(peerId, context);
 
     connection.onicecandidate = ({ candidate }) => {
       if (candidate) {
@@ -478,11 +496,32 @@ export class PeerManager {
             const sender = context.videoSenders[activeSource];
             if (sender?.sender.track) this.configureVideoSender(peerId, sender, activeSource);
           }
+          if (source === 'screen') {
+            context.adaptiveQualityLevel = 0;
+            context.adaptiveGoodSamples = 0;
+            if (track) this.startQualityTimer(peerId, context);
+            else this.clearQualityTimer(context);
+          }
           this.sendVideoState(peerId, context);
           this.startDiagnosticTimer(peerId, context);
         }),
       ),
     );
+  }
+
+  setVideoPreferences(preferences: VideoPreferences) {
+    this.videoPreferences = normalizeVideoPreferences(preferences);
+    for (const [peerId, context] of this.peers) {
+      context.adaptiveQualityLevel = 0;
+      context.adaptiveGoodSamples = 0;
+      for (const source of ['camera', 'screen'] as const) {
+        const sender = context.videoSenders[source];
+        if (sender?.sender.track) this.configureVideoSender(peerId, sender, source);
+      }
+      if (this.localVideoTracks.screen && this.videoPreferences.screenAdaptiveQuality)
+        this.startQualityTimer(peerId, context);
+      else this.clearQualityTimer(context);
+    }
   }
 
   updateIceServers(iceServers: RTCIceServer[]) {
@@ -506,6 +545,7 @@ export class PeerManager {
     if (!context) return;
     if (context.disconnectTimer) window.clearTimeout(context.disconnectTimer);
     this.clearDiagnosticTimer(context);
+    this.clearQualityTimer(context);
     context.videoStateChannel?.close();
     context.remoteVideoStateChannel?.close();
     context.connection.close();
@@ -591,6 +631,23 @@ export class PeerManager {
       }
       void this.pollConnectionStats(peerId, context);
     }, 250);
+  }
+
+  private clearQualityTimer(context: PeerContext) {
+    if (!context.qualityTimer) return;
+    window.clearInterval(context.qualityTimer);
+    context.qualityTimer = undefined;
+  }
+
+  private startQualityTimer(peerId: string, context: PeerContext) {
+    if (!this.videoPreferences.screenAdaptiveQuality || context.qualityTimer) return;
+    context.qualityTimer = window.setInterval(() => {
+      if (!this.localVideoTracks.screen || context.connection.signalingState === 'closed') {
+        this.clearQualityTimer(context);
+        return;
+      }
+      void this.pollAdaptiveQuality(peerId, context);
+    }, 2_000);
   }
 
   private ensureVideoStateChannel(peerId: string, context: PeerContext) {
@@ -805,13 +862,20 @@ export class PeerManager {
     const parameters = videoSender.sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
     const screenActive = Boolean(this.localVideoTracks.screen);
+    const screenProfile = screenEncodingProfile(
+      this.videoPreferences,
+      this.videoPreferences.screenAdaptiveQuality
+        ? (this.peers.get(peerId)?.adaptiveQualityLevel ?? 0)
+        : 0,
+    );
     parameters.encodings[0]!.maxBitrate =
-      source === 'screen' ? 6_000_000 : screenActive ? 1_500_000 : 3_500_000;
-    parameters.encodings[0]!.maxFramerate = source === 'screen' || screenActive ? 30 : 60;
-    parameters.encodings[0]!.scaleResolutionDownBy = 1;
+      source === 'screen' ? screenProfile.maxBitrate : screenActive ? 1_500_000 : 3_500_000;
+    parameters.encodings[0]!.maxFramerate =
+      source === 'screen' ? screenProfile.maxFramerate : screenActive ? 30 : 60;
+    parameters.encodings[0]!.scaleResolutionDownBy =
+      source === 'screen' ? screenProfile.scaleResolutionDownBy : 1;
     parameters.encodings[0]!.priority = source === 'screen' ? 'high' : 'medium';
-    parameters.degradationPreference =
-      source === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
+    parameters.degradationPreference = source === 'screen' ? 'balanced' : 'maintain-framerate';
     void videoSender.sender
       .setParameters(parameters)
       .then(() =>
@@ -824,6 +888,84 @@ export class PeerManager {
         }),
       )
       .catch(() => undefined);
+  }
+
+  private async pollAdaptiveQuality(peerId: string, context: PeerContext) {
+    if (!this.videoPreferences.screenAdaptiveQuality) return;
+    const screenSender = context.videoSenders.screen;
+    if (!screenSender?.sender.track) return;
+    try {
+      const stats = await context.connection.getStats();
+      const screenMid = screenSender.transceiver.mid;
+      let outboundId = '';
+      let qualityLimitationReason: string | undefined;
+      let availableOutgoingBitrate: number | undefined;
+      let fractionLost: number | undefined;
+      let roundTripTime: number | undefined;
+      let selectedCandidatePairId: string | undefined;
+      for (const report of stats.values()) {
+        if (report.type === 'outbound-rtp' && report.kind === 'video' && report.mid === screenMid) {
+          outboundId = report.id;
+          qualityLimitationReason = report.qualityLimitationReason as string | undefined;
+        }
+        if (report.type === 'transport' && report.selectedCandidatePairId) {
+          selectedCandidatePairId = String(report.selectedCandidatePairId);
+        }
+      }
+      for (const report of stats.values()) {
+        if (
+          report.type === 'candidate-pair' &&
+          (report.id === selectedCandidatePairId ||
+            (report.state === 'succeeded' && report.nominated))
+        ) {
+          availableOutgoingBitrate = Number(report.availableOutgoingBitrate ?? 0) || undefined;
+          roundTripTime = Number(report.currentRoundTripTime ?? 0) || undefined;
+          if (report.id === selectedCandidatePairId) break;
+        }
+      }
+      for (const report of stats.values()) {
+        if (report.type !== 'remote-inbound-rtp' || (report.kind ?? report.mediaType) !== 'video')
+          continue;
+        if (outboundId && report.localId && report.localId !== outboundId) continue;
+        fractionLost = Number(report.fractionLost ?? 0);
+        roundTripTime = Number(report.roundTripTime ?? roundTripTime ?? 0) || roundTripTime;
+        break;
+      }
+      const sample: NetworkQualitySample = {
+        availableOutgoingBitrate,
+        fractionLost,
+        roundTripTime,
+        qualityLimitationReason,
+      };
+      const currentProfile = screenEncodingProfile(
+        this.videoPreferences,
+        context.adaptiveQualityLevel,
+      );
+      const upgradeProfile = screenEncodingProfile(
+        this.videoPreferences,
+        Math.max(0, context.adaptiveQualityLevel - 1),
+      );
+      const next = nextAdaptiveQualityLevel(
+        context.adaptiveQualityLevel,
+        context.adaptiveGoodSamples,
+        sample,
+        currentProfile.maxBitrate,
+        upgradeProfile.maxBitrate,
+      );
+      context.adaptiveGoodSamples = next.goodSamples;
+      if (next.level === context.adaptiveQualityLevel) return;
+      context.adaptiveQualityLevel = next.level;
+      this.configureVideoSender(peerId, screenSender, 'screen');
+      connectionDiagnostics.record('screen-quality:adapted', peerId, {
+        level: next.level,
+        availableOutgoingBitrate: availableOutgoingBitrate ?? 0,
+        fractionLost: fractionLost ?? 0,
+        roundTripTime: roundTripTime ?? 0,
+        reason: qualityLimitationReason ?? 'network-sample',
+      });
+    } catch {
+      // Network adaptation must never affect media or signaling.
+    }
   }
 
   private remoteSourceForMedia(context: PeerContext, mid: string | null, trackId: string | null) {

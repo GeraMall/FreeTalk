@@ -2,10 +2,11 @@
 
 ## Поток данных
 
-1. Клиент получает `MediaStream` только с аудиотреком и применяет echo cancellation, noise suppression, automatic gain control, mono/48 kHz.
-2. WebSocket-сигналинг передаёт присутствие, mute, SDP и ICE. В Tauri production WSS открывает нативный Rust-модуль; браузерная разработка использует стандартный `WebSocket`. Аудиоданные через сигналинг не проходят.
-3. `PeerManager` создаёт один `RTCPeerConnection` на каждого удалённого участника. Mesh из шести человек означает до пяти исходящих Opus-потоков на клиент.
-4. После SDP/ICE браузеры передают DTLS-SRTP аудио напрямую либо через TURN. Opus получает ограничение 64 kbit/s на sender.
+1. Desktop общается с `apps/api` по HTTPS для auth/profile/friends/chats/history. Durable account state хранится в PostgreSQL; access token живёт в памяти клиента, refresh token — в системном secure storage. После входа отдельный WSS `/api/v1/chats/realtime` доставляет события чатов моментально; создание сообщений по-прежнему идёт через проверяемый и ограниченный HTTP API.
+2. WSS signaling проверяет create/join через закрытый server-to-server API. Registered identity и guest quota определяет API, а не клиентский display name или boolean.
+3. Клиент получает локальные media tracks и передаёт через signaling только presence, mute, SDP и ICE. Account API не получает SDP/ICE, аудио, видео или экран.
+4. `PeerManager` создаёт один `RTCPeerConnection` на каждого удалённого участника. Mesh из шести человек означает до пяти исходящих наборов tracks на клиент.
+5. После SDP/ICE клиенты передают DTLS-SRTP media напрямую либо через TURN.
 
 `PeerManager` изолирован от React и от протокола комнаты, поэтому позднее его можно заменить адаптером SFU, сохранив UI, аудиоменеджер и signaling state.
 
@@ -14,6 +15,7 @@
 - `packages/protocol` — Zod-схемы и общие типы client/server сообщений.
 - `packages/config` — лимиты, STUN и backoff.
 - `apps/signaling` — локальный Node.js/WebSocket server и `RoomManager`.
+- `apps/api` — Fastify API, Argon2id, session lifecycle, social policy и PostgreSQL migrations.
 - `apps/cloudflare-signaling` — production Durable Object с WebSocket Hibernation API.
 - `apps/desktop/src/lib/audio-manager.ts` — захват, mute/PTT и voice activity.
 - `peer-manager.ts` — perfect negotiation, ICE deduplication, Opus и peer lifecycle.
@@ -23,7 +25,7 @@
 
 ## Протокол
 
-Клиент: `create-room`, `join-room`, `leave-room`, `offer`, `answer`, `ice-candidate`, `mute-changed`, `ping`.
+Клиент: `create-room`, `join-room` (с account/guest token), `leave-room`, `offer`, `answer`, `ice-candidate`, `mute-changed`, `update-profile`, `reaction`, `moderation-mute`, `ping`.
 
 Сервер: `room-created`, `joined-room`, `participants`, `participant-joined`, `participant-left`, `offer`, `answer`, `ice-candidate`, `mute-changed`, `ice-config`, `pong`, `error`, `room-closed`, `participant-disconnected`.
 

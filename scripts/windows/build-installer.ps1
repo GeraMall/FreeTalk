@@ -9,6 +9,17 @@ $installer = Join-Path $outputDirectory "FreeTalk_${version}_x64-setup.exe"
 $portable = Join-Path $outputDirectory "FreeTalk_${version}_portable_x64.exe"
 $localBundleConfig = '../../scripts/windows/tauri-local-unsigned.json'
 
+# Desktop shells do not always inherit rustup's PATH even when Rust is installed.
+# Resolve the conventional per-user toolchain explicitly before invoking Tauri.
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+  $cargoDirectory = Join-Path $env:USERPROFILE '.cargo\bin'
+  $cargoExecutable = Join-Path $cargoDirectory 'cargo.exe'
+  if (-not (Test-Path -LiteralPath $cargoExecutable)) {
+    throw "Cargo was not found in PATH or at $cargoExecutable"
+  }
+  $env:PATH = "$cargoDirectory;$env:PATH"
+}
+
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 
 # Use Tauri's maintained NSIS template. The old handwritten fallback could remain

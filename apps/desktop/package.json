@@ -1,10 +1,11 @@
 {
   "name": "@freetalk/desktop",
-  "version": "0.3.22",
+  "version": "0.4.0-beta.14",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --configLoader runner",
+    "preview": "vite preview --host 127.0.0.1 --port 1420 --strictPort --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --configLoader runner",

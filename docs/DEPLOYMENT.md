@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @freetalk/signaling bundle
 ```
 
-Bundle устанавливается как `/opt/freetalk/server.bundle.cjs`, затем перезапускается `freetalk-signaling.service`. Секреты находятся в `/etc/freetalk/signaling.env` с режимом `0600` и не копируются в Git.
+Bundle устанавливается как `/opt/freetalk/server.bundle.mjs`, затем перезапускается `freetalk-signaling.service`. Production signaling требует `ACCOUNT_API_URL` и `INTERNAL_SIGNALING_SECRET` и отказывается запускаться без них. Accountless-режим доступен только локально при явном `SIGNALING_ALLOW_INSECURE_DEVELOPMENT=true`. Секреты находятся в `/etc/freetalk/signaling.env` с режимом `0600` и не копируются в Git.
 
 ## TURN broker
 

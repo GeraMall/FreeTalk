@@ -18,6 +18,7 @@ const buildCommit = (() => {
 })();
 
 export default defineConfig({
+  cacheDir: 'node_modules/.vite-freetalk',
   plugins: [react()],
   define: {
     __FREETALK_APP_VERSION__: JSON.stringify(packageJson.version),

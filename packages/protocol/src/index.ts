@@ -34,6 +34,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     roomId,
     clientId,
     sessionId,
+    authToken: z.string().min(32).max(256).optional(),
     name: displayName,
     avatar,
   }),
@@ -42,6 +43,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     roomId,
     clientId,
     sessionId,
+    authToken: z.string().min(32).max(256).optional(),
     name: displayName,
     avatar,
   }),
@@ -115,6 +117,10 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
       'NOT_OWNER',
       'RATE_LIMITED',
       'PROFILE_RATE_LIMITED',
+      'AUTH_REQUIRED',
+      'REGISTERED_ONLY',
+      'GUEST_SESSION_EXPIRED',
+      'GUEST_DAILY_LIMIT',
       'INTERNAL_ERROR',
     ]),
     message: z.string().max(256),
@@ -128,10 +134,51 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type SignalMessage = Extract<ClientMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>;
 
+export const chatRealtimeClientMessageSchema = z.object({
+  type: z.literal('authenticate'),
+  token: z.string().min(32).max(256),
+});
+
+const realtimeChatMessage = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(['text', 'system', 'call']),
+  body: z.string().max(4000),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  sender_id: z.string().uuid().nullable(),
+  username: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  avatar_url: z.string().url().nullable().optional(),
+  created_at: z.string(),
+  expires_at: z.string().nullable(),
+});
+
+export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('ready') }),
+  z.object({
+    type: z.literal('message-created'),
+    chatId: z.string().uuid(),
+    message: realtimeChatMessage,
+  }),
+  z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
+  z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
+  z.object({
+    type: z.literal('retention-changed'),
+    chatId: z.string().uuid(),
+    retentionHours: z.union([z.literal(24), z.literal(168), z.literal(720), z.null()]),
+  }),
+]);
+
+export type ChatRealtimeClientMessage = z.infer<typeof chatRealtimeClientMessageSchema>;
+export type ChatRealtimeServerMessage = z.infer<typeof chatRealtimeServerMessageSchema>;
+
 export function parseClientMessage(raw: string): ClientMessage {
   return clientMessageSchema.parse(JSON.parse(raw));
 }
 
 export function parseServerMessage(raw: string): ServerMessage {
   return serverMessageSchema.parse(JSON.parse(raw));
+}
+
+export function parseChatRealtimeServerMessage(raw: string): ChatRealtimeServerMessage {
+  return chatRealtimeServerMessageSchema.parse(JSON.parse(raw));
 }
