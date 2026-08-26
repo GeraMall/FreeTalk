@@ -7,6 +7,16 @@ freetalk.191-44-38-60.sslip.io {
 		@internal_api path /api/v1/internal/*
 		respond @internal_api 404
 
+		handle_path /downloads/* {
+			root * /var/www/freetalk-downloads
+			header {
+				Content-Disposition "attachment"
+				X-Content-Type-Options "nosniff"
+				Cache-Control "public, max-age=3600"
+			}
+			file_server
+		}
+
 		handle_path /api/* {
 			reverse_proxy 127.0.0.1:8790
 		}
