@@ -49,12 +49,9 @@ importers:
       fastify:
         specifier: ^5.6.2
         version: 5.12.1
-      image-size:
-        specifier: 2.0.2
-        version: 2.0.2
       nodemailer:
-        specifier: ^7.0.10
-        version: 7.0.13
+        specifier: ^9.0.5
+        version: 9.0.5
       pg:
         specifier: ^8.16.3
         version: 8.23.0
@@ -2809,14 +2806,6 @@ packages:
       }
     engines: { node: '>= 4' }
 
-  image-size@2.0.2:
-    resolution:
-      {
-        integrity: sha512-IRqXKlaXwgSMAMtpNzZa1ZAe8m+Sa1770Dhk8VkSsP9LS+iHD62Zd8FQKs8fbPiagBE7BzoFX23cxFnwshpV6w==,
-      }
-    engines: { node: '>=16.x' }
-    hasBin: true
-
   import-fresh@3.3.1:
     resolution:
       {
@@ -3086,10 +3075,10 @@ packages:
       }
     engines: { node: '>=18' }
 
-  nodemailer@7.0.13:
+  nodemailer@9.0.5:
     resolution:
       {
-        integrity: sha512-PNDFSJdP+KFgdsG3ZzMXCgquO7I6McjY2vlqILjtJd0hy8wEvtugS9xKRF2NWlPNGxvLCXlTNIae4serI7dinw==,
+        integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==,
       }
     engines: { node: '>=6.0.0' }
 
@@ -5442,8 +5431,6 @@ snapshots:
 
   ignore@7.0.6: {}
 
-  image-size@2.0.2: {}
-
   import-fresh@3.3.1:
     dependencies:
       parent-module: 1.0.1
@@ -5589,7 +5576,7 @@ snapshots:
 
   node-releases@2.0.53: {}
 
-  nodemailer@7.0.13: {}
+  nodemailer@9.0.5: {}
 
   nwsapi@2.2.24: {}
 

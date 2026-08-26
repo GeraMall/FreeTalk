@@ -1,6 +1,5 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { randomInt } from 'node:crypto';
-import { imageSize } from 'image-size';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
@@ -20,6 +19,7 @@ import { env, publicApiUrl } from './env.js';
 import { sendPasswordReset, sendVerification } from './mailer.js';
 import { registerSocialRoutes } from './social-routes.js';
 import { chatRealtimeHub } from './chat-realtime.js';
+import { safeImageDimensions } from './image-dimensions.js';
 import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
 import {
   displayNameSchema,
@@ -573,7 +573,7 @@ app.post('/v1/me/avatar', async (request, reply) => {
   ];
   if (!signatures.some(Boolean))
     return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Некорректный файл' });
-  const dimensions = imageSize(bytes);
+  const dimensions = safeImageDimensions(bytes);
   if (
     !dimensions.width ||
     !dimensions.height ||
@@ -636,7 +636,7 @@ app.post('/v1/me/cover', async (request, reply) => {
   ];
   if (!signatures.some(Boolean))
     return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Некорректный файл' });
-  const dimensions = imageSize(bytes);
+  const dimensions = safeImageDimensions(bytes);
   if (
     !dimensions.width ||
     !dimensions.height ||
@@ -789,8 +789,8 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
     await transaction(async (client) => {
       const call = await client.query<{ id: string }>(
         `INSERT INTO call_sessions(room_id,created_by,chat_id)
-         VALUES($1,$2,(SELECT chat_id FROM messages WHERE kind='call'
-           AND metadata->>'roomId'=$1 ORDER BY created_at DESC LIMIT 1)) RETURNING id`,
+         VALUES($1::text,$2,(SELECT chat_id FROM messages WHERE kind='call'
+           AND metadata->>'roomId'=$1::text ORDER BY created_at DESC LIMIT 1)) RETURNING id`,
         [input.roomId, input.userId],
       );
       await client.query(

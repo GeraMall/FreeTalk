@@ -96,6 +96,43 @@ describe('RoomManager', () => {
     expect(manager.moderationMute(room, id(2), id(1))).toBe('TARGET_NOT_FOUND');
   });
 
+  it('keeps heartbeat-active participants and removes only stale peers', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    const member = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    manager.join(room, id(2), 'session-223456789', 'Member', member);
+
+    manager.touch(room, id(1), 50_000);
+    manager.touch(room, id(2), 50_000);
+    manager.removeStale(45_000, 90_000);
+
+    expect(manager.roomSize(room)).toBe(2);
+    expect(owner.closed).toBe(false);
+    expect(member.closed).toBe(false);
+  });
+
+  it('transfers ownership when only the owner is stale', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    const member = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    manager.join(room, id(2), 'session-223456789', 'Member', member);
+
+    manager.touch(room, id(1), 1_000);
+    manager.touch(room, id(2), 50_000);
+    manager.removeStale(45_000, 90_000);
+
+    expect(manager.roomSize(room)).toBe(1);
+    expect(owner.closed).toBe(true);
+    expect(member.closed).toBe(false);
+    expect(
+      member.messages.some(
+        (message) => message.type === 'owner-changed' && message.ownerId === id(2),
+      ),
+    ).toBe(true);
+  });
+
   it('broadcasts profile changes and limits them to three per five hours', () => {
     const manager = new RoomManager();
     const owner = new FakeConnection();

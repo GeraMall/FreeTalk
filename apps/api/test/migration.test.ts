@@ -59,4 +59,11 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('add column cover_data');
     expect(sql).toContain('2097152');
   });
+
+  it('uses one explicit PostgreSQL type for repeated room-id parameters', async () => {
+    const path = fileURLToPath(new URL('../src/server.ts', import.meta.url));
+    const source = await readFile(path, 'utf8');
+    expect(source).toContain('VALUES($1::text,$2,(SELECT chat_id FROM messages');
+    expect(source).toContain("metadata->>'roomId'=$1::text");
+  });
 });

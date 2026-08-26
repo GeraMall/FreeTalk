@@ -227,6 +227,10 @@ sockets.on('connection', (socket, request) => {
       // Heartbeats can arrive while authorization/ICE configuration is still pending.
       // Answer them without pretending the user attempted a room action.
       if (message.type === 'ping') {
+        // A connected voice room can legitimately have no SDP/ICE traffic for hours.
+        // Heartbeats are therefore the authoritative liveness signal for RoomManager.
+        // Without this touch, removeStale evicts healthy participants after 45 seconds.
+        if (meta.roomId && meta.clientId) manager.touch(meta.roomId, meta.clientId);
         send(socket, { type: 'pong', timestamp: message.timestamp });
         return;
       }

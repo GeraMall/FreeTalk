@@ -193,9 +193,9 @@ export class RoomManager {
     return 'OK' as const;
   }
 
-  touch(roomId: string, clientId: string) {
+  touch(roomId: string, clientId: string, now = Date.now()) {
     const peer = this.rooms.get(roomId)?.peers.get(clientId);
-    if (peer) peer.lastSeen = Date.now();
+    if (peer) peer.lastSeen = now;
   }
 
   removeStale(maxAgeMs: number, now = Date.now()) {
