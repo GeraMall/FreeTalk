@@ -105,4 +105,11 @@ describe('account-first welcome screen', () => {
     fireEvent.click(guestJoin);
     expect(handlers.onGuestJoin).toHaveBeenCalledWith('ABCDEFGH2345', 'local-development');
   });
+
+  it('prefills a room received from an application link', () => {
+    const view = render(<WelcomeScreen {...props()} initialRoomCode="ABCDEFGH2345" />);
+    expect((view.getByLabelText('Код или ссылка комнаты') as HTMLInputElement).value).toBe(
+      'ABCDEFGH2345',
+    );
+  });
 });

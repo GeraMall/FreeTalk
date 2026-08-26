@@ -5,6 +5,13 @@ mod secure_session;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(signaling::NativeSignalingState::default())
         .invoke_handler(tauri::generate_handler![
             diagnostics::save_connection_diagnostics,
@@ -17,6 +24,7 @@ pub fn run() {
             secure_session::secure_session_clear
         ])
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let mut window = tauri::WebviewWindowBuilder::new(

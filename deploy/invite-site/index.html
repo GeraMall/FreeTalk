@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Приглашение в FreeTalk</title>
+    <link rel="stylesheet" href="/invite/app.css" />
+  </head>
+  <body>
+    <main>
+      <section class="card" aria-labelledby="title">
+        <img class="logo" src="/invite/freetalk-mascot.png" alt="" aria-hidden="true" />
+        <p class="eyebrow">ПРИГЛАШЕНИЕ В ГОЛОСОВУЮ КОМНАТУ</p>
+        <h1 id="title">Открываем FreeTalk</h1>
+        <p class="lead">Комната <strong id="room-code">—</strong></p>
+        <a id="open-app" class="primary" href="#">Открыть приложение</a>
+        <p id="status" class="status">
+          Если приложение установлено, браузер предложит его открыть.
+        </p>
+        <div class="divider"><span>FreeTalk ещё не установлен?</span></div>
+        <div class="downloads">
+          <a href="/downloads/FreeTalk-Windows.exe">Скачать для Windows</a>
+          <a href="/downloads/FreeTalk-Mac-Apple.dmg">macOS Apple Silicon</a>
+          <a href="/downloads/FreeTalk-Mac-Intel.dmg">macOS Intel</a>
+        </div>
+        <small>Код комнаты можно ввести вручную в приложении.</small>
+      </section>
+    </main>
+    <script src="/invite/app.js" defer></script>
+  </body>
+</html>

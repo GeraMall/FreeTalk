@@ -1,6 +1,6 @@
 [package]
 name = "freetalk"
-version = "0.4.0-beta.17"
+version = "0.4.0-beta.18"
 description = "FreeTalk desktop voice chat"
 authors = ["FreeTalk contributors"]
 license = "MIT"
@@ -20,7 +20,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-deep-link = "2.4.9"
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "sync"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 url = "2"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2.4.3", features = ["deep-link"] }

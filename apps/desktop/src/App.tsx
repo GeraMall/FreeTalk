@@ -6,6 +6,7 @@ import type { ClientMessage, Participant, Reaction, ServerMessage } from '@freet
 import { AudioManager } from './lib/audio-manager';
 import { connectionDiagnostics } from './lib/connection-diagnostics';
 import { hasTurnServer } from './lib/ice-config';
+import { DEFAULT_INVITE_BASE_URL, roomInviteUrl, subscribeToRoomDeepLinks } from './lib/deep-link';
 import { NotificationSounds, ParticipantNotificationTracker } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
@@ -33,12 +34,20 @@ import {
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 import mascot from './assets/freetalk-mascot.png';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
+const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
   cameraEnabled: false,
   screenEnabled: false,
   screenAudioEnabled: false,
   source: 'none',
 };
+
+interface EnterRoomOptions {
+  room?: string;
+  authToken?: string;
+  displayName?: string;
+  guest?: boolean;
+}
 
 function processingSettings(settings: LocalSettings) {
   return {
@@ -91,6 +100,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [pendingInviteRoom, setPendingInviteRoom] = useState<string>();
   const [devices, setDevices] = useState<{
     inputs: MediaDeviceInfo[];
     outputs: MediaDeviceInfo[];
@@ -123,6 +133,9 @@ export function App() {
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
   const listeningDiagnostics = useRef(new Set<string>());
   const pendingRoomId = useRef<string | undefined>(undefined);
+  const enterRoomRef = useRef<(create: boolean, options?: EnterRoomOptions) => Promise<void>>(
+    async () => undefined,
+  );
   const joinedRoom = useRef(false);
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
@@ -158,6 +171,24 @@ export function App() {
       }
       setAccountReady(true);
     });
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void subscribeToRoomDeepLinks((code) => {
+      setPendingInviteRoom(code);
+      setNotice(`Открыто приглашение в комнату ${code}`);
+    }, inviteBaseUrl)
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   const cleanup = useCallback(() => {
@@ -551,10 +582,7 @@ export function App() {
     [cleanup, settings],
   );
 
-  const enterRoom = async (
-    create: boolean,
-    options: { room?: string; authToken?: string; displayName?: string; guest?: boolean } = {},
-  ) => {
+  const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
     setError('');
     setNotice('');
     const cleanName = (options.displayName ?? accountUser?.displayName ?? name).trim();
@@ -642,6 +670,21 @@ export function App() {
       cleanup();
     }
   };
+  enterRoomRef.current = enterRoom;
+
+  useEffect(() => {
+    if (!pendingInviteRoom || !accountReady || joining) return;
+    if (roomId) {
+      if (roomId !== pendingInviteRoom)
+        setNotice('Сначала выйдите из текущей комнаты, затем откройте приглашение ещё раз');
+      setPendingInviteRoom(undefined);
+      return;
+    }
+    if (!accountUser) return;
+    const code = pendingInviteRoom;
+    setPendingInviteRoom(undefined);
+    void enterRoomRef.current(false, { room: code });
+  }, [accountReady, accountUser, joining, pendingInviteRoom, roomId]);
 
   const toggleMute = () => {
     const next = !muted;
@@ -770,7 +813,7 @@ export function App() {
   const copyInvite = async () => {
     if (!roomId) return;
     try {
-      await navigator.clipboard.writeText(`freetalk://join/${roomId}`);
+      await navigator.clipboard.writeText(roomInviteUrl(roomId, inviteBaseUrl));
       setNotice('Ссылка-приглашение скопирована');
       setInviteCopied(true);
       window.setTimeout(() => setInviteCopied(false), 1800);
@@ -1026,11 +1069,15 @@ export function App() {
             captchaRequired={captchaRequired}
             updateStatus={updateStatus}
             savedDisplayName={name}
+            initialRoomCode={pendingInviteRoom}
             onLogin={(login, password, captcha) => void loginAccount(login, password, captcha)}
             onRegister={registerAccount}
             onResendVerification={resendVerificationAccount}
             onVerifyEmail={verifyEmailAccount}
-            onGuestJoin={(code, captcha) => void joinAsGuest(code, captcha)}
+            onGuestJoin={(code, captcha) => {
+              setPendingInviteRoom(undefined);
+              void joinAsGuest(code, captcha);
+            }}
             onForgotPassword={(email) =>
               void accountClient
                 .forgotPassword(email)

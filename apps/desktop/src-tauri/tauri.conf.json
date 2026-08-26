@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FreeTalk",
-  "version": "0.4.0-beta.17",
+  "version": "0.4.0-beta.18",
   "identifier": "io.freetalk.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -52,6 +52,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["freetalk"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZDNUJBRTI0QjVDQzI2NUEKUldSYUpzeTFKSzViYkNIMk44YWRLVGxPYTV1QzhWQ0ZnalBGTnhsUHZ6YnpNcTQzNGJpZmR6NTkK",
       "endpoints": ["https://github.com/GeraMall/FreeTalk/releases/latest/download/latest.json"],

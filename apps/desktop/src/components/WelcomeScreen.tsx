@@ -59,6 +59,7 @@ interface WelcomeScreenProps {
   captchaRequired: boolean;
   updateStatus: UpdateStatus;
   savedDisplayName: string;
+  initialRoomCode?: string;
   onLogin(login: string, password: string, captchaToken?: string): void;
   onRegister(input: RegistrationInput): Promise<boolean>;
   onResendVerification(email: string): Promise<boolean>;
@@ -75,6 +76,7 @@ export function WelcomeScreen({
   captchaRequired,
   updateStatus,
   savedDisplayName,
+  initialRoomCode,
   onLogin,
   onRegister,
   onResendVerification,
@@ -111,6 +113,10 @@ export function WelcomeScreen({
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [verificationEmail]);
+
+  useEffect(() => {
+    if (initialRoomCode) setGuestRoom(initialRoomCode);
+  }, [initialRoomCode]);
 
   const remainingSeconds = Math.max(0, Math.ceil((verificationDeadline - now) / 1_000));
   const verificationTime = `${Math.floor(remainingSeconds / 60)
