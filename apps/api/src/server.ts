@@ -94,6 +94,12 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply) {
   return user;
 }
 
+function internalAvatarDataUrl(mime: string | null, data: Buffer | null) {
+  if (!mime || !data || !/^image\/(?:webp|jpeg|png)$/.test(mime)) return undefined;
+  const avatar = `data:${mime};base64,${data.toString('base64')}`;
+  return avatar.length <= 18_000 ? avatar : undefined;
+}
+
 async function publishProfileUpdate(userId: string) {
   const recipients = await db.query<{ user_id: string }>(
     `SELECT $1::uuid AS user_id
@@ -215,7 +221,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.6' };
+  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.7' };
 });
 
 app.post(
@@ -677,8 +683,14 @@ app.post(
       })
       .parse(request.body);
     const registered = await transaction(async (client) => {
-      const session = await client.query<{ user_id: string; display_name: string }>(
-        `SELECT s.user_id,u.display_name FROM sessions s JOIN users u ON u.id=s.user_id
+      const session = await client.query<{
+        user_id: string;
+        display_name: string;
+        avatar_mime: string | null;
+        avatar_data: Buffer | null;
+      }>(
+        `SELECT s.user_id,u.display_name,u.avatar_mime,u.avatar_data
+         FROM sessions s JOIN users u ON u.id=s.user_id
          WHERE s.access_token_hash=$1 AND s.revoked_at IS NULL
          AND s.access_expires_at>now() AND u.deleted_at IS NULL`,
         [tokenHash(input.token)],
@@ -710,6 +722,7 @@ app.post(
         kind: 'registered',
         userId: registered.user.user_id,
         displayName: registered.user.display_name,
+        avatar: internalAvatarDataUrl(registered.user.avatar_mime, registered.user.avatar_data),
       };
     if (input.action === 'create')
       return reply.code(403).send({ allowed: false, reason: 'REGISTERED_ONLY' });
@@ -819,12 +832,20 @@ app.get(
     if (typeof secret !== 'string' || !secureSecretEqual(secret, env.INTERNAL_SIGNALING_SECRET))
       return reply.code(401).send({ ok: false });
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    const result = await db.query<{ display_name: string }>(
-      'SELECT display_name FROM users WHERE id=$1 AND deleted_at IS NULL',
+    const result = await db.query<{
+      display_name: string;
+      avatar_mime: string | null;
+      avatar_data: Buffer | null;
+    }>(
+      `SELECT display_name,avatar_mime,avatar_data
+       FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [id],
     );
     if (!result.rows[0]) return reply.code(404).send({ ok: false });
-    return { displayName: result.rows[0].display_name };
+    return {
+      displayName: result.rows[0].display_name,
+      avatar: internalAvatarDataUrl(result.rows[0].avatar_mime, result.rows[0].avatar_data),
+    };
   },
 );
 

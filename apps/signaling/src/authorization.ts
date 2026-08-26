@@ -4,6 +4,7 @@ export type RoomAuthorization =
       allowed: true;
       kind: 'registered' | 'guest';
       displayName: string;
+      avatar?: string;
       userId?: string;
       anonymousUserId?: string;
       disconnectAt?: string;
@@ -82,5 +83,5 @@ export async function getRegisteredProfile(userId: string) {
     },
   );
   if (!response.ok) return null;
-  return (await response.json()) as { displayName: string };
+  return (await response.json()) as { displayName: string; avatar?: string };
 }

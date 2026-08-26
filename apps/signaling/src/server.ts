@@ -159,6 +159,12 @@ sockets.on('connection', (socket, request) => {
             fatal: true,
           });
         const authorizedName = authorization.displayName ?? message.name;
+        const authorizedAvatar =
+          authorization.kind === 'registered'
+            ? authorization.avatar
+            : authorization.kind === 'development'
+              ? message.avatar
+              : undefined;
         let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
         try {
           iceConfig = await getIceConfig();
@@ -176,7 +182,7 @@ sockets.on('connection', (socket, request) => {
             message.sessionId,
             authorizedName,
             connection,
-            message.avatar,
+            authorizedAvatar,
           );
         else
           manager.join(
@@ -185,7 +191,7 @@ sockets.on('connection', (socket, request) => {
             message.sessionId,
             authorizedName,
             connection,
-            message.avatar,
+            authorizedAvatar,
           );
         meta.roomId = message.roomId;
         meta.clientId = message.clientId;
@@ -256,7 +262,8 @@ sockets.on('connection', (socket, request) => {
             meta.roomId,
             meta.clientId,
             registeredProfile?.displayName ?? message.name,
-            message.avatar,
+            registeredProfile?.avatar ??
+              (meta.authorization?.kind === 'development' ? message.avatar : undefined),
           );
           if (result === 'RATE_LIMITED')
             send(socket, {

@@ -1,14 +1,20 @@
 import { DISPLAY_NAME_PATTERN, ROOM_CODE_PATTERN } from '@freetalk/config';
 import { z } from 'zod';
 
+const inlineAvatarSchema = z
+  .string()
+  .max(18_000)
+  .regex(/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/);
+const hostedAvatarSchema = z
+  .string()
+  .max(2_048)
+  .regex(/^https:\/\/[^\s]+$/);
+const avatarSchema = z.union([inlineAvatarSchema, hostedAvatarSchema]);
+
 export const participantSchema = z.object({
   id: z.string().uuid(),
   name: z.string().regex(DISPLAY_NAME_PATTERN),
-  avatar: z
-    .string()
-    .max(18_000)
-    .regex(/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/)
-    .optional(),
+  avatar: avatarSchema.optional(),
   muted: z.boolean(),
   isOwner: z.boolean(),
   connectedAt: z.number().int().nonnegative(),

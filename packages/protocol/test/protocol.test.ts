@@ -22,6 +22,23 @@ describe('protocol validation', () => {
     });
   });
 
+  it('accepts trusted hosted profile avatars in room messages', () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'create-room',
+        ...base,
+        avatar: 'https://freetalk.example.test/v1/users/profile/avatar?v=2',
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'create-room',
+        ...base,
+        avatar: 'javascript:alert(1)',
+      }).success,
+    ).toBe(false);
+  });
+
   it('accepts only opaque room authorization tokens with bounded length', () => {
     expect(
       clientMessageSchema.safeParse({
