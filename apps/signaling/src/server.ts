@@ -273,12 +273,15 @@ sockets.on('connection', (socket, request) => {
             send(socket, {
               type: 'error',
               code: 'PROFILE_RATE_LIMITED',
-              message: 'Профиль можно изменить не более трёх раз за пять часов',
+              message: 'Профиль можно изменить не более пяти раз за пять часов',
             });
           break;
         }
         case 'reaction':
           manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
+          break;
+        case 'room-chat-message':
+          manager.chat(meta.roomId, meta.clientId, message.id, message.text);
           break;
         case 'moderation-mute': {
           const result = manager.moderationMute(

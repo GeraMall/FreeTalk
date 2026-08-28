@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
-import type { ClientMessage, Participant, Reaction, ServerMessage } from '@freetalk/protocol';
+import type {
+  ClientMessage,
+  Participant,
+  Reaction,
+  RoomChatMessage,
+  ServerMessage,
+} from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
 import { connectionDiagnostics } from './lib/connection-diagnostics';
 import { hasTurnServer } from './lib/ice-config';
@@ -23,7 +29,7 @@ import {
   type UpdateStatus,
 } from './lib/updater';
 import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
-import { SettingsPanel } from './components/SettingsPanel';
+import { SettingsPanel, type SettingsTab } from './components/SettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { HomeView } from './components/HomeView';
 import {
@@ -98,6 +104,7 @@ export function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('audio');
   const [joining, setJoining] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [pendingInviteRoom, setPendingInviteRoom] = useState<string>();
@@ -113,6 +120,13 @@ export function App() {
   const [localVideo, setLocalVideo] = useState<LocalVideoState>(NO_LOCAL_VIDEO);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
+  const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
+  const [screenFocusMode, setScreenFocusMode] = useState(false);
+
+  const openSettings = useCallback((tab: SettingsTab = 'audio') => {
+    setSettingsInitialTab(tab);
+    setSettingsOpen(true);
+  }, []);
   const [roomStartedAt, setRoomStartedAt] = useState(0);
   const [reactions, setReactions] = useState<
     Array<{ id: string; participantId: string; reaction: Reaction }>
@@ -168,10 +182,14 @@ export function App() {
       if (user) {
         setAccountUser(user);
         setName(user.displayName);
+        updateSettings({
+          displayName: user.displayName,
+          avatarDataUrl: user.avatarUrl ?? '',
+        });
       }
       setAccountReady(true);
     });
-  }, []);
+  }, [updateSettings]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -229,6 +247,8 @@ export function App() {
     setVideoBusy(false);
     setRoomStartedAt(0);
     setReactions([]);
+    setRoomChatMessages([]);
+    setScreenFocusMode(false);
   }, []);
 
   useEffect(() => {
@@ -375,6 +395,7 @@ export function App() {
         setRoomDestination('room');
         setJoining(false);
         setParticipants(message.participants);
+        setRoomChatMessages(message.roomChatMessages ?? []);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
@@ -506,6 +527,12 @@ export function App() {
             setReactions((old) => old.filter((item) => item.id !== message.id));
             reactionTimers.current.delete(message.id);
           }, 2_850),
+        );
+        return;
+      }
+      if (message.type === 'room-chat-message') {
+        setRoomChatMessages((old) =>
+          [...old.filter((item) => item.id !== message.message.id), message.message].slice(-200),
         );
         return;
       }
@@ -650,7 +677,9 @@ export function App() {
         sessionId: sessionId.current,
         authToken: options.authToken ?? accountClient.signalingToken,
         name: cleanName,
-        avatar: settings.avatarDataUrl || undefined,
+        avatar: accountUser
+          ? (accountUser.avatarUrl ?? undefined)
+          : settings.avatarDataUrl || undefined,
       });
       setGuestMode(Boolean(options.guest));
       if (options.guest) {
@@ -693,6 +722,18 @@ export function App() {
     signaling.current?.send({ type: 'mute-changed', muted: next });
   };
 
+  const sendRoomChatMessage = (text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText || cleanText.length > 2_000) return false;
+    const sent = signaling.current?.send({
+      type: 'room-chat-message',
+      id: crypto.randomUUID(),
+      text: cleanText,
+    });
+    if (!sent) setError('Не удалось отправить сообщение в комнату');
+    return Boolean(sent);
+  };
+
   const runVideoAction = async (action: 'camera' | 'screen') => {
     if (guestMode) {
       setLockedFeatureOpen(true);
@@ -718,6 +759,7 @@ export function App() {
       const user = await accountClient.login(login, password, captchaToken);
       setAccountUser(user);
       setName(user.displayName);
+      updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
       setGuestMode(false);
       setCaptchaRequired(false);
     } catch (caught) {
@@ -768,6 +810,7 @@ export function App() {
       const user = await accountClient.verifyEmail(email, code);
       setAccountUser(user);
       setName(user.displayName);
+      updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
       setGuestMode(false);
       setNotice('Почта подтверждена. Добро пожаловать в FreeTalk!');
       return true;
@@ -929,7 +972,7 @@ export function App() {
     )
       return;
     const history = nextProfileChangeHistory(settings.profileChangeTimestamps);
-    if (!history) throw new Error('Профиль можно изменить не более трёх раз за пять часов.');
+    if (!history) throw new Error('Профиль можно изменить не более пяти раз за пять часов.');
     let savedAccountUser = accountUser;
     if (accountUser) {
       const updated = await accountClient.updateProfile({
@@ -1008,6 +1051,7 @@ export function App() {
 
   const settingsPanel = settingsOpen ? (
     <SettingsPanel
+      initialTab={settingsInitialTab}
       settings={settings}
       devices={devices}
       inputLevel={inputLevel}
@@ -1059,7 +1103,7 @@ export function App() {
             onClearError={() => setError('')}
             onCreateRoom={(code) => void enterRoom(true, { room: code })}
             onJoinRoom={(code) => void enterRoom(false, { room: code })}
-            onSettings={() => setSettingsOpen(true)}
+            onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
           />
         ) : (
@@ -1096,7 +1140,7 @@ export function App() {
                   setError(caught instanceof Error ? caught.message : 'Не удалось изменить пароль'),
                 )
             }
-            onSettings={() => setSettingsOpen(true)}
+            onSettings={() => openSettings()}
           />
         )}
         {settingsPanel}
@@ -1119,6 +1163,8 @@ export function App() {
       muted={muted}
       roomStartedAt={roomStartedAt}
       reactions={reactions}
+      roomChatMessages={roomChatMessages}
+      screenFocusMode={screenFocusMode}
       settings={settings}
       signalingState={signalState}
       reconnectAttempt={reconnectAttempt}
@@ -1129,7 +1175,9 @@ export function App() {
       onCamera={() => void runVideoAction('camera')}
       onScreen={() => void runVideoAction('screen')}
       onReaction={sendReaction}
-      onSettings={() => setSettingsOpen(true)}
+      onRoomChatSend={sendRoomChatMessage}
+      onScreenFocusChange={setScreenFocusMode}
+      onSettings={() => openSettings()}
       onLeave={cleanup}
       onPeerVolume={setPeerVolume}
       onScreenVolume={setScreenVolume}
@@ -1141,13 +1189,15 @@ export function App() {
   return (
     <>
       {accountUser ? (
-        <main className="account-shell room-account-shell">
+        <main
+          className={`account-shell room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}`}
+        >
           <AccountSidebar
             user={accountUser}
             activePage={roomDestination}
             roomActive
             onNavigate={setRoomDestination}
-            onSettings={() => setSettingsOpen(true)}
+            onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
           />
           <section className="account-room-workspace">
@@ -1168,7 +1218,7 @@ export function App() {
                   setRoomDestination('room');
                 }}
                 onJoinRoom={() => setNotice('Сначала завершите текущий звонок')}
-                onSettings={() => setSettingsOpen(true)}
+                onSettings={(tab) => openSettings(tab)}
                 onLogout={() => void logoutAccount()}
               />
             )}

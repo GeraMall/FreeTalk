@@ -775,9 +775,17 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
        json_agg(json_build_object('displayName',p.display_name,'userId',p.user_id,
          'avatarUrl',CASE WHEN u.avatar_data IS NOT NULL THEN $2::text || '/v1/users/' || u.id ||
          '/avatar?v=' || (extract(epoch FROM u.updated_at)*1000)::bigint::text ELSE NULL END)) AS participants
-       FROM call_participants self JOIN call_sessions c ON c.id=self.call_id
-       JOIN call_participants p ON p.call_id=c.id LEFT JOIN users u ON u.id=p.user_id
-       WHERE self.user_id=$1
+       FROM call_sessions c
+       JOIN LATERAL (
+         SELECT DISTINCT ON (COALESCE(cp.user_id::text,cp.anonymous_user_id::text))
+           cp.display_name,cp.user_id,cp.anonymous_user_id,cp.joined_at
+         FROM call_participants cp WHERE cp.call_id=c.id
+         ORDER BY COALESCE(cp.user_id::text,cp.anonymous_user_id::text),cp.joined_at DESC
+       ) p ON true
+       LEFT JOIN users u ON u.id=p.user_id
+       WHERE EXISTS (
+         SELECT 1 FROM call_participants self WHERE self.call_id=c.id AND self.user_id=$1
+       )
        GROUP BY c.id ORDER BY c.started_at DESC LIMIT 100`,
       [user.id, publicApiUrl('').replace(/\/$/, '')],
     );

@@ -25,6 +25,15 @@ const clientId = z.string().uuid();
 const displayName = z.string().trim().regex(DISPLAY_NAME_PATTERN);
 const avatar = participantSchema.shape.avatar;
 export const reactionSchema = z.enum(['👍', '❤️', '😂', '🎉', '🔥']);
+export const roomChatTextSchema = z.string().trim().min(1).max(2_000);
+export const roomChatMessageSchema = z.object({
+  id: z.string().uuid(),
+  participantId: clientId,
+  senderName: displayName,
+  senderAvatar: avatar,
+  text: roomChatTextSchema,
+  timestamp: z.number().int().nonnegative(),
+});
 const sessionId = z.string().min(16).max(128);
 const sdp = z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().min(1).max(24_000) });
 const ice = z.object({
@@ -60,6 +69,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('mute-changed'), muted: z.boolean() }),
   z.object({ type: z.literal('update-profile'), name: displayName, avatar }),
   z.object({ type: z.literal('reaction'), id: z.string().uuid(), reaction: reactionSchema }),
+  z.object({
+    type: z.literal('room-chat-message'),
+    id: z.string().uuid(),
+    text: roomChatTextSchema,
+  }),
   z.object({ type: z.literal('moderation-mute'), targetParticipantId: clientId }),
   z.object({ type: z.literal('ping'), timestamp: z.number().int().nonnegative() }),
 ]);
@@ -79,6 +93,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     // Optional during the rolling update: 0.3.19 signaling servers do not send it yet.
     roomStartedAt: z.number().int().nonnegative().optional(),
     participants: z.array(participantSchema),
+    roomChatMessages: z.array(roomChatMessageSchema).max(200).optional(),
   }),
   z.object({ type: z.literal('participants'), participants: z.array(participantSchema) }),
   z.object({ type: z.literal('participant-joined'), participant: participantSchema }),
@@ -89,6 +104,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     participantId: clientId,
     reaction: reactionSchema,
   }),
+  z.object({ type: z.literal('room-chat-message'), message: roomChatMessageSchema }),
   z.object({
     type: z.literal('participant-left'),
     participantId: clientId,
@@ -136,11 +152,12 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
 
 export type Participant = z.infer<typeof participantSchema>;
 export type Reaction = z.infer<typeof reactionSchema>;
+export type RoomChatMessage = z.infer<typeof roomChatMessageSchema>;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type SignalMessage = Extract<ClientMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>;
 
-export const presenceStatusSchema = z.enum(['online', 'away', 'offline']);
+export const presenceStatusSchema = z.enum(['online', 'away', 'dnd', 'offline']);
 export type PresenceStatus = z.infer<typeof presenceStatusSchema>;
 
 export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
@@ -150,7 +167,7 @@ export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('presence'),
-    status: z.enum(['online', 'away']),
+    status: presenceStatusSchema,
   }),
 ]);
 

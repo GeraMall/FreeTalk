@@ -8,7 +8,12 @@ import {
   parseDnsIpv4Answers,
   withCloudflareTurnIpFallbacks,
 } from '@freetalk/config';
-import { parseClientMessage, type Participant, type ServerMessage } from '@freetalk/protocol';
+import {
+  parseClientMessage,
+  type Participant,
+  type RoomChatMessage,
+  type ServerMessage,
+} from '@freetalk/protocol';
 
 interface Env {
   ROOMS: DurableObjectNamespace;
@@ -132,6 +137,29 @@ export class VoiceRoom implements DurableObject {
     private readonly env: Env,
   ) {}
 
+  private roomChatKey(id: string) {
+    return `roomChatMessage:${id}`;
+  }
+
+  private async roomChatHistory() {
+    const ids = (await this.state.storage.get<string[]>('roomChatMessageIds')) ?? [];
+    if (ids.length === 0) return [];
+    const keys = ids.map((id) => this.roomChatKey(id));
+    const values = await this.state.storage.get<RoomChatMessage>(keys);
+    return ids.flatMap((id) => {
+      const value = values.get(this.roomChatKey(id));
+      return value ? [value] : [];
+    });
+  }
+
+  private async clearRoomChat() {
+    const ids = (await this.state.storage.get<string[]>('roomChatMessageIds')) ?? [];
+    await this.state.storage.delete([
+      'roomChatMessageIds',
+      ...ids.map((id) => this.roomChatKey(id)),
+    ]);
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return new Response('Expected websocket', { status: 426 });
@@ -232,11 +260,11 @@ export class VoiceRoom implements DurableObject {
           (time) => now - time < 5 * 60 * 60 * 1000,
         );
         if (attachment.name !== message.name || attachment.avatar !== message.avatar) {
-          if (changes.length >= 3) {
+          if (changes.length >= 5) {
             this.send(socket, {
               type: 'error',
               code: 'PROFILE_RATE_LIMITED',
-              message: 'Профиль можно изменить не более трёх раз за пять часов',
+              message: 'Профиль можно изменить не более пяти раз за пять часов',
             });
             return;
           }
@@ -263,6 +291,25 @@ export class VoiceRoom implements DurableObject {
             reaction: message.reaction,
           });
         }
+        return;
+      }
+      if (message.type === 'room-chat-message') {
+        const ids = (await this.state.storage.get<string[]>('roomChatMessageIds')) ?? [];
+        if (ids.includes(message.id)) return;
+        const entry: RoomChatMessage = {
+          id: message.id,
+          participantId: attachment.clientId,
+          senderName: attachment.name!,
+          text: message.text,
+          timestamp: now,
+        };
+        ids.push(entry.id);
+        const removed = ids.length > 200 ? ids.splice(0, ids.length - 200) : [];
+        await this.state.storage.put(this.roomChatKey(entry.id), entry);
+        await this.state.storage.put('roomChatMessageIds', ids);
+        if (removed.length)
+          await this.state.storage.delete(removed.map((id) => this.roomChatKey(id)));
+        this.broadcast({ type: 'room-chat-message', message: entry });
         return;
       }
       if (message.type === 'moderation-mute') {
@@ -360,8 +407,10 @@ export class VoiceRoom implements DurableObject {
     if (this.active().length > 0) await this.state.storage.setAlarm(now + 60_000);
     else {
       const grace = await this.state.storage.get<{ expiresAt: number }>('grace');
-      if (!grace || grace.expiresAt <= now) await this.state.storage.delete('grace');
-      else await this.state.storage.setAlarm(grace.expiresAt);
+      if (!grace || grace.expiresAt <= now) {
+        await this.clearRoomChat();
+        await this.state.storage.delete(['grace', 'roomStartedAt']);
+      } else await this.state.storage.setAlarm(grace.expiresAt);
     }
   }
 
@@ -382,6 +431,13 @@ export class VoiceRoom implements DurableObject {
     const iceConfig = await this.iceConfig();
     const active = this.active();
     const grace = await this.state.storage.get<{ sessionId: string; expiresAt: number }>('grace');
+    if (
+      message.type === 'create-room' &&
+      active.length === 0 &&
+      (!grace || grace.expiresAt < Date.now())
+    )
+      await this.clearRoomChat();
+    await this.state.storage.delete('roomStartedAt');
     if (message.type === 'create-room' && active.length > 0) {
       this.send(socket, {
         type: 'error',
@@ -459,6 +515,7 @@ export class VoiceRoom implements DurableObject {
     const participant = this.participant(attachment);
     const storedRoomStartedAt = await this.state.storage.get<number>('roomStartedAt');
     const roomStartedAt = storedRoomStartedAt ?? Date.now();
+    const roomChatMessages = await this.roomChatHistory();
     if (!storedRoomStartedAt) await this.state.storage.put('roomStartedAt', roomStartedAt);
     this.send(socket, iceConfig);
     this.send(socket, {
@@ -469,6 +526,7 @@ export class VoiceRoom implements DurableObject {
       participants: this.active().map((entry) =>
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
+      roomChatMessages,
     });
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });

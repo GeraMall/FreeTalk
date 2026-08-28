@@ -133,7 +133,7 @@ describe('RoomManager', () => {
     ).toBe(true);
   });
 
-  it('broadcasts profile changes and limits them to three per five hours', () => {
+  it('broadcasts profile changes and limits them to five per five hours', () => {
     const manager = new RoomManager();
     const owner = new FakeConnection();
     const member = new FakeConnection();
@@ -142,11 +142,13 @@ describe('RoomManager', () => {
     expect(manager.updateProfile(room, id(2), 'Member 1', undefined, 1_000)).toBe('OK');
     expect(manager.updateProfile(room, id(2), 'Member 2', undefined, 2_000)).toBe('OK');
     expect(manager.updateProfile(room, id(2), 'Member 3', undefined, 3_000)).toBe('OK');
-    expect(manager.updateProfile(room, id(2), 'Member 4', undefined, 4_000)).toBe('RATE_LIMITED');
+    expect(manager.updateProfile(room, id(2), 'Member 4', undefined, 4_000)).toBe('OK');
+    expect(manager.updateProfile(room, id(2), 'Member 5', undefined, 5_000)).toBe('OK');
+    expect(manager.updateProfile(room, id(2), 'Member 6', undefined, 6_000)).toBe('RATE_LIMITED');
     expect(
       owner.messages.some(
         (message) =>
-          message.type === 'participant-updated' && message.participant.name === 'Member 3',
+          message.type === 'participant-updated' && message.participant.name === 'Member 5',
       ),
     ).toBe(true);
   });
@@ -158,5 +160,53 @@ describe('RoomManager', () => {
     expect(manager.react(room, id(1), id(8), '🎉', 1_000)).toBe(true);
     expect(manager.react(room, id(1), id(9), '🔥', 1_200)).toBe(false);
     expect(owner.messages.some((message) => message.type === 'reaction')).toBe(true);
+  });
+
+  it('broadcasts room chat in realtime and includes its history for late joiners', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    const member = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    expect(manager.chat(room, id(1), id(8), 'Привет', 12_345)).toBe(true);
+    expect(
+      owner.messages.some(
+        (message) =>
+          message.type === 'room-chat-message' &&
+          message.message.senderName === 'Owner' &&
+          message.message.text === 'Привет',
+      ),
+    ).toBe(true);
+
+    manager.join(room, id(2), 'session-223456789', 'Member', member);
+    const joined = member.messages.find((message) => message.type === 'joined-room');
+    expect(joined?.type === 'joined-room' ? joined.roomChatMessages : []).toHaveLength(1);
+  });
+
+  it('clears ephemeral room chat when the last participant leaves', () => {
+    const manager = new RoomManager();
+    const first = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', first);
+    manager.chat(room, id(1), id(8), 'Не должно сохраниться');
+    manager.leave(room, id(1), first);
+
+    const replacement = new FakeConnection();
+    manager.create(room, id(2), 'session-223456789', 'New owner', replacement);
+    const joined = replacement.messages.find((message) => message.type === 'joined-room');
+    expect(joined?.type === 'joined-room' ? joined.roomChatMessages : []).toEqual([]);
+  });
+
+  it('keeps only the latest 200 room chat messages', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    for (let index = 1; index <= 205; index += 1)
+      manager.chat(room, id(1), id(1_000 + index), `Message ${index}`, index);
+    const late = new FakeConnection();
+    manager.join(room, id(2), 'session-223456789', 'Late', late);
+    const joined = late.messages.find((message) => message.type === 'joined-room');
+    const history = joined?.type === 'joined-room' ? (joined.roomChatMessages ?? []) : [];
+    expect(history).toHaveLength(200);
+    expect(history[0]?.text).toBe('Message 6');
+    expect(history.at(-1)?.text).toBe('Message 205');
   });
 });

@@ -124,6 +124,35 @@ describe('protocol validation', () => {
     ).toBe(false);
   });
 
+  it('validates bounded ephemeral room chat messages', () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'room-chat-message',
+        id: base.clientId,
+        text: 'Привет комнате',
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'room-chat-message',
+        id: base.clientId,
+        text: 'x'.repeat(2_001),
+      }).success,
+    ).toBe(false);
+    expect(
+      serverMessageSchema.safeParse({
+        type: 'room-chat-message',
+        message: {
+          id: base.clientId,
+          participantId: base.clientId,
+          senderName: 'Алексей',
+          text: 'Без HTML-инъекции из полей клиента',
+          timestamp: Date.now(),
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it('validates authenticated realtime chat events', () => {
     expect(
       chatRealtimeClientMessageSchema.safeParse({

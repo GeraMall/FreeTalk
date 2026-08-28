@@ -36,7 +36,7 @@ describe('ChatRealtimeHub', () => {
     expect(socket.close).toHaveBeenCalledWith(1013, 'Client is too slow');
   });
 
-  it('aggregates online, away and offline across all user devices', () => {
+  it('aggregates online, away, dnd and invisible devices', () => {
     const hub = new ChatRealtimeHub();
     const changes = vi.fn();
     hub.onPresenceChanged(changes);
@@ -50,8 +50,13 @@ describe('ChatRealtimeHub', () => {
     expect(hub.presence('user-a')).toBe('online');
     hub.setPresence('user-a', laptop, 'away');
     expect(hub.presence('user-a')).toBe('away');
+    hub.setPresence('user-a', desktop, 'dnd');
+    expect(hub.presence('user-a')).toBe('dnd');
+    hub.setPresence('user-a', desktop, 'offline');
+    hub.setPresence('user-a', laptop, 'offline');
+    expect(hub.presence('user-a')).toBe('offline');
     removeDesktop();
-    expect(hub.presence('user-a')).toBe('away');
+    expect(hub.presence('user-a')).toBe('offline');
     removeLaptop();
     expect(hub.presence('user-a')).toBe('offline');
     expect(changes).toHaveBeenCalledWith('user-a', 'offline');

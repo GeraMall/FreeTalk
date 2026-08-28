@@ -33,9 +33,18 @@ pub fn run() {
                 tauri::WebviewUrl::App("index.html".into()),
             )
             .title("FreeTalk")
-            .inner_size(900.0, 600.0)
+            .inner_size(1454.0, 903.0)
             .min_inner_size(560.0, 520.0)
+            .resizable(true)
+            .maximizable(true)
+            .minimizable(true)
+            .closable(true)
             .center();
+
+            #[cfg(target_os = "windows")]
+            {
+                window = window.decorations(false);
+            }
 
             if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {
                 window = window.data_directory(std::path::PathBuf::from(directory));

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Participant, Reaction } from '@freetalk/protocol';
+import type { Participant, Reaction, RoomChatMessage } from '@freetalk/protocol';
 import {
   Check,
   Camera,
@@ -8,9 +8,11 @@ import {
   Crown,
   LogOut,
   Maximize2,
+  MessageCircle,
   Mic,
   MicOff,
   MonitorUp,
+  Minimize2,
   MoreHorizontal,
   SmilePlus,
   Settings,
@@ -26,6 +28,7 @@ import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
 import { BrandLogo } from './BrandLogo';
+import { RoomChatPanel } from './RoomChatPanel';
 
 export type PeerUiState = Record<
   string,
@@ -52,6 +55,8 @@ interface RoomViewProps {
   muted: boolean;
   roomStartedAt: number;
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
+  roomChatMessages: RoomChatMessage[];
+  screenFocusMode: boolean;
   signalingState: SignalingState;
   reconnectAttempt: number;
   settings: LocalSettings;
@@ -62,6 +67,8 @@ interface RoomViewProps {
   onCamera(): void;
   onScreen(): void;
   onReaction(reaction: Reaction): void;
+  onRoomChatSend(text: string): boolean;
+  onScreenFocusChange(active: boolean): void;
   onSettings(): void;
   onLeave(): void;
   onPeerVolume(peerId: string, value: number): void;
@@ -83,6 +90,8 @@ export function RoomView({
   muted,
   roomStartedAt,
   reactions,
+  roomChatMessages,
+  screenFocusMode,
   signalingState,
   reconnectAttempt,
   settings,
@@ -93,6 +102,8 @@ export function RoomView({
   onCamera,
   onScreen,
   onReaction,
+  onRoomChatSend,
+  onScreenFocusChange,
   onSettings,
   onLeave,
   onPeerVolume,
@@ -104,6 +115,11 @@ export function RoomView({
   const [expandedMedia, setExpandedMedia] = useState<ExpandedMedia>();
   const [presentedScreenId, setPresentedScreenId] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatClosing, setChatClosing] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
+  const chatOpenRef = useRef(chatOpen);
   const elapsed = useCallDuration(roomStartedAt);
   const ordered = [...participants].sort(
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
@@ -133,6 +149,37 @@ export function RoomView({
   useEffect(() => {
     if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
   }, [expandedMedia, expandedParticipant, expandedStream]);
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+    if (chatOpen) setUnreadChatCount(0);
+  }, [chatOpen]);
+
+  useEffect(() => {
+    let unread = 0;
+    for (const message of roomChatMessages) {
+      if (knownChatMessages.current.has(message.id)) continue;
+      knownChatMessages.current.add(message.id);
+      if (!chatOpenRef.current && message.participantId !== selfId) unread += 1;
+    }
+    if (unread) setUnreadChatCount((count) => Math.min(99, count + unread));
+  }, [roomChatMessages, selfId]);
+
+  useEffect(() => {
+    if (!screenPresenter && screenFocusMode) onScreenFocusChange(false);
+  }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
+
+  const closeRoomChat = () => {
+    if (chatOpen && !chatClosing) setChatClosing(true);
+  };
+
+  const toggleRoomChat = () => {
+    if (chatOpen) closeRoomChat();
+    else {
+      setChatClosing(false);
+      setChatOpen(true);
+    }
+  };
 
   const renderParticipant = (participant: Participant, compact = false) => {
     const isSelf = participant.id === selfId;
@@ -230,7 +277,9 @@ export function RoomView({
   };
 
   return (
-    <main className={`room-shell ${embedded ? 'room-shell-embedded' : ''}`}>
+    <main
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''}`}
+    >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
           <span aria-hidden="true" />
@@ -254,97 +303,126 @@ export function RoomView({
           </div>
           <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
         </div>
-        <button className="invite-button" onClick={onCopyInvite}>
-          {inviteCopied ? <Check size={18} /> : <Copy size={18} />}
-          {inviteCopied ? 'Скопировано' : 'Пригласить'}
-        </button>
+        <div className="room-header-actions">
+          <button
+            className="room-settings-button"
+            aria-label="Настройки аудио и устройств"
+            onClick={onSettings}
+          >
+            <Settings size={18} />
+          </button>
+          <button className="invite-button" onClick={onCopyInvite}>
+            {inviteCopied ? <Check size={18} /> : <Copy size={18} />}
+            {inviteCopied ? 'Скопировано' : 'Пригласить'}
+          </button>
+        </div>
       </header>
 
-      <section className={`room-main room-mode-${roomMode}`}>
-        <div className="participants-heading">
-          <div>
-            <h1>Участники</h1>
-            <p>{participants.length} из 6</p>
-          </div>
-          <span className="room-session-meta">
-            <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-              <i /> {elapsed}
-            </span>
-            <span
-              className="room-security"
-              title={
-                turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
-              }
-            >
-              <ShieldCheck size={14} /> Приватное соединение
-            </span>
-          </span>
-        </div>
-
-        {screenPresenter ? (
-          <div className="presentation-layout">
-            <article className="screen-stage media-surface">
-              <ParticipantVideo
-                stream={participantMedia(screenPresenter).screen!}
-                source="screen"
-                name={screenPresenter.name}
-                muted
-                volume={0}
-                outputDeviceId={settings.outputDeviceId}
-                onExpand={() =>
-                  setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
-                }
-              />
-              <div className="screen-stage-top">
-                <span className="screen-stage-title">
-                  <MonitorUp size={15} />
-                  <span>
-                    <strong>{screenPresenter.name}</strong>
-                    <small>Демонстрация экрана</small>
-                  </span>
-                </span>
-                {screenPresenter.isOwner && <CreatorBadge compact />}
-              </div>
-              {screenPresenter.id !== selfId && (
-                <label className="screen-stage-volume">
-                  <Volume2 size={15} aria-hidden="true" />
-                  <span>Звук демонстрации</span>
-                  <input
-                    aria-label={`Громкость демонстрации ${screenPresenter.name}`}
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={settings.screenVolumes[screenPresenter.id] ?? 1}
-                    onChange={(event) =>
-                      onScreenVolume(screenPresenter.id, Number(event.target.value))
-                    }
-                  />
-                  <output>
-                    {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
-                  </output>
-                </label>
-              )}
-            </article>
-            <div className="participant-strip" role="list" aria-label="Участники комнаты">
-              {ordered.map((participant) => renderParticipant(participant, true))}
-              {openSlots > 0 && (
-                <InviteCallout compact openSlots={openSlots} onCopyInvite={onCopyInvite} />
-              )}
+      <div className="room-body-layout">
+        <section className={`room-main room-mode-${roomMode}`}>
+          <div className="participants-heading">
+            <div>
+              <h1>Участники</h1>
+              <p>{participants.length} из 6</p>
             </div>
+            <span className="room-session-meta">
+              <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+                <i /> {elapsed}
+              </span>
+              <span
+                className="room-security"
+                title={
+                  turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
+                }
+              >
+                <ShieldCheck size={14} /> Приватное соединение
+              </span>
+            </span>
           </div>
-        ) : (
-          <div
-            className="participants-grid"
-            data-count={participants.length}
-            data-mode={roomMode}
-            role="list"
-          >
-            {ordered.map((participant) => renderParticipant(participant))}
-            {openSlots > 0 && <InviteCallout openSlots={openSlots} onCopyInvite={onCopyInvite} />}
-          </div>
+
+          {screenPresenter ? (
+            <div className="presentation-layout">
+              <article className="screen-stage media-surface">
+                <ParticipantVideo
+                  stream={participantMedia(screenPresenter).screen!}
+                  source="screen"
+                  name={screenPresenter.name}
+                  muted
+                  volume={0}
+                  outputDeviceId={settings.outputDeviceId}
+                  expanded={screenFocusMode}
+                  onExpand={() => onScreenFocusChange(!screenFocusMode)}
+                />
+                <div className="screen-stage-top">
+                  <span className="screen-stage-title">
+                    <MonitorUp size={15} />
+                    <span>
+                      <strong>{screenPresenter.name}</strong>
+                      <small>Демонстрация экрана</small>
+                    </span>
+                  </span>
+                  {screenPresenter.isOwner && <CreatorBadge compact />}
+                </div>
+                {screenPresenter.id !== selfId && (
+                  <label className="screen-stage-volume">
+                    <Volume2 size={15} aria-hidden="true" />
+                    <span>Звук демонстрации</span>
+                    <input
+                      aria-label={`Громкость демонстрации ${screenPresenter.name}`}
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.screenVolumes[screenPresenter.id] ?? 1}
+                      onChange={(event) =>
+                        onScreenVolume(screenPresenter.id, Number(event.target.value))
+                      }
+                    />
+                    <output>
+                      {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
+                    </output>
+                  </label>
+                )}
+              </article>
+              <div className="participant-strip" role="list" aria-label="Участники комнаты">
+                {ordered.map((participant) => renderParticipant(participant, true))}
+                {openSlots > 0 && (
+                  <InviteCallout compact openSlots={openSlots} onCopyInvite={onCopyInvite} />
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              className="participants-grid"
+              data-count={participants.length}
+              data-mode={roomMode}
+              role="list"
+            >
+              {ordered.map((participant) => renderParticipant(participant))}
+              {openSlots > 0 && <InviteCallout openSlots={openSlots} onCopyInvite={onCopyInvite} />}
+            </div>
+          )}
+        </section>
+
+        {chatOpen && (
+          <RoomChatPanel
+            messages={roomChatMessages.map((message) => ({
+              ...message,
+              senderAvatar:
+                participants.find((participant) => participant.id === message.participantId)
+                  ?.avatar ?? message.senderAvatar,
+            }))}
+            selfId={selfId}
+            closing={chatClosing}
+            onClose={closeRoomChat}
+            onClosed={() => {
+              setChatOpen(false);
+              setChatClosing(false);
+            }}
+            onSend={onRoomChatSend}
+          />
         )}
-      </section>
+      </div>
 
       {expandedMedia && expandedParticipant && expandedStream && (
         <ExpandedMediaView
@@ -373,83 +451,118 @@ export function RoomView({
         })}
       </div>
 
-      <footer className="voice-dock">
-        <button className={`dock-control mic-control ${muted ? 'muted' : ''}`} onClick={onMute}>
-          <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
-          <span>
-            <strong>Микрофон</strong>
-            <small>{muted ? 'Выключен' : 'Включён'}</small>
-          </span>
-        </button>
-        <div className="dock-divider" />
-        <button
-          className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
-          disabled={videoBusy}
-          onClick={onCamera}
-        >
-          <span className="dock-icon">{localVideo.cameraEnabled ? <Camera /> : <CameraOff />}</span>
-          <span>
-            <strong>Камера</strong>
-            <small>{localVideo.cameraEnabled ? 'Включена' : 'Выключена'}</small>
-          </span>
-        </button>
-        <div className="dock-divider" />
-        <button
-          className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
-          disabled={videoBusy}
-          onClick={onScreen}
-        >
-          <span className="dock-icon">{localVideo.screenEnabled ? <Square /> : <MonitorUp />}</span>
-          <span>
-            <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
-            <small>{localVideo.screenEnabled ? 'Демонстрация' : 'Поделиться'}</small>
-          </span>
-        </button>
-        <div className="dock-divider" />
-        <div className="reaction-control">
+      <footer className="voice-dock" aria-label="Управление звонком">
+        <div className="dock-group dock-primary-actions">
           <button
-            className={`dock-control reaction-button ${reactionMenuOpen ? 'active' : ''}`}
-            aria-expanded={reactionMenuOpen}
-            onClick={() => setReactionMenuOpen((open) => !open)}
+            className={`dock-control mic-control ${muted ? 'muted' : 'active'}`}
+            aria-label={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+            aria-pressed={!muted}
+            title={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+            onClick={onMute}
           >
-            <span className="dock-icon">
-              <SmilePlus />
-            </span>
-            <span>
-              <strong>Реакция</strong>
-              <small>Ответить эмоцией</small>
+            <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
+            <span className="dock-label">
+              <strong>Микрофон</strong>
+              <small>{muted ? 'Выкл' : 'Вкл'}</small>
             </span>
           </button>
-          {reactionMenuOpen && (
-            <div className="reaction-menu" role="menu" aria-label="Реакции">
-              {(['👍', '❤️', '😂', '🎉', '🔥'] as const).map((reaction) => (
-                <button
-                  key={reaction}
-                  role="menuitem"
-                  aria-label={`Отправить реакцию ${reaction}`}
-                  onClick={() => {
-                    onReaction(reaction);
-                    setReactionMenuOpen(false);
-                  }}
-                >
-                  {reaction}
-                </button>
-              ))}
-            </div>
-          )}
+          <button
+            className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
+            aria-busy={videoBusy}
+            aria-label={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+            aria-pressed={localVideo.cameraEnabled}
+            title={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+            disabled={videoBusy}
+            onClick={onCamera}
+          >
+            <span className="dock-icon">
+              {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
+            </span>
+            <span className="dock-label">
+              <strong>Камера</strong>
+              <small>{localVideo.cameraEnabled ? 'Вкл' : 'Выкл'}</small>
+            </span>
+          </button>
+          <button
+            className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
+            aria-busy={videoBusy}
+            aria-label={
+              localVideo.screenEnabled ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'
+            }
+            aria-pressed={localVideo.screenEnabled}
+            title={
+              localVideo.screenEnabled ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'
+            }
+            disabled={videoBusy}
+            onClick={onScreen}
+          >
+            <span className="dock-icon">
+              {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
+            </span>
+            <span className="dock-label">
+              <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
+              <small>{localVideo.screenEnabled ? 'Идёт' : 'Поделиться'}</small>
+            </span>
+          </button>
         </div>
-        <div className="dock-divider" />
-        <button className="dock-control settings-control" onClick={onSettings}>
-          <span className="dock-icon">
-            <Settings />
-          </span>
-          <span>
-            <strong>Настройки</strong>
-            <small>Аудио и устройства</small>
-          </span>
-        </button>
+        <div className="dock-divider" aria-hidden="true" />
+        <div className="dock-group dock-secondary-actions">
+          <div className="reaction-control">
+            <button
+              className={`dock-control dock-control-secondary reaction-button ${reactionMenuOpen ? 'active' : ''}`}
+              aria-label="Отправить реакцию"
+              aria-expanded={reactionMenuOpen}
+              title="Отправить реакцию"
+              onClick={() => setReactionMenuOpen((open) => !open)}
+            >
+              <span className="dock-icon">
+                <SmilePlus />
+              </span>
+              <span className="dock-label">
+                <strong>Реакции</strong>
+              </span>
+            </button>
+            {reactionMenuOpen && (
+              <div className="reaction-menu" role="menu" aria-label="Реакции">
+                {(['👍', '❤️', '😂', '🎉', '🔥'] as const).map((reaction) => (
+                  <button
+                    key={reaction}
+                    role="menuitem"
+                    aria-label={`Отправить реакцию ${reaction}`}
+                    onClick={() => {
+                      onReaction(reaction);
+                      setReactionMenuOpen(false);
+                    }}
+                  >
+                    {reaction}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            className={`dock-control dock-control-secondary room-chat-control ${chatOpen ? 'active' : ''}`}
+            aria-label="Чат комнаты"
+            aria-expanded={chatOpen}
+            title="Чат комнаты"
+            onClick={toggleRoomChat}
+          >
+            <span className="dock-icon">
+              <MessageCircle />
+              {unreadChatCount > 0 && <b className="room-chat-badge">{unreadChatCount}</b>}
+            </span>
+            <span className="dock-label">
+              <strong>Чат</strong>
+            </span>
+          </button>
+        </div>
         <div className="dock-spacer" />
-        <button className="leave-button" onClick={onLeave}>
+        <button
+          className="leave-button"
+          aria-label="Выйти из комнаты"
+          title="Выйти из комнаты"
+          onClick={onLeave}
+        >
           <LogOut size={18} /> Выйти из комнаты
         </button>
       </footer>
@@ -481,6 +594,7 @@ function ParticipantVideo({
   muted,
   volume,
   outputDeviceId,
+  expanded = false,
   onExpand,
 }: {
   stream: MediaStream;
@@ -490,6 +604,7 @@ function ParticipantVideo({
   muted: boolean;
   volume: number;
   outputDeviceId: string;
+  expanded?: boolean;
   onExpand(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
@@ -523,10 +638,18 @@ function ParticipantVideo({
       />
       <button
         className="video-fullscreen"
-        aria-label={`Раскрыть ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
+        aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
+        aria-pressed={expanded}
+        title={
+          source === 'screen'
+            ? expanded
+              ? 'Вернуть обычный вид'
+              : 'Развернуть демонстрацию'
+            : 'Развернуть камеру'
+        }
         onClick={onExpand}
       >
-        <Maximize2 size={16} />
+        {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
       </button>
     </div>
   );

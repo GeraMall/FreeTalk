@@ -1,6 +1,11 @@
-export const PROFILE_CHANGE_LIMIT = 3;
+export const PROFILE_CHANGE_LIMIT = 5;
 export const PROFILE_CHANGE_WINDOW_MS = 5 * 60 * 60 * 1000;
-export const MAX_AVATAR_DATA_URL_LENGTH = 18_000;
+export const MAX_PROFILE_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
+export const MAX_AVATAR_DATA_URL_LENGTH = 1_300_000;
+export const MAX_COVER_DATA_URL_LENGTH = 3_300_000;
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_DECODED_PIXELS = 100_000_000;
 
 export function dataUrlToBlob(dataUrl: string) {
   const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(dataUrl);
@@ -31,62 +36,87 @@ export function nextProfileChangeHistory(history: number[], now = Date.now()) {
   return [...active, now];
 }
 
-export async function prepareAvatar(file: File) {
-  if (!file.type.startsWith('image/')) throw new Error('Выберите изображение JPEG, PNG или WebP.');
-  if (file.size > 5 * 1024 * 1024) throw new Error('Файл аватара должен быть меньше 5 МБ.');
+function validateImage(file: File, label: string) {
+  if (!ALLOWED_IMAGE_TYPES.has(file.type))
+    throw new Error('Выберите изображение JPEG, PNG или WebP.');
+  if (file.size > MAX_PROFILE_IMAGE_INPUT_BYTES)
+    throw new Error(`${label} должен быть не больше 25 МБ.`);
+}
+
+function drawCoverCrop(
+  context: CanvasRenderingContext2D,
+  bitmap: ImageBitmap,
+  width: number,
+  height: number,
+) {
+  const scale = Math.max(width / bitmap.width, height / bitmap.height);
+  const renderedWidth = bitmap.width * scale;
+  const renderedHeight = bitmap.height * scale;
+  context.drawImage(
+    bitmap,
+    (width - renderedWidth) / 2,
+    (height - renderedHeight) / 2,
+    renderedWidth,
+    renderedHeight,
+  );
+}
+
+function encodeCanvas(canvas: HTMLCanvasElement, maxLength: number, errorMessage: string) {
+  for (const type of ['image/webp', 'image/jpeg']) {
+    for (const quality of [0.88, 0.8, 0.7, 0.6, 0.5]) {
+      const value = canvas.toDataURL(type, quality);
+      if (!value.startsWith(`data:${type}`)) break;
+      if (value.length <= maxLength) return value;
+    }
+  }
+  throw new Error(errorMessage);
+}
+
+async function prepareImage(
+  file: File,
+  options: {
+    label: string;
+    width: number;
+    height: number;
+    maxDataUrlLength: number;
+    tooLargeMessage: string;
+  },
+) {
+  validateImage(file, options.label);
   const bitmap = await createImageBitmap(file);
   try {
+    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > MAX_DECODED_PIXELS)
+      throw new Error('Разрешение изображения слишком большое.');
     const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
+    canvas.width = options.width;
+    canvas.height = options.height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Не удалось обработать изображение.');
-    const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
-    const width = bitmap.width * scale;
-    const height = bitmap.height * scale;
-    context.drawImage(
-      bitmap,
-      (canvas.width - width) / 2,
-      (canvas.height - height) / 2,
-      width,
-      height,
-    );
-    for (const quality of [0.82, 0.72, 0.62, 0.5]) {
-      const value = canvas.toDataURL('image/webp', quality);
-      if (value.length <= MAX_AVATAR_DATA_URL_LENGTH) return value;
-    }
-    throw new Error('Изображение получилось слишком большим. Выберите более простую фотографию.');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    drawCoverCrop(context, bitmap, canvas.width, canvas.height);
+    return encodeCanvas(canvas, options.maxDataUrlLength, options.tooLargeMessage);
   } finally {
     bitmap.close();
   }
 }
 
-export async function prepareCover(file: File) {
-  if (!file.type.startsWith('image/')) throw new Error('Выберите изображение JPEG, PNG или WebP.');
-  if (file.size > 8 * 1024 * 1024) throw new Error('Файл обложки должен быть меньше 8 МБ.');
-  const bitmap = await createImageBitmap(file);
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 400;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Не удалось обработать изображение.');
-    const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
-    const width = bitmap.width * scale;
-    const height = bitmap.height * scale;
-    context.drawImage(
-      bitmap,
-      (canvas.width - width) / 2,
-      (canvas.height - height) / 2,
-      width,
-      height,
-    );
-    for (const quality of [0.8, 0.68, 0.56, 0.44]) {
-      const value = canvas.toDataURL('image/webp', quality);
-      if (value.length <= 900_000) return value;
-    }
-    throw new Error('Обложка получилась слишком большой. Выберите другое изображение.');
-  } finally {
-    bitmap.close();
-  }
+export function prepareAvatar(file: File) {
+  return prepareImage(file, {
+    label: 'Файл аватара',
+    width: 768,
+    height: 768,
+    maxDataUrlLength: MAX_AVATAR_DATA_URL_LENGTH,
+    tooLargeMessage: 'Не удалось уменьшить аватар до 1 МБ. Выберите другое изображение.',
+  });
+}
+
+export function prepareCover(file: File) {
+  return prepareImage(file, {
+    label: 'Файл обложки',
+    width: 1800,
+    height: 700,
+    maxDataUrlLength: MAX_COVER_DATA_URL_LENGTH,
+    tooLargeMessage: 'Не удалось уменьшить обложку до 2–3 МБ. Выберите другое изображение.',
+  });
 }

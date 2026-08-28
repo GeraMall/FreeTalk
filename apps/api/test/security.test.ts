@@ -41,7 +41,11 @@ describe('account security primitives', () => {
   });
 
   it('builds avatar URLs inside the configured API prefix', async () => {
-    const { publicApiUrl } = await import('../src/env.js');
+    const { publicApiUrl, publicAvatarUrl } = await import('../src/env.js');
     expect(publicApiUrl('/v1/users/id/avatar')).toBe('http://127.0.0.1:8790/v1/users/id/avatar');
+    expect(publicAvatarUrl('286d39ef-61af-4aca-84b8-47f78b0f554a', true)).toBe(
+      'http://127.0.0.1:8790/v1/users/286d39ef-61af-4aca-84b8-47f78b0f554a/avatar',
+    );
+    expect(publicAvatarUrl('286d39ef-61af-4aca-84b8-47f78b0f554a', false)).toBeUndefined();
   });
 });

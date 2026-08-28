@@ -62,9 +62,14 @@ function roomWith(sockets: FakeSocket[]) {
   const state = {
     getWebSockets: () => sockets,
     storage: {
-      get: async <T>(key: string) => storage.get(key) as T | undefined,
+      get: async (key: string | string[]) =>
+        Array.isArray(key)
+          ? new Map(key.map((item) => [item, storage.get(item)]).filter((entry) => entry[1]))
+          : storage.get(key),
       put: async (key: string, value: unknown) => void storage.set(key, value),
-      delete: async (key: string) => void storage.delete(key),
+      delete: async (key: string | string[]) => {
+        for (const item of Array.isArray(key) ? key : [key]) storage.delete(item);
+      },
       setAlarm: async () => undefined,
     },
   };
@@ -151,6 +156,57 @@ describe('Cloudflare voice room reconnects', () => {
 
     expect(member.attachment.joined).toBe(false);
     expect(owner.sent.filter((message) => message.type === 'participant-left')).toHaveLength(1);
+  });
+
+  it('broadcasts and restores bounded room chat history for a late participant', async () => {
+    const owner = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+        sessionId: 'session-123456789',
+        name: 'Owner',
+        isOwner: true,
+        connectedAt: 1,
+      }),
+    );
+    const late = new FakeSocket(attachment({}));
+    const room = roomWith([owner, late]);
+
+    await room.webSocketMessage(
+      owner as unknown as WebSocket,
+      JSON.stringify({
+        type: 'room-chat-message',
+        id: '486d39ef-61af-4aca-84b8-47f78b0f554c',
+        text: 'Сообщение комнаты',
+      }),
+    );
+    expect(owner.sent.some((message) => message.type === 'room-chat-message')).toBe(true);
+
+    const join = Reflect.get(room, 'join') as (
+      socket: WebSocket,
+      message: {
+        type: 'join-room';
+        roomId: string;
+        clientId: string;
+        sessionId: string;
+        name: string;
+      },
+      value: TestAttachment,
+    ) => Promise<void>;
+    await join.call(
+      room,
+      late as unknown as WebSocket,
+      {
+        type: 'join-room',
+        roomId: 'ABCDEFGHIJKL',
+        clientId: '386d39ef-61af-4aca-84b8-47f78b0f554b',
+        sessionId: 'session-223456789',
+        name: 'Late member',
+      },
+      late.attachment,
+    );
+    const snapshot = late.sent.find((message) => message.type === 'joined-room');
+    expect(snapshot?.type === 'joined-room' ? snapshot.roomChatMessages : []).toHaveLength(1);
   });
 });
 

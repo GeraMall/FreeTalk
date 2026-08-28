@@ -15,7 +15,7 @@ import {
   type UserRow,
 } from './auth-service.js';
 import { db, transaction } from './db.js';
-import { env, publicApiUrl } from './env.js';
+import { env, publicApiUrl, publicAvatarUrl } from './env.js';
 import { sendPasswordReset, sendVerification } from './mailer.js';
 import { registerSocialRoutes } from './social-routes.js';
 import { chatRealtimeHub } from './chat-realtime.js';
@@ -45,7 +45,7 @@ const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('presence'),
-    status: z.enum(['online', 'away']),
+    status: z.enum(['online', 'away', 'dnd', 'offline']),
   }),
 ]);
 const app = Fastify({ logger: true, bodyLimit: 64 * 1024, trustProxy: true });
@@ -60,7 +60,9 @@ await app.register(cors, {
 });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {
-  limits: { files: 1, fileSize: 1024 * 1024, fields: 2 },
+  // The desktop client reduces the original (up to 25 MB) before upload.
+  // Keep the server boundary tight around the optimized avatar/cover payload.
+  limits: { files: 1, fileSize: 3 * 1024 * 1024, fields: 2 },
 });
 
 app.setErrorHandler((error, _request, reply) => {
@@ -94,12 +96,6 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply) {
   return user;
 }
 
-function internalAvatarDataUrl(mime: string | null, data: Buffer | null) {
-  if (!mime || !data || !/^image\/(?:webp|jpeg|png)$/.test(mime)) return undefined;
-  const avatar = `data:${mime};base64,${data.toString('base64')}`;
-  return avatar.length <= 18_000 ? avatar : undefined;
-}
-
 async function publishProfileUpdate(userId: string) {
   const recipients = await db.query<{ user_id: string }>(
     `SELECT $1::uuid AS user_id
@@ -116,7 +112,10 @@ async function publishProfileUpdate(userId: string) {
   );
 }
 
-async function publishPresenceUpdate(userId: string, status: 'online' | 'away' | 'offline') {
+async function publishPresenceUpdate(
+  userId: string,
+  status: 'online' | 'away' | 'dnd' | 'offline',
+) {
   const recipients = await db.query<{ user_id: string }>(
     `SELECT $1::uuid AS user_id
      UNION SELECT CASE WHEN user_low_id=$1 THEN user_high_id ELSE user_low_id END
@@ -221,7 +220,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.7' };
+  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.8' };
 });
 
 app.post(
@@ -686,10 +685,9 @@ app.post(
       const session = await client.query<{
         user_id: string;
         display_name: string;
-        avatar_mime: string | null;
-        avatar_data: Buffer | null;
+        has_avatar: boolean;
       }>(
-        `SELECT s.user_id,u.display_name,u.avatar_mime,u.avatar_data
+        `SELECT s.user_id,u.display_name,u.avatar_data IS NOT NULL AS has_avatar
          FROM sessions s JOIN users u ON u.id=s.user_id
          WHERE s.access_token_hash=$1 AND s.revoked_at IS NULL
          AND s.access_expires_at>now() AND u.deleted_at IS NULL`,
@@ -722,7 +720,7 @@ app.post(
         kind: 'registered',
         userId: registered.user.user_id,
         displayName: registered.user.display_name,
-        avatar: internalAvatarDataUrl(registered.user.avatar_mime, registered.user.avatar_data),
+        avatar: publicAvatarUrl(registered.user.user_id, registered.user.has_avatar),
       };
     if (input.action === 'create')
       return reply.code(403).send({ allowed: false, reason: 'REGISTERED_ONLY' });
@@ -834,17 +832,16 @@ app.get(
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const result = await db.query<{
       display_name: string;
-      avatar_mime: string | null;
-      avatar_data: Buffer | null;
+      has_avatar: boolean;
     }>(
-      `SELECT display_name,avatar_mime,avatar_data
+      `SELECT display_name,avatar_data IS NOT NULL AS has_avatar
        FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [id],
     );
     if (!result.rows[0]) return reply.code(404).send({ ok: false });
     return {
       displayName: result.rows[0].display_name,
-      avatar: internalAvatarDataUrl(result.rows[0].avatar_mime, result.rows[0].avatar_data),
+      avatar: publicAvatarUrl(id, result.rows[0].has_avatar),
     };
   },
 );

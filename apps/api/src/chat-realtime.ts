@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-export type PresenceStatus = 'online' | 'away' | 'offline';
+export type PresenceStatus = 'online' | 'away' | 'dnd' | 'offline';
 
 type RealtimeChatMessage = {
   id: string;
@@ -30,7 +30,7 @@ const MAX_BUFFERED_BYTES = 256 * 1024;
 
 export class ChatRealtimeHub {
   private readonly socketsByUser = new Map<string, Set<WebSocket>>();
-  private readonly statusBySocket = new Map<WebSocket, Exclude<PresenceStatus, 'offline'>>();
+  private readonly statusBySocket = new Map<WebSocket, PresenceStatus>();
   private presenceListener?: (userId: string, status: PresenceStatus) => void;
 
   onPresenceChanged(listener: (userId: string, status: PresenceStatus) => void) {
@@ -41,7 +41,9 @@ export class ChatRealtimeHub {
     const sockets = this.socketsByUser.get(userId);
     if (!sockets?.size) return 'offline';
     for (const socket of sockets) if (this.statusBySocket.get(socket) === 'online') return 'online';
-    return 'away';
+    for (const socket of sockets) if (this.statusBySocket.get(socket) === 'dnd') return 'dnd';
+    for (const socket of sockets) if (this.statusBySocket.get(socket) === 'away') return 'away';
+    return 'offline';
   }
 
   add(userId: string, socket: WebSocket) {
@@ -60,7 +62,7 @@ export class ChatRealtimeHub {
     };
   }
 
-  setPresence(userId: string, socket: WebSocket, status: 'online' | 'away') {
+  setPresence(userId: string, socket: WebSocket, status: PresenceStatus) {
     if (!this.socketsByUser.get(userId)?.has(socket)) return;
     const before = this.presence(userId);
     this.statusBySocket.set(socket, status);

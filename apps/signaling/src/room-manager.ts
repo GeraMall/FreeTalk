@@ -1,5 +1,5 @@
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import type { Participant, ServerMessage } from '@freetalk/protocol';
+import type { Participant, RoomChatMessage, ServerMessage } from '@freetalk/protocol';
 
 export interface PeerConnection {
   send(message: ServerMessage): void;
@@ -20,6 +20,7 @@ interface Room {
   ownerId: string;
   peers: Map<string, Peer>;
   createdAt: number;
+  chatMessages: RoomChatMessage[];
 }
 
 export class RoomError extends Error {
@@ -48,6 +49,7 @@ export class RoomManager {
       ownerId: clientId,
       peers: new Map(),
       createdAt: Date.now(),
+      chatMessages: [],
     });
     return this.join(roomId, clientId, sessionId, name, connection, avatar);
   }
@@ -99,6 +101,7 @@ export class RoomManager {
       selfId: clientId,
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
+      roomChatMessages: room.chatMessages,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     return participant;
@@ -158,7 +161,7 @@ export class RoomManager {
     if (!room || !peer) return 'TARGET_NOT_FOUND' as const;
     if (peer.participant.name === name && peer.participant.avatar === avatar) return 'OK' as const;
     peer.profileChanges = peer.profileChanges.filter((time) => now - time < 5 * 60 * 60 * 1000);
-    if (peer.profileChanges.length >= 3) return 'RATE_LIMITED' as const;
+    if (peer.profileChanges.length >= 5) return 'RATE_LIMITED' as const;
     peer.profileChanges.push(now);
     peer.participant.name = name;
     peer.participant.avatar = avatar;
@@ -179,6 +182,24 @@ export class RoomManager {
     if (now - peer.lastReactionAt < 500) return false;
     peer.lastReactionAt = now;
     this.broadcast(room, { type: 'reaction', id, participantId: clientId, reaction });
+    return true;
+  }
+
+  chat(roomId: string, clientId: string, id: string, text: string, now = Date.now()) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return false;
+    if (room.chatMessages.some((message) => message.id === id)) return true;
+    const message: RoomChatMessage = {
+      id,
+      participantId: clientId,
+      senderName: peer.participant.name,
+      text,
+      timestamp: now,
+    };
+    room.chatMessages.push(message);
+    if (room.chatMessages.length > 200) room.chatMessages.splice(0, room.chatMessages.length - 200);
+    this.broadcast(room, { type: 'room-chat-message', message });
     return true;
   }
 

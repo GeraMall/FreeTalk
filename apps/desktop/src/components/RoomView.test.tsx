@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { Participant } from '@freetalk/protocol';
+import type { Participant, RoomChatMessage } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
 import { RoomView, type RemoteVideoUiState } from './RoomView';
 
@@ -30,6 +30,16 @@ function view(
   onScreen = vi.fn(),
   onReaction = vi.fn(),
   onScreenVolume = vi.fn(),
+  handlers: {
+    onMute?: () => void;
+    onCamera?: () => void;
+    onSettings?: () => void;
+    onLeave?: () => void;
+    onRoomChatSend?: (text: string) => boolean;
+    onScreenFocusChange?: (active: boolean) => void;
+    roomChatMessages?: RoomChatMessage[];
+    screenFocusMode?: boolean;
+  } = {},
 ) {
   return (
     <RoomView
@@ -54,18 +64,22 @@ function view(
       muted={false}
       roomStartedAt={Date.now() - 65_000}
       reactions={[]}
+      roomChatMessages={handlers.roomChatMessages ?? []}
+      screenFocusMode={handlers.screenFocusMode ?? false}
       signalingState="connected"
       reconnectAttempt={0}
       settings={defaultSettings()}
       inviteCopied={false}
       turnAvailable
       onCopyInvite={vi.fn()}
-      onMute={vi.fn()}
-      onCamera={vi.fn()}
+      onMute={handlers.onMute ?? vi.fn()}
+      onCamera={handlers.onCamera ?? vi.fn()}
       onScreen={onScreen}
       onReaction={onReaction}
-      onSettings={vi.fn()}
-      onLeave={vi.fn()}
+      onRoomChatSend={handlers.onRoomChatSend ?? vi.fn(() => true)}
+      onScreenFocusChange={handlers.onScreenFocusChange ?? vi.fn()}
+      onSettings={handlers.onSettings ?? vi.fn()}
+      onLeave={handlers.onLeave ?? vi.fn()}
       onPeerVolume={vi.fn()}
       onScreenVolume={onScreenVolume}
       onPeerMute={vi.fn()}
@@ -144,13 +158,13 @@ describe('RoomView media layouts', () => {
 
   it('keeps the active screen control label compact', () => {
     const { getByRole } = render(view('screen'));
-    expect(getByRole('button', { name: /Стоп Демонстрация/ })).not.toBeNull();
+    expect(getByRole('button', { name: 'Остановить демонстрацию экрана' })).not.toBeNull();
   });
 
   it('opens the native screen chooser immediately without an intermediate dialog', () => {
     const onScreen = vi.fn();
     const { getByRole } = render(view('none', {}, false, onScreen));
-    fireEvent.click(getByRole('button', { name: /Экран Поделиться/ }));
+    fireEvent.click(getByRole('button', { name: 'Демонстрация экрана' }));
     expect(onScreen).toHaveBeenCalledOnce();
   });
 
@@ -158,10 +172,86 @@ describe('RoomView media layouts', () => {
     const onReaction = vi.fn();
     const { getByRole, getByLabelText } = render(view('none', {}, false, vi.fn(), onReaction));
     expect(getByLabelText(/Длительность звонка 01:05/)).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: /Реакция Ответить эмоцией/ }));
+    fireEvent.click(getByRole('button', { name: 'Отправить реакцию' }));
     expect(getByRole('menu', { name: 'Реакции' }).querySelectorAll('button')).toHaveLength(5);
     fireEvent.click(getByRole('menuitem', { name: 'Отправить реакцию 🎉' }));
     expect(onReaction).toHaveBeenCalledWith('🎉');
+  });
+
+  it('keeps all existing call-control handlers wired', () => {
+    const handlers = {
+      onMute: vi.fn(),
+      onCamera: vi.fn(),
+      onSettings: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const { getByRole } = render(view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), handlers));
+    fireEvent.click(getByRole('button', { name: 'Выключить микрофон' }));
+    fireEvent.click(getByRole('button', { name: 'Включить камеру' }));
+    fireEvent.click(getByRole('button', { name: 'Настройки аудио и устройств' }));
+    fireEvent.click(getByRole('button', { name: 'Выйти из комнаты' }));
+    expect(handlers.onMute).toHaveBeenCalledOnce();
+    expect(handlers.onCamera).toHaveBeenCalledOnce();
+    expect(handlers.onSettings).toHaveBeenCalledOnce();
+    expect(handlers.onLeave).toHaveBeenCalledOnce();
+  });
+
+  it('opens the ephemeral room chat and sends a message', () => {
+    const onRoomChatSend = vi.fn(() => true);
+    const { container, getByRole, getByLabelText, queryByLabelText } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), { onRoomChatSend }),
+    );
+    fireEvent.click(getByRole('button', { name: 'Чат комнаты' }));
+    const composer = getByLabelText('Сообщение в чат комнаты');
+    fireEvent.change(composer, { target: { value: 'Привет комнате' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(onRoomChatSend).toHaveBeenCalledWith('Привет комнате');
+    fireEvent.click(getByRole('button', { name: 'Чат комнаты' }));
+    const panel = container.querySelector('.room-chat-panel') as HTMLElement;
+    expect(panel.classList.contains('closing')).toBe(true);
+    fireEvent.animationEnd(panel);
+    expect(queryByLabelText('Сообщение в чат комнаты')).toBeNull();
+  });
+
+  it('shows an unread badge for a remote room message while chat is closed', () => {
+    const { rerender, getByText } = render(view());
+    rerender(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        roomChatMessages: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            participantId: peerId,
+            senderName: 'Друг',
+            text: 'Новое сообщение',
+            timestamp: Date.now(),
+          },
+        ],
+      }),
+    );
+    expect(getByText('1').classList.contains('room-chat-badge')).toBe(true);
+  });
+
+  it('enters screen focus mode through the existing screen video without an overlay', () => {
+    const onScreenFocusChange = vi.fn();
+    const { container, getByLabelText, getByRole, queryByRole, rerender } = render(
+      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        onScreenFocusChange,
+      }),
+    );
+    const screenVideo = getByLabelText('Экран Друг');
+    fireEvent.click(getByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' }));
+    expect(onScreenFocusChange).toHaveBeenCalledWith(true);
+    expect(queryByRole('dialog')).toBeNull();
+    rerender(
+      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        onScreenFocusChange,
+        screenFocusMode: true,
+      }),
+    );
+    expect(container.querySelector('.screen-focus-mode')).not.toBeNull();
+    expect(getByLabelText('Экран Друг')).toBe(screenVideo);
+    fireEvent.click(getByRole('button', { name: 'Свернуть демонстрацию экрана Друг' }));
+    expect(onScreenFocusChange).toHaveBeenLastCalledWith(false);
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

@@ -387,6 +387,7 @@ function FriendCard({
 function presenceLabel(status: PresenceStatus = 'offline') {
   if (status === 'online') return 'В сети';
   if (status === 'away') return 'Нет на месте';
+  if (status === 'dnd') return 'Не беспокоить';
   return 'Не в сети';
 }
 

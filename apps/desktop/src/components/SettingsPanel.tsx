@@ -27,9 +27,10 @@ import {
   USERNAME_MIN_LENGTH,
 } from '../lib/username';
 
-type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'about';
+export type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'about';
 
 interface SettingsPanelProps {
+  initialTab?: SettingsTab;
   settings: LocalSettings;
   devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   inputLevel: number;
@@ -63,6 +64,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({
+  initialTab = 'audio',
   settings,
   devices,
   inputLevel,
@@ -88,7 +90,7 @@ export function SettingsPanel({
   onDeleteAccount,
   onChangePassword,
 }: SettingsPanelProps) {
-  const [tab, setTab] = useState<SettingsTab>('audio');
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [capturing, setCapturing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
@@ -238,7 +240,7 @@ export function SettingsPanel({
             </button>
           </header>
 
-          <div className="settings-content">
+          <div className={`settings-content${tab === 'profile' ? ' profile-content' : ''}`}>
             {tab === 'audio' && (
               <AudioTab
                 settings={settings}
@@ -262,6 +264,7 @@ export function SettingsPanel({
                 onAccountLogout={onAccountLogout}
                 onDeleteAccount={onDeleteAccount}
                 onChangePassword={onChangePassword}
+                onDone={onClose}
               />
             )}
             {tab === 'video' && (
@@ -305,11 +308,13 @@ export function SettingsPanel({
             )}
           </div>
 
-          <footer className="settings-footer">
-            <button className="primary" onClick={onClose}>
-              Готово
-            </button>
-          </footer>
+          {tab !== 'profile' && (
+            <footer className="settings-footer">
+              <button className="primary" onClick={onClose}>
+                Готово
+              </button>
+            </footer>
+          )}
         </div>
       </section>
     </div>
@@ -324,6 +329,7 @@ function ProfileTab({
   onAccountLogout,
   onDeleteAccount,
   onChangePassword,
+  onDone,
 }: {
   settings: LocalSettings;
   accountUser?: AccountUser;
@@ -338,6 +344,7 @@ function ProfileTab({
   onAccountLogout(): void;
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
+  onDone(): void;
 }) {
   const [draftName, setDraftName] = useState(settings.displayName);
   const persistedAvatar = accountUser?.avatarUrl ?? '';
@@ -406,232 +413,260 @@ function ProfileTab({
 
   if (guestMode || !accountUser)
     return (
-      <section className="settings-section locked-feature-card">
-        <UserRound size={34} />
-        <h3>Профиль доступен после регистрации</h3>
-        <p>
-          Зарегистрируйтесь, чтобы пользоваться всеми функциями профиля, друзьями, чатами и
-          историей.
-        </p>
-      </section>
+      <div className="profile-tab-layout">
+        <div className="profile-tab-scroll">
+          <section className="settings-section locked-feature-card">
+            <UserRound size={34} />
+            <h3>Профиль доступен после регистрации</h3>
+            <p>
+              Зарегистрируйтесь, чтобы пользоваться всеми функциями профиля, друзьями, чатами и
+              историей.
+            </p>
+          </section>
+        </div>
+        <footer className="profile-sticky-actions single-action">
+          <button className="primary profile-done" onClick={onDone}>
+            Готово
+          </button>
+        </footer>
+      </div>
     );
 
   return (
-    <section className="settings-section profile-section">
-      <div className="account-profile-facts">
-        <span>
-          <small>Почта</small>
-          <strong>{accountUser.email}</strong>
-        </span>
-        <span>
-          <small>Регистрация</small>
-          <strong>{new Date(accountUser.registeredAt).toLocaleDateString('ru-RU')}</strong>
-        </span>
-      </div>
-      <div className="profile-editor">
-        <div className="profile-avatar-preview">
-          {draftAvatar ? (
-            <img src={draftAvatar} alt="Предпросмотр аватара" />
-          ) : (
-            <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
-          )}
-        </div>
-        <div className="profile-avatar-actions">
-          <strong>Аватар</strong>
-          <small>Квадратное изображение до 5 МБ. FreeTalk уменьшит его автоматически.</small>
-          <div>
-            <label className="secondary compact profile-file-button">
-              <ImagePlus size={16} /> Выбрать фото
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.currentTarget.value = '';
-                  if (!file) return;
-                  setError('');
-                  void prepareAvatar(file)
-                    .then(setDraftAvatar)
-                    .catch((caught) =>
-                      setError(
-                        caught instanceof Error ? caught.message : 'Не удалось обработать фото.',
-                      ),
-                    );
-                }}
-              />
-            </label>
-            {draftAvatar && (
-              <button className="secondary compact" onClick={() => setDraftAvatar('')}>
-                <Trash2 size={15} /> Удалить
-              </button>
-            )}
+    <div className="profile-tab-layout">
+      <div className="profile-tab-scroll">
+        <section className="settings-section profile-section">
+          <div className="account-profile-facts">
+            <span>
+              <small>Почта</small>
+              <strong>{accountUser.email}</strong>
+            </span>
+            <span>
+              <small>Регистрация</small>
+              <strong>{new Date(accountUser.registeredAt).toLocaleDateString('ru-RU')}</strong>
+            </span>
           </div>
-        </div>
-      </div>
-      <div className="profile-cover-editor">
-        <div
-          className="profile-cover-preview"
-          style={draftCover ? { backgroundImage: `url(${draftCover})` } : undefined}
-        >
-          {!draftCover && <span>FreeTalk cover</span>}
-        </div>
-        <div className="profile-avatar-actions">
-          <strong>Обложка профиля</strong>
-          <small>Широкое изображение. Оно будет видно справа в профиле собеседника.</small>
-          <div>
-            <label className="secondary compact profile-file-button">
-              <ImagePlus size={16} /> {draftCover ? 'Заменить' : 'Загрузить'}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.currentTarget.value = '';
-                  if (!file) return;
-                  setError('');
-                  void prepareCover(file)
-                    .then(setDraftCover)
-                    .catch((caught) =>
-                      setError(
-                        caught instanceof Error ? caught.message : 'Не удалось обработать обложку.',
-                      ),
-                    );
-                }}
-              />
-            </label>
-            {draftCover && (
-              <button className="secondary compact" onClick={() => setDraftCover('')}>
-                <Trash2 size={15} /> Удалить
-              </button>
-            )}
+          <div className="profile-editor">
+            <div className="profile-avatar-preview">
+              {draftAvatar ? (
+                <img src={draftAvatar} alt="Предпросмотр аватара" />
+              ) : (
+                <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
+              )}
+            </div>
+            <div className="profile-avatar-actions">
+              <strong>Аватар</strong>
+              <small>
+                JPEG, PNG или WebP до 25 МБ. FreeTalk уменьшит его до 768×768 и примерно 1 МБ.
+              </small>
+              <div>
+                <label className="secondary compact profile-file-button">
+                  <ImagePlus size={16} /> Выбрать фото
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.currentTarget.value = '';
+                      if (!file) return;
+                      setError('');
+                      void prepareAvatar(file)
+                        .then(setDraftAvatar)
+                        .catch((caught) =>
+                          setError(
+                            caught instanceof Error
+                              ? caught.message
+                              : 'Не удалось обработать фото.',
+                          ),
+                        );
+                    }}
+                  />
+                </label>
+                {draftAvatar && (
+                  <button className="secondary compact" onClick={() => setDraftAvatar('')}>
+                    <Trash2 size={15} /> Удалить
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <label className="field-label">
-        Отображаемое имя
-        <input
-          maxLength={32}
-          value={draftName}
-          placeholder="Ваше имя"
-          onChange={(event) => {
-            setDraftName(event.target.value);
-            setSaved(false);
-          }}
-        />
-      </label>
-      <label className="field-label">
-        Уникальный @username
-        <input
-          minLength={USERNAME_MIN_LENGTH}
-          maxLength={USERNAME_MAX_LENGTH}
-          pattern="[a-z0-9_]{5,24}"
-          aria-invalid={!usernameValid}
-          value={draftUsername}
-          onChange={(event) => {
-            setDraftUsername(normalizeUsername(event.target.value));
-            setSaved(false);
-          }}
-        />
-        <small>От 5 символов: латинские буквы, цифры и _. Изменить можно раз в 30 дней.</small>
-      </label>
-      <label className="field-label">
-        О себе
-        <textarea
-          value={draftBio}
-          maxLength={200}
-          rows={3}
-          placeholder="Несколько слов о себе"
-          onChange={(event) => {
-            setDraftBio(event.target.value);
-            setSaved(false);
-          }}
-        />
-        <small>{draftBio.length}/200</small>
-      </label>
-      <div className="profile-limit">
-        <span>
-          {remaining > 0 ? `Осталось изменений: ${remaining} из 3` : 'Лимит изменений исчерпан'}
-        </span>
-        <small>Ник и аватар вместе можно сохранять не более трёх раз за пять часов.</small>
-      </div>
-      {error && <small className="inline-error">{error}</small>}
-      {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
-      <button
-        className="primary profile-save"
-        disabled={!changed || !usernameValid || remaining === 0 || busy}
-        onClick={() => void save()}
-      >
-        <Save size={16} /> {busy ? 'Сохраняем…' : 'Сохранить профиль'}
-      </button>
-      <div className="account-actions">
-        <details>
-          <summary>Изменить пароль</summary>
-          <div className="password-change-form">
+          <div className="profile-cover-editor">
+            <div
+              className="profile-cover-preview"
+              style={draftCover ? { backgroundImage: `url(${draftCover})` } : undefined}
+            >
+              {!draftCover && <span>FreeTalk cover</span>}
+            </div>
+            <div className="profile-avatar-actions">
+              <strong>Обложка профиля</strong>
+              <small>
+                Изображение до 25 МБ. FreeTalk подготовит обложку 1800×700 весом до 2–3 МБ.
+              </small>
+              <div>
+                <label className="secondary compact profile-file-button">
+                  <ImagePlus size={16} /> {draftCover ? 'Заменить' : 'Загрузить'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.currentTarget.value = '';
+                      if (!file) return;
+                      setError('');
+                      void prepareCover(file)
+                        .then(setDraftCover)
+                        .catch((caught) =>
+                          setError(
+                            caught instanceof Error
+                              ? caught.message
+                              : 'Не удалось обработать обложку.',
+                          ),
+                        );
+                    }}
+                  />
+                </label>
+                {draftCover && (
+                  <button className="secondary compact" onClick={() => setDraftCover('')}>
+                    <Trash2 size={15} /> Удалить
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <label className="field-label">
+            Отображаемое имя
             <input
-              type="password"
-              value={currentPassword}
-              placeholder="Текущий пароль"
-              onChange={(event) => setCurrentPassword(event.target.value)}
+              maxLength={32}
+              value={draftName}
+              placeholder="Ваше имя"
+              onChange={(event) => {
+                setDraftName(event.target.value);
+                setSaved(false);
+              }}
             />
+          </label>
+          <label className="field-label">
+            Уникальный @username
             <input
-              type="password"
-              value={newPassword}
-              placeholder="Новый пароль"
-              onChange={(event) => setNewPassword(event.target.value)}
+              minLength={USERNAME_MIN_LENGTH}
+              maxLength={USERNAME_MAX_LENGTH}
+              pattern="[a-z0-9_]{5,24}"
+              aria-invalid={!usernameValid}
+              value={draftUsername}
+              onChange={(event) => {
+                setDraftUsername(normalizeUsername(event.target.value));
+                setSaved(false);
+              }}
             />
-            <button
-              disabled={!currentPassword || !newPassword}
-              onClick={() => {
-                setError('');
-                void onChangePassword(currentPassword, newPassword)
-                  .then(() => {
-                    setCurrentPassword('');
-                    setNewPassword('');
-                    setSaved(true);
-                  })
-                  .catch((caught: unknown) =>
+            <small>От 5 символов: латинские буквы, цифры и _. Изменить можно раз в 30 дней.</small>
+          </label>
+          <label className="field-label">
+            О себе
+            <textarea
+              value={draftBio}
+              maxLength={200}
+              rows={3}
+              placeholder="Несколько слов о себе"
+              onChange={(event) => {
+                setDraftBio(event.target.value);
+                setSaved(false);
+              }}
+            />
+            <small>{draftBio.length}/200</small>
+          </label>
+          <div className="profile-limit">
+            <span>
+              {remaining > 0 ? `Осталось изменений: ${remaining} из 5` : 'Лимит изменений исчерпан'}
+            </span>
+            <small>Ник и аватар вместе можно сохранять не более пяти раз за пять часов.</small>
+          </div>
+          {error && <small className="inline-error">{error}</small>}
+          {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
+          <div className="account-actions">
+            <details>
+              <summary>Изменить пароль</summary>
+              <div className="password-change-form">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  placeholder="Текущий пароль"
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  placeholder="Новый пароль"
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+                <button
+                  disabled={!currentPassword || !newPassword}
+                  onClick={() => {
+                    setError('');
+                    void onChangePassword(currentPassword, newPassword)
+                      .then(() => {
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setSaved(true);
+                      })
+                      .catch((caught: unknown) =>
+                        setError(
+                          caught instanceof Error ? caught.message : 'Не удалось изменить пароль',
+                        ),
+                      );
+                  }}
+                >
+                  Изменить пароль
+                </button>
+              </div>
+            </details>
+            <button className="secondary" onClick={onAccountLogout}>
+              Выйти из аккаунта
+            </button>
+            <details className="danger-zone">
+              <summary>Удалить аккаунт</summary>
+              <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
+              <input
+                type="password"
+                value={deletePassword}
+                placeholder="Текущий пароль"
+                onChange={(event) => setDeletePassword(event.target.value)}
+              />
+              <input
+                value={deleteConfirmation}
+                placeholder="Введите УДАЛИТЬ"
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+              />
+              <button
+                className="danger"
+                disabled={!deletePassword || deleteConfirmation !== 'УДАЛИТЬ'}
+                onClick={() => {
+                  setError('');
+                  void onDeleteAccount(deletePassword).catch((caught: unknown) =>
                     setError(
-                      caught instanceof Error ? caught.message : 'Не удалось изменить пароль',
+                      caught instanceof Error ? caught.message : 'Не удалось удалить аккаунт',
                     ),
                   );
-              }}
-            >
-              Изменить пароль
-            </button>
+                }}
+              >
+                Удалить навсегда
+              </button>
+            </details>
           </div>
-        </details>
-        <button className="secondary" onClick={onAccountLogout}>
-          Выйти из аккаунта
-        </button>
-        <details className="danger-zone">
-          <summary>Удалить аккаунт</summary>
-          <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
-          <input
-            type="password"
-            value={deletePassword}
-            placeholder="Текущий пароль"
-            onChange={(event) => setDeletePassword(event.target.value)}
-          />
-          <input
-            value={deleteConfirmation}
-            placeholder="Введите УДАЛИТЬ"
-            onChange={(event) => setDeleteConfirmation(event.target.value)}
-          />
-          <button
-            className="danger"
-            disabled={!deletePassword || deleteConfirmation !== 'УДАЛИТЬ'}
-            onClick={() => {
-              setError('');
-              void onDeleteAccount(deletePassword).catch((caught: unknown) =>
-                setError(caught instanceof Error ? caught.message : 'Не удалось удалить аккаунт'),
-              );
-            }}
-          >
-            Удалить навсегда
-          </button>
-        </details>
+        </section>
       </div>
-    </section>
+      <footer className="profile-sticky-actions">
+        <button
+          className="secondary profile-save"
+          disabled={!changed || !usernameValid || remaining === 0 || busy}
+          onClick={() => void save()}
+        >
+          <Save size={16} /> {busy ? 'Сохраняем…' : 'Сохранить профиль'}
+        </button>
+        <button className="primary profile-done" onClick={onDone}>
+          Готово
+        </button>
+      </footer>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountClient } from './api-client';
 import { AWAY_AFTER_MS, ChatRealtimeClient } from './chat-realtime';
+import { setPresenceMode } from './presence-preference';
 
 class FakeWebSocket extends EventTarget {
   static OPEN = 1;
@@ -34,6 +35,7 @@ class FakeWebSocket extends EventTarget {
 
 describe('ChatRealtimeClient', () => {
   beforeEach(() => {
+    localStorage.clear();
     FakeWebSocket.instances = [];
     vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.spyOn(accountClient, 'realtimeAccessToken').mockResolvedValue('a'.repeat(48));
@@ -94,6 +96,23 @@ describe('ChatRealtimeClient', () => {
     };
     socket.receive(event);
     expect(listener).toHaveBeenCalledWith(event);
+    client.stop();
+  });
+
+  it('keeps the realtime socket open while reporting invisible as offline', async () => {
+    const onPresence = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), onPresence);
+    client.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: 'ready' });
+
+    setPresenceMode('invisible');
+
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'offline' });
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(onPresence).toHaveBeenLastCalledWith('offline');
     client.stop();
   });
 });

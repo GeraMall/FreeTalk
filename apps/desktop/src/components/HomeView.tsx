@@ -3,16 +3,25 @@ import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { generateRoomCode } from '../lib/room-code';
+import { uniqueCallParticipants, type CallHistoryParticipant } from '../lib/call-history';
 import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
 import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
+
+const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
+const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
+
+function isAccountPage(value: unknown): value is AccountPage {
+  return typeof value === 'string' && ACCOUNT_PAGES.includes(value as AccountPage);
+}
+
 export interface CallItem {
   id: string;
   room_id: string;
   started_at: string;
   duration_seconds: number;
-  participants: Array<{ displayName: string; userId?: string | null; avatarUrl?: string | null }>;
+  participants: CallHistoryParticipant[];
 }
 
 export function HomeView({
@@ -33,7 +42,7 @@ export function HomeView({
   error: string;
   onCreateRoom(roomId?: string): void;
   onJoinRoom(code: string): void;
-  onSettings(): void;
+  onSettings(tab?: 'profile'): void;
   onLogout(): void;
   onClearError?(): void;
   page?: AccountPage;
@@ -61,10 +70,32 @@ export function HomeView({
   const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
   const activeChatRef = useRef(activeChat);
+  const navigationInitialized = useRef(false);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
   }, [activeChat]);
+
+  useEffect(() => {
+    if (!navigationInitialized.current) {
+      if (!isAccountPage(window.history.state?.[NAVIGATION_STATE_KEY])) {
+        window.history.replaceState({ ...window.history.state, [NAVIGATION_STATE_KEY]: page }, '');
+      }
+      navigationInitialized.current = true;
+    }
+
+    const handleHistoryNavigation = (event: PopStateEvent) => {
+      const next = event.state?.[NAVIGATION_STATE_KEY];
+      if (!isAccountPage(next)) return;
+      if (next === 'friends') setFriendsLoading(true);
+      if (next === 'chats') setChatsLoading(true);
+      setInternalPage(next);
+      onPageChange?.(next);
+    };
+
+    window.addEventListener('popstate', handleHistoryNavigation);
+    return () => window.removeEventListener('popstate', handleHistoryNavigation);
+  }, [onPageChange, page]);
 
   useEffect(() => {
     const realtime = new ChatRealtimeClient((event) => {
@@ -186,6 +217,9 @@ export function HomeView({
   }, [user.id]);
 
   const navigatePage = (next: AccountPage) => {
+    if (next !== page) {
+      window.history.pushState({ ...window.history.state, [NAVIGATION_STATE_KEY]: next }, '');
+    }
     if (next === 'friends') setFriendsLoading(true);
     if (next === 'chats') setChatsLoading(true);
     setInternalPage(next);
@@ -642,33 +676,7 @@ export function HomeView({
                   <section className="history-period" key={period}>
                     <h2>{period}</h2>
                     {calls.map((call) => (
-                      <article className="social-card" key={call.id}>
-                        <span className="history-participant-avatars" aria-hidden="true">
-                          {call.participants.slice(0, 4).map((participant, index) => (
-                            <span key={participant.userId ?? `${participant.displayName}-${index}`}>
-                              {participant.avatarUrl ? (
-                                <img
-                                  src={participant.avatarUrl}
-                                  alt=""
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                participant.displayName.slice(0, 1).toUpperCase()
-                              )}
-                            </span>
-                          ))}
-                        </span>
-                        <span>
-                          <strong>{new Date(call.started_at).toLocaleString('ru-RU')}</strong>
-                          <small>
-                            {call.participants
-                              .map((participant) => participant.displayName)
-                              .join(', ')}{' '}
-                            · {Math.max(1, Math.round(call.duration_seconds / 60))} мин
-                          </small>
-                        </span>
-                        <button onClick={() => onCreateRoom()}>Позвонить снова</button>
-                      </article>
+                      <HistoryCallCard call={call} key={call.id} onCallAgain={onCreateRoom} />
                     ))}
                   </section>
                 );
@@ -687,6 +695,45 @@ export function HomeView({
         )}
       </section>
     </main>
+  );
+}
+
+function HistoryCallCard({ call, onCallAgain }: { call: CallItem; onCallAgain(): void }) {
+  const participants = uniqueCallParticipants(call.participants);
+  const visibleParticipants = participants.slice(0, 4);
+  const hiddenCount = Math.max(0, participants.length - visibleParticipants.length);
+  return (
+    <article className="social-card history-call-card">
+      <span className="history-participant-avatars" aria-hidden="true">
+        {visibleParticipants.map((participant, index) => (
+          <span key={participant.userId ?? `${participant.displayName}-${index}`}>
+            {participant.avatarUrl ? (
+              <img src={participant.avatarUrl} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              participant.displayName.slice(0, 1).toUpperCase()
+            )}
+          </span>
+        ))}
+        {hiddenCount > 0 && <span className="history-avatar-overflow">+{hiddenCount}</span>}
+      </span>
+      <span className="history-call-copy">
+        <strong>{new Date(call.started_at).toLocaleString('ru-RU')}</strong>
+        <small>
+          {participants.length
+            ? participants.map((participant) => participant.displayName).join(', ')
+            : 'Участники не указаны'}{' '}
+          · {Math.max(1, Math.round(call.duration_seconds / 60))} мин
+        </small>
+      </span>
+      <button
+        className="history-call-again-button"
+        title="Создать новую комнату"
+        onClick={onCallAgain}
+      >
+        <PhoneCall size={16} aria-hidden="true" />
+        Позвонить снова
+      </button>
+    </article>
   );
 }
 
@@ -721,7 +768,8 @@ export function RecentRooms({
       ) : recent.length ? (
         <div className="recent-room-grid">
           {recent.map((call, index) => {
-            const others = call.participants.filter((participant) => participant.userId !== selfId);
+            const participants = uniqueCallParticipants(call.participants);
+            const others = participants.filter((participant) => participant.userId !== selfId);
             const title = others.length
               ? others.length === 1
                 ? `Комната с ${others[0].displayName}`
@@ -734,7 +782,7 @@ export function RecentRooms({
                 key={call.id}
               >
                 <span className="recent-room-avatars" aria-hidden="true">
-                  {(others.length ? others : call.participants)
+                  {(others.length ? others : participants)
                     .slice(0, 3)
                     .map((participant, participantIndex) => (
                       <i
@@ -747,7 +795,7 @@ export function RecentRooms({
                         )}
                       </i>
                     ))}
-                  {!call.participants.length && <PhoneCall />}
+                  {!participants.length && <PhoneCall />}
                 </span>
                 <span className="recent-room-copy">
                   <strong>{title}</strong>

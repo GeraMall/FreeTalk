@@ -51,3 +51,7 @@ export function publicApiUrl(path: string) {
   const base = `${env.API_PUBLIC_URL.replace(/\/$/, '')}/`;
   return new URL(path.replace(/^\//, ''), base).toString();
 }
+
+export function publicAvatarUrl(userId: string, hasAvatar: boolean) {
+  return hasAvatar ? publicApiUrl(`/v1/users/${encodeURIComponent(userId)}/avatar`) : undefined;
+}

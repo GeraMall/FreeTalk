@@ -2,6 +2,7 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { uniqueCallParticipants } from '../lib/call-history';
 import { RecentRooms, TransientNotice } from './HomeView';
 
 afterEach(() => {
@@ -28,6 +29,17 @@ describe('TransientNotice', () => {
 });
 
 describe('RecentRooms', () => {
+  it('deduplicates reconnect entries by user and display name', () => {
+    expect(
+      uniqueCallParticipants([
+        { userId: 'user-a', displayName: 'Gera' },
+        { userId: 'user-a', displayName: 'Gera' },
+        { userId: null, displayName: ' gera ' },
+        { userId: 'user-b', displayName: 'Alex' },
+      ]).map((participant) => participant.displayName.trim()),
+    ).toEqual(['Gera', 'Alex']);
+  });
+
   it('renders actual call history and never inserts demo rooms', () => {
     const { getByText, queryByText } = render(
       <RecentRooms
