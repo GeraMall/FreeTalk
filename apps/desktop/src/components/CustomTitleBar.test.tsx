@@ -29,13 +29,13 @@ afterEach(() => {
 });
 
 describe('CustomTitleBar', () => {
-  it('keeps minimize, maximize and close connected to the native window', async () => {
+  it('keeps minimize, maximize and background close connected to the native window', async () => {
     const { getByRole } = render(<CustomTitleBar />);
     await waitFor(() => expect(windowApi.isMaximized).toHaveBeenCalled());
 
     fireEvent.click(getByRole('button', { name: 'Свернуть' }));
     fireEvent.click(getByRole('button', { name: 'Развернуть' }));
-    fireEvent.click(getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(getByRole('button', { name: 'Свернуть в фон' }));
 
     expect(windowApi.minimize).toHaveBeenCalledOnce();
     expect(windowApi.toggleMaximize).toHaveBeenCalledOnce();

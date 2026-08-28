@@ -56,7 +56,8 @@ pnpm tauri:dev
 - сохранение несекретных аудио- и видеонастроек в localStorage; пароли и session secrets туда не записываются;
 - встроенная проверка подписанных обновлений Tauri, уведомление, прогресс и установка из приложения;
 - понятные ошибки permission/no device/network/room full/NAT;
-- закрытие tracks, audio contexts, peer connections и WebSocket при выходе/закрытии;
+- фоновая работа через системный трей Windows и строку меню macOS: крестик скрывает окно без разрыва звонка, клик по значку возвращает его, а пункт «Выйти полностью» завершает приложение;
+- закрытие tracks, audio contexts, peer connections и WebSocket при выходе из комнаты или полном завершении приложения;
 - локальный Node signaling и Cloudflare Durable Object production adapter;
 - строгая validation/size/rate/participant limits и Tauri CSP;
 - полностью переработанный midnight navy/mint интерфейс: анимированная aurora, карточки участников, premium voice dock и desktop-панель настроек;

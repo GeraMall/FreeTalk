@@ -85,8 +85,8 @@ export function CustomTitleBar() {
         <button
           className="window-close-control"
           type="button"
-          aria-label="Закрыть"
-          title="Закрыть"
+          aria-label="Свернуть в фон"
+          title="Свернуть в фон"
           onClick={() => void appWindow.close().catch(() => undefined)}
         >
           <X size={14} aria-hidden="true" />
