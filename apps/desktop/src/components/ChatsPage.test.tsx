@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ChatsPage, MessageList, type ChatItem, type MessageItem } from './ChatsPage';
+import { accountClient } from '../lib/api-client';
 
 const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
 const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
@@ -49,7 +50,11 @@ afterAll(() => {
   HTMLElement.prototype.scrollTo = originalScrollTo;
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
 
 function view(
   chatId: string,
@@ -171,6 +176,79 @@ describe('MessageList rendering', () => {
       withAvatar.avatar_url,
     );
   });
+
+  it('renders group avatar changes as compact system messages', () => {
+    const systemMessage: MessageItem = {
+      ...message('4', 'self', 'Гера обновил(а) фотографию группы'),
+      kind: 'system',
+    };
+    const { getByText, container } = render(view('chat-a', [systemMessage]));
+    expect(getByText('Гера обновил(а) фотографию группы')).toBeTruthy();
+    expect(container.querySelector('.system-message')).not.toBeNull();
+  });
+
+  it('turns an in-app group invite link into a join card', async () => {
+    const token = 'a'.repeat(32);
+    vi.spyOn(accountClient, 'request').mockResolvedValue({
+      chat: {
+        id: 'group-a',
+        title: 'Команда FreeTalk',
+        memberCount: 7,
+        avatarUrl: null,
+        avatarPositionX: 50,
+        avatarPositionY: 50,
+        avatarScale: 100,
+        isMember: false,
+      },
+    });
+    const onJoinInvite = vi.fn(async () => true);
+    const invite = message('5', 'friend', `freetalk://chat/${token}`);
+    const { findByText, getByRole } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat
+        messages={[invite]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+        onJoinInvite={onJoinInvite}
+      />,
+    );
+
+    expect(await findByText('Команда FreeTalk')).toBeTruthy();
+    expect(await findByText('7 участников')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Вступить' }));
+    await waitFor(() => expect(onJoinInvite).toHaveBeenCalledWith(token));
+  });
+
+  it('loads protected image messages through the authenticated client', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:freetalk-photo');
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectUrl });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectUrl });
+    vi.spyOn(accountClient, 'chatImageBlob').mockResolvedValue(
+      new Blob(['photo'], { type: 'image/webp' }),
+    );
+    const imageMessage: MessageItem = {
+      ...message('6', 'friend', 'Смотри'),
+      kind: 'image',
+      metadata: { width: 1600, height: 900 },
+    };
+    const { findByAltText, getByRole, queryByRole } = render(view('chat-a', [imageMessage]));
+
+    const image = await findByAltText('Фотография от Алексей');
+    expect(image.getAttribute('src')).toBe('blob:freetalk-photo');
+    expect(accountClient.chatImageBlob).toHaveBeenCalledWith(imageMessage.id);
+    fireEvent.click(image);
+    const viewer = getByRole('dialog', { name: 'Фотография от Алексей' });
+    expect(viewer).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.animationEnd(viewer);
+    expect(queryByRole('dialog', { name: 'Фотография от Алексей' })).toBeNull();
+  });
 });
 
 describe('Chat retention controls', () => {
@@ -227,5 +305,135 @@ describe('Chat retention controls', () => {
     expect(onClearHistory).not.toHaveBeenCalled();
     fireEvent.click(getByRole('button', { name: 'Подтвердить очистку' }));
     expect(onClearHistory).toHaveBeenCalledOnce();
+  });
+
+  it('opens the group avatar editor and shows the member list in the right panel', async () => {
+    const onUpdateGroupAvatar = vi.fn(async () => true);
+    const chat: ChatItem = {
+      ...ownerChat,
+      avatarUrl: 'https://api.example.test/group.webp',
+      avatarPositionX: 42,
+      avatarPositionY: 61,
+      avatarScale: 135,
+      members: [
+        { id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' },
+        { id: 'friend', username: 'alex_1', displayName: 'Алексей', role: 'member' },
+      ],
+    };
+    const { getByRole, getByText, getByAltText, queryByRole } = render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-a"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onUpdateGroupAvatar={onUpdateGroupAvatar}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    expect(getByRole('complementary', { name: 'Участники группы' })).toBeTruthy();
+    expect(getByText('Участники — 2')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
+    expect(getByRole('dialog', { name: 'Аватар группы' })).toBeTruthy();
+    const preview = getByAltText('Предпросмотр аватара группы') as HTMLImageElement;
+    expect(preview.style.transform).toContain('translate(');
+    fireEvent.change(getByRole('slider', { name: 'Размер аватара' }), {
+      target: { value: '150' },
+    });
+    expect(preview.style.transform).toContain('scale(1.5)');
+    fireEvent.click(getByRole('button', { name: /Сохранить/ }));
+    await waitFor(() =>
+      expect(onUpdateGroupAvatar).toHaveBeenCalledWith('chat-a', undefined, 42, 61, 150),
+    );
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+
+    fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
+    fireEvent.click(getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+
+    fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+  });
+});
+
+describe('Resizable chat list', () => {
+  const chat: ChatItem = {
+    id: 'chat-a',
+    type: 'direct',
+    title: null,
+    members: [
+      { id: 'self', username: 'gera_1', displayName: 'Гера' },
+      { id: 'friend', username: 'alex_1', displayName: 'Алексей' },
+    ],
+  };
+
+  const renderPage = () =>
+    render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-a"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+  it('shrinks only to the left and restores the saved width', () => {
+    const first = renderPage();
+    const divider = first.getByRole('separator', { name: 'Изменить ширину списка чатов' });
+    const pointerEvent = (type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX });
+      Object.defineProperty(event, 'pointerId', { value: 1 });
+      return event;
+    };
+    fireEvent(divider, pointerEvent('pointerdown', 300));
+    fireEvent(divider, pointerEvent('pointermove', 220));
+    fireEvent(divider, pointerEvent('pointerup', 220));
+
+    expect(localStorage.getItem('freetalkChatSidebarWidth')).toBe('220');
+    expect(
+      first.container
+        .querySelector<HTMLElement>('.messenger-layout')
+        ?.style.getPropertyValue('--conversation-sidebar-width'),
+    ).toBe('220px');
+
+    first.unmount();
+    const second = renderPage();
+    expect(
+      second.container
+        .querySelector<HTMLElement>('.messenger-layout')
+        ?.style.getPropertyValue('--conversation-sidebar-width'),
+    ).toBe('220px');
   });
 });

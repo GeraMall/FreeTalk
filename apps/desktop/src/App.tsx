@@ -95,6 +95,7 @@ export function App() {
   const [name, setName] = useState(settings.displayName);
   const [roomId, setRoomId] = useState<string>();
   const [roomDestination, setRoomDestination] = useState<AccountDestination>('room');
+  const [roomActiveChatId, setRoomActiveChatId] = useState<string>();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [peerState, setPeerState] = useState<PeerUiState>({});
   const [localSpeaking, setLocalSpeaking] = useState(false);
@@ -1196,6 +1197,7 @@ export function App() {
             user={accountUser}
             activePage={roomDestination}
             roomActive
+            readingChatId={roomDestination === 'chats' ? roomActiveChatId : undefined}
             onNavigate={setRoomDestination}
             onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
@@ -1213,6 +1215,7 @@ export function App() {
                 error={error}
                 onClearError={() => setError('')}
                 onPageChange={(page) => setRoomDestination(page)}
+                onActiveChatChange={setRoomActiveChatId}
                 onCreateRoom={() => {
                   setNotice('Вы уже находитесь в звонке');
                   setRoomDestination('room');

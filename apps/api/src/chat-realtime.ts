@@ -3,7 +3,7 @@ export type PresenceStatus = 'online' | 'away' | 'dnd' | 'offline';
 
 type RealtimeChatMessage = {
   id: string;
-  kind: 'text' | 'system' | 'call';
+  kind: 'text' | 'system' | 'call' | 'image';
   body: string;
   metadata?: Record<string, unknown>;
   sender_id: string | null;
@@ -19,6 +19,14 @@ export type ChatRealtimeServerMessage =
   | { type: 'message-created'; chatId: string; message: RealtimeChatMessage }
   | { type: 'history-cleared'; chatId: string }
   | { type: 'profile-updated'; userId: string }
+  | {
+      type: 'chat-updated';
+      chatId: string;
+      avatarUrl: string | null;
+      avatarPositionX: number;
+      avatarPositionY: number;
+      avatarScale: number;
+    }
   | { type: 'presence-updated'; userId: string; status: PresenceStatus }
   | {
       type: 'retention-changed';

@@ -184,5 +184,20 @@ describe('protocol validation', () => {
         },
       }).success,
     ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-created',
+        chatId: base.clientId,
+        message: {
+          id: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+          kind: 'image',
+          body: '',
+          metadata: { width: 1600, height: 900 },
+          sender_id: base.clientId,
+          created_at: new Date().toISOString(),
+          expires_at: null,
+        },
+      }).success,
+    ).toBe(true);
   });
 });

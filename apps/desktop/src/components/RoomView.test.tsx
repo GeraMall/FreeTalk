@@ -213,8 +213,8 @@ describe('RoomView media layouts', () => {
     expect(queryByLabelText('Сообщение в чат комнаты')).toBeNull();
   });
 
-  it('shows an unread badge for a remote room message while chat is closed', () => {
-    const { rerender, getByText } = render(view());
+  it('counts remote room messages while closed and clears the badge when chat opens', () => {
+    const { rerender, getByRole, getByText, queryByText } = render(view());
     rerender(
       view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
         roomChatMessages: [
@@ -225,10 +225,37 @@ describe('RoomView media layouts', () => {
             text: 'Новое сообщение',
             timestamp: Date.now(),
           },
+          {
+            id: '44444444-4444-4444-8444-444444444444',
+            participantId: peerId,
+            senderName: 'Друг',
+            text: 'Ещё одно сообщение',
+            timestamp: Date.now() + 1,
+          },
         ],
       }),
     );
-    expect(getByText('1').classList.contains('room-chat-badge')).toBe(true);
+    expect(getByText('2').classList.contains('room-chat-badge')).toBe(true);
+    fireEvent.click(getByRole('button', { name: 'Чат комнаты, непрочитанных сообщений: 2' }));
+    expect(queryByText('2')).toBeNull();
+  });
+
+  it('does not count own room messages as unread', () => {
+    const { rerender, queryByText } = render(view());
+    rerender(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        roomChatMessages: [
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            participantId: selfId,
+            senderName: 'Я',
+            text: 'Моё сообщение',
+            timestamp: Date.now(),
+          },
+        ],
+      }),
+    );
+    expect(queryByText('1')).toBeNull();
   });
 
   it('enters screen focus mode through the existing screen video without an overlay', () => {
@@ -259,6 +286,17 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.screen-stage')).not.toBeNull();
     expect(container.querySelector('.participant-strip .camera-tile')).not.toBeNull();
     expect(container.querySelectorAll('video')).toHaveLength(2);
+  });
+
+  it('keeps camera expand and participant menu controls separate beside a shared screen', () => {
+    const { container, getByRole } = render(view('screen', { [peerId]: { camera: stream } }));
+    const compactCamera = container.querySelector('.participant-strip .compact-tile.camera-tile');
+    expect(compactCamera).not.toBeNull();
+    expect(
+      compactCamera?.querySelector('button[aria-label="Раскрыть камеру Друг"]'),
+    ).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
+    expect(compactCamera?.querySelector('.participant-menu')).not.toBeNull();
   });
 
   it('mirrors camera video in tiles and expanded view', () => {

@@ -3,6 +3,7 @@ export const PROFILE_CHANGE_WINDOW_MS = 5 * 60 * 60 * 1000;
 export const MAX_PROFILE_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
 export const MAX_AVATAR_DATA_URL_LENGTH = 1_300_000;
 export const MAX_COVER_DATA_URL_LENGTH = 3_300_000;
+export const MAX_CHAT_IMAGE_DATA_URL_LENGTH = 3_900_000;
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_DECODED_PIXELS = 100_000_000;
@@ -61,15 +62,32 @@ function drawCoverCrop(
   );
 }
 
-function encodeCanvas(canvas: HTMLCanvasElement, maxLength: number, errorMessage: string) {
+function encodeCanvas(
+  canvas: HTMLCanvasElement,
+  maxLength: number,
+  errorMessage: string,
+  qualities = [0.88, 0.8, 0.7, 0.6, 0.5],
+) {
   for (const type of ['image/webp', 'image/jpeg']) {
-    for (const quality of [0.88, 0.8, 0.7, 0.6, 0.5]) {
+    for (const quality of qualities) {
       const value = canvas.toDataURL(type, quality);
       if (!value.startsWith(`data:${type}`)) break;
       if (value.length <= maxLength) return value;
     }
   }
   throw new Error(errorMessage);
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Не удалось прочитать фотографию.'));
+    reader.onerror = () => reject(new Error('Не удалось прочитать фотографию.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function prepareImage(
@@ -111,6 +129,35 @@ export function prepareAvatar(file: File) {
   });
 }
 
+export async function prepareGroupAvatar(file: File) {
+  validateImage(file, 'Файл аватара группы');
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (
+      bitmap.width < 64 ||
+      bitmap.height < 64 ||
+      bitmap.width * bitmap.height > MAX_DECODED_PIXELS
+    )
+      throw new Error('Изображение должно быть не меньше 64×64 пикселей.');
+    const scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(64, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(64, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Не удалось обработать изображение.');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return encodeCanvas(
+      canvas,
+      MAX_AVATAR_DATA_URL_LENGTH,
+      'Не удалось уменьшить аватар группы до 1 МБ. Выберите другое изображение.',
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
 export function prepareCover(file: File) {
   return prepareImage(file, {
     label: 'Файл обложки',
@@ -119,4 +166,33 @@ export function prepareCover(file: File) {
     maxDataUrlLength: MAX_COVER_DATA_URL_LENGTH,
     tooLargeMessage: 'Не удалось уменьшить обложку до 2–3 МБ. Выберите другое изображение.',
   });
+}
+
+export async function prepareChatImage(file: File) {
+  validateImage(file, 'Фотография');
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > MAX_DECODED_PIXELS)
+      throw new Error('Разрешение изображения слишком большое.');
+    const original = await readFileAsDataUrl(file);
+    if (original.length <= MAX_CHAT_IMAGE_DATA_URL_LENGTH) return original;
+
+    const scale = Math.min(1, 2560 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Не удалось обработать фотографию.');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return encodeCanvas(
+      canvas,
+      MAX_CHAT_IMAGE_DATA_URL_LENGTH,
+      'Не удалось уменьшить фотографию до 3 МБ. Выберите другое изображение.',
+      [0.94, 0.9, 0.86, 0.8, 0.72, 0.64],
+    );
+  } finally {
+    bitmap.close();
+  }
 }

@@ -220,7 +220,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.8' };
+  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.10' };
 });
 
 app.post(

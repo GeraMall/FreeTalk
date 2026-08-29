@@ -17,3 +17,7 @@ export function uniqueCallParticipants<T extends CallHistoryParticipant>(partici
     return true;
   });
 }
+
+export function hasConversationParticipants(participants: CallHistoryParticipant[]): boolean {
+  return uniqueCallParticipants(participants).length >= 2;
+}

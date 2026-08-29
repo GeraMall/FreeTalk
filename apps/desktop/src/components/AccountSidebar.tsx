@@ -15,6 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { AccountUser } from '../lib/api-client';
 import type { PresenceStatus } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
@@ -25,14 +26,25 @@ import {
   type PresenceMode,
 } from '../lib/presence-preference';
 import { BrandLogo } from './BrandLogo';
+import { prepareMessageNotifications, showMessageNotification } from '../lib/message-notifications';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
 export type AccountDestination = AccountPage | 'room';
+
+interface ChatMessagePreview {
+  sequence: number;
+  chatId: string;
+  senderName: string;
+  avatarUrl?: string | null;
+  body: string;
+  followUp: boolean;
+}
 
 export function AccountSidebar({
   user,
   activePage,
   roomActive = false,
+  readingChatId,
   onNavigate,
   onSettings,
   onLogout,
@@ -40,6 +52,7 @@ export function AccountSidebar({
   user: AccountUser;
   activePage: AccountDestination;
   roomActive?: boolean;
+  readingChatId?: string;
   onNavigate(page: AccountDestination): void;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
@@ -48,14 +61,88 @@ export function AccountSidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [presenceMode, setLocalPresenceMode] = useState(getPresenceMode);
+  const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});
+  const [chatPreview, setChatPreview] = useState<ChatMessagePreview>();
+  const [chatPreviewClosing, setChatPreviewClosing] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const statusPickerRef = useRef<HTMLDivElement>(null);
+  const activePageRef = useRef(activePage);
+  const readingChatIdRef = useRef(readingChatId);
+  const roomActiveRef = useRef(roomActive);
+  const previewSequence = useRef(0);
 
   useEffect(() => {
-    const realtime = new ChatRealtimeClient(() => undefined, setPresence);
+    void prepareMessageNotifications();
+  }, []);
+
+  useEffect(() => {
+    activePageRef.current = activePage;
+    readingChatIdRef.current = readingChatId;
+    roomActiveRef.current = roomActive;
+  }, [activePage, readingChatId, roomActive]);
+
+  useEffect(() => {
+    if (!roomActive) return;
+    setChatPreviewClosing(false);
+    setChatPreview(undefined);
+  }, [roomActive]);
+
+  useEffect(() => {
+    const realtime = new ChatRealtimeClient((event) => {
+      if (
+        event.type !== 'message-created' ||
+        !['text', 'image'].includes(event.message.kind) ||
+        !event.message.sender_id ||
+        event.message.sender_id === user.id
+      )
+        return;
+      if (activePageRef.current === 'chats' && readingChatIdRef.current === event.chatId) return;
+
+      setUnreadByChat((current) => ({
+        ...current,
+        [event.chatId]: Math.min(99, (current[event.chatId] ?? 0) + 1),
+      }));
+
+      if (getPresenceMode() === 'dnd' || roomActiveRef.current) return;
+      const senderName = event.message.display_name || event.message.username || 'Новое сообщение';
+      const previewBody =
+        event.message.kind === 'image' ? event.message.body || 'Фотография' : event.message.body;
+      void showMessageNotification(senderName, previewBody);
+      setChatPreview((current) => ({
+        sequence: ++previewSequence.current,
+        chatId: event.chatId,
+        senderName,
+        avatarUrl: event.message.avatar_url,
+        body: previewBody,
+        followUp: Boolean(current),
+      }));
+    }, setPresence);
     realtime.start();
     return () => realtime.stop();
   }, [user.id]);
+
+  useEffect(() => {
+    if (!readingChatId) return;
+    setUnreadByChat((current) => {
+      if (!current[readingChatId]) return current;
+      const next = { ...current };
+      delete next[readingChatId];
+      return next;
+    });
+    setChatPreview((current) => (current?.chatId === readingChatId ? undefined : current));
+  }, [readingChatId]);
+
+  useEffect(() => {
+    if (!chatPreview) return;
+    setChatPreviewClosing(false);
+    const hideAfter = chatPreview.followUp ? 3_200 : 5_000;
+    const closingTimer = window.setTimeout(() => setChatPreviewClosing(true), hideAfter);
+    const removeTimer = window.setTimeout(() => setChatPreview(undefined), hideAfter + 320);
+    return () => {
+      window.clearTimeout(closingTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [chatPreview]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -90,9 +177,17 @@ export function AccountSidebar({
   const choosePresence = (mode: PresenceMode) => {
     setPresenceMode(mode);
     setLocalPresenceMode(mode);
+    if (mode === 'dnd') {
+      setChatPreviewClosing(false);
+      setChatPreview(undefined);
+    }
   };
 
   const inlinePresence = getInlinePresence(presenceMode, presence);
+  const unreadChatCount = Math.min(
+    99,
+    Object.values(unreadByChat).reduce((total, count) => total + count, 0),
+  );
 
   return (
     <aside className="account-sidebar">
@@ -126,6 +221,7 @@ export function AccountSidebar({
           active={activePage === 'chats'}
           icon={<MessageCircle />}
           label="Чаты"
+          unread={unreadChatCount}
           onClick={() => onNavigate('chats')}
         />
         <Nav
@@ -135,6 +231,38 @@ export function AccountSidebar({
           onClick={() => onNavigate('history')}
         />
       </nav>
+      {chatPreview &&
+        !roomActive &&
+        createPortal(
+          <button
+            type="button"
+            className={`sidebar-chat-preview${chatPreviewClosing ? ' closing' : ''}${chatPreview.followUp ? ' follow-up' : ''}`}
+            aria-label={`Сообщение от ${chatPreview.senderName}: ${chatPreview.body}`}
+            onClick={() => {
+              setUnreadByChat((current) => {
+                const next = { ...current };
+                delete next[chatPreview.chatId];
+                return next;
+              });
+              setChatPreview(undefined);
+              onNavigate('chats');
+            }}
+          >
+            <span className="sidebar-chat-preview-avatar">
+              {chatPreview.avatarUrl ? (
+                <img src={chatPreview.avatarUrl} alt="" referrerPolicy="no-referrer" />
+              ) : (
+                chatPreview.senderName.slice(0, 1).toUpperCase()
+              )}
+            </span>
+            <span className="sidebar-chat-preview-copy">
+              <strong>{chatPreview.senderName}</strong>
+              <small>{chatPreview.body}</small>
+            </span>
+            <i aria-hidden="true" />
+          </button>,
+          document.body,
+        )}
       <div className="account-profile-menu-anchor" ref={profileMenuRef}>
         {menuOpen && (
           <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
@@ -312,23 +440,30 @@ function Nav({
   icon,
   label,
   live = false,
+  unread = 0,
   onClick,
 }: {
   active: boolean;
   icon: ReactNode;
   label: string;
   live?: boolean;
+  unread?: number;
   onClick(): void;
 }) {
   return (
     <button
       className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''}`}
-      aria-label={label}
+      aria-label={unread > 0 ? `${label}, непрочитанных сообщений: ${unread}` : label}
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
     >
       {icon}
       <span>{label}</span>
+      {unread > 0 && (
+        <b className="account-nav-unread" aria-hidden="true">
+          {unread >= 99 ? '99+' : unread}
+        </b>
+      )}
       {live && <i aria-label="Звонок продолжается" />}
     </button>
   );

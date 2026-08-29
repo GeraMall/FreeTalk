@@ -5,6 +5,7 @@ import {
   dataUrlToBlob,
   nextProfileChangeHistory,
   prepareAvatar,
+  prepareChatImage,
   prepareCover,
   remainingProfileChanges,
 } from './profile';
@@ -36,13 +37,14 @@ describe('profile change limiter', () => {
     );
   });
 
-  it('rejects avatar and cover source files over 25 MB before decoding', async () => {
+  it('rejects avatar, cover and chat source files over 25 MB before decoding', async () => {
     const oversized = {
       type: 'image/webp',
       size: MAX_PROFILE_IMAGE_INPUT_BYTES + 1,
     } as File;
     await expect(prepareAvatar(oversized)).rejects.toThrow('не больше 25 МБ');
     await expect(prepareCover(oversized)).rejects.toThrow('не больше 25 МБ');
+    await expect(prepareChatImage(oversized)).rejects.toThrow('не больше 25 МБ');
   });
 
   it('rejects unsupported source image formats before decoding', async () => {

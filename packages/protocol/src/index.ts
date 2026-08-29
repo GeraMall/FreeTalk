@@ -173,7 +173,7 @@ export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
 
 const realtimeChatMessage = z.object({
   id: z.string().uuid(),
-  kind: z.enum(['text', 'system', 'call']),
+  kind: z.enum(['text', 'system', 'call', 'image']),
   body: z.string().max(4000),
   metadata: z.record(z.string(), z.unknown()).optional(),
   sender_id: z.string().uuid().nullable(),
@@ -193,6 +193,14 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
   z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
+  z.object({
+    type: z.literal('chat-updated'),
+    chatId: z.string().uuid(),
+    avatarUrl: z.string().url().nullable(),
+    avatarPositionX: z.number().int().min(0).max(100),
+    avatarPositionY: z.number().int().min(0).max(100),
+    avatarScale: z.number().int().min(100).max(250),
+  }),
   z.object({
     type: z.literal('presence-updated'),
     userId: z.string().uuid(),

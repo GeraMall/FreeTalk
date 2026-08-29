@@ -1,9 +1,25 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountUser } from '../lib/api-client';
 import { AccountSidebar } from './AccountSidebar';
+
+const realtimeHarness = vi.hoisted(() => ({
+  onEvent: undefined as ((event: unknown) => void) | undefined,
+  onPresence: undefined as ((status: string) => void) | undefined,
+}));
+
+vi.mock('../lib/chat-realtime', () => ({
+  ChatRealtimeClient: class {
+    constructor(onEvent: (event: unknown) => void, onPresence?: (status: string) => void) {
+      realtimeHarness.onEvent = onEvent;
+      realtimeHarness.onPresence = onPresence;
+    }
+    start() {}
+    stop() {}
+  },
+}));
 
 const user: AccountUser = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -17,7 +33,11 @@ const user: AccountUser = {
   registeredAt: '2026-08-26T00:00:00.000Z',
 };
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  realtimeHarness.onEvent = undefined;
+  realtimeHarness.onPresence = undefined;
+});
 afterEach(cleanup);
 
 describe('AccountSidebar in an active room', () => {
@@ -167,5 +187,108 @@ describe('AccountSidebar in an active room', () => {
     fireEvent.click(getByRole('button', { name: 'Открыть свой профиль' }));
     fireEvent.pointerDown(document.body);
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();
+  });
+
+  it('shows an unread chat badge and an incoming message preview', () => {
+    const onNavigate = vi.fn();
+    const { getByRole, getByText } = render(
+      <AccountSidebar
+        user={user}
+        activePage="home"
+        onNavigate={onNavigate}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    act(() =>
+      realtimeHarness.onEvent?.({
+        type: 'message-created',
+        chatId: '22222222-2222-4222-8222-222222222222',
+        message: {
+          id: '33333333-3333-4333-8333-333333333333',
+          kind: 'text',
+          body: 'Ты уже заходишь?',
+          sender_id: '44444444-4444-4444-8444-444444444444',
+          display_name: 'Друг',
+          username: 'friend',
+          avatar_url: 'https://example.com/friend.webp',
+          created_at: '2026-08-28T20:00:00.000Z',
+          expires_at: null,
+        },
+      }),
+    );
+
+    expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
+    expect(getByText('Ты уже заходишь?')).toBeTruthy();
+    const preview = getByRole('button', { name: /Сообщение от Друг/ });
+    expect(preview.parentElement).toBe(document.body);
+    fireEvent.click(preview);
+    expect(onNavigate).toHaveBeenCalledWith('chats');
+    expect(getByRole('button', { name: 'Чаты' })).toBeTruthy();
+  });
+
+  it('keeps the unread badge but suppresses message previews in do-not-disturb mode', () => {
+    localStorage.setItem('freetalk.presence-mode', 'dnd');
+    const { getByRole, queryByText } = render(
+      <AccountSidebar
+        user={user}
+        activePage="home"
+        onNavigate={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    act(() =>
+      realtimeHarness.onEvent?.({
+        type: 'message-created',
+        chatId: '55555555-5555-4555-8555-555555555555',
+        message: {
+          id: '66666666-6666-4666-8666-666666666666',
+          kind: 'text',
+          body: 'Без всплывающего уведомления',
+          sender_id: '77777777-7777-4777-8777-777777777777',
+          display_name: 'Друг',
+          created_at: '2026-08-28T20:01:00.000Z',
+          expires_at: null,
+        },
+      }),
+    );
+
+    expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
+    expect(queryByText('Без всплывающего уведомления')).toBeNull();
+  });
+
+  it('keeps the unread badge but suppresses message previews during a call', () => {
+    const { getByRole, queryByText } = render(
+      <AccountSidebar
+        user={user}
+        activePage="room"
+        roomActive
+        onNavigate={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    act(() =>
+      realtimeHarness.onEvent?.({
+        type: 'message-created',
+        chatId: '88888888-8888-4888-8888-888888888888',
+        message: {
+          id: '99999999-9999-4999-8999-999999999999',
+          kind: 'text',
+          body: 'Не перекрывать звонок',
+          sender_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          display_name: 'Друг',
+          created_at: '2026-08-28T20:02:00.000Z',
+          expires_at: null,
+        },
+      }),
+    );
+
+    expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
+    expect(queryByText('Не перекрывать звонок')).toBeNull();
   });
 });

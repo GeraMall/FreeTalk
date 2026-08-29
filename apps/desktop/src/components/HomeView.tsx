@@ -3,7 +3,11 @@ import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { generateRoomCode } from '../lib/room-code';
-import { uniqueCallParticipants, type CallHistoryParticipant } from '../lib/call-history';
+import {
+  hasConversationParticipants,
+  uniqueCallParticipants,
+  type CallHistoryParticipant,
+} from '../lib/call-history';
 import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
 import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
@@ -35,6 +39,7 @@ export function HomeView({
   onClearError,
   page: controlledPage,
   onPageChange,
+  onActiveChatChange,
   embedded = false,
 }: {
   user: AccountUser;
@@ -47,6 +52,7 @@ export function HomeView({
   onClearError?(): void;
   page?: AccountPage;
   onPageChange?(page: AccountPage): void;
+  onActiveChatChange?(chatId?: string): void;
   embedded?: boolean;
 }) {
   const [internalPage, setInternalPage] = useState<AccountPage>('home');
@@ -75,6 +81,11 @@ export function HomeView({
   useEffect(() => {
     activeChatRef.current = activeChat;
   }, [activeChat]);
+
+  useEffect(() => {
+    onActiveChatChange?.(activeChat);
+    return () => onActiveChatChange?.(undefined);
+  }, [activeChat, onActiveChatChange]);
 
   useEffect(() => {
     if (!navigationInitialized.current) {
@@ -183,6 +194,20 @@ export function HomeView({
           .catch(() => {
             // The next normal page refresh will retry without interrupting realtime chat.
           });
+      } else if (event.type === 'chat-updated') {
+        setChats((current) =>
+          current.map((chat) =>
+            chat.id === event.chatId
+              ? {
+                  ...chat,
+                  avatarUrl: event.avatarUrl,
+                  avatarPositionX: event.avatarPositionX,
+                  avatarPositionY: event.avatarPositionY,
+                  avatarScale: event.avatarScale,
+                }
+              : chat,
+          ),
+        );
       } else if (event.type === 'presence-updated') {
         setFriends((current) =>
           current.map((friend) =>
@@ -253,8 +278,10 @@ export function HomeView({
         setChats(chatResult.chats);
         setFriends(friendResult.friends);
       }
-      if (next === 'home' || next === 'history')
-        setHistory((await accountClient.request<{ calls: CallItem[] }>('/v1/history')).calls);
+      if (next === 'home' || next === 'history') {
+        const result = await accountClient.request<{ calls: CallItem[] }>('/v1/history');
+        setHistory(result.calls.filter((call) => hasConversationParticipants(call.participants)));
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Ошибка загрузки';
       if (next === 'friends') setFriendsLoadError(message);
@@ -337,6 +364,20 @@ export function HomeView({
     }
   };
 
+  const sendImage = async (dataUrl: string, caption: string) => {
+    if (!activeChat) return false;
+    try {
+      const result = await accountClient.uploadChatImage<MessageItem>(activeChat, dataUrl, caption);
+      setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, activeChat, result.message));
+      setSentMessageVersion((version) => version + 1);
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить фотографию');
+      return false;
+    }
+  };
+
   const startDirectChat = async (friendId: string) => {
     try {
       const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
@@ -377,6 +418,44 @@ export function HomeView({
       setLocalError('Ссылка-приглашение скопирована');
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать приглашение');
+    }
+  };
+
+  const updateGroupAvatar = async (
+    chatId: string,
+    dataUrl: string | undefined,
+    positionX: number,
+    positionY: number,
+    scale: number,
+  ) => {
+    try {
+      const result = await accountClient.updateGroupAvatar(
+        chatId,
+        dataUrl,
+        positionX,
+        positionY,
+        scale,
+      );
+      setChats((current) =>
+        current.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                avatarUrl: result.avatarUrl,
+                avatarPositionX: result.avatarPositionX,
+                avatarPositionY: result.avatarPositionY,
+                avatarScale: result.avatarScale,
+              }
+            : chat,
+        ),
+      );
+      setLocalError('Аватар группы сохранён');
+      return true;
+    } catch (caught) {
+      setLocalError(
+        caught instanceof Error ? caught.message : 'Не удалось сохранить аватар группы',
+      );
+      return false;
     }
   };
 
@@ -490,6 +569,7 @@ export function HomeView({
         <AccountSidebar
           user={user}
           activePage={page}
+          readingChatId={activeChat}
           onNavigate={(next) => next !== 'room' && navigatePage(next)}
           onSettings={onSettings}
           onLogout={onLogout}
@@ -500,6 +580,7 @@ export function HomeView({
       >
         <TransientNotice
           message={error || localError}
+          tone={!error && localError === 'Аватар группы сохранён' ? 'success' : 'error'}
           onDismiss={() => {
             setLocalError('');
             onClearError?.();
@@ -653,10 +734,12 @@ export function HomeView({
             onRetryMessages={() => activeChat && void loadChatMessages(activeChat)}
             onLoadOlder={loadOlderMessages}
             onSendMessage={sendMessage}
+            onSendImage={sendImage}
             onCreateGroup={createGroup}
             onJoinInvite={joinInvite}
             onStartCall={startChatCall}
             onCreateInvite={createInvite}
+            onUpdateGroupAvatar={updateGroupAvatar}
             onUpdateRetention={updateChatRetention}
             onClearHistory={clearChatHistory}
             onBlockUser={blockChatUser}
@@ -748,7 +831,8 @@ export function RecentRooms({
   loading: boolean;
   onCreateAgain(): void;
 }) {
-  const recent = [...calls]
+  const recent = calls
+    .filter((call) => hasConversationParticipants(call.participants))
     .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))
     .slice(0, 4);
   return (
@@ -826,7 +910,15 @@ export function RecentRooms({
   );
 }
 
-export function TransientNotice({ message, onDismiss }: { message: string; onDismiss(): void }) {
+export function TransientNotice({
+  message,
+  tone = 'error',
+  onDismiss,
+}: {
+  message: string;
+  tone?: 'success' | 'error';
+  onDismiss(): void;
+}) {
   const [closing, setClosing] = useState(false);
   const onDismissRef = useRef(onDismiss);
   useEffect(() => {
@@ -844,7 +936,10 @@ export function TransientNotice({ message, onDismiss }: { message: string; onDis
   }, [message]);
   if (!message) return null;
   return (
-    <div className={`home-transient-notice ${closing ? 'closing' : ''}`} role="alert">
+    <div
+      className={`home-transient-notice ${tone} ${closing ? 'closing' : ''}`}
+      role={tone === 'error' ? 'alert' : 'status'}
+    >
       {message}
     </div>
   );
@@ -863,7 +958,7 @@ function promoteChat(chats: ChatItem[], chatId: string, message: MessageItem) {
   return [
     {
       ...changed,
-      lastMessage: message.body,
+      lastMessage: message.kind === 'image' ? message.body || 'Фотография' : message.body,
       lastMessageAt: message.created_at,
       lastMessageKind: message.kind,
     },

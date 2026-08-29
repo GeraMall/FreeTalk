@@ -60,6 +60,35 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('2097152');
   });
 
+  it('adds a bounded group avatar with persisted crop coordinates', async () => {
+    const path = fileURLToPath(new URL('../migrations/005_group_chat_avatar.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('add column avatar_data');
+    expect(sql).toContain('avatar_position_x');
+    expect(sql).toContain('avatar_position_y');
+    expect(sql).toContain('1572864');
+    expect(sql).toContain('between 0 and 100');
+  });
+
+  it('persists a bounded group avatar zoom level', async () => {
+    const path = fileURLToPath(
+      new URL('../migrations/006_group_chat_avatar_scale.sql', import.meta.url),
+    );
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('add column avatar_scale');
+    expect(sql).toContain('between 100 and 250');
+  });
+
+  it('adds protected and size-bounded image messages', async () => {
+    const path = fileURLToPath(new URL('../migrations/007_chat_images.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain("kind in ('text','system','call','image')");
+    expect(sql).toContain('create table message_images');
+    expect(sql).toContain('on delete cascade');
+    expect(sql).toContain('3145728');
+    expect(sql).toContain('between 1 and 8192');
+  });
+
   it('uses one explicit PostgreSQL type for repeated room-id parameters', async () => {
     const path = fileURLToPath(new URL('../src/server.ts', import.meta.url));
     const source = await readFile(path, 'utf8');

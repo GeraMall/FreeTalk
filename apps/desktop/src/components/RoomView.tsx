@@ -542,14 +542,22 @@ export function RoomView({
           </div>
           <button
             className={`dock-control dock-control-secondary room-chat-control ${chatOpen ? 'active' : ''}`}
-            aria-label="Чат комнаты"
+            aria-label={
+              unreadChatCount > 0
+                ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
+                : 'Чат комнаты'
+            }
             aria-expanded={chatOpen}
             title="Чат комнаты"
             onClick={toggleRoomChat}
           >
             <span className="dock-icon">
               <MessageCircle />
-              {unreadChatCount > 0 && <b className="room-chat-badge">{unreadChatCount}</b>}
+              {unreadChatCount > 0 && (
+                <b className="room-chat-badge" aria-hidden="true">
+                  {unreadChatCount}
+                </b>
+              )}
             </span>
             <span className="dock-label">
               <strong>Чат</strong>

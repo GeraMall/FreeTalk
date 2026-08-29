@@ -1,6 +1,6 @@
 mod diagnostics;
-mod signaling;
 mod secure_session;
+mod signaling;
 
 #[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
@@ -10,6 +10,12 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+#[cfg(desktop)]
+fn persisted_window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +28,11 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(persisted_window_state_flags())
+                .build(),
+        )
         .manage(signaling::NativeSignalingState::default())
         .invoke_handler(tauri::generate_handler![
             diagnostics::save_connection_diagnostics,
@@ -34,9 +45,17 @@ pub fn run() {
             secure_session::secure_session_clear
         ])
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            use tauri::Manager;
+
+            let first_launch_marker = app
+                .path()
+                .app_config_dir()?
+                .join("window-state-initialized");
+            let first_launch = !first_launch_marker.exists();
             let mut window = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -49,6 +68,7 @@ pub fn run() {
             .maximizable(true)
             .minimizable(true)
             .closable(true)
+            .maximized(first_launch)
             .center();
 
             #[cfg(target_os = "windows")]
@@ -59,7 +79,15 @@ pub fn run() {
             if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {
                 window = window.data_directory(std::path::PathBuf::from(directory));
             }
-            window.build()?;
+            let main_window = window.build()?;
+
+            if first_launch {
+                if let Some(parent) = first_launch_marker.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&first_launch_marker, b"1");
+                let _ = main_window.maximize();
+            }
 
             #[cfg(desktop)]
             {
@@ -99,6 +127,12 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::Manager;
+                use tauri_plugin_window_state::AppHandleExt;
+
+                let _ = window
+                    .app_handle()
+                    .save_window_state(persisted_window_state_flags());
                 api.prevent_close();
                 let _ = window.hide();
             }

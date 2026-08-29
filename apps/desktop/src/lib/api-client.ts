@@ -217,6 +217,55 @@ export class AccountClient {
     return this.request('/v1/me/cover', { method: 'DELETE' });
   }
 
+  async updateGroupAvatar(
+    chatId: string,
+    dataUrl: string | undefined,
+    positionX: number,
+    positionY: number,
+    scale: number,
+  ) {
+    const path = `/v1/chats/${chatId}/avatar`;
+    if (!dataUrl)
+      return this.request<{
+        avatarUrl: string;
+        avatarPositionX: number;
+        avatarPositionY: number;
+        avatarScale: number;
+      }>(path, {
+        method: 'PATCH',
+        body: JSON.stringify({ positionX, positionY, scale }),
+      });
+    const blob = dataUrlToBlob(dataUrl);
+    const form = new FormData();
+    form.append('avatar', blob, `group-avatar.${blob.type.split('/')[1] || 'webp'}`);
+    return this.request<{
+      avatarUrl: string;
+      avatarPositionX: number;
+      avatarPositionY: number;
+      avatarScale: number;
+    }>(`${path}?positionX=${positionX}&positionY=${positionY}&scale=${scale}`, {
+      method: 'POST',
+      body: form,
+    });
+  }
+
+  async uploadChatImage<T>(chatId: string, dataUrl: string, caption = '') {
+    const blob = dataUrlToBlob(dataUrl);
+    const form = new FormData();
+    form.append('image', blob, `chat-image.${blob.type.split('/')[1] || 'webp'}`);
+    const query = caption.trim() ? `?caption=${encodeURIComponent(caption.trim())}` : '';
+    return this.request<{ message: T }>(`/v1/chats/${chatId}/images${query}`, {
+      method: 'POST',
+      body: form,
+    });
+  }
+
+  async chatImageBlob(messageId: string) {
+    const response = await this.authenticatedFetch(`/v1/messages/${messageId}/image`);
+    if (!response.ok) return decode<never>(response);
+    return response.blob();
+  }
+
   async deleteAccount(password: string) {
     await this.request('/v1/me', {
       method: 'DELETE',
@@ -244,6 +293,14 @@ export class AccountClient {
   }
 
   async request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+    return decode<T>(await this.authenticatedFetch(path, init, retry));
+  }
+
+  private async authenticatedFetch(
+    path: string,
+    init: RequestInit = {},
+    retry = true,
+  ): Promise<Response> {
     if (!this.accessToken) throw new ApiError('UNAUTHORIZED', 'Требуется вход', 401);
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
@@ -260,10 +317,10 @@ export class AccountClient {
           refreshInFlight = undefined;
         });
         await refreshInFlight;
-        return this.request(path, init, false);
+        return this.authenticatedFetch(path, init, false);
       }
     }
-    return decode<T>(response);
+    return response;
   }
 
   private async publicRequest<T>(path: string, init: RequestInit = {}) {

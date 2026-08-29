@@ -7,15 +7,19 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
   ArrowDown,
   Ban,
   Check,
   Clock3,
+  Crown,
+  ImagePlus,
   Link2,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   PanelRightClose,
   PanelRightOpen,
   Phone,
@@ -23,14 +27,35 @@ import {
   RefreshCw,
   Search,
   Send,
+  Save,
   Trash2,
   UserPlus,
   Users,
   X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { isNearBottom } from '../lib/chat-scroll';
 import { accountClient } from '../lib/api-client';
+import { prepareChatImage, prepareGroupAvatar } from '../lib/profile';
 import type { PresenceStatus } from '@freetalk/protocol';
+
+const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
+const CHAT_SIDEBAR_MIN_WIDTH = 190;
+
+function defaultChatSidebarWidth() {
+  if (typeof window === 'undefined') return 330;
+  if (window.innerWidth <= 1280) return 300;
+  return Math.min(330, Math.max(280, window.innerWidth * 0.23));
+}
+
+function storedChatSidebarWidth() {
+  if (typeof window === 'undefined') return undefined;
+  const raw = window.localStorage.getItem(CHAT_SIDEBAR_WIDTH_KEY);
+  if (raw === null) return undefined;
+  const stored = Number(raw);
+  if (!Number.isFinite(stored)) return undefined;
+  return Math.min(defaultChatSidebarWidth(), Math.max(CHAT_SIDEBAR_MIN_WIDTH, stored));
+}
 
 export interface ChatMember {
   id: string;
@@ -38,6 +63,7 @@ export interface ChatMember {
   displayName: string;
   avatarUrl?: string | null;
   presence?: PresenceStatus;
+  role?: 'owner' | 'admin' | 'member';
 }
 
 interface ChatProfile {
@@ -64,6 +90,10 @@ export interface ChatItem {
   retentionHours?: 24 | 168 | 720 | null;
   currentUserRole?: 'owner' | 'admin' | 'member';
   unreadCount?: number;
+  avatarUrl?: string | null;
+  avatarPositionX?: number;
+  avatarPositionY?: number;
+  avatarScale?: number;
 }
 
 export interface MessageItem {
@@ -76,7 +106,7 @@ export interface MessageItem {
   avatar_url?: string | null;
   created_at: string;
   expires_at: string | null;
-  metadata?: { roomId?: string };
+  metadata?: { roomId?: string; width?: number; height?: number };
 }
 
 interface FriendOption {
@@ -101,6 +131,7 @@ interface ChatsPageProps {
   onRetryMessages(): void;
   onLoadOlder?(): Promise<void>;
   onSendMessage(body: string): Promise<boolean>;
+  onSendImage?(dataUrl: string, caption: string): Promise<boolean>;
   onCreateGroup(title: string, memberIds: string[]): Promise<boolean>;
   onJoinInvite(token: string): Promise<boolean>;
   onStartCall(): Promise<void>;
@@ -109,6 +140,13 @@ interface ChatsPageProps {
   onClearHistory(): Promise<void>;
   onBlockUser?(userId: string): Promise<void>;
   onLeaveChat?(): Promise<void>;
+  onUpdateGroupAvatar?(
+    chatId: string,
+    dataUrl: string | undefined,
+    positionX: number,
+    positionY: number,
+    scale: number,
+  ): Promise<boolean>;
   onAddMember(username: string): Promise<boolean>;
   onJoinCall(roomId: string): void;
 }
@@ -129,6 +167,7 @@ export function ChatsPage({
   onRetryMessages,
   onLoadOlder = async () => {},
   onSendMessage,
+  onSendImage = async () => false,
   onCreateGroup,
   onJoinInvite,
   onStartCall,
@@ -137,6 +176,7 @@ export function ChatsPage({
   onClearHistory,
   onBlockUser = async () => {},
   onLeaveChat = async () => {},
+  onUpdateGroupAvatar = async () => false,
   onAddMember,
   onJoinCall,
 }: ChatsPageProps) {
@@ -152,18 +192,87 @@ export function ChatsPage({
   const [confirmClear, setConfirmClear] = useState(false);
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
+  const [showGroupAvatarEditor, setShowGroupAvatarEditor] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
+  const [chatSidebarWidth, setChatSidebarWidth] = useState<number | undefined>(
+    storedChatSidebarWidth,
+  );
+  const conversationSidebarRef = useRef<HTMLElement>(null);
+  const resizeStateRef = useRef<
+    | {
+        pointerId: number;
+        startX: number;
+        startWidth: number;
+        maxWidth: number;
+      }
+    | undefined
+  >(undefined);
+  const chatSidebarWidthRef = useRef(chatSidebarWidth);
+
+  const updateChatSidebarWidth = (width: number) => {
+    const nextWidth = Math.min(defaultChatSidebarWidth(), Math.max(CHAT_SIDEBAR_MIN_WIDTH, width));
+    chatSidebarWidthRef.current = nextWidth;
+    setChatSidebarWidth(nextWidth);
+  };
+
+  const startChatSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button > 0 || window.innerWidth <= 700) return;
+    const maxWidth = defaultChatSidebarWidth();
+    const measuredWidth = conversationSidebarRef.current?.getBoundingClientRect().width ?? 0;
+    const startWidth = chatSidebarWidthRef.current ?? (measuredWidth || maxWidth);
+    resizeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: Math.min(maxWidth, Math.max(CHAT_SIDEBAR_MIN_WIDTH, startWidth)),
+      maxWidth,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const resizeChatSidebar = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = resizeStateRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    updateChatSidebarWidth(resize.startWidth + event.clientX - resize.startX);
+  };
+
+  const finishChatSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = resizeStateRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizeStateRef.current = undefined;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const width = chatSidebarWidthRef.current;
+    if (width !== undefined) window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(width));
+  };
+
+  const resizeChatSidebarWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const current =
+      chatSidebarWidthRef.current ??
+      conversationSidebarRef.current?.getBoundingClientRect().width ??
+      defaultChatSidebarWidth();
+    updateChatSidebarWidth(current + (event.key === 'ArrowLeft' ? -12 : 12));
+    window.localStorage.setItem(
+      CHAT_SIDEBAR_WIDTH_KEY,
+      String(chatSidebarWidthRef.current ?? current),
+    );
+  };
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const retentionHours = activeChat?.retentionHours === undefined ? 720 : activeChat.retentionHours;
-  const profileTarget = activeChat?.members.find((member) => member.id !== userId);
+  const profileTarget =
+    activeChat?.type === 'direct'
+      ? activeChat.members.find((member) => member.id !== userId)
+      : undefined;
   const profileTargetId = profileTarget?.id;
   useEffect(() => {
     setConfirmClear(false);
     setShowChatMenu(false);
     setShowChatSettings(false);
+    setShowGroupAvatarEditor(false);
   }, [activeChatId]);
   useEffect(() => {
     if (!profileTargetId) {
@@ -234,8 +343,19 @@ export function ChatsPage({
   };
 
   return (
-    <div className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}`}>
-      <aside className="conversation-sidebar" aria-label="Список чатов">
+    <div
+      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}`}
+      style={
+        chatSidebarWidth
+          ? ({ '--conversation-sidebar-width': `${chatSidebarWidth}px` } as CSSProperties)
+          : undefined
+      }
+    >
+      <aside
+        ref={conversationSidebarRef}
+        className="conversation-sidebar"
+        aria-label="Список чатов"
+      >
         <header className="conversation-sidebar-header">
           <div>
             <p className="messenger-eyebrow">СООБЩЕНИЯ</p>
@@ -378,6 +498,22 @@ export function ChatsPage({
         </div>
       </aside>
 
+      <div
+        className="conversation-sidebar-resizer"
+        role="separator"
+        aria-label="Изменить ширину списка чатов"
+        aria-orientation="vertical"
+        aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
+        aria-valuemax={Math.round(defaultChatSidebarWidth())}
+        aria-valuenow={Math.round(chatSidebarWidth ?? defaultChatSidebarWidth())}
+        tabIndex={0}
+        onPointerDown={startChatSidebarResize}
+        onPointerMove={resizeChatSidebar}
+        onPointerUp={finishChatSidebarResize}
+        onPointerCancel={finishChatSidebarResize}
+        onKeyDown={resizeChatSidebarWithKeyboard}
+      />
+
       <section className="active-conversation" aria-label="Активный чат">
         {activeChat ? (
           <>
@@ -389,6 +525,7 @@ export function ChatsPage({
               actionBusy={actionBusy}
               profileVisible={profileVisible}
               showMenu={showChatMenu}
+              showAvatarEditor={showGroupAvatarEditor}
               onMemberUsername={setMemberUsername}
               onToggleMember={() => setShowMember((visible) => !visible)}
               onAddMember={() => void addMember()}
@@ -396,6 +533,13 @@ export function ChatsPage({
               onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
               onToggleProfile={() => setProfileVisible((visible) => !visible)}
               onToggleMenu={() => setShowChatMenu((visible) => !visible)}
+              onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
+              onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
+              onSaveAvatar={(dataUrl, positionX, positionY, scale) =>
+                runAction('group-avatar', () =>
+                  onUpdateGroupAvatar(activeChat.id, dataUrl, positionX, positionY, scale),
+                )
+              }
             />
             {showChatMenu && (
               <div className="chat-actions-popover" role="menu">
@@ -467,8 +611,13 @@ export function ChatsPage({
               onRetry={onRetryMessages}
               onLoadOlder={onLoadOlder}
               onJoinCall={onJoinCall}
+              onJoinInvite={onJoinInvite}
             />
-            <MessageComposer disabled={messagesLoading} onSend={onSendMessage} />
+            <MessageComposer
+              disabled={messagesLoading}
+              onSend={onSendMessage}
+              onSendImage={onSendImage}
+            />
           </>
         ) : (
           <ChatEmptyState />
@@ -481,6 +630,7 @@ export function ChatsPage({
           fallback={profileTarget}
           groupTitle={activeChat.type === 'group' ? chatName(activeChat, userId) : undefined}
           members={activeChat.members}
+          onInvite={() => setShowMember(true)}
         />
       )}
     </div>
@@ -500,13 +650,16 @@ function ChatListItem({
 }) {
   const name = chatName(chat, userId);
   const other = chat.members.find((member) => member.id !== userId);
-  const preview = chat.lastMessage
-    ? chat.lastMessageKind === 'call'
-      ? 'Начат голосовой звонок'
+  const preview =
+    chat.lastMessageKind === 'image'
+      ? chat.lastMessage || 'Фотография'
       : chat.lastMessage
-    : chat.type === 'group'
-      ? `${chat.members.length} участников`
-      : 'Откройте беседу';
+        ? chat.lastMessageKind === 'call'
+          ? 'Начат голосовой звонок'
+          : chat.lastMessage
+        : chat.type === 'group'
+          ? `${chat.members.length} участников`
+          : 'Откройте беседу';
   return (
     <button
       className={`conversation-card ${active ? 'active' : ''}`}
@@ -514,7 +667,14 @@ function ChatListItem({
       aria-current={active ? 'true' : undefined}
       onClick={onClick}
     >
-      <ChatAvatar name={name} group={chat.type === 'group'} avatarUrl={other?.avatarUrl} />
+      <ChatAvatar
+        name={name}
+        group={chat.type === 'group'}
+        avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+        positionX={chat.avatarPositionX}
+        positionY={chat.avatarPositionY}
+        scale={chat.avatarScale}
+      />
       <span className="conversation-card-copy">
         <strong>{name}</strong>
         <small>
@@ -539,6 +699,7 @@ function ChatHeader({
   actionBusy,
   profileVisible,
   showMenu,
+  showAvatarEditor,
   onMemberUsername,
   onToggleMember,
   onAddMember,
@@ -546,6 +707,9 @@ function ChatHeader({
   onCreateInvite,
   onToggleProfile,
   onToggleMenu,
+  onToggleAvatarEditor,
+  onCloseAvatarEditor,
+  onSaveAvatar,
 }: {
   chat: ChatItem;
   userId: string;
@@ -554,6 +718,7 @@ function ChatHeader({
   actionBusy: string;
   profileVisible: boolean;
   showMenu: boolean;
+  showAvatarEditor: boolean;
   onMemberUsername(value: string): void;
   onToggleMember(): void;
   onAddMember(): void;
@@ -561,12 +726,42 @@ function ChatHeader({
   onCreateInvite(): void;
   onToggleProfile(): void;
   onToggleMenu(): void;
+  onToggleAvatarEditor(): void;
+  onCloseAvatarEditor(): void;
+  onSaveAvatar(
+    dataUrl: string | undefined,
+    positionX: number,
+    positionY: number,
+    scale: number,
+  ): Promise<boolean>;
 }) {
   const name = chatName(chat, userId);
   const other = chat.members.find((member) => member.id !== userId);
+  const canEditAvatar =
+    chat.type === 'group' && ['owner', 'admin'].includes(chat.currentUserRole ?? '');
   return (
     <header className="active-chat-header">
-      <ChatAvatar name={name} group={chat.type === 'group'} avatarUrl={other?.avatarUrl} />
+      {chat.type === 'group' ? (
+        <button
+          className="group-avatar-trigger"
+          title={canEditAvatar ? 'Изменить аватар группы' : 'Аватар группы'}
+          aria-label={canEditAvatar ? 'Изменить аватар группы' : 'Аватар группы'}
+          aria-expanded={canEditAvatar ? showAvatarEditor : undefined}
+          disabled={!canEditAvatar}
+          onClick={onToggleAvatarEditor}
+        >
+          <ChatAvatar
+            name={name}
+            group
+            avatarUrl={chat.avatarUrl}
+            positionX={chat.avatarPositionX}
+            positionY={chat.avatarPositionY}
+            scale={chat.avatarScale}
+          />
+        </button>
+      ) : (
+        <ChatAvatar name={name} group={false} avatarUrl={other?.avatarUrl} />
+      )}
       <div className="active-chat-identity">
         <strong>{name}</strong>
         <small>
@@ -644,7 +839,207 @@ function ChatHeader({
           </button>
         </div>
       )}
+      {showAvatarEditor && canEditAvatar && (
+        <GroupAvatarEditor
+          key={`${chat.id}-${chat.avatarUrl ?? 'empty'}`}
+          chat={chat}
+          busy={actionBusy === 'group-avatar'}
+          onClose={onCloseAvatarEditor}
+          onSave={onSaveAvatar}
+        />
+      )}
     </header>
+  );
+}
+
+function GroupAvatarEditor({
+  chat,
+  busy,
+  onClose,
+  onSave,
+}: {
+  chat: ChatItem;
+  busy: boolean;
+  onClose(): void;
+  onSave(
+    dataUrl: string | undefined,
+    positionX: number,
+    positionY: number,
+    scale: number,
+  ): Promise<boolean>;
+}) {
+  const [dataUrl, setDataUrl] = useState<string>();
+  const [position, setPosition] = useState({
+    x: chat.avatarPositionX ?? 50,
+    y: chat.avatarPositionY ?? 50,
+  });
+  const [scale, setScale] = useState(chat.avatarScale ?? 100);
+  const [error, setError] = useState('');
+  const [closing, setClosing] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const closeTimerRef = useRef<number | undefined>(undefined);
+  const dragRef = useRef<
+    { pointerId: number; x: number; y: number; positionX: number; positionY: number } | undefined
+  >(undefined);
+  const previewUrl = dataUrl ?? chat.avatarUrl ?? undefined;
+
+  const closeSmoothly = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(onClose, 190);
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!editorRef.current?.contains(event.target as Node)) closeSmoothly();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [closeSmoothly]);
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current !== undefined) window.clearTimeout(closeTimerRef.current);
+    },
+    [],
+  );
+
+  const chooseFile = async (file?: File) => {
+    if (!file) return;
+    setError('');
+    try {
+      setDataUrl(await prepareGroupAvatar(file));
+      setPosition({ x: 50, y: 50 });
+      setScale(110);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось обработать изображение');
+    }
+  };
+
+  const movePreview = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+    setPosition({
+      x: clamp(drag.positionX + ((event.clientX - drag.x) / rect.width) * 100),
+      y: clamp(drag.positionY + ((event.clientY - drag.y) / rect.height) * 100),
+    });
+  };
+
+  const finishPreviewDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = undefined;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  return (
+    <div
+      ref={editorRef}
+      className={`group-avatar-editor${closing ? ' closing' : ''}`}
+      role="dialog"
+      aria-label="Аватар группы"
+    >
+      <div className="group-avatar-editor-heading">
+        <div>
+          <strong>Аватар группы</strong>
+          <small>Перетащите фото внутри круга</small>
+        </div>
+        <button
+          type="button"
+          aria-label="Закрыть"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={closeSmoothly}
+        >
+          <X />
+        </button>
+      </div>
+      <div
+        className={`group-avatar-crop ${previewUrl ? 'has-image' : ''}`}
+        onPointerDown={(event) => {
+          if (!previewUrl) return;
+          if (scale <= 100) setScale(110);
+          dragRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            positionX: position.x,
+            positionY: position.y,
+          };
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        }}
+        onPointerMove={movePreview}
+        onPointerUp={finishPreviewDrag}
+        onPointerCancel={finishPreviewDrag}
+      >
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt="Предпросмотр аватара группы"
+            draggable={false}
+            style={avatarImageStyle(position.x, position.y, scale)}
+          />
+        ) : (
+          <Users />
+        )}
+        <button
+          className="group-avatar-pencil"
+          type="button"
+          aria-label="Выбрать изображение"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            fileRef.current?.click();
+          }}
+        >
+          <Pencil />
+        </button>
+      </div>
+      <input
+        ref={fileRef}
+        className="sr-only"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(event) => void chooseFile(event.target.files?.[0])}
+      />
+      {error && (
+        <p className="group-avatar-error" role="alert">
+          {error}
+        </p>
+      )}
+      {previewUrl && (
+        <label className="group-avatar-scale">
+          <span>Размер</span>
+          <input
+            type="range"
+            min="100"
+            max="250"
+            step="5"
+            value={scale}
+            aria-label="Размер аватара"
+            onChange={(event) => setScale(Number(event.target.value))}
+          />
+          <output>{scale}%</output>
+        </label>
+      )}
+      <div className="group-avatar-editor-actions">
+        <span>
+          {position.x}% · {position.y}%
+        </span>
+        <button
+          type="button"
+          disabled={busy || !previewUrl}
+          onClick={() =>
+            void onSave(dataUrl, position.x, position.y, scale).then((saved) => {
+              if (saved) closeSmoothly();
+            })
+          }
+        >
+          <Save /> {busy ? 'Сохранение…' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -654,13 +1049,48 @@ function ProfilePanel({
   fallback,
   groupTitle,
   members,
+  onInvite,
 }: {
   profile?: ChatProfile;
   loading: boolean;
   fallback?: ChatMember;
   groupTitle?: string;
   members: ChatMember[];
+  onInvite(): void;
 }) {
+  if (groupTitle)
+    return (
+      <aside className="chat-profile-panel group-members-panel" aria-label="Участники группы">
+        <section className="group-members-heading">
+          <p>Участники — {members.length}</p>
+          <h2>{groupTitle}</h2>
+        </section>
+        <div className="group-members-list">
+          {[...members]
+            .sort((first, second) =>
+              first.role === 'owner' ? -1 : second.role === 'owner' ? 1 : 0,
+            )
+            .map((member) => (
+              <div className="group-member-row" key={member.id}>
+                <ChatAvatar
+                  name={member.displayName}
+                  group={false}
+                  avatarUrl={member.avatarUrl}
+                  compact
+                />
+                <span>
+                  <strong>{member.displayName}</strong>
+                  <small>{presenceLabel(member.presence)}</small>
+                </span>
+                {member.role === 'owner' && <Crown aria-label="Владелец группы" />}
+              </div>
+            ))}
+        </div>
+        <button className="group-members-invite" onClick={onInvite}>
+          <UserPlus /> Пригласить в группу
+        </button>
+      </aside>
+    );
   if (loading)
     return (
       <aside className="chat-profile-panel" aria-label="Профиль собеседника" aria-busy="true">
@@ -703,14 +1133,6 @@ function ProfilePanel({
         </div>
         <p>{profile?.mutualFriendsCount ?? 0} общих друзей</p>
       </section>
-      {groupTitle && (
-        <section className="chat-profile-block">
-          <h3>УЧАСТНИКИ ЧАТА</h3>
-          <p>
-            {members.length} участников · {groupTitle}
-          </p>
-        </section>
-      )}
       {profile?.registeredAt && (
         <footer>
           В FreeTalk с{' '}
@@ -743,6 +1165,7 @@ export function MessageList({
   onRetry,
   onLoadOlder = async () => {},
   onJoinCall,
+  onJoinInvite = async () => false,
 }: {
   chatId: string;
   userId: string;
@@ -755,6 +1178,7 @@ export function MessageList({
   onRetry(): void;
   onLoadOlder?(): Promise<void>;
   onJoinCall(roomId: string): void;
+  onJoinInvite?(token: string): Promise<boolean>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -886,6 +1310,7 @@ export function MessageList({
                       own={message.sender_id === userId}
                       grouped={grouped}
                       showAuthor={groupChat && !grouped && message.sender_id !== userId}
+                      onJoinInvite={onJoinInvite}
                     />
                   )}
                 </div>
@@ -910,12 +1335,15 @@ function MessageBubble({
   own,
   grouped,
   showAuthor,
+  onJoinInvite,
 }: {
   message: MessageItem;
   own: boolean;
   grouped: boolean;
   showAuthor: boolean;
+  onJoinInvite(token: string): Promise<boolean>;
 }) {
+  const inviteToken = extractChatInviteToken(message.body);
   return (
     <article className={`message-bubble-row ${own ? 'own' : 'remote'} ${grouped ? 'grouped' : ''}`}>
       {!grouped && (
@@ -928,10 +1356,214 @@ function MessageBubble({
       )}
       <div className="message-bubble">
         {showAuthor && <strong>{message.display_name || message.username || 'Участник'}</strong>}
-        <p>{message.body}</p>
+        {message.kind === 'image' ? (
+          <ChatImageMessage message={message} />
+        ) : inviteToken ? (
+          <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
+        ) : (
+          <p>{message.body}</p>
+        )}
         <time>{formatMessageTime(message.created_at)}</time>
       </div>
     </article>
+  );
+}
+
+interface InvitePreview {
+  id: string;
+  title: string;
+  memberCount: number;
+  avatarUrl: string | null;
+  avatarPositionX: number;
+  avatarPositionY: number;
+  avatarScale: number;
+  isMember: boolean;
+}
+
+function InviteMessageCard({
+  token,
+  onJoin,
+}: {
+  token: string;
+  onJoin(token: string): Promise<boolean>;
+}) {
+  const [preview, setPreview] = useState<InvitePreview>();
+  const [failed, setFailed] = useState(false);
+  const [joining, setJoining] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setPreview(undefined);
+    setFailed(false);
+    void accountClient
+      .request<{ chat: InvitePreview }>(`/v1/chat-invites/${token}/preview`)
+      .then(({ chat }) => {
+        if (active) setPreview(chat);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  if (failed)
+    return (
+      <div className="chat-invite-card unavailable">
+        <span className="chat-invite-avatar">
+          <Users />
+        </span>
+        <span>
+          <strong>Приглашение недоступно</strong>
+          <small>Ссылка устарела или была отозвана</small>
+        </span>
+      </div>
+    );
+
+  return (
+    <div className={`chat-invite-card${preview ? '' : ' loading'}`}>
+      <span className="chat-invite-avatar">
+        {preview?.avatarUrl ? (
+          <img
+            src={preview.avatarUrl}
+            alt=""
+            style={avatarImageStyle(
+              preview.avatarPositionX,
+              preview.avatarPositionY,
+              preview.avatarScale,
+            )}
+          />
+        ) : (
+          <Users />
+        )}
+      </span>
+      <span className="chat-invite-copy">
+        <small>Приглашение в группу</small>
+        <strong>{preview?.title || 'Загрузка группы…'}</strong>
+        <span>{preview ? `${preview.memberCount} участников` : 'Получаем информацию'}</span>
+      </span>
+      {preview && (
+        <button
+          type="button"
+          disabled={joining}
+          onClick={() => {
+            setJoining(true);
+            void onJoin(token).finally(() => setJoining(false));
+          }}
+        >
+          {joining ? 'Открываем…' : preview.isMember ? 'Открыть' : 'Вступить'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ChatImageMessage({ message }: { message: MessageItem }) {
+  const [source, setSource] = useState('');
+  const [failed, setFailed] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerClosing, setViewerClosing] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    setSource('');
+    setFailed(false);
+    void accountClient
+      .chatImageBlob(message.id)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [message.id]);
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setViewerClosing(true);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [viewerOpen]);
+
+  useEffect(() => {
+    if (!viewerClosing) return;
+    const timer = window.setTimeout(() => setViewerOpen(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [viewerClosing]);
+
+  const alt = `Фотография от ${message.display_name || message.username || 'участника'}`;
+
+  return (
+    <>
+      <div className="chat-image-message">
+        {source ? (
+          <button
+            type="button"
+            className="chat-image-open"
+            aria-label="Открыть фотографию на весь экран"
+            onClick={() => {
+              setViewerClosing(false);
+              setViewerOpen(true);
+            }}
+          >
+            <img
+              src={source}
+              alt={alt}
+              style={
+                message.metadata?.width && message.metadata?.height
+                  ? { aspectRatio: `${message.metadata.width} / ${message.metadata.height}` }
+                  : undefined
+              }
+            />
+          </button>
+        ) : failed ? (
+          <span className="chat-image-error">Не удалось загрузить фотографию</span>
+        ) : (
+          <span className="chat-image-loading">Загружаем фотографию…</span>
+        )}
+        {message.body && <p>{message.body}</p>}
+      </div>
+      {viewerOpen &&
+        createPortal(
+          <div
+            className={`chat-image-viewer-backdrop${viewerClosing ? ' closing' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={alt}
+            onPointerDown={(event) => {
+              if (event.currentTarget === event.target) setViewerClosing(true);
+            }}
+            onAnimationEnd={(event) => {
+              if (viewerClosing && event.currentTarget === event.target) setViewerOpen(false);
+            }}
+          >
+            <div className="chat-image-viewer">
+              <button
+                type="button"
+                className="chat-image-viewer-close"
+                aria-label="Закрыть фотографию"
+                onClick={() => setViewerClosing(true)}
+              >
+                <X />
+              </button>
+              <img src={source} alt={alt} />
+              <div className="chat-image-viewer-caption">
+                <strong>{message.display_name || message.username || 'Участник'}</strong>
+                {message.body && <span>{message.body}</span>}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -969,18 +1601,29 @@ function DateSeparator({ date }: { date: string }) {
 function MessageComposer({
   disabled,
   onSend,
+  onSendImage,
 }: {
   disabled: boolean;
   onSend(body: string): Promise<boolean>;
+  onSendImage(dataUrl: string, caption: string): Promise<boolean>;
 }) {
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
+  const [processingImage, setProcessingImage] = useState(false);
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [imageError, setImageError] = useState('');
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const send = async () => {
     const body = value.trim();
-    if (!body || sending) return;
+    if ((!body && !imageDataUrl) || sending || processingImage) return;
     setSending(true);
     try {
-      if (await onSend(body)) setValue('');
+      const sent = imageDataUrl ? await onSendImage(imageDataUrl, body) : await onSend(body);
+      if (sent) {
+        setValue('');
+        setImageDataUrl('');
+        setImageError('');
+      }
     } finally {
       setSending(false);
     }
@@ -992,18 +1635,52 @@ function MessageComposer({
   };
   return (
     <div className="modern-message-composer">
+      {imageDataUrl && (
+        <div className="composer-image-preview">
+          <img src={imageDataUrl} alt="Предпросмотр отправляемой фотографии" />
+          <span>Фотография готова к отправке</span>
+          <button type="button" aria-label="Убрать фотографию" onClick={() => setImageDataUrl('')}>
+            <X />
+          </button>
+        </div>
+      )}
+      {imageError && <p className="composer-image-error">{imageError}</p>}
+      <input
+        ref={imageInputRef}
+        className="composer-image-input"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (!file) return;
+          setProcessingImage(true);
+          setImageError('');
+          void prepareChatImage(file)
+            .then(setImageDataUrl)
+            .catch((caught) =>
+              setImageError(
+                caught instanceof Error ? caught.message : 'Не удалось обработать фотографию',
+              ),
+            )
+            .finally(() => setProcessingImage(false));
+        }}
+      />
       <button
+        type="button"
         className="composer-add-button"
-        title="Вложения появятся позже"
-        aria-label="Добавить вложение"
-        disabled
+        title="Отправить фотографию"
+        aria-label="Добавить фотографию"
+        disabled={disabled || sending || processingImage}
+        onClick={() => imageInputRef.current?.click()}
       >
-        <Plus />
+        <ImagePlus />
       </button>
       <textarea
         value={value}
         rows={1}
-        maxLength={4000}
+        maxLength={imageDataUrl ? 1000 : 4000}
         disabled={disabled}
         placeholder="Написать сообщение…"
         aria-label="Сообщение"
@@ -1014,14 +1691,17 @@ function MessageComposer({
         className="send-message-button"
         title="Отправить"
         aria-label="Отправить сообщение"
-        disabled={disabled || sending || !value.trim()}
+        disabled={disabled || sending || processingImage || (!value.trim() && !imageDataUrl)}
         onClick={() => void send()}
       >
         <Send />
       </button>
-      <small>Enter — отправить · Shift+Enter — новая строка</small>
     </div>
   );
+}
+
+function extractChatInviteToken(body: string) {
+  return /^freetalk:\/\/chat\/([A-Za-z0-9_-]{32,256})\/?$/i.exec(body.trim())?.[1];
 }
 
 function ChatEmptyState() {
@@ -1071,15 +1751,21 @@ function ChatAvatar({
   group,
   avatarUrl,
   compact = false,
+  positionX = 50,
+  positionY = 50,
+  scale = 100,
 }: {
   name: string;
   group: boolean;
   avatarUrl?: string | null;
   compact?: boolean;
+  positionX?: number;
+  positionY?: number;
+  scale?: number;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [avatarUrl]);
-  const showImage = Boolean(avatarUrl && !group && !imageFailed);
+  const showImage = Boolean(avatarUrl && !imageFailed);
   return (
     <span
       className={`chat-avatar ${compact ? 'compact' : ''} ${showImage ? 'has-image' : ''}`}
@@ -1090,6 +1776,7 @@ function ChatAvatar({
           src={avatarUrl ?? ''}
           alt=""
           referrerPolicy="no-referrer"
+          style={avatarImageStyle(positionX, positionY, scale)}
           onError={() => setImageFailed(true)}
         />
       ) : group ? (
@@ -1099,6 +1786,17 @@ function ChatAvatar({
       )}
     </span>
   );
+}
+
+function avatarImageStyle(positionX: number, positionY: number, scale: number): CSSProperties {
+  const normalizedScale = Math.max(100, Math.min(250, scale));
+  const maxPan = (normalizedScale - 100) / 2;
+  const translateX = ((positionX - 50) / 50) * maxPan;
+  const translateY = ((positionY - 50) / 50) * maxPan;
+  return {
+    objectPosition: `${positionX}% ${positionY}%`,
+    transform: `translate(${translateX}%, ${translateY}%) scale(${normalizedScale / 100})`,
+  };
 }
 
 function chatName(chat: ChatItem, userId: string) {

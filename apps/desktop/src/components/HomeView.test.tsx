@@ -2,7 +2,7 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { uniqueCallParticipants } from '../lib/call-history';
+import { hasConversationParticipants, uniqueCallParticipants } from '../lib/call-history';
 import { RecentRooms, TransientNotice } from './HomeView';
 
 afterEach(() => {
@@ -26,6 +26,14 @@ describe('TransientNotice', () => {
     act(() => vi.advanceTimersByTime(400));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  it('uses the green success treatment for successful actions', () => {
+    const { getByRole } = render(
+      <TransientNotice message="Аватар группы сохранён" tone="success" onDismiss={vi.fn()} />,
+    );
+    const notice = getByRole('status');
+    expect(notice.classList.contains('success')).toBe(true);
+  });
 });
 
 describe('RecentRooms', () => {
@@ -40,6 +48,22 @@ describe('RecentRooms', () => {
     ).toEqual(['Gera', 'Alex']);
   });
 
+  it('treats only calls with at least two unique participants as conversations', () => {
+    expect(hasConversationParticipants([{ userId: 'self', displayName: 'Gera' }])).toBe(false);
+    expect(
+      hasConversationParticipants([
+        { userId: 'self', displayName: 'Gera' },
+        { userId: 'self', displayName: 'Gera' },
+      ]),
+    ).toBe(false);
+    expect(
+      hasConversationParticipants([
+        { userId: 'self', displayName: 'Gera' },
+        { userId: 'friend', displayName: 'Alex' },
+      ]),
+    ).toBe(true);
+  });
+
   it('renders actual call history and never inserts demo rooms', () => {
     const { getByText, queryByText } = render(
       <RecentRooms
@@ -52,7 +76,10 @@ describe('RecentRooms', () => {
             room_id: 'ROOM12345678',
             started_at: '2026-08-26T10:00:00.000Z',
             duration_seconds: 720,
-            participants: [{ userId: 'friend', displayName: 'Alex' }],
+            participants: [
+              { userId: 'self', displayName: 'Gera' },
+              { userId: 'friend', displayName: 'Alex' },
+            ],
           },
         ]}
       />,
@@ -60,5 +87,26 @@ describe('RecentRooms', () => {
     expect(getByText('Комната с Alex')).toBeTruthy();
     expect(getByText(/12 мин/)).toBeTruthy();
     expect(queryByText('Demo room')).toBeNull();
+  });
+
+  it('does not render calls where nobody joined the creator', () => {
+    const { getByText, queryByText } = render(
+      <RecentRooms
+        selfId="self"
+        loading={false}
+        onCreateAgain={vi.fn()}
+        calls={[
+          {
+            id: 'solo-call',
+            room_id: 'SOLO12345678',
+            started_at: '2026-08-26T10:00:00.000Z',
+            duration_seconds: 720,
+            participants: [{ userId: 'self', displayName: 'Gera' }],
+          },
+        ]}
+      />,
+    );
+    expect(getByText('Недавних комнат пока нет')).toBeTruthy();
+    expect(queryByText('Приватная комната')).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { db, transaction } from './db.js';
 import { publicApiUrl } from './env.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { randomToken, tokenHash, usernameSchema } from './security.js';
+import { safeImageDimensions } from './image-dimensions.js';
 
 type RequireUser = (
   request: FastifyRequest,
@@ -14,6 +15,11 @@ type RequireUser = (
 
 const uuid = z.string().uuid();
 const chatIdParams = z.object({ chatId: uuid });
+const avatarPositionSchema = z.object({
+  positionX: z.coerce.number().int().min(0).max(100),
+  positionY: z.coerce.number().int().min(0).max(100),
+  scale: z.coerce.number().int().min(100).max(250),
+});
 type RealtimeChatMessage = Extract<
   ChatRealtimeServerMessage,
   { type: 'message-created' }
@@ -21,7 +27,7 @@ type RealtimeChatMessage = Extract<
 
 interface ChatMessageRow {
   id: string;
-  kind: 'text' | 'system' | 'call';
+  kind: 'text' | 'system' | 'call' | 'image';
   body: string;
   metadata: Record<string, unknown>;
   sender_id: string | null;
@@ -358,9 +364,14 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!user) return;
     const chats = await db.query(
       `SELECT c.id,c.type,c.title,c.created_at,c.retention_hours AS "retentionHours",
+       c.avatar_position_x AS "avatarPositionX",c.avatar_position_y AS "avatarPositionY",
+       c.avatar_scale AS "avatarScale",
+       CASE WHEN c.avatar_data IS NOT NULL THEN $2::text || '/v1/chats/' || c.id ||
+         '/avatar?v=' || (extract(epoch FROM c.avatar_updated_at)*1000)::bigint::text ELSE NULL END AS "avatarUrl",
        self.role AS "currentUserRole",
        latest.body AS "lastMessage",latest.created_at AS "lastMessageAt",latest.kind AS "lastMessageKind",
        COALESCE(json_agg(json_build_object('id',u.id,'username',u.username,'displayName',u.display_name,
+         'role',members.role,
          'avatarUrl',CASE WHEN u.avatar_data IS NOT NULL THEN $2::text || '/v1/users/' || u.id ||
          '/avatar?v=' || (extract(epoch FROM u.updated_at)*1000)::bigint::text ELSE NULL END))
          FILTER (WHERE u.id IS NOT NULL),'[]') AS members
@@ -391,6 +402,127 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           presence: chatRealtimeHub.presence(String(member.id)),
         })),
       })),
+    };
+  });
+
+  app.get('/v1/chats/:chatId/avatar', async (request, reply) => {
+    const { chatId } = chatIdParams.parse(request.params);
+    const result = await db.query<{ avatar_mime: string; avatar_data: Buffer }>(
+      `SELECT avatar_mime,avatar_data FROM chats
+       WHERE id=$1 AND type='group' AND avatar_data IS NOT NULL`,
+      [chatId],
+    );
+    const avatar = result.rows[0];
+    if (!avatar) return reply.code(404).send({ code: 'NOT_FOUND' });
+    return reply
+      .header('content-type', avatar.avatar_mime)
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .header('referrer-policy', 'no-referrer')
+      .header('cache-control', 'public,max-age=300')
+      .send(avatar.avatar_data);
+  });
+
+  app.post('/v1/chats/:chatId/avatar', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = chatIdParams.parse(request.params);
+    const { positionX, positionY, scale } = avatarPositionSchema.parse(request.query);
+    if (!(await isGroupChat(chatId))) return reply.code(400).send({ code: 'GROUP_CHAT_REQUIRED' });
+    if (!(await isChatAdmin(chatId, user.id)))
+      return reply.code(403).send({ code: 'CHAT_ADMIN_REQUIRED' });
+    const file = await request.file();
+    if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype))
+      return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Допустимы PNG, JPEG и WebP' });
+    const bytes = await file.toBuffer();
+    if (bytes.length > 1_572_864)
+      return reply
+        .code(413)
+        .send({ code: 'PAYLOAD_TOO_LARGE', message: 'Аватар должен быть не больше 1,5 МБ' });
+    const signatures = [
+      bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+      bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+      bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP',
+    ];
+    const dimensions = safeImageDimensions(bytes);
+    if (
+      !signatures.some(Boolean) ||
+      !dimensions.width ||
+      !dimensions.height ||
+      dimensions.width < 64 ||
+      dimensions.height < 64 ||
+      dimensions.width > 4096 ||
+      dimensions.height > 4096
+    )
+      return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Некорректное изображение' });
+    const systemMessage = await transaction(async (client) => {
+      await client.query(
+        `UPDATE chats SET avatar_mime=$1,avatar_data=$2,avatar_position_x=$3,
+         avatar_position_y=$4,avatar_scale=$5,avatar_updated_at=now() WHERE id=$6`,
+        [file.mimetype, bytes, positionX, positionY, scale, chatId],
+      );
+      const created = await client.query<ChatMessageRow>(
+        `INSERT INTO messages(chat_id,kind,body,metadata,expires_at)
+         SELECT $1,'system',$2,$3,CASE WHEN c.retention_hours IS NULL THEN NULL
+           ELSE now()+make_interval(hours=>c.retention_hours) END
+         FROM chats c WHERE c.id=$1
+         RETURNING id,kind,body,metadata,sender_id,created_at,expires_at`,
+        [
+          chatId,
+          `${user.display_name} обновил(а) фотографию группы`,
+          { changedBy: user.id, event: 'group-avatar-updated' },
+        ],
+      );
+      return realtimeMessage(created.rows[0]!);
+    });
+    const avatarUrl = publicApiUrl(`/v1/chats/${chatId}/avatar?v=${Date.now()}`);
+    await publishChatEvent(chatId, {
+      type: 'chat-updated',
+      chatId,
+      avatarUrl,
+      avatarPositionX: positionX,
+      avatarPositionY: positionY,
+      avatarScale: scale,
+    });
+    await publishChatEvent(chatId, { type: 'message-created', chatId, message: systemMessage });
+    return {
+      avatarUrl,
+      avatarPositionX: positionX,
+      avatarPositionY: positionY,
+      avatarScale: scale,
+    };
+  });
+
+  app.patch('/v1/chats/:chatId/avatar', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = chatIdParams.parse(request.params);
+    const { positionX, positionY, scale } = avatarPositionSchema.parse(request.body);
+    if (!(await isGroupChat(chatId))) return reply.code(400).send({ code: 'GROUP_CHAT_REQUIRED' });
+    if (!(await isChatAdmin(chatId, user.id)))
+      return reply.code(403).send({ code: 'CHAT_ADMIN_REQUIRED' });
+    const updated = await db.query<{ avatar_updated_at: Date }>(
+      `UPDATE chats SET avatar_position_x=$1,avatar_position_y=$2,avatar_scale=$3
+       WHERE id=$4 AND avatar_data IS NOT NULL RETURNING avatar_updated_at`,
+      [positionX, positionY, scale, chatId],
+    );
+    if (!updated.rows[0]) return reply.code(404).send({ code: 'CHAT_AVATAR_NOT_FOUND' });
+    const avatarUrl = publicApiUrl(
+      `/v1/chats/${chatId}/avatar?v=${updated.rows[0].avatar_updated_at.getTime()}`,
+    );
+    await publishChatEvent(chatId, {
+      type: 'chat-updated',
+      chatId,
+      avatarUrl,
+      avatarPositionX: positionX,
+      avatarPositionY: positionY,
+      avatarScale: scale,
+    });
+    return {
+      avatarUrl,
+      avatarPositionX: positionX,
+      avatarPositionY: positionY,
+      avatarScale: scale,
     };
   });
 
@@ -521,6 +653,84 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     },
   );
 
+  app.get('/v1/messages/:messageId/image', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+    const result = await db.query<{ mime: string; data: Buffer }>(
+      `SELECT image.mime,image.data FROM message_images image
+       JOIN messages message ON message.id=image.message_id
+       JOIN chat_members member ON member.chat_id=message.chat_id
+         AND member.user_id=$2 AND member.left_at IS NULL
+       WHERE image.message_id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+      [messageId, user.id],
+    );
+    const image = result.rows[0];
+    if (!image) return reply.code(404).send({ code: 'IMAGE_NOT_FOUND' });
+    return reply
+      .header('content-type', image.mime)
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .header('referrer-policy', 'no-referrer')
+      .header('cache-control', 'private,max-age=300')
+      .send(image.data);
+  });
+
+  app.post(
+    '/v1/chats/:chatId/images',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { chatId } = chatIdParams.parse(request.params);
+      const { caption } = z
+        .object({ caption: z.string().trim().max(1000).optional() })
+        .parse(request.query);
+      if (!(await isChatMember(chatId, user.id)))
+        return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+      if (!(await canInteractInChat(chatId, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      const file = await request.file();
+      if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype))
+        return reply.code(400).send({
+          code: 'INVALID_IMAGE',
+          message: 'Для отправки доступны изображения PNG, JPEG и WebP',
+        });
+      const bytes = await file.toBuffer();
+      const dimensions = safeImageDimensions(bytes);
+      if (
+        !dimensions.width ||
+        !dimensions.height ||
+        dimensions.width > 8192 ||
+        dimensions.height > 8192
+      )
+        return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Некорректное изображение' });
+      const created = await transaction(async (client) => {
+        const message = await client.query<ChatMessageRow>(
+          `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,expires_at)
+           SELECT $1,$2,'image',$3,$4,CASE WHEN c.retention_hours IS NULL THEN NULL
+             ELSE now()+make_interval(hours=>c.retention_hours) END
+           FROM chats c WHERE c.id=$1
+           RETURNING id,kind,body,metadata,sender_id,created_at,expires_at`,
+          [chatId, user.id, caption ?? '', { width: dimensions.width, height: dimensions.height }],
+        );
+        await client.query(
+          `INSERT INTO message_images(message_id,mime,data,width,height) VALUES($1,$2,$3,$4,$5)`,
+          [message.rows[0]!.id, file.mimetype, bytes, dimensions.width, dimensions.height],
+        );
+        return realtimeMessage(message.rows[0]!, {
+          username: user.username,
+          displayName: user.display_name,
+          avatarUrl: user.avatar_data
+            ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
+            : null,
+        });
+      });
+      await publishChatEvent(chatId, { type: 'message-created', chatId, message: created });
+      return reply.code(201).send({ message: created });
+    },
+  );
+
   app.post(
     '/v1/chats/:chatId/members',
     { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } },
@@ -626,6 +836,61 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     },
   );
 
+  app.get('/v1/chat-invites/:token/preview', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { token } = z.object({ token: z.string().min(32).max(256) }).parse(request.params);
+    const result = await db.query<{
+      id: string;
+      title: string | null;
+      member_count: number;
+      has_avatar: boolean;
+      avatar_updated_at: Date | null;
+      avatar_position_x: number;
+      avatar_position_y: number;
+      avatar_scale: number;
+      is_member: boolean;
+    }>(
+      `SELECT chat.id,chat.title,chat.avatar_data IS NOT NULL AS has_avatar,
+       chat.avatar_updated_at,chat.avatar_position_x,chat.avatar_position_y,chat.avatar_scale,
+       count(member.user_id)::int AS member_count,
+       EXISTS(SELECT 1 FROM chat_members own WHERE own.chat_id=chat.id
+         AND own.user_id=$2 AND own.left_at IS NULL) AS is_member
+       FROM chat_invites invite JOIN chats chat ON chat.id=invite.chat_id AND chat.type='group'
+       JOIN chat_members member ON member.chat_id=chat.id AND member.left_at IS NULL
+       WHERE invite.token_hash=$1 AND invite.revoked_at IS NULL
+         AND (invite.expires_at IS NULL OR invite.expires_at>now())
+         AND (invite.max_uses IS NULL OR invite.use_count<invite.max_uses OR EXISTS(
+           SELECT 1 FROM chat_members own WHERE own.chat_id=chat.id
+             AND own.user_id=$2 AND own.left_at IS NULL))
+       GROUP BY chat.id
+       LIMIT 1`,
+      [tokenHash(token), user.id],
+    );
+    const preview = result.rows[0];
+    if (!preview)
+      return reply.code(404).send({
+        code: 'INVALID_INVITE',
+        message: 'Ссылка-приглашение недействительна или устарела',
+      });
+    return {
+      chat: {
+        id: preview.id,
+        title: preview.title || 'Групповой чат',
+        memberCount: preview.member_count,
+        avatarUrl: preview.has_avatar
+          ? publicApiUrl(
+              `/v1/chats/${preview.id}/avatar?v=${preview.avatar_updated_at?.getTime() ?? 0}`,
+            )
+          : null,
+        avatarPositionX: preview.avatar_position_x,
+        avatarPositionY: preview.avatar_position_y,
+        avatarScale: preview.avatar_scale,
+        isMember: preview.is_member,
+      },
+    };
+  });
+
   app.post('/v1/chat-invites/:token/join', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -642,7 +907,13 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         [tokenHash(token)],
       );
       const invite = found.rows[0];
-      if (!invite || (invite.max_uses !== null && invite.use_count >= invite.max_uses)) return null;
+      if (!invite) return null;
+      const existingMember = await client.query(
+        `SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2 AND left_at IS NULL`,
+        [invite.chat_id, user.id],
+      );
+      if (existingMember.rowCount) return { chatId: invite.chat_id, message: null };
+      if (invite.max_uses !== null && invite.use_count >= invite.max_uses) return null;
       const blocked = await client.query(
         `SELECT 1 FROM chat_members m JOIN blocks b ON
          (b.blocker_id=m.user_id AND b.blocked_id=$1) OR (b.blocker_id=$1 AND b.blocked_id=m.user_id)
@@ -667,11 +938,12 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       return { chatId: invite.chat_id, message: realtimeMessage(systemMessage.rows[0]!) };
     });
     if (!joined) return reply.code(400).send({ code: 'INVALID_INVITE' });
-    await publishChatEvent(joined.chatId, {
-      type: 'message-created',
-      chatId: joined.chatId,
-      message: joined.message,
-    });
+    if (joined.message)
+      await publishChatEvent(joined.chatId, {
+        type: 'message-created',
+        chatId: joined.chatId,
+        message: joined.message,
+      });
     return { chatId: joined.chatId };
   });
 
@@ -786,7 +1058,9 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
        WHERE EXISTS (
          SELECT 1 FROM call_participants self WHERE self.call_id=c.id AND self.user_id=$1
        )
-       GROUP BY c.id ORDER BY c.started_at DESC LIMIT 100`,
+       GROUP BY c.id
+       HAVING COUNT(*) >= 2
+       ORDER BY c.started_at DESC LIMIT 100`,
       [user.id, publicApiUrl('').replace(/\/$/, '')],
     );
     return { calls: result.rows };
