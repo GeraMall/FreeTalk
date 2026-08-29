@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import { VideoManager } from './video-manager';
 import { DEFAULT_VIDEO_PREFERENCES } from './video-quality';
+
+vi.mock('./macos-screen-audio', () => ({
+  startNativeMacScreenAudio: vi.fn(),
+  stopNativeMacScreenAudio: vi.fn(async () => undefined),
+}));
 
 class FakeTrack {
   id = crypto.randomUUID();
@@ -29,6 +35,9 @@ class FakeStream {
   removeTrack(track: FakeTrack) {
     this.tracks = this.tracks.filter((item) => item !== track);
   }
+  addTrack(track: FakeTrack) {
+    this.tracks.push(track);
+  }
 }
 
 describe('VideoManager', () => {
@@ -42,6 +51,8 @@ describe('VideoManager', () => {
     screenTracks.length = 0;
     screenAudioTracks.length = 0;
     screenStreams.length = 0;
+    vi.mocked(startNativeMacScreenAudio).mockReset();
+    vi.mocked(stopNativeMacScreenAudio).mockClear();
     vi.stubGlobal('MediaStream', FakeStream);
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -218,6 +229,32 @@ describe('VideoManager', () => {
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
       expect.objectContaining({ audio: true, systemAudio: 'include' }),
     );
+    userAgent.mockRestore();
+  });
+
+  it('falls back to native ScreenCaptureKit audio when macOS WebKit returns video only', async () => {
+    const userAgent = vi
+      .spyOn(navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15');
+    const video = new FakeTrack();
+    const nativeAudio = new FakeTrack('audio');
+    const stream = new FakeStream([video]);
+    vi.mocked(navigator.mediaDevices.getDisplayMedia).mockResolvedValueOnce(
+      stream as unknown as MediaStream,
+    );
+    vi.mocked(startNativeMacScreenAudio).mockResolvedValueOnce(
+      nativeAudio as unknown as MediaStreamTrack,
+    );
+    const publish = vi.fn(async () => undefined);
+    const manager = new VideoManager(publish, vi.fn());
+
+    await manager.toggleScreen(true);
+
+    expect(startNativeMacScreenAudio).toHaveBeenCalledOnce();
+    expect(stream.getAudioTracks()).toEqual([nativeAudio]);
+    expect(publish).toHaveBeenCalledWith(video, 'screen', stream);
+    await manager.toggleScreen();
+    expect(stopNativeMacScreenAudio).toHaveBeenCalledOnce();
     userAgent.mockRestore();
   });
 

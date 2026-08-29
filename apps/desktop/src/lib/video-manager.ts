@@ -5,6 +5,7 @@ import {
   screenCaptureConstraints,
   type VideoPreferences,
 } from './video-quality';
+import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 
 export type LocalVideoSource = 'none' | 'camera' | 'screen';
 export type VideoMediaSource = Exclude<LocalVideoSource, 'none'>;
@@ -38,6 +39,7 @@ export class VideoManager {
   private cameraTrack?: MediaStreamTrack;
   private screenTrack?: MediaStreamTrack;
   private screenStream?: MediaStream;
+  private nativeScreenAudio = false;
   private operationQueue = Promise.resolve();
   private disposed = false;
   private preferences: VideoPreferences;
@@ -94,6 +96,8 @@ export class VideoManager {
     this.screenTrack = undefined;
     this.screenStream = undefined;
     this.cameraTrack = undefined;
+    if (this.nativeScreenAudio) void stopNativeMacScreenAudio();
+    this.nativeScreenAudio = false;
     this.emitState();
   }
 
@@ -232,7 +236,18 @@ export class VideoManager {
     this.screenTrack = track;
     this.screenStream = stream;
     track.contentHint = 'detail';
-    const audioTrack = stream.getAudioTracks()[0];
+    let audioTrack = stream.getAudioTracks()[0];
+    if (includeAudio && macOS && !audioTrack) {
+      try {
+        audioTrack = await startNativeMacScreenAudio();
+        stream.addTrack(audioTrack);
+        this.nativeScreenAudio = true;
+      } catch (error) {
+        connectionDiagnostics.record('screen-audio-native:error', undefined, {
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
     if (audioTrack) audioTrack.contentHint = 'music';
     track.onended = () => {
       void this.enqueue(() => this.finishScreen(track, false));
@@ -246,7 +261,7 @@ export class VideoManager {
     if (includeAudio && !audioTrack) {
       this.onNotice(
         macOS
-          ? 'macOS передала изображение без системного звука. Разрешите FreeTalk запись экрана и системного аудио в «Системные настройки → Конфиденциальность и безопасность», затем перезапустите приложение. Если звука всё равно нет, это ограничение WKWebView — потребуется виртуальное аудиоустройство или нативный захват.'
+          ? 'macOS не запустила нативный захват системного звука. Установите macOS 13 или новее и повторно разрешите FreeTalk запись экрана и системного аудио.'
           : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
       );
     }
@@ -261,12 +276,15 @@ export class VideoManager {
   private async finishScreen(track: MediaStreamTrack | undefined, stopTrack: boolean) {
     if (!track || this.screenTrack !== track) return;
     const stream = this.screenStream;
+    const nativeScreenAudio = this.nativeScreenAudio;
     this.screenTrack = undefined;
     this.screenStream = undefined;
+    this.nativeScreenAudio = false;
     track.onended = null;
     await this.publish(null, 'screen');
     if (stopTrack) this.stopStream(stream);
     else stream?.getAudioTracks().forEach((item) => item.stop());
+    if (nativeScreenAudio) await stopNativeMacScreenAudio();
     connectionDiagnostics.record('screen-capture:stopped', undefined, {
       initiatedBy: stopTrack ? 'app' : 'system',
       cameraPreserved: Boolean(this.cameraTrack),

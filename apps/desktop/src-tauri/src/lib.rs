@@ -1,6 +1,22 @@
 mod diagnostics;
+mod macos_screen_audio;
 mod secure_session;
 mod signaling;
+
+#[tauri::command]
+fn macos_screen_audio_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, macos_screen_audio::MacosScreenAudioState>,
+) -> Result<(), String> {
+    macos_screen_audio::start(app, &state)
+}
+
+#[tauri::command]
+fn macos_screen_audio_stop(
+    state: tauri::State<'_, macos_screen_audio::MacosScreenAudioState>,
+) -> Result<(), String> {
+    macos_screen_audio::stop(&state)
+}
 
 #[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
@@ -81,6 +97,7 @@ pub fn run() {
                 .build(),
         )
         .manage(signaling::NativeSignalingState::default())
+        .manage(macos_screen_audio::MacosScreenAudioState::default())
         .invoke_handler(tauri::generate_handler![
             diagnostics::save_connection_diagnostics,
             signaling::signaling_connect,
@@ -90,6 +107,8 @@ pub fn run() {
             secure_session::secure_session_set,
             secure_session::secure_session_get,
             secure_session::secure_session_clear,
+            macos_screen_audio_start,
+            macos_screen_audio_stop,
             notification_overlay_show,
             notification_overlay_hide,
             notification_overlay_open_main
