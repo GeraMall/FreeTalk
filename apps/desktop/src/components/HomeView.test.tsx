@@ -2,7 +2,11 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { hasConversationParticipants, uniqueCallParticipants } from '../lib/call-history';
+import {
+  activeCallRoomId,
+  hasConversationParticipants,
+  uniqueCallParticipants,
+} from '../lib/call-history';
 import { RecentRooms, TransientNotice } from './HomeView';
 
 afterEach(() => {
@@ -108,5 +112,22 @@ describe('RecentRooms', () => {
     );
     expect(getByText('Недавних комнат пока нет')).toBeTruthy();
     expect(queryByText('Приватная комната')).toBeNull();
+  });
+});
+
+describe('activeCallRoomId', () => {
+  it('reuses the current chat call instead of creating a one-second duplicate', () => {
+    expect(
+      activeCallRoomId([
+        {
+          kind: 'call',
+          metadata: { roomId: 'ENDED1234567', ended: true },
+        },
+        {
+          kind: 'call',
+          metadata: { roomId: 'ACTIVE123456', ended: false },
+        },
+      ]),
+    ).toBe('ACTIVE123456');
   });
 });

@@ -4,6 +4,7 @@ import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { generateRoomCode } from '../lib/room-code';
 import {
+  activeCallRoomId,
   hasConversationParticipants,
   uniqueCallParticipants,
   type CallHistoryParticipant,
@@ -488,6 +489,11 @@ export function HomeView({
 
   const startChatCall = async () => {
     if (!activeChat) return;
+    const existingRoomId = activeCallRoomId(messages);
+    if (existingRoomId) {
+      onJoinRoom(existingRoomId);
+      return;
+    }
     const roomId = generateRoomCode();
     try {
       await accountClient.request(`/v1/chats/${activeChat}/calls`, {

@@ -21,3 +21,19 @@ export function uniqueCallParticipants<T extends CallHistoryParticipant>(partici
 export function hasConversationParticipants(participants: CallHistoryParticipant[]): boolean {
   return uniqueCallParticipants(participants).length >= 2;
 }
+
+export function activeCallRoomId(
+  messages: Array<{
+    kind: string;
+    metadata?: { roomId?: string; ended?: boolean };
+  }>,
+) {
+  return [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.kind === 'call' &&
+        message.metadata?.ended !== true &&
+        Boolean(message.metadata?.roomId),
+    )?.metadata?.roomId;
+}

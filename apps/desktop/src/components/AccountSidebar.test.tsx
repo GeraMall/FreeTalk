@@ -310,8 +310,9 @@ describe('AccountSidebar in an active room', () => {
     expect(queryByText('Без всплывающего уведомления')).toBeNull();
   });
 
-  it('keeps the unread badge but suppresses message previews during a call', () => {
-    const { getByRole, queryByText } = render(
+  it('shows background message previews during a call unless do-not-disturb is enabled', () => {
+    overlayHarness.foreground = false;
+    const { getByRole } = render(
       <AccountSidebar
         user={user}
         activePage="room"
@@ -329,7 +330,7 @@ describe('AccountSidebar in an active room', () => {
         message: {
           id: '99999999-9999-4999-8999-999999999999',
           kind: 'text',
-          body: 'Не перекрывать звонок',
+          body: 'Сообщение во время звонка',
           sender_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           display_name: 'Друг',
           created_at: '2026-08-28T20:02:00.000Z',
@@ -339,6 +340,11 @@ describe('AccountSidebar in an active room', () => {
     );
 
     expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
-    expect(queryByText('Не перекрывать звонок')).toBeNull();
+    expect(overlayHarness.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: '88888888-8888-4888-8888-888888888888',
+        body: 'Сообщение во время звонка',
+      }),
+    );
   });
 });

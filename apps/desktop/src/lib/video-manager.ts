@@ -188,17 +188,20 @@ export class VideoManager {
   private async startScreen(includeAudio: boolean) {
     if (this.disposed) return;
     connectionDiagnostics.record('screen-capture:start');
+    const macOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
         audio: includeAudio
-          ? {
-              autoGainControl: false,
-              echoCancellation: false,
-              noiseSuppression: false,
-              channelCount: { ideal: 2 },
-              restrictOwnAudio: true,
-            }
+          ? macOS
+            ? true
+            : {
+                autoGainControl: false,
+                echoCancellation: false,
+                noiseSuppression: false,
+                channelCount: { ideal: 2 },
+                restrictOwnAudio: true,
+              }
           : false,
         video: screenCaptureConstraints(this.preferences),
         selfBrowserSurface: 'exclude',
@@ -242,7 +245,9 @@ export class VideoManager {
     });
     if (includeAudio && !audioTrack) {
       this.onNotice(
-        'Экран включён, но система не предоставила аудиодорожку. Выберите окно со звуком; на macOS системный звук может быть недоступен в системном окне выбора.',
+        macOS
+          ? 'macOS передала изображение без системного звука. Разрешите FreeTalk запись экрана и системного аудио в «Системные настройки → Конфиденциальность и безопасность», затем перезапустите приложение. Если звука всё равно нет, это ограничение WKWebView — потребуется виртуальное аудиоустройство или нативный захват.'
+          : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
       );
     }
     await this.publish(track, 'screen', stream);

@@ -61,14 +61,12 @@ export function AccountSidebar({
   const statusPickerRef = useRef<HTMLDivElement>(null);
   const activePageRef = useRef(activePage);
   const readingChatIdRef = useRef(readingChatId);
-  const roomActiveRef = useRef(roomActive);
   const previewSequence = useRef(0);
 
   useEffect(() => {
     activePageRef.current = activePage;
     readingChatIdRef.current = readingChatId;
-    roomActiveRef.current = roomActive;
-  }, [activePage, readingChatId, roomActive]);
+  }, [activePage, readingChatId]);
 
   useEffect(() => {
     const realtime = new ChatRealtimeClient((event) => {
@@ -91,7 +89,7 @@ export function AccountSidebar({
         [event.chatId]: Math.min(99, (current[event.chatId] ?? 0) + 1),
       }));
 
-      if (getPresenceMode() === 'dnd' || roomActiveRef.current) return;
+      if (getPresenceMode() === 'dnd') return;
       const senderName = event.message.display_name || event.message.username || 'Новое сообщение';
       const previewBody =
         event.message.kind === 'image' ? event.message.body || 'Фотография' : event.message.body;

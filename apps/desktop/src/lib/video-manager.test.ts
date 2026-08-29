@@ -204,6 +204,23 @@ describe('VideoManager', () => {
     );
   });
 
+  it('uses the simplest audio request supported by macOS WebKit', async () => {
+    const userAgent = vi
+      .spyOn(navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15');
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+    );
+
+    await manager.toggleScreen(true);
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: true, systemAudio: 'include' }),
+    );
+    userAgent.mockRestore();
+  });
+
   it('supports the maximum 2K 60 FPS screen preset', async () => {
     const manager = new VideoManager(
       vi.fn(async () => undefined),

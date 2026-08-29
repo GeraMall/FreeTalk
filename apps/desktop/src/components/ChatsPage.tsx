@@ -1661,7 +1661,16 @@ function SystemCallMessage({
       {ended ? (
         <span className="system-call-ended">Звонок завершён</span>
       ) : message.metadata?.roomId ? (
-        <button onClick={() => onJoin(message.metadata!.roomId!)}>Присоединиться</button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onJoin(message.metadata!.roomId!);
+          }}
+        >
+          Присоединиться
+        </button>
       ) : null}
     </article>
   );
