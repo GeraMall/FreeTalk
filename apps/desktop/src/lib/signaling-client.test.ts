@@ -181,6 +181,31 @@ describe('SignalingClient', () => {
     expect(JSON.parse(second.sent[0]!)).toMatchObject({ type: 'join-room', roomId: join.roomId });
   });
 
+  it('refreshes an expired authorization token before reconnecting', async () => {
+    const refreshAuthorization = vi.fn().mockResolvedValue('fresh-access-token');
+    const client = new SignalingClient(
+      'wss://example.test/ws',
+      vi.fn(),
+      vi.fn(),
+      refreshAuthorization,
+    );
+    client.connect({ ...join, authToken: 'expired-access-token' });
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+
+    client.reconnectNow();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await Promise.resolve();
+
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    expect(refreshAuthorization).toHaveBeenCalledOnce();
+    expect(JSON.parse(second.sent[0]!)).toMatchObject({
+      type: 'join-room',
+      authToken: 'fresh-access-token',
+    });
+  });
+
   it('processes asynchronous server messages in wire order', async () => {
     const order: string[] = [];
     let releaseFirst!: () => void;

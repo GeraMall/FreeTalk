@@ -120,6 +120,15 @@ export function HomeView({
         );
         if (activeChatRef.current === event.chatId)
           setMessages((current) => appendMessage(current, event.message));
+      } else if (event.type === 'message-updated') {
+        if (activeChatRef.current === event.chatId)
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === event.messageId
+                ? { ...message, metadata: { ...message.metadata, ...event.metadata } }
+                : message,
+            ),
+          );
       } else if (event.type === 'history-cleared') {
         if (activeChatRef.current === event.chatId) setMessages([]);
         setChats((current) =>

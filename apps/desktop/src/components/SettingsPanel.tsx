@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AudioLines,
   Download,
   Info,
   ImagePlus,
+  MessageCircle,
   Mic2,
   MonitorSpeaker,
   RefreshCw,
@@ -15,7 +16,13 @@ import {
   X,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
-import { prepareAvatar, prepareCover, remainingProfileChanges } from '../lib/profile';
+import {
+  prepareAvatar,
+  prepareChatWallpaper,
+  prepareCover,
+  remainingProfileChanges,
+} from '../lib/profile';
+import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
 import type { UpdateStatus } from '../lib/updater';
 import type { AccountUser } from '../lib/api-client';
 import { BrandLogo } from './BrandLogo';
@@ -27,7 +34,7 @@ import {
   USERNAME_MIN_LENGTH,
 } from '../lib/username';
 
-export type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'about';
+export type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'chats' | 'about';
 
 interface SettingsPanelProps {
   initialTab?: SettingsTab;
@@ -198,6 +205,12 @@ export function SettingsPanel({
               onClick={() => setTab('devices')}
             />
             <TabButton
+              active={tab === 'chats'}
+              icon={<MessageCircle />}
+              label="Чаты"
+              onClick={() => setTab('chats')}
+            />
+            <TabButton
               active={tab === 'about'}
               icon={<Info />}
               label="О приложении"
@@ -221,7 +234,9 @@ export function SettingsPanel({
                       ? 'ВИДЕО'
                       : tab === 'devices'
                         ? 'УСТРОЙСТВА'
-                        : 'FREETALK'}
+                        : tab === 'chats'
+                          ? 'ЧАТЫ'
+                          : 'FREETALK'}
               </p>
               <h2 id="settings-title">
                 {tab === 'audio'
@@ -232,7 +247,9 @@ export function SettingsPanel({
                       ? 'Камера и демонстрация'
                       : tab === 'devices'
                         ? 'Аудиоустройства'
-                        : 'О приложении'}
+                        : tab === 'chats'
+                          ? 'Оформление чатов'
+                          : 'О приложении'}
               </h2>
             </div>
             <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
@@ -286,6 +303,7 @@ export function SettingsPanel({
                 onSetting={onSetting}
               />
             )}
+            {tab === 'chats' && <ChatsSettingsTab settings={settings} onSetting={onSetting} />}
             {tab === 'about' && (
               <AboutTab
                 appVersion={appVersion}
@@ -1037,6 +1055,40 @@ function AboutTab({
   diagnosticError: string;
   onSaveDiagnostics(): void;
 }) {
+  const [autostart, setAutostart] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(true);
+  const [autostartError, setAutostartError] = useState('');
+  const supported = autostartSupported();
+  useEffect(() => {
+    let disposed = false;
+    void getAutostartEnabled()
+      .then((enabled) => {
+        if (!disposed) setAutostart(enabled);
+      })
+      .catch(() => {
+        if (!disposed) setAutostartError('Не удалось проверить автозапуск.');
+      })
+      .finally(() => {
+        if (!disposed) setAutostartBusy(false);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  const changeAutostart = async (enabled: boolean) => {
+    setAutostartBusy(true);
+    setAutostartError('');
+    try {
+      await setAutostartEnabled(enabled);
+      setAutostart(enabled);
+    } catch {
+      setAutostartError('Не удалось изменить автозапуск.');
+    } finally {
+      setAutostartBusy(false);
+    }
+  };
+
   return (
     <section className="settings-section about-section">
       <div className="about-mark">
@@ -1070,14 +1122,14 @@ function AboutTab({
           <small>{updateMessage(updateStatus, appVersion)}</small>
         </div>
         {updateStatus.kind === 'available' ? (
-          <button className="primary compact" onClick={onInstallUpdate}>
+          <button className="primary compact settings-action-button" onClick={onInstallUpdate}>
             <Download size={16} /> Обновить до {updateStatus.version}
           </button>
         ) : updateStatus.kind === 'downloading' ? (
           <progress max="100" value={updateStatus.progress} />
         ) : (
           <button
-            className="secondary compact"
+            className="secondary compact settings-action-button"
             disabled={updateStatus.kind === 'checking'}
             onClick={onCheckUpdate}
           >
@@ -1093,9 +1145,136 @@ function AboutTab({
           {diagnosticPath && <small>Сохранено: {diagnosticPath}</small>}
           {diagnosticError && <small className="error-text">{diagnosticError}</small>}
         </div>
-        <button className="secondary compact" onClick={onSaveDiagnostics}>
+        <button className="secondary compact settings-action-button" onClick={onSaveDiagnostics}>
           <Save size={16} /> Сохранить на рабочий стол
         </button>
+      </div>
+      <div className="about-autostart">
+        <Toggle
+          label="Запускать FreeTalk при включении компьютера"
+          description={
+            supported
+              ? 'Приложение автоматически запустится вместе с системой.'
+              : 'Настройка доступна в установленной версии FreeTalk.'
+          }
+          checked={autostart}
+          disabled={!supported || autostartBusy}
+          onChange={(enabled) => void changeAutostart(enabled)}
+        />
+        {autostartError && <small className="error-text">{autostartError}</small>}
+      </div>
+    </section>
+  );
+}
+
+function ChatsSettingsTab({
+  settings,
+  onSetting,
+}: {
+  settings: LocalSettings;
+  onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
+}) {
+  const [wallpaperError, setWallpaperError] = useState('');
+  return (
+    <section className="settings-section chat-settings-section">
+      <div className="chat-settings-preview-card">
+        <div
+          className={`chat-settings-preview ${settings.chatMessageStyle}`}
+          style={
+            {
+              '--preview-text-scale': settings.chatTextScale,
+              backgroundImage: settings.chatWallpaperDataUrl
+                ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
+                : undefined,
+            } as CSSProperties
+          }
+        >
+          <div className="preview-message remote">Привет! Как тебе оформление?</div>
+          <div className="preview-message own">Отлично, так намного удобнее.</div>
+        </div>
+        <div>
+          <strong>Предпросмотр</strong>
+          <small>Изменения сразу применяются ко всем чатам только на этом устройстве.</small>
+        </div>
+      </div>
+
+      <label className="slider-setting chat-text-size-setting">
+        <span>
+          <strong>Размер текста сообщений</strong>
+          <output>{Math.round(settings.chatTextScale * 100)}%</output>
+        </span>
+        <input
+          aria-label="Размер текста сообщений"
+          type="range"
+          min="0.85"
+          max="1.3"
+          step="0.05"
+          value={settings.chatTextScale}
+          onChange={(event) => onSetting({ chatTextScale: Number(event.target.value) }, false)}
+        />
+      </label>
+
+      <div className="chat-style-setting">
+        <strong>Вид сообщений</strong>
+        <div role="radiogroup" aria-label="Вид сообщений">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={settings.chatMessageStyle === 'bubbles'}
+            className={settings.chatMessageStyle === 'bubbles' ? 'active' : ''}
+            onClick={() => onSetting({ chatMessageStyle: 'bubbles' }, false)}
+          >
+            Пузырьки
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={settings.chatMessageStyle === 'compact'}
+            className={settings.chatMessageStyle === 'compact' ? 'active' : ''}
+            onClick={() => onSetting({ chatMessageStyle: 'compact' }, false)}
+          >
+            Компактно
+          </button>
+        </div>
+      </div>
+
+      <div className="chat-wallpaper-setting">
+        <div>
+          <strong>Обои всех чатов</strong>
+          <small>Фото уменьшается перед сохранением и остаётся только на вашем компьютере.</small>
+          {wallpaperError && <small className="error-text">{wallpaperError}</small>}
+        </div>
+        <div>
+          <label className="secondary compact profile-file-button settings-action-button">
+            <ImagePlus size={16} /> {settings.chatWallpaperDataUrl ? 'Заменить' : 'Выбрать фото'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.currentTarget.value = '';
+                if (!file) return;
+                setWallpaperError('');
+                void prepareChatWallpaper(file)
+                  .then((chatWallpaperDataUrl) => onSetting({ chatWallpaperDataUrl }, false))
+                  .catch((caught) =>
+                    setWallpaperError(
+                      caught instanceof Error ? caught.message : 'Не удалось обработать обои.',
+                    ),
+                  );
+              }}
+            />
+          </label>
+          {settings.chatWallpaperDataUrl && (
+            <button
+              type="button"
+              className="secondary compact settings-action-button"
+              onClick={() => onSetting({ chatWallpaperDataUrl: '' }, false)}
+            >
+              <Trash2 size={15} /> Убрать
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -1162,11 +1341,13 @@ function Toggle({
   label,
   description,
   checked,
+  disabled = false,
   onChange,
 }: {
   label: string;
   description: string;
   checked: boolean;
+  disabled?: boolean;
   onChange(value: boolean): void;
 }) {
   return (
@@ -1180,6 +1361,7 @@ function Toggle({
         role="switch"
         aria-label={label}
         aria-checked={checked}
+        disabled={disabled}
         className={`switch ${checked ? 'on' : ''}`}
         onClick={() => onChange(!checked)}
       >

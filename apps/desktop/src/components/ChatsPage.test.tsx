@@ -54,6 +54,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function view(
@@ -166,6 +167,43 @@ describe('MessageList rendering', () => {
     expect(onJoinCall).toHaveBeenCalledWith('ROOM12345678');
   });
 
+  it('turns an ended call action red and prevents joining it again', () => {
+    const onJoinCall = vi.fn();
+    const call: MessageItem = {
+      ...message('3', 'friend', 'Алексей начал звонок'),
+      kind: 'call',
+      metadata: { roomId: 'ROOM12345678', ended: true },
+    };
+    const { getByText, queryByRole, container } = render(view('chat-a', [call], 0, onJoinCall));
+
+    expect(getByText('Звонок завершён')).toBeTruthy();
+    expect(queryByRole('button', { name: 'Присоединиться' })).toBeNull();
+    expect(container.querySelector('.system-call-message.ended')).not.toBeNull();
+    expect(onJoinCall).not.toHaveBeenCalled();
+  });
+
+  it('shows overlapping participant avatars and the final call duration', () => {
+    const call: MessageItem = {
+      ...message('3', 'friend', 'Алексей начал звонок'),
+      kind: 'call',
+      metadata: {
+        roomId: 'ROOM12345678',
+        ended: true,
+        startedAt: '2026-08-26T10:00:00.000Z',
+        endedAt: '2026-08-26T10:02:05.000Z',
+        participants: [
+          { userId: 'friend', displayName: 'Алексей', avatarUrl: 'https://example.test/a.jpg' },
+          { userId: 'self', displayName: 'Гера' },
+        ],
+      },
+    };
+    const { container, getByLabelText } = render(view('chat-a', [call]));
+
+    expect(container.querySelectorAll('.system-call-participant')).toHaveLength(2);
+    expect(getByLabelText('Участники: Алексей, Гера')).toBeTruthy();
+    expect(getByLabelText('Время разговора 2:05')).toBeTruthy();
+  });
+
   it('renders sender avatars inside message groups', () => {
     const withAvatar = {
       ...message('1', 'friend'),
@@ -203,7 +241,7 @@ describe('MessageList rendering', () => {
     });
     const onJoinInvite = vi.fn(async () => true);
     const invite = message('5', 'friend', `freetalk://chat/${token}`);
-    const { findByText, getByRole } = render(
+    const { findByText, getByRole, container } = render(
       <MessageList
         chatId="chat-a"
         userId="self"
@@ -220,6 +258,7 @@ describe('MessageList rendering', () => {
 
     expect(await findByText('Команда FreeTalk')).toBeTruthy();
     expect(await findByText('7 участников')).toBeTruthy();
+    expect(container.querySelector('.invite-message-bubble')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Вступить' }));
     await waitFor(() => expect(onJoinInvite).toHaveBeenCalledWith(token));
   });
@@ -241,6 +280,7 @@ describe('MessageList rendering', () => {
 
     const image = await findByAltText('Фотография от Алексей');
     expect(image.getAttribute('src')).toBe('blob:freetalk-photo');
+    expect(image.closest('.message-bubble')?.classList.contains('image-message-bubble')).toBe(true);
     expect(accountClient.chatImageBlob).toHaveBeenCalledWith(imageMessage.id);
     fireEvent.click(image);
     const viewer = getByRole('dialog', { name: 'Фотография от Алексей' });
@@ -248,6 +288,21 @@ describe('MessageList rendering', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.animationEnd(viewer);
     expect(queryByRole('dialog', { name: 'Фотография от Алексей' })).toBeNull();
+  });
+
+  it('shows a shimmer placeholder without loading text while a photo is fetched', () => {
+    vi.spyOn(accountClient, 'chatImageBlob').mockReturnValue(new Promise(() => {}));
+    const imageMessage: MessageItem = {
+      ...message('7', 'friend', ''),
+      kind: 'image',
+      metadata: { width: 1200, height: 800 },
+    };
+    const { getByRole, queryByText } = render(view('chat-a', [imageMessage]));
+
+    const placeholder = getByRole('status', { name: 'Загружаем фотографию' });
+    expect(placeholder.classList.contains('chat-image-loading')).toBe(true);
+    expect((placeholder as HTMLElement).style.aspectRatio).toBe('1200 / 800');
+    expect(queryByText('Загружаем фотографию…')).toBeNull();
   });
 });
 
@@ -383,7 +438,7 @@ describe('Resizable chat list', () => {
     ],
   };
 
-  const renderPage = () =>
+  const renderPage = (onSendImage = vi.fn(async () => true)) =>
     render(
       <ChatsPage
         userId="self"
@@ -398,6 +453,7 @@ describe('Resizable chat list', () => {
         onOpenChat={vi.fn(async () => undefined)}
         onRetryMessages={vi.fn()}
         onSendMessage={vi.fn(async () => true)}
+        onSendImage={onSendImage}
         onCreateGroup={vi.fn(async () => true)}
         onJoinInvite={vi.fn(async () => true)}
         onStartCall={vi.fn(async () => undefined)}
@@ -435,5 +491,34 @@ describe('Resizable chat list', () => {
         .querySelector<HTMLElement>('.messenger-layout')
         ?.style.getPropertyValue('--conversation-sidebar-width'),
     ).toBe('220px');
+  });
+
+  it('prepares and sends an image pasted into the message field', async () => {
+    const onSendImage = vi.fn(async () => true);
+    const close = vi.fn();
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => ({ width: 320, height: 180, close })),
+    );
+    const { getByRole, findByAltText } = renderPage(onSendImage);
+    const textarea = getByRole('textbox', { name: 'Сообщение' });
+    const image = new File(['photo'], 'clipboard.png', { type: 'image/png' });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ kind: 'file', type: 'image/png', getAsFile: () => image }],
+      },
+    });
+
+    expect(await findByAltText('Предпросмотр отправляемой фотографии')).toBeTruthy();
+    fireEvent.change(textarea, { target: { value: 'Из буфера' } });
+    fireEvent.click(getByRole('button', { name: 'Отправить сообщение' }));
+    await waitFor(() =>
+      expect(onSendImage).toHaveBeenCalledWith(
+        expect.stringMatching(/^data:image\/png;base64,/),
+        'Из буфера',
+      ),
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 });

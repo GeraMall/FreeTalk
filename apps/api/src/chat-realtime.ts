@@ -17,6 +17,12 @@ type RealtimeChatMessage = {
 export type ChatRealtimeServerMessage =
   | { type: 'ready' }
   | { type: 'message-created'; chatId: string; message: RealtimeChatMessage }
+  | {
+      type: 'message-updated';
+      chatId: string;
+      messageId: string;
+      metadata: Record<string, unknown>;
+    }
   | { type: 'history-cleared'; chatId: string }
   | { type: 'profile-updated'; userId: string }
   | {

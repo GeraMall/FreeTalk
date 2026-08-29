@@ -26,6 +26,7 @@ export class SignalingClient {
   private lastPongReceivedAt?: number;
   private lastNativeError?: string;
   private reconnectPending = false;
+  private authorizationRefreshGeneration = 0;
   private readonly clientClosing = new WeakSet<SignalSocket>();
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
@@ -35,6 +36,7 @@ export class SignalingClient {
     private readonly url: string,
     private readonly onMessage: (message: ServerMessage) => Promise<void>,
     private readonly onState: (state: SignalingState, attempt?: number) => void,
+    private readonly refreshAuthorization?: () => Promise<string | undefined>,
   ) {}
 
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
@@ -55,6 +57,7 @@ export class SignalingClient {
 
   close() {
     this.closedByUser = true;
+    this.authorizationRefreshGeneration += 1;
     this.clearTimers();
     this.send({ type: 'leave-room' });
     if (this.socket) this.clientClosing.add(this.socket);
@@ -75,8 +78,32 @@ export class SignalingClient {
     this.open(true);
   }
 
-  private open(reconnecting: boolean) {
+  private open(reconnecting: boolean, authorizationReady = false) {
     if (!this.joined) return;
+    if (reconnecting && this.refreshAuthorization && !authorizationReady) {
+      const generation = ++this.authorizationRefreshGeneration;
+      this.reconnectPending = true;
+      this.onState('reconnecting', this.schedule.attempts);
+      connectionDiagnostics.record('signaling-reconnect:authorization-refresh:start');
+      void this.refreshAuthorization()
+        .then((authToken) => {
+          if (
+            this.closedByUser ||
+            generation !== this.authorizationRefreshGeneration ||
+            !this.joined
+          )
+            return;
+          this.joined = { ...this.joined, authToken };
+          connectionDiagnostics.record('signaling-reconnect:authorization-refresh:success');
+          this.open(true, true);
+        })
+        .catch(() => {
+          if (this.closedByUser || generation !== this.authorizationRefreshGeneration) return;
+          connectionDiagnostics.record('signaling-reconnect:authorization-refresh:failed');
+          this.scheduleRetry();
+        });
+      return;
+    }
     this.reconnectPending = reconnecting;
     this.lastPingQueuedAt = undefined;
     this.lastPingNativeSentAt = undefined;

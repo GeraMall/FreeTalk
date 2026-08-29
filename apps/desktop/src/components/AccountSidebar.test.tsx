@@ -10,6 +10,12 @@ const realtimeHarness = vi.hoisted(() => ({
   onPresence: undefined as ((status: string) => void) | undefined,
 }));
 
+const overlayHarness = vi.hoisted(() => ({
+  foreground: true,
+  show: vi.fn(),
+  onOpen: undefined as ((chatId: string) => void) | undefined,
+}));
+
 vi.mock('../lib/chat-realtime', () => ({
   ChatRealtimeClient: class {
     constructor(onEvent: (event: unknown) => void, onPresence?: (status: string) => void) {
@@ -18,6 +24,17 @@ vi.mock('../lib/chat-realtime', () => ({
     }
     start() {}
     stop() {}
+  },
+}));
+
+vi.mock('../lib/chat-notification-overlay', () => ({
+  appIsInForeground: () => overlayHarness.foreground,
+  showChatNotificationOverlay: overlayHarness.show,
+  listenForNotificationOpen: async (onOpen: (chatId: string) => void) => {
+    overlayHarness.onOpen = onOpen;
+    return () => {
+      overlayHarness.onOpen = undefined;
+    };
   },
 }));
 
@@ -37,6 +54,9 @@ beforeEach(() => {
   localStorage.clear();
   realtimeHarness.onEvent = undefined;
   realtimeHarness.onPresence = undefined;
+  overlayHarness.foreground = true;
+  overlayHarness.show.mockReset();
+  overlayHarness.onOpen = undefined;
 });
 afterEach(cleanup);
 
@@ -189,13 +209,12 @@ describe('AccountSidebar in an active room', () => {
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();
   });
 
-  it('shows an unread chat badge and an incoming message preview', () => {
-    const onNavigate = vi.fn();
-    const { getByRole, getByText } = render(
+  it('shows an unread chat badge without an in-app notification card', () => {
+    const { getByRole, queryByText } = render(
       <AccountSidebar
         user={user}
         activePage="home"
-        onNavigate={onNavigate}
+        onNavigate={vi.fn()}
         onSettings={vi.fn()}
         onLogout={vi.fn()}
       />,
@@ -220,12 +239,43 @@ describe('AccountSidebar in an active room', () => {
     );
 
     expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
-    expect(getByText('Ты уже заходишь?')).toBeTruthy();
-    const preview = getByRole('button', { name: /Сообщение от Друг/ });
-    expect(preview.parentElement).toBe(document.body);
-    fireEvent.click(preview);
-    expect(onNavigate).toHaveBeenCalledWith('chats');
-    expect(getByRole('button', { name: 'Чаты' })).toBeTruthy();
+    expect(queryByText('Ты уже заходишь?')).toBeNull();
+    expect(document.querySelector('.chat-notification-stack')).toBeNull();
+  });
+
+  it('shows the external overlay in the background even for the currently open chat', () => {
+    overlayHarness.foreground = false;
+    render(
+      <AccountSidebar
+        user={user}
+        activePage="chats"
+        readingChatId="chat-open"
+        onNavigate={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    act(() =>
+      realtimeHarness.onEvent?.({
+        type: 'message-created',
+        chatId: 'chat-open',
+        message: {
+          id: 'message-background',
+          kind: 'text',
+          body: 'Сообщение в фоне',
+          sender_id: 'friend-background',
+          display_name: 'Друг',
+          created_at: '2026-08-29T20:00:00.000Z',
+          expires_at: null,
+        },
+      }),
+    );
+
+    expect(overlayHarness.show).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: 'chat-open', body: 'Сообщение в фоне' }),
+    );
+    expect(document.querySelector('.chat-notification-stack')).toBeNull();
   });
 
   it('keeps the unread badge but suppresses message previews in do-not-disturb mode', () => {

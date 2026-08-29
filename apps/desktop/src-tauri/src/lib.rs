@@ -18,6 +18,53 @@ fn persisted_window_state_flags() -> tauri_plugin_window_state::StateFlags {
     StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
 }
 
+#[cfg(desktop)]
+#[tauri::command]
+fn notification_overlay_show(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::{Manager, PhysicalPosition};
+
+    let overlay = app
+        .get_webview_window("notifications")
+        .ok_or_else(|| "notification window is unavailable".to_string())?;
+    let monitor = app
+        .get_webview_window("main")
+        .and_then(|window| window.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    if let Some(monitor) = monitor {
+        let work_area = monitor.work_area();
+        let size = overlay.outer_size().map_err(|error| error.to_string())?;
+        let x = work_area.position.x + work_area.size.width as i32 - size.width as i32 - 16;
+        let y = work_area.position.y + work_area.size.height as i32 - size.height as i32 - 16;
+        overlay
+            .set_position(PhysicalPosition::new(x, y))
+            .map_err(|error| error.to_string())?;
+    }
+
+    overlay.show().map_err(|error| error.to_string())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn notification_overlay_hide(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let overlay = app
+        .get_webview_window("notifications")
+        .ok_or_else(|| "notification window is unavailable".to_string())?;
+    overlay.hide().map_err(|error| error.to_string())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn notification_overlay_open_main(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(overlay) = app.get_webview_window("notifications") {
+        let _ = overlay.hide();
+    }
+    show_main_window(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -42,11 +89,17 @@ pub fn run() {
             signaling::signaling_close,
             secure_session::secure_session_set,
             secure_session::secure_session_get,
-            secure_session::secure_session_clear
+            secure_session::secure_session_clear,
+            notification_overlay_show,
+            notification_overlay_hide,
+            notification_overlay_open_main
         ])
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             use tauri::Manager;
@@ -80,6 +133,27 @@ pub fn run() {
                 window = window.data_directory(std::path::PathBuf::from(directory));
             }
             let main_window = window.build()?;
+
+            let _notification_window = tauri::WebviewWindowBuilder::new(
+                app,
+                "notifications",
+                tauri::WebviewUrl::App("index.html?notification-overlay=1".into()),
+            )
+            .title("FreeTalk notifications")
+            .inner_size(390.0, 380.0)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .closable(false)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .focusable(false)
+            .shadow(false)
+            .visible(false)
+            .build()?;
 
             if first_launch {
                 if let Some(parent) = first_launch_marker.parent() {

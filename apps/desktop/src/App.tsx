@@ -179,6 +179,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--ft-chat-text-scale', String(settings.chatTextScale));
+    root.style.setProperty(
+      '--ft-chat-wallpaper',
+      settings.chatWallpaperDataUrl ? `url("${settings.chatWallpaperDataUrl}")` : 'none',
+    );
+    root.dataset.chatMessageStyle = settings.chatMessageStyle;
+  }, [settings.chatMessageStyle, settings.chatTextScale, settings.chatWallpaperDataUrl]);
+
+  useEffect(() => {
     void accountClient.restore().then((user) => {
       if (user) {
         setAccountUser(user);
@@ -660,23 +670,30 @@ export function App() {
       setName(cleanName);
       pendingRoomId.current = code;
       joinedRoom.current = false;
-      const client = new SignalingClient(signalingUrl, handleServerMessage, (state, attempt) => {
-        if (state === 'reconnecting') awaitingRejoin.current = true;
-        setSignalState(state);
-        setReconnectAttempt(attempt ?? 0);
-        if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
-        else if (state === 'connected') setNotice('');
-        else if (state === 'offline' && joinedRoom.current) {
-          setError('Соединение с сервером потеряно. Выйдите из комнаты и подключитесь снова.');
-        }
-      });
+      const roomAuthToken =
+        options.authToken ?? (accountUser ? await accountClient.realtimeAccessToken() : undefined);
+      const client = new SignalingClient(
+        signalingUrl,
+        handleServerMessage,
+        (state, attempt) => {
+          if (state === 'reconnecting') awaitingRejoin.current = true;
+          setSignalState(state);
+          setReconnectAttempt(attempt ?? 0);
+          if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
+          else if (state === 'connected') setNotice('');
+          else if (state === 'offline' && joinedRoom.current) {
+            setError('Соединение с сервером потеряно. Выйдите из комнаты и подключитесь снова.');
+          }
+        },
+        options.authToken || !accountUser ? undefined : () => accountClient.realtimeAccessToken(),
+      );
       signaling.current = client;
       client.connect({
         type: create ? 'create-room' : 'join-room',
         roomId: code,
         clientId: selfId.current,
         sessionId: sessionId.current,
-        authToken: options.authToken ?? accountClient.signalingToken,
+        authToken: roomAuthToken,
         name: cleanName,
         avatar: accountUser
           ? (accountUser.avatarUrl ?? undefined)

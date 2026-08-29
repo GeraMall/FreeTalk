@@ -180,15 +180,22 @@ describe('PeerManager perfect negotiation glare resolution', () => {
         } else {
           await Promise.all([deliverA(), deliverB()]);
         }
-        const answers = signals
-          .splice(0)
-          .filter(
-            (message): message is Extract<PeerSignal, { type: 'answer' }> =>
-              message.type === 'answer',
-          );
+        const responses = signals.splice(0);
+        const answers = responses.filter(
+          (message): message is Extract<PeerSignal, { type: 'answer' }> =>
+            message.type === 'answer',
+        );
+        signals.push(...responses.filter((message) => message.type !== 'answer'));
         expect(answers).toHaveLength(1);
         expect(answers[0]!.from).toBe(peerB);
         await managerA.handle(incoming(answers[0]!));
+        for (let index = 0; index < 8; index += 1) await Promise.resolve();
+        const deferredOffer = signals.splice(0).find((message) => message.type === 'offer');
+        if (deferredOffer) {
+          await managerA.handle(incoming(deferredOffer));
+          const deferredAnswer = signals.splice(0).find((message) => message.type === 'answer')!;
+          await managerB.handle(incoming(deferredAnswer));
+        }
         expect(connectionA.signalingState).toBe('stable');
         expect(connectionB.signalingState).toBe('stable');
       };
@@ -250,12 +257,48 @@ describe('PeerManager perfect negotiation glare resolution', () => {
           : managerA.handle(incoming(message)),
       ),
     );
-    const answer = signals.find((message) => message.type === 'answer')!;
+    const responses = signals.splice(0);
+    const answer = responses.find((message) => message.type === 'answer')!;
+    signals.push(...responses.filter((message) => message !== answer));
     await managerA.handle(incoming(answer));
+    await vi.waitFor(() => expect(signals.some((message) => message.type === 'offer')).toBe(true));
+    const deferredOffer = signals.splice(0).find((message) => message.type === 'offer')!;
+    await managerA.handle(incoming(deferredOffer));
+    const deferredAnswer = signals.splice(0).find((message) => message.type === 'answer')!;
+    await managerB.handle(incoming(deferredAnswer));
 
     expect(connectionA.signalingState).toBe('stable');
     expect(connectionB.signalingState).toBe('stable');
     expect(connectionB.operations).toContain('setLocalDescription:rollback');
     expect(connectionB.operations).toContain('setLocalDescription:answer');
+  });
+
+  it('retries video negotiation after an event arrives while an offer is pending', async () => {
+    const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
+    const signals: PeerSignal[] = [];
+    const manager = new PeerManager(peerA, [], stream, (message) => signals.push(message), {
+      onTrack: vi.fn(),
+      onState: vi.fn(),
+    });
+    const connection = manager.ensure(peerB) as unknown as PerfectNegotiationPeerConnection;
+    const negotiate = connection.onnegotiationneeded as ((event: Event) => void) | null;
+
+    negotiate?.(new Event('negotiationneeded'));
+    await vi.waitFor(() => expect(signals.filter(({ type }) => type === 'offer')).toHaveLength(1));
+    signals.splice(0);
+
+    // WebKit can emit the event for an already-running screen share while the
+    // initial audio offer is still outstanding. It does not reliably emit it again.
+    negotiate?.(new Event('negotiationneeded'));
+    await manager.handle({
+      type: 'answer',
+      from: peerB,
+      description: { type: 'answer', sdp: 'audio-answer' },
+    });
+
+    await vi.waitFor(() => expect(signals.filter(({ type }) => type === 'offer')).toHaveLength(1));
+    expect(
+      connection.operations.filter((operation) => operation === 'setLocalDescription:offer'),
+    ).toHaveLength(2);
   });
 });

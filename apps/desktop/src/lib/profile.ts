@@ -4,6 +4,7 @@ export const MAX_PROFILE_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
 export const MAX_AVATAR_DATA_URL_LENGTH = 1_300_000;
 export const MAX_COVER_DATA_URL_LENGTH = 3_300_000;
 export const MAX_CHAT_IMAGE_DATA_URL_LENGTH = 3_900_000;
+export const MAX_CHAT_WALLPAPER_DATA_URL_LENGTH = 1_800_000;
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_DECODED_PIXELS = 100_000_000;
@@ -165,6 +166,16 @@ export function prepareCover(file: File) {
     height: 700,
     maxDataUrlLength: MAX_COVER_DATA_URL_LENGTH,
     tooLargeMessage: 'Не удалось уменьшить обложку до 2–3 МБ. Выберите другое изображение.',
+  });
+}
+
+export function prepareChatWallpaper(file: File) {
+  return prepareImage(file, {
+    label: 'Файл обоев',
+    width: 1920,
+    height: 1080,
+    maxDataUrlLength: MAX_CHAT_WALLPAPER_DATA_URL_LENGTH,
+    tooLargeMessage: 'Не удалось уменьшить обои. Выберите другое изображение.',
   });
 }
 

@@ -49,7 +49,7 @@ function realtimeMessage(
   };
 }
 
-async function publishChatEvent(chatId: string, event: ChatRealtimeServerMessage) {
+export async function publishChatEvent(chatId: string, event: ChatRealtimeServerMessage) {
   const members = await db.query<{ user_id: string }>(
     'SELECT user_id FROM chat_members WHERE chat_id=$1 AND left_at IS NULL',
     [chatId],

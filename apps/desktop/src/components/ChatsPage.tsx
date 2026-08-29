@@ -106,7 +106,19 @@ export interface MessageItem {
   avatar_url?: string | null;
   created_at: string;
   expires_at: string | null;
-  metadata?: { roomId?: string; width?: number; height?: number };
+  metadata?: {
+    roomId?: string;
+    width?: number;
+    height?: number;
+    ended?: boolean;
+    startedAt?: string;
+    endedAt?: string | null;
+    participants?: Array<{
+      userId?: string | null;
+      displayName: string;
+      avatarUrl?: string | null;
+    }>;
+  };
 }
 
 interface FriendOption {
@@ -1354,7 +1366,9 @@ function MessageBubble({
           compact
         />
       )}
-      <div className="message-bubble">
+      <div
+        className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${inviteToken ? ' invite-message-bubble' : ''}`}
+      >
         {showAuthor && <strong>{message.display_name || message.username || 'Участник'}</strong>}
         {message.kind === 'image' ? (
           <ChatImageMessage message={message} />
@@ -1527,7 +1541,16 @@ function ChatImageMessage({ message }: { message: MessageItem }) {
         ) : failed ? (
           <span className="chat-image-error">Не удалось загрузить фотографию</span>
         ) : (
-          <span className="chat-image-loading">Загружаем фотографию…</span>
+          <span
+            className="chat-image-loading"
+            role="status"
+            aria-label="Загружаем фотографию"
+            style={
+              message.metadata?.width && message.metadata?.height
+                ? { aspectRatio: `${message.metadata.width} / ${message.metadata.height}` }
+                : undefined
+            }
+          />
         )}
         {message.body && <p>{message.body}</p>}
       </div>
@@ -1574,20 +1597,83 @@ function SystemCallMessage({
   message: MessageItem;
   onJoin(roomId: string): void;
 }) {
+  const ended = message.metadata?.ended === true;
+  const participants = message.metadata?.participants ?? [];
+  const startedAt = message.metadata?.startedAt;
+  const endedAt = message.metadata?.endedAt;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (ended || !startedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [ended, startedAt]);
+  const duration = startedAt
+    ? formatCallDuration(
+        Math.max(
+          0,
+          Math.floor(((endedAt ? Date.parse(endedAt) : now) - Date.parse(startedAt)) / 1_000),
+        ),
+      )
+    : null;
   return (
-    <article className="system-call-message">
+    <article className={`system-call-message${ended ? ' ended' : ''}`}>
       <span className="system-call-icon">
         <Phone />
       </span>
-      <div>
+      <div className="system-call-content">
         <strong>{message.body}</strong>
-        <time>{formatMessageTime(message.created_at)}</time>
+        {participants.length > 0 || duration ? (
+          <div className="system-call-summary">
+            {participants.length > 0 ? (
+              <span
+                className="system-call-participants"
+                aria-label={`Участники: ${participants.map(({ displayName }) => displayName).join(', ')}`}
+              >
+                {participants.slice(0, 4).map((participant, index) => (
+                  <span
+                    className="system-call-participant"
+                    key={participant.userId ?? `${participant.displayName}-${index}`}
+                    title={participant.displayName}
+                  >
+                    {participant.avatarUrl ? (
+                      <img src={participant.avatarUrl} alt="" />
+                    ) : (
+                      participant.displayName.trim().charAt(0).toLocaleUpperCase() || '?'
+                    )}
+                  </span>
+                ))}
+                {participants.length > 4 ? (
+                  <span className="system-call-participant extra">+{participants.length - 4}</span>
+                ) : null}
+              </span>
+            ) : null}
+            {duration ? (
+              <span className="system-call-duration" aria-label={`Время разговора ${duration}`}>
+                <Clock3 />
+                {duration}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <time>{formatMessageTime(message.created_at)}</time>
+        )}
       </div>
-      {message.metadata?.roomId && (
+      {ended ? (
+        <span className="system-call-ended">Звонок завершён</span>
+      ) : message.metadata?.roomId ? (
         <button onClick={() => onJoin(message.metadata!.roomId!)}>Присоединиться</button>
-      )}
+      ) : null}
     </article>
   );
+}
+
+function formatCallDuration(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function DateSeparator({ date }: { date: string }) {
@@ -1613,6 +1699,19 @@ function MessageComposer({
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [imageError, setImageError] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const prepareSelectedImage = (file: File) => {
+    if (processingImage) return;
+    setProcessingImage(true);
+    setImageError('');
+    void prepareChatImage(file)
+      .then(setImageDataUrl)
+      .catch((caught) =>
+        setImageError(
+          caught instanceof Error ? caught.message : 'Не удалось обработать фотографию',
+        ),
+      )
+      .finally(() => setProcessingImage(false));
+  };
   const send = async () => {
     const body = value.trim();
     if ((!body && !imageDataUrl) || sending || processingImage) return;
@@ -1655,16 +1754,7 @@ function MessageComposer({
           const file = event.target.files?.[0];
           event.target.value = '';
           if (!file) return;
-          setProcessingImage(true);
-          setImageError('');
-          void prepareChatImage(file)
-            .then(setImageDataUrl)
-            .catch((caught) =>
-              setImageError(
-                caught instanceof Error ? caught.message : 'Не удалось обработать фотографию',
-              ),
-            )
-            .finally(() => setProcessingImage(false));
+          prepareSelectedImage(file);
         }}
       />
       <button
@@ -1686,6 +1776,14 @@ function MessageComposer({
         aria-label="Сообщение"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={(event) => {
+          const image = Array.from(event.clipboardData.items)
+            .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+            ?.getAsFile();
+          if (!image) return;
+          event.preventDefault();
+          prepareSelectedImage(image);
+        }}
       />
       <button
         className="send-message-button"

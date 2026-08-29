@@ -17,7 +17,7 @@ import {
 import { db, transaction } from './db.js';
 import { env, publicApiUrl, publicAvatarUrl } from './env.js';
 import { sendPasswordReset, sendVerification } from './mailer.js';
-import { registerSocialRoutes } from './social-routes.js';
+import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
@@ -769,6 +769,71 @@ app.post(
   },
 );
 
+async function refreshCallMessage(roomId: string) {
+  const call = await db.query<{
+    id: string;
+    started_at: Date;
+    ended_at: Date | null;
+  }>(
+    `SELECT id,started_at,ended_at FROM call_sessions
+     WHERE room_id=$1 ORDER BY started_at DESC LIMIT 1`,
+    [roomId],
+  );
+  const session = call.rows[0];
+  if (!session) return;
+
+  const participants = await db.query<{
+    user_id: string | null;
+    display_name: string;
+    has_avatar: boolean;
+  }>(
+    `SELECT participant.user_id,participant.display_name,
+            COALESCE(users.avatar_data IS NOT NULL,false) AS has_avatar
+     FROM (
+       SELECT DISTINCT ON (COALESCE(user_id::text,anonymous_user_id::text))
+              user_id,anonymous_user_id,display_name,joined_at
+       FROM call_participants
+       WHERE call_id=$1 AND ($2::boolean OR left_at IS NULL)
+       ORDER BY COALESCE(user_id::text,anonymous_user_id::text),joined_at
+     ) participant
+     LEFT JOIN users ON users.id=participant.user_id
+     ORDER BY participant.joined_at`,
+    [session.id, session.ended_at !== null],
+  );
+  const metadata = {
+    ended: session.ended_at !== null,
+    startedAt: new Date(session.started_at).toISOString(),
+    endedAt: session.ended_at ? new Date(session.ended_at).toISOString() : null,
+    participants: participants.rows.map((participant) => ({
+      userId: participant.user_id,
+      displayName: participant.display_name,
+      avatarUrl: participant.user_id
+        ? (publicAvatarUrl(participant.user_id, participant.has_avatar) ?? null)
+        : null,
+    })),
+  };
+  const messages = await db.query<{
+    id: string;
+    chat_id: string;
+    metadata: Record<string, unknown>;
+  }>(
+    `UPDATE messages SET metadata=metadata || $2::jsonb
+     WHERE kind='call' AND metadata->>'roomId'=$1
+     RETURNING id,chat_id,metadata`,
+    [roomId, JSON.stringify(metadata)],
+  );
+  await Promise.all(
+    messages.rows.map((message) =>
+      publishChatEvent(message.chat_id, {
+        type: 'message-updated',
+        chatId: message.chat_id,
+        messageId: message.id,
+        metadata: message.metadata,
+      }),
+    ),
+  );
+}
+
 app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (request, reply) => {
   const secret = request.headers['x-freetalk-internal-secret'];
   if (typeof secret !== 'string' || !secureSecretEqual(secret, env.INTERNAL_SIGNALING_SECRET))
@@ -796,6 +861,7 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
         [call.rows[0]!.id, input.userId, input.displayName],
       );
     });
+    await refreshCallMessage(input.roomId);
   } else if (input.event === 'join') {
     if ((!input.userId && !input.anonymousUserId) || !input.displayName)
       return reply.code(400).send({ ok: false });
@@ -805,6 +871,7 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
        ORDER BY started_at DESC LIMIT 1`,
       [input.roomId, input.userId ?? null, input.anonymousUserId ?? null, input.displayName],
     );
+    await refreshCallMessage(input.roomId);
   } else if (input.event === 'leave') {
     await db.query(
       `UPDATE call_participants SET left_at=now() WHERE call_id=(SELECT id FROM call_sessions
@@ -813,11 +880,13 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
        AND left_at IS NULL`,
       [input.roomId, input.userId ?? null, input.anonymousUserId ?? null],
     );
+    await refreshCallMessage(input.roomId);
   } else {
     await db.query(
       `UPDATE call_sessions SET ended_at=now() WHERE room_id=$1 AND ended_at IS NULL`,
       [input.roomId],
     );
+    await refreshCallMessage(input.roomId);
   }
   return { ok: true };
 });

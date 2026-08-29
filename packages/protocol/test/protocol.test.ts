@@ -199,5 +199,13 @@ describe('protocol validation', () => {
         },
       }).success,
     ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-updated',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        metadata: { roomId: 'ROOM12345678', ended: true },
+      }).success,
+    ).toBe(true);
   });
 });

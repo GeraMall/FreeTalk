@@ -191,6 +191,12 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     chatId: z.string().uuid(),
     message: realtimeChatMessage,
   }),
+  z.object({
+    type: z.literal('message-updated'),
+    chatId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    metadata: z.record(z.string(), z.unknown()),
+  }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
   z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
   z.object({

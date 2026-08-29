@@ -29,6 +29,7 @@ interface PeerContext {
   voiceSender?: RTCRtpSender;
   polite: boolean;
   makingOffer: boolean;
+  negotiationPending: boolean;
   ignoreOffer: boolean;
   settingRemoteAnswer: boolean;
   candidates: Set<string>;
@@ -121,6 +122,7 @@ export class PeerManager {
       connection,
       polite: this.selfId.localeCompare(peerId) > 0,
       makingOffer: false,
+      negotiationPending: false,
       ignoreOffer: false,
       settingRemoteAnswer: false,
       candidates: new Set(),
@@ -297,40 +299,8 @@ export class PeerManager {
         signalingState: connection.signalingState,
       });
       this.trace(peerId, 'negotiationneeded', connection);
-      if (connection.signalingState !== 'stable') {
-        this.trace(peerId, 'offer-skipped:not-stable', connection);
-        return;
-      }
-      void this.enqueue(context, async () => {
-        if (connection.signalingState !== 'stable') {
-          this.trace(peerId, 'offer-skipped:not-stable', connection);
-          return;
-        }
-        try {
-          context.makingOffer = true;
-          this.trace(peerId, 'create-offer', connection);
-          connectionDiagnostics.record('create-offer:start', peerId, { implicit: true });
-          connectionDiagnostics.record('set-local-description:start', peerId, { type: 'offer' });
-          await connection.setLocalDescription();
-          connectionDiagnostics.record('create-offer:end', peerId, { implicit: true });
-          connectionDiagnostics.record('set-local-description:end', peerId, {
-            type: connection.localDescription?.type ?? 'unknown',
-          });
-          this.sendVideoState(peerId, context);
-          if (connection.localDescription?.type === 'offer') {
-            this.trace(peerId, 'set-local-offer', connection);
-            this.signal({
-              type: 'offer',
-              from: this.selfId,
-              to: peerId,
-              description: { type: 'offer', sdp: connection.localDescription.sdp },
-            });
-            connectionDiagnostics.record('offer-sent', peerId);
-          }
-        } finally {
-          context.makingOffer = false;
-        }
-      }).catch(() => this.events.onState(peerId, 'failed'));
+      context.negotiationPending = true;
+      this.negotiateWhenStable(peerId, context);
     };
     this.startDiagnosticTimer(peerId, context);
     return connection;
@@ -447,6 +417,8 @@ export class PeerManager {
         connectionDiagnostics.record('answer-sent', message.from);
       }
     }
+    if (connection.signalingState === 'stable' && context.negotiationPending)
+      this.negotiateWhenStable(message.from, context);
   }
 
   async replaceAudioTrack(track: MediaStreamTrack) {
@@ -592,6 +564,41 @@ export class PeerManager {
     const pending = context.operationQueue.then(operation);
     context.operationQueue = pending.catch(() => undefined);
     return pending;
+  }
+
+  private negotiateWhenStable(peerId: string, context: PeerContext) {
+    void this.enqueue(context, async () => {
+      const connection = context.connection;
+      if (!context.negotiationPending || connection.signalingState !== 'stable') {
+        if (context.negotiationPending) this.trace(peerId, 'offer-deferred:not-stable', connection);
+        return;
+      }
+      context.negotiationPending = false;
+      try {
+        context.makingOffer = true;
+        this.trace(peerId, 'create-offer', connection);
+        connectionDiagnostics.record('create-offer:start', peerId, { implicit: true });
+        connectionDiagnostics.record('set-local-description:start', peerId, { type: 'offer' });
+        await connection.setLocalDescription();
+        connectionDiagnostics.record('create-offer:end', peerId, { implicit: true });
+        connectionDiagnostics.record('set-local-description:end', peerId, {
+          type: connection.localDescription?.type ?? 'unknown',
+        });
+        this.sendVideoState(peerId, context);
+        if (connection.localDescription?.type === 'offer') {
+          this.trace(peerId, 'set-local-offer', connection);
+          this.signal({
+            type: 'offer',
+            from: this.selfId,
+            to: peerId,
+            description: { type: 'offer', sdp: connection.localDescription.sdp },
+          });
+          connectionDiagnostics.record('offer-sent', peerId);
+        }
+      } finally {
+        context.makingOffer = false;
+      }
+    }).catch(() => this.events.onState(peerId, 'failed'));
   }
 
   private trace(peerId: string, event: string, connection: RTCPeerConnection) {

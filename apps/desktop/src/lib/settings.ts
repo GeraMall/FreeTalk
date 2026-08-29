@@ -24,6 +24,9 @@ export interface LocalSettings extends VideoPreferences {
   peerVolumes: Record<string, number>;
   screenVolumes: Record<string, number>;
   mutedPeers: Record<string, boolean>;
+  chatWallpaperDataUrl: string;
+  chatTextScale: number;
+  chatMessageStyle: 'bubbles' | 'compact';
 }
 
 const KEY = 'freetalk.settings.v1';
@@ -48,6 +51,9 @@ const defaults: LocalSettings = {
   peerVolumes: {},
   screenVolumes: {},
   mutedPeers: {},
+  chatWallpaperDataUrl: '',
+  chatTextScale: 1,
+  chatMessageStyle: 'bubbles',
 };
 
 export function defaultSettings(): LocalSettings {
@@ -71,6 +77,11 @@ export function loadSettings(): LocalSettings {
       profileChangeTimestamps: Array.isArray(value.profileChangeTimestamps)
         ? value.profileChangeTimestamps.filter((time) => Number.isFinite(time))
         : [],
+      chatTextScale:
+        typeof value.chatTextScale === 'number'
+          ? Math.min(1.3, Math.max(0.85, value.chatTextScale))
+          : defaults.chatTextScale,
+      chatMessageStyle: value.chatMessageStyle === 'compact' ? 'compact' : 'bubbles',
     };
   } catch {
     return { ...defaults };

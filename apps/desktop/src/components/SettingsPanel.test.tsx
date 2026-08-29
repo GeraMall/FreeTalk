@@ -23,6 +23,7 @@ const user: AccountUser = {
 function renderProfile() {
   const onClose = vi.fn();
   const onSaveProfile = vi.fn().mockResolvedValue(undefined);
+  const onSetting = vi.fn();
   const view = render(
     <SettingsPanel
       initialTab="profile"
@@ -39,7 +40,7 @@ function renderProfile() {
       onInput={vi.fn()}
       onOutput={vi.fn()}
       onCamera={vi.fn()}
-      onSetting={vi.fn()}
+      onSetting={onSetting}
       onVideoSetting={vi.fn()}
       onKey={vi.fn()}
       onReset={vi.fn()}
@@ -52,7 +53,7 @@ function renderProfile() {
       onChangePassword={vi.fn().mockResolvedValue(undefined)}
     />,
   );
-  return { ...view, onClose, onSaveProfile };
+  return { ...view, onClose, onSaveProfile, onSetting };
 }
 
 describe('SettingsPanel profile actions', () => {
@@ -72,5 +73,22 @@ describe('SettingsPanel profile actions', () => {
 
     fireEvent.click(getByRole('button', { name: 'Готово' }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('provides local chat appearance controls with a live preview', () => {
+    const { container, getByRole, getByText, onSetting } = renderProfile();
+
+    fireEvent.click(getByRole('button', { name: 'Чаты' }));
+    expect(getByRole('heading', { name: 'Оформление чатов' })).toBeTruthy();
+    expect(container.querySelector('.chat-settings-preview')).toBeTruthy();
+
+    fireEvent.change(getByRole('slider', { name: 'Размер текста сообщений' }), {
+      target: { value: '1.2' },
+    });
+    fireEvent.click(getByRole('radio', { name: 'Компактно' }));
+
+    expect(onSetting).toHaveBeenCalledWith({ chatTextScale: 1.2 }, false);
+    expect(onSetting).toHaveBeenCalledWith({ chatMessageStyle: 'compact' }, false);
+    expect(getByText('Обои всех чатов')).toBeTruthy();
   });
 });
