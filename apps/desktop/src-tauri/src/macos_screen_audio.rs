@@ -16,14 +16,14 @@ mod platform {
     const SAMPLE_RATE: u32 = 48_000;
     const CHANNELS: u32 = 2;
 
-    #[derive(Serialize)]
+    #[derive(Clone, Serialize)]
     #[serde(rename_all = "camelCase")]
     struct AudioPlane {
         channels: u32,
         data: String,
     }
 
-    #[derive(Serialize)]
+    #[derive(Clone, Serialize)]
     #[serde(rename_all = "camelCase")]
     struct AudioChunk {
         sample_rate: u32,
@@ -90,8 +90,8 @@ mod platform {
             .with_height(2)
             .with_captures_audio(true)
             .with_excludes_current_process_audio(true)
-            .with_sample_rate(SAMPLE_RATE)
-            .with_channel_count(CHANNELS);
+            .with_sample_rate(SAMPLE_RATE as i32)
+            .with_channel_count(CHANNELS as i32);
         let mut stream = SCStream::new(&filter, &configuration);
         stream.add_output_handler(
             move |sample: CMSampleBuffer, output_type: SCStreamOutputType| {
