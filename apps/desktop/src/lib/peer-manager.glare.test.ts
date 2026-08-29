@@ -241,10 +241,8 @@ describe('PeerManager perfect negotiation glare resolution', () => {
       managerA.setVideoTrack(camera, 'camera'),
       managerB.setVideoTrack(screen, 'screen'),
     ]);
-    const negotiateA = connectionA.onnegotiationneeded as ((event: Event) => void) | null;
-    const negotiateB = connectionB.onnegotiationneeded as ((event: Event) => void) | null;
-    negotiateA?.(new Event('negotiationneeded'));
-    negotiateB?.(new Event('negotiationneeded'));
+    // Video changes explicitly request negotiation, so this also covers WebKit
+    // builds that coalesce or miss the native negotiationneeded event.
     await vi.waitFor(() =>
       expect(signals.filter((message) => message.type === 'offer')).toHaveLength(2),
     );
@@ -300,5 +298,23 @@ describe('PeerManager perfect negotiation glare resolution', () => {
     expect(
       connection.operations.filter((operation) => operation === 'setLocalDescription:offer'),
     ).toHaveLength(2);
+  });
+
+  it('offers an already active camera and screen to a late WebKit peer without an event', async () => {
+    const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
+    const signals: PeerSignal[] = [];
+    const manager = new PeerManager(peerA, [], stream, (message) => signals.push(message), {
+      onTrack: vi.fn(),
+      onState: vi.fn(),
+    });
+    await manager.setVideoTrack({ kind: 'video', id: 'camera' } as MediaStreamTrack, 'camera');
+    await manager.setVideoTrack({ kind: 'video', id: 'screen' } as MediaStreamTrack, 'screen');
+
+    const connection = manager.ensure(peerB) as unknown as PerfectNegotiationPeerConnection;
+
+    await vi.waitFor(() => expect(signals.filter(({ type }) => type === 'offer')).toHaveLength(1));
+    expect(
+      connection.operations.filter((operation) => operation === 'setLocalDescription:offer'),
+    ).toHaveLength(1);
   });
 });

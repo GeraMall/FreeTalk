@@ -294,14 +294,22 @@ export class PeerManager {
         this.clearDisconnectTimer(context);
       }
     };
+    connection.onsignalingstatechange = () => {
+      if (connection.signalingState === 'stable' && context.negotiationPending)
+        this.negotiateWhenStable(peerId, context);
+    };
     connection.onnegotiationneeded = () => {
       connectionDiagnostics.record('negotiationneeded', peerId, {
         signalingState: connection.signalingState,
       });
       this.trace(peerId, 'negotiationneeded', connection);
-      context.negotiationPending = true;
-      this.negotiateWhenStable(peerId, context);
+      this.requestNegotiation(peerId, context);
     };
+    // WebKit can emit the initial negotiationneeded event before a handler is
+    // attached when camera/screen transceivers already exist for a late joiner.
+    // Explicitly request one negotiation so those tracks are never omitted.
+    if (this.localVideoTracks.camera || this.localVideoTracks.screen || screenAudioTrack)
+      this.requestNegotiation(peerId, context);
     this.startDiagnosticTimer(peerId, context);
     return connection;
   }
@@ -479,6 +487,9 @@ export class PeerManager {
         }),
       ),
     );
+    // Do not rely exclusively on negotiationneeded here. WebKit may coalesce or
+    // drop the event when a data channel and video transceiver are added together.
+    for (const [peerId, context] of this.peers) this.requestNegotiation(peerId, context);
   }
 
   setVideoPreferences(preferences: VideoPreferences) {
@@ -564,6 +575,12 @@ export class PeerManager {
     const pending = context.operationQueue.then(operation);
     context.operationQueue = pending.catch(() => undefined);
     return pending;
+  }
+
+  private requestNegotiation(peerId: string, context: PeerContext) {
+    if (context.connection.signalingState === 'closed') return;
+    context.negotiationPending = true;
+    this.negotiateWhenStable(peerId, context);
   }
 
   private negotiateWhenStable(peerId: string, context: PeerContext) {
