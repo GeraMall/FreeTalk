@@ -17,7 +17,7 @@ describe('video quality preferences', () => {
     ).toEqual(DEFAULT_VIDEO_PREFERENCES);
   });
 
-  it('supports 2K 60 FPS and progressively reduces bitrate, FPS and resolution', () => {
+  it('keeps text sharp before reducing resolution', () => {
     const preferences = {
       ...DEFAULT_VIDEO_PREFERENCES,
       screenResolution: '1440p' as const,
@@ -30,7 +30,21 @@ describe('video quality preferences', () => {
     });
     expect(screenEncodingProfile(preferences, 3)).toEqual({
       maxBitrate: 2_800_000,
-      maxFramerate: 15,
+      maxFramerate: 24,
+      scaleResolutionDownBy: 1.5,
+    });
+  });
+
+  it('keeps video fluid while progressively reducing resolution', () => {
+    const preferences = {
+      ...DEFAULT_VIDEO_PREFERENCES,
+      screenResolution: '1440p' as const,
+      screenFrameRate: 60 as const,
+      screenContentMode: 'video' as const,
+    };
+    expect(screenEncodingProfile(preferences, 3)).toEqual({
+      maxBitrate: 2_800_000,
+      maxFramerate: 30,
       scaleResolutionDownBy: 3,
     });
   });
@@ -45,7 +59,7 @@ describe('video quality preferences', () => {
     expect(degraded).toEqual({ level: 1, goodSamples: 0 });
 
     let state = degraded;
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
       state = nextAdaptiveQualityLevel(
         state.level,
         state.goodSamples,

@@ -41,6 +41,7 @@ interface PeerContext {
   qualityTimer?: number;
   adaptiveQualityLevel: number;
   adaptiveGoodSamples: number;
+  screenStatsSnapshot?: { bytesSent: number; timestamp: number };
   diagnosticStartedAt: number;
   firstCandidateTypes: Set<string>;
   firstConnectivityCheckRecorded: boolean;
@@ -86,6 +87,14 @@ interface CandidatePairStats extends RTCStats {
   state?: string;
   nominated?: boolean;
   requestsSent?: number;
+}
+
+interface OutboundVideoStats extends RTCStats {
+  bytesSent?: number;
+  codecId?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
 }
 
 export class PeerManager {
@@ -479,6 +488,7 @@ export class PeerManager {
           if (source === 'screen') {
             context.adaptiveQualityLevel = 0;
             context.adaptiveGoodSamples = 0;
+            context.screenStatsSnapshot = undefined;
             if (track) this.startQualityTimer(peerId, context);
             else this.clearQualityTimer(context);
           }
@@ -501,8 +511,7 @@ export class PeerManager {
         const sender = context.videoSenders[source];
         if (sender?.sender.track) this.configureVideoSender(peerId, sender, source);
       }
-      if (this.localVideoTracks.screen && this.videoPreferences.screenAdaptiveQuality)
-        this.startQualityTimer(peerId, context);
+      if (this.localVideoTracks.screen) this.startQualityTimer(peerId, context);
       else this.clearQualityTimer(context);
     }
   }
@@ -664,14 +673,14 @@ export class PeerManager {
   }
 
   private startQualityTimer(peerId: string, context: PeerContext) {
-    if (!this.videoPreferences.screenAdaptiveQuality || context.qualityTimer) return;
+    if (context.qualityTimer) return;
     context.qualityTimer = window.setInterval(() => {
       if (!this.localVideoTracks.screen || context.connection.signalingState === 'closed') {
         this.clearQualityTimer(context);
         return;
       }
       void this.pollAdaptiveQuality(peerId, context);
-    }, 2_000);
+    }, 1_000);
   }
 
   private ensureVideoStateChannel(peerId: string, context: PeerContext) {
@@ -899,7 +908,12 @@ export class PeerManager {
     parameters.encodings[0]!.scaleResolutionDownBy =
       source === 'screen' ? screenProfile.scaleResolutionDownBy : 1;
     parameters.encodings[0]!.priority = source === 'screen' ? 'high' : 'medium';
-    parameters.degradationPreference = source === 'screen' ? 'balanced' : 'maintain-framerate';
+    parameters.degradationPreference =
+      source === 'screen'
+        ? this.videoPreferences.screenContentMode === 'text'
+          ? 'maintain-resolution'
+          : 'maintain-framerate'
+        : 'maintain-framerate';
     void videoSender.sender
       .setParameters(parameters)
       .then(() =>
@@ -915,21 +929,26 @@ export class PeerManager {
   }
 
   private async pollAdaptiveQuality(peerId: string, context: PeerContext) {
-    if (!this.videoPreferences.screenAdaptiveQuality) return;
     const screenSender = context.videoSenders.screen;
     if (!screenSender?.sender.track) return;
     try {
       const stats = await context.connection.getStats();
       const screenMid = screenSender.transceiver.mid;
       let outboundId = '';
+      let outboundReport: OutboundVideoStats | undefined;
       let qualityLimitationReason: string | undefined;
       let availableOutgoingBitrate: number | undefined;
       let fractionLost: number | undefined;
       let roundTripTime: number | undefined;
       let selectedCandidatePairId: string | undefined;
       for (const report of stats.values()) {
-        if (report.type === 'outbound-rtp' && report.kind === 'video' && report.mid === screenMid) {
+        if (
+          report.type === 'outbound-rtp' &&
+          (report.kind ?? report.mediaType) === 'video' &&
+          report.mid === screenMid
+        ) {
           outboundId = report.id;
+          outboundReport = report as OutboundVideoStats;
           qualityLimitationReason = report.qualityLimitationReason as string | undefined;
         }
         if (report.type === 'transport' && report.selectedCandidatePairId) {
@@ -961,6 +980,32 @@ export class PeerManager {
         roundTripTime,
         qualityLimitationReason,
       };
+      const timestamp = Number(outboundReport?.timestamp ?? performance.now());
+      const bytesSent = Number(outboundReport?.bytesSent ?? 0);
+      const previous = context.screenStatsSnapshot;
+      const elapsedMs = previous ? timestamp - previous.timestamp : 0;
+      const bitrate =
+        previous && elapsedMs > 0
+          ? Math.max(0, Math.round(((bytesSent - previous.bytesSent) * 8 * 1_000) / elapsedMs))
+          : 0;
+      context.screenStatsSnapshot = { bytesSent, timestamp };
+      const codec = outboundReport?.codecId ? stats.get(String(outboundReport.codecId)) : undefined;
+      const trackSettings = screenSender.sender.track.getSettings();
+      connectionDiagnostics.record('screen-quality:sample', peerId, {
+        mode: this.videoPreferences.screenContentMode,
+        adaptive: this.videoPreferences.screenAdaptiveQuality,
+        level: context.adaptiveQualityLevel,
+        width: Number(outboundReport?.frameWidth ?? trackSettings.width ?? 0),
+        height: Number(outboundReport?.frameHeight ?? trackSettings.height ?? 0),
+        framesPerSecond: Number(outboundReport?.framesPerSecond ?? trackSettings.frameRate ?? 0),
+        bitrate,
+        availableOutgoingBitrate: availableOutgoingBitrate ?? 0,
+        fractionLost: fractionLost ?? 0,
+        roundTripTime: roundTripTime ?? 0,
+        qualityLimitationReason: qualityLimitationReason ?? 'none',
+        codec: String(codec?.mimeType ?? 'unknown'),
+      });
+      if (!this.videoPreferences.screenAdaptiveQuality) return;
       const currentProfile = screenEncodingProfile(
         this.videoPreferences,
         context.adaptiveQualityLevel,

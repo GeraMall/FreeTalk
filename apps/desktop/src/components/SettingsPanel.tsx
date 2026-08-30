@@ -738,6 +738,23 @@ function VideoTab({
         </div>
         <div className="video-quality-grid">
           <label className="field-label">
+            Тип содержимого
+            <select
+              value={settings.screenContentMode}
+              onChange={(event) =>
+                onVideoSetting({
+                  screenContentMode: event.target.value as LocalSettings['screenContentMode'],
+                })
+              }
+            >
+              <option value="text">Текст · максимальная чёткость</option>
+              <option value="video">Видео · плавное движение</option>
+            </select>
+            <small>
+              «Текст» сначала снижает FPS, «Видео» сохраняет плавность за счёт разрешения.
+            </small>
+          </label>
+          <label className="field-label">
             Максимальное разрешение
             <select
               value={settings.screenResolution}
@@ -777,7 +794,7 @@ function VideoTab({
           />
           <Toggle
             label="Адаптивное качество"
-            description="Автоматически снижает разрешение, FPS и битрейт при потерях или высоком пинге."
+            description="Подстраивает FPS, разрешение и битрейт под сеть с учётом выбранного типа содержимого."
             checked={settings.screenAdaptiveQuality}
             onChange={(value) => onVideoSetting({ screenAdaptiveQuality: value })}
           />

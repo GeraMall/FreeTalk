@@ -235,7 +235,7 @@ export class VideoManager {
     }
     this.screenTrack = track;
     this.screenStream = stream;
-    track.contentHint = 'detail';
+    track.contentHint = this.preferences.screenContentMode === 'text' ? 'detail' : 'motion';
     let audioTrack = stream.getAudioTracks()[0];
     if (includeAudio && macOS && !audioTrack) {
       try {

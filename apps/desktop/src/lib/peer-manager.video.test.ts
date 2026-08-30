@@ -182,7 +182,7 @@ describe('PeerManager video sender lifecycle', () => {
     );
     expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        degradationPreference: 'balanced',
+        degradationPreference: 'maintain-resolution',
         encodings: [
           expect.objectContaining({
             maxBitrate: 6_000_000,
@@ -221,6 +221,7 @@ describe('PeerManager video sender lifecycle', () => {
       cameraDeviceId: '',
       screenResolution: '1440p',
       screenFrameRate: 60,
+      screenContentMode: 'text',
       screenAudioByDefault: true,
       screenAdaptiveQuality: true,
     });
@@ -229,7 +230,7 @@ describe('PeerManager video sender lifecycle', () => {
       VideoPeerConnection.instances[0]!.transceivers[0]!.sender.setParameters,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        degradationPreference: 'balanced',
+        degradationPreference: 'maintain-resolution',
         encodings: [
           expect.objectContaining({
             maxBitrate: 14_000_000,
@@ -290,15 +291,15 @@ describe('PeerManager video sender lifecycle', () => {
       ],
     ]);
 
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1_000);
 
     expect(connection.transceivers[0]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
         encodings: [
           expect.objectContaining({
             maxBitrate: 3_720_000,
-            maxFramerate: 23,
-            scaleResolutionDownBy: 1.5,
+            maxFramerate: 24,
+            scaleResolutionDownBy: 1,
           }),
         ],
       }),

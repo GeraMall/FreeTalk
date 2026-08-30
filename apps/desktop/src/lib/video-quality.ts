@@ -1,10 +1,12 @@
 export type ScreenResolution = '720p' | '1080p' | '1440p';
 export type ScreenFrameRate = 15 | 30 | 60;
+export type ScreenContentMode = 'text' | 'video';
 
 export interface VideoPreferences {
   cameraDeviceId: string;
   screenResolution: ScreenResolution;
   screenFrameRate: ScreenFrameRate;
+  screenContentMode: ScreenContentMode;
   screenAudioByDefault: boolean;
   screenAdaptiveQuality: boolean;
 }
@@ -26,6 +28,7 @@ export const DEFAULT_VIDEO_PREFERENCES: VideoPreferences = {
   cameraDeviceId: '',
   screenResolution: '1080p',
   screenFrameRate: 30,
+  screenContentMode: 'text',
   screenAudioByDefault: true,
   screenAdaptiveQuality: true,
 };
@@ -42,9 +45,11 @@ const BASE_BITRATES: Record<ScreenResolution, Record<ScreenFrameRate, number>> =
   '1440p': { 15: 5_000_000, 30: 9_000_000, 60: 14_000_000 },
 };
 
-const SCALE_BY_LEVEL = [1, 1.5, 2, 3] as const;
 const BITRATE_BY_LEVEL = [1, 0.62, 0.36, 0.2] as const;
-const FPS_BY_LEVEL = [1, 0.75, 0.5, 0.25] as const;
+const TEXT_SCALE_BY_LEVEL = [1, 1, 1, 1.5] as const;
+const TEXT_FPS_BY_LEVEL = [1, 0.8, 0.5, 0.4] as const;
+const VIDEO_SCALE_BY_LEVEL = [1, 1.5, 2, 3] as const;
+const VIDEO_FPS_BY_LEVEL = [1, 1, 0.75, 0.5] as const;
 
 export function screenCaptureConstraints(preferences: VideoPreferences): MediaTrackConstraints {
   const resolution = RESOLUTIONS[preferences.screenResolution];
@@ -62,10 +67,17 @@ export function screenEncodingProfile(
 ): ScreenEncodingProfile {
   const level = Math.max(0, Math.min(3, Math.round(adaptiveLevel)));
   const baseBitrate = BASE_BITRATES[preferences.screenResolution][preferences.screenFrameRate];
+  const textMode = preferences.screenContentMode === 'text';
   return {
     maxBitrate: Math.round(baseBitrate * BITRATE_BY_LEVEL[level]),
-    maxFramerate: Math.max(12, Math.round(preferences.screenFrameRate * FPS_BY_LEVEL[level])),
-    scaleResolutionDownBy: SCALE_BY_LEVEL[level],
+    maxFramerate: Math.max(
+      12,
+      Math.round(
+        preferences.screenFrameRate *
+          (textMode ? TEXT_FPS_BY_LEVEL[level] : VIDEO_FPS_BY_LEVEL[level]),
+      ),
+    ),
+    scaleResolutionDownBy: textMode ? TEXT_SCALE_BY_LEVEL[level] : VIDEO_SCALE_BY_LEVEL[level],
   };
 }
 
@@ -88,9 +100,9 @@ export function nextAdaptiveQualityLevel(
     sample.fractionLost !== undefined ||
     sample.roundTripTime !== undefined ||
     sample.qualityLimitationReason !== undefined;
-  const good = hasEvidence && available > upgradeTargetBitrate * 1.35 && loss < 0.02 && rtt < 0.2;
+  const good = hasEvidence && available > upgradeTargetBitrate * 1.25 && loss < 0.02 && rtt < 0.2;
   const goodSamples = good ? consecutiveGoodSamples + 1 : 0;
-  if (goodSamples >= 5 && currentLevel > 0) return { level: currentLevel - 1, goodSamples: 0 };
+  if (goodSamples >= 3 && currentLevel > 0) return { level: currentLevel - 1, goodSamples: 0 };
   return { level: currentLevel, goodSamples };
 }
 
@@ -107,6 +119,10 @@ export function normalizeVideoPreferences(value: Partial<VideoPreferences>): Vid
       value.screenFrameRate === 15 || value.screenFrameRate === 30 || value.screenFrameRate === 60
         ? value.screenFrameRate
         : DEFAULT_VIDEO_PREFERENCES.screenFrameRate,
+    screenContentMode:
+      value.screenContentMode === 'text' || value.screenContentMode === 'video'
+        ? value.screenContentMode
+        : DEFAULT_VIDEO_PREFERENCES.screenContentMode,
     screenAudioByDefault:
       typeof value.screenAudioByDefault === 'boolean'
         ? value.screenAudioByDefault

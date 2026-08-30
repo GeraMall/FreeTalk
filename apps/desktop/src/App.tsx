@@ -71,6 +71,7 @@ function videoPreferences(settings: LocalSettings): VideoPreferences {
     cameraDeviceId: settings.cameraDeviceId,
     screenResolution: settings.screenResolution,
     screenFrameRate: settings.screenFrameRate,
+    screenContentMode: settings.screenContentMode,
     screenAudioByDefault: settings.screenAudioByDefault,
     screenAdaptiveQuality: settings.screenAdaptiveQuality,
   };
