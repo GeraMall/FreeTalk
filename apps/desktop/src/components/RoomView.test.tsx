@@ -39,6 +39,10 @@ function view(
     onScreenFocusChange?: (active: boolean) => void;
     roomChatMessages?: RoomChatMessage[];
     screenFocusMode?: boolean;
+    recordingState?: { phase: 'idle' | 'recording' | 'saving'; path?: string; startedAt?: number };
+    recordingBannerVisible?: boolean;
+    onRecording?: () => void;
+    onRecordingBannerClose?: () => void;
   } = {},
 ) {
   return (
@@ -71,6 +75,8 @@ function view(
       settings={defaultSettings()}
       inviteCopied={false}
       turnAvailable
+      recordingState={handlers.recordingState ?? { phase: 'idle' }}
+      recordingBannerVisible={handlers.recordingBannerVisible ?? false}
       onCopyInvite={vi.fn()}
       onMute={handlers.onMute ?? vi.fn()}
       onCamera={handlers.onCamera ?? vi.fn()}
@@ -79,6 +85,8 @@ function view(
       onRoomChatSend={handlers.onRoomChatSend ?? vi.fn(() => true)}
       onScreenFocusChange={handlers.onScreenFocusChange ?? vi.fn()}
       onSettings={handlers.onSettings ?? vi.fn()}
+      onRecording={handlers.onRecording ?? vi.fn()}
+      onRecordingBannerClose={handlers.onRecordingBannerClose ?? vi.fn()}
       onLeave={handlers.onLeave ?? vi.fn()}
       onPeerVolume={vi.fn()}
       onScreenVolume={onScreenVolume}
@@ -166,6 +174,24 @@ describe('RoomView media layouts', () => {
     const { getByRole } = render(view('none', {}, false, onScreen));
     fireEvent.click(getByRole('button', { name: 'Демонстрация экрана' }));
     expect(onScreen).toHaveBeenCalledOnce();
+  });
+
+  it('shows creator recording controls and a dismissible start banner', () => {
+    const onRecording = vi.fn();
+    const onRecordingBannerClose = vi.fn();
+    const { getByRole, getByText } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        recordingState: { phase: 'recording', startedAt: Date.now() },
+        recordingBannerVisible: true,
+        onRecording,
+        onRecordingBannerClose,
+      }),
+    );
+    fireEvent.click(getByRole('button', { name: 'Остановить запись экрана' }));
+    expect(onRecording).toHaveBeenCalledOnce();
+    expect(getByText('Запись экрана началась и сохраняется локально')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'ОК' }));
+    expect(onRecordingBannerClose).toHaveBeenCalledOnce();
   });
 
   it('shows the call timer and sends one of five reactions', () => {

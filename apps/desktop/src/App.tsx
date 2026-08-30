@@ -39,6 +39,8 @@ import {
 } from './components/AccountSidebar';
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 import mascot from './assets/freetalk-mascot.png';
+import recordingStartSound from './assets/recording-start.mp3';
+import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -124,6 +126,8 @@ export function App() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
   const [screenFocusMode, setScreenFocusMode] = useState(false);
+  const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
+  const [recordingBannerVisible, setRecordingBannerVisible] = useState(false);
 
   const openSettings = useCallback((tab: SettingsTab = 'audio') => {
     setSettingsInitialTab(tab);
@@ -137,6 +141,7 @@ export function App() {
   const sessionId = useRef(storedIdentity('freetalk.sessionId'));
   const audio = useRef<AudioManager | undefined>(undefined);
   const video = useRef<VideoManager | undefined>(undefined);
+  const screenRecorder = useRef<ScreenRecorder | undefined>(undefined);
   const remoteVideoStreams = useRef(
     new Map<string, Partial<Record<VideoMediaSource, MediaStream>>>(),
   );
@@ -233,6 +238,11 @@ export function App() {
     peers.current = undefined;
     video.current?.dispose();
     video.current = undefined;
+    if (screenRecorder.current) {
+      const recorder = screenRecorder.current;
+      screenRecorder.current = undefined;
+      void recorder.stop().catch(() => undefined);
+    }
     audio.current?.stop();
     audio.current = undefined;
     remoteAudio.current.closeAll();
@@ -261,6 +271,7 @@ export function App() {
     setReactions([]);
     setRoomChatMessages([]);
     setScreenFocusMode(false);
+    setRecordingBannerVisible(false);
   }, []);
 
   useEffect(() => {
@@ -771,6 +782,51 @@ export function App() {
     }
   };
 
+  const toggleScreenRecording = async () => {
+    if (screenRecording.phase === 'saving') return;
+    setError('');
+    if (screenRecording.phase === 'recording') {
+      try {
+        const path = await screenRecorder.current?.stop();
+        if (path) setNotice(`Запись сохранена: ${path}`);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Не удалось сохранить запись');
+      }
+      return;
+    }
+    try {
+      const recorder =
+        screenRecorder.current ??
+        (screenRecorder.current = new ScreenRecorder((state) => setScreenRecording(state)));
+      const destination = await recorder.start({
+        settings,
+        sharedScreenStream: localVideo.screenStream,
+        participantNames: participants.map((participant) => participant.name),
+      });
+      if (
+        destination &&
+        !settings.recordingAskDirectory &&
+        destination.directory !== settings.recordingDirectory &&
+        settings.recordingDirectory
+      ) {
+        updateSettings({ recordingDirectory: destination.directory });
+      }
+      const sound = new Audio(recordingStartSound);
+      sound.volume = settings.outputVolume;
+      const playSound = () => sound.play().catch(() => undefined);
+      if (settings.outputDeviceId && 'setSinkId' in sound)
+        void (sound as HTMLAudioElement & { setSinkId(deviceId: string): Promise<void> })
+          .setSinkId(settings.outputDeviceId)
+          .then(playSound)
+          .catch(playSound);
+      else void playSound();
+      setRecordingBannerVisible(true);
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return;
+      setError(caught instanceof Error ? caught.message : 'Не удалось начать запись экрана');
+    }
+  };
+
   const loginAccount = async (login: string, password: string, captchaToken?: string) => {
     setAuthBusy(true);
     setError('');
@@ -1189,6 +1245,8 @@ export function App() {
       reconnectAttempt={reconnectAttempt}
       inviteCopied={inviteCopied}
       turnAvailable={turnAvailable}
+      recordingState={screenRecording}
+      recordingBannerVisible={recordingBannerVisible}
       onCopyInvite={() => void copyInvite()}
       onMute={toggleMute}
       onCamera={() => void runVideoAction('camera')}
@@ -1197,6 +1255,8 @@ export function App() {
       onRoomChatSend={sendRoomChatMessage}
       onScreenFocusChange={setScreenFocusMode}
       onSettings={() => openSettings()}
+      onRecording={() => void toggleScreenRecording()}
+      onRecordingBannerClose={() => setRecordingBannerVisible(false)}
       onLeave={cleanup}
       onPeerVolume={setPeerVolume}
       onScreenVolume={setScreenVolume}

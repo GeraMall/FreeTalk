@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AudioLines,
+  CircleDot,
   Download,
+  FolderOpen,
   Info,
   ImagePlus,
   MessageCircle,
@@ -25,6 +27,12 @@ import {
 import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
 import type { UpdateStatus } from '../lib/updater';
 import type { AccountUser } from '../lib/api-client';
+import {
+  chooseRecordingDirectory,
+  defaultRecordingDirectory,
+  openRecordingDirectory,
+  recordingStorageAvailable,
+} from '../lib/recording-storage';
 import { BrandLogo } from './BrandLogo';
 import mascotUrl from '../assets/freetalk-mascot.png';
 import {
@@ -34,7 +42,8 @@ import {
   USERNAME_MIN_LENGTH,
 } from '../lib/username';
 
-export type SettingsTab = 'audio' | 'profile' | 'video' | 'devices' | 'chats' | 'about';
+export type SettingsTab =
+  'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
 
 interface SettingsPanelProps {
   initialTab?: SettingsTab;
@@ -205,6 +214,12 @@ export function SettingsPanel({
               onClick={() => setTab('devices')}
             />
             <TabButton
+              active={tab === 'recording'}
+              icon={<CircleDot />}
+              label="Запись"
+              onClick={() => setTab('recording')}
+            />
+            <TabButton
               active={tab === 'chats'}
               icon={<MessageCircle />}
               label="Чаты"
@@ -234,9 +249,11 @@ export function SettingsPanel({
                       ? 'ВИДЕО'
                       : tab === 'devices'
                         ? 'УСТРОЙСТВА'
-                        : tab === 'chats'
-                          ? 'ЧАТЫ'
-                          : 'FREETALK'}
+                        : tab === 'recording'
+                          ? 'ЗАПИСЬ'
+                          : tab === 'chats'
+                            ? 'ЧАТЫ'
+                            : 'FREETALK'}
               </p>
               <h2 id="settings-title">
                 {tab === 'audio'
@@ -247,9 +264,11 @@ export function SettingsPanel({
                       ? 'Камера и демонстрация'
                       : tab === 'devices'
                         ? 'Аудиоустройства'
-                        : tab === 'chats'
-                          ? 'Оформление чатов'
-                          : 'О приложении'}
+                        : tab === 'recording'
+                          ? 'Локальная запись'
+                          : tab === 'chats'
+                            ? 'Оформление чатов'
+                            : 'О приложении'}
               </h2>
             </div>
             <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
@@ -304,6 +323,9 @@ export function SettingsPanel({
               />
             )}
             {tab === 'chats' && <ChatsSettingsTab settings={settings} onSetting={onSetting} />}
+            {tab === 'recording' && (
+              <RecordingSettingsTab settings={settings} onSetting={onSetting} />
+            )}
             {tab === 'about' && (
               <AboutTab
                 appVersion={appVersion}
@@ -1182,6 +1204,119 @@ function AboutTab({
       </div>
     </section>
   );
+}
+
+function RecordingSettingsTab({
+  settings,
+  onSetting,
+}: {
+  settings: LocalSettings;
+  onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
+}) {
+  const [defaultDirectory, setDefaultDirectory] = useState('');
+  const [error, setError] = useState('');
+  const [availableBytes, setAvailableBytes] = useState<number>();
+
+  useEffect(() => {
+    void defaultRecordingDirectory()
+      .then(setDefaultDirectory)
+      .catch(() => undefined);
+  }, []);
+
+  const directory = settings.recordingDirectory || defaultDirectory || 'Видео/FreeTalk';
+  useEffect(() => {
+    if (!directory || directory === 'Видео/FreeTalk') return;
+    void recordingStorageAvailable(settings.recordingDirectory)
+      .then(setAvailableBytes)
+      .catch(() => setAvailableBytes(undefined));
+  }, [directory, settings.recordingDirectory]);
+  const changeDirectory = async () => {
+    setError('');
+    try {
+      const selected = await chooseRecordingDirectory(directory);
+      if (selected) onSetting({ recordingDirectory: selected }, false);
+    } catch {
+      setError('Не удалось выбрать папку.');
+    }
+  };
+
+  return (
+    <div className="recording-settings-page">
+      <section className="settings-section recording-storage-section">
+        <div className="section-title-row">
+          <div>
+            <h3>Локальное хранилище записей</h3>
+            <p>Видео сохраняется только на этом компьютере и не загружается на сервер.</p>
+          </div>
+          <CircleDot size={22} />
+        </div>
+        <div className="recording-directory-row">
+          <div className="recording-directory-value" title={directory}>
+            <FolderOpen size={17} />
+            <span>{directory}</span>
+          </div>
+          <button
+            className="secondary compact"
+            onClick={() =>
+              void openRecordingDirectory(settings.recordingDirectory).catch(() =>
+                setError('Папка ещё не создана. Начните первую запись.'),
+              )
+            }
+          >
+            Открыть
+          </button>
+          <button className="secondary compact" onClick={() => void changeDirectory()}>
+            Изменить
+          </button>
+        </div>
+        {error && <small className="field-error">{error}</small>}
+        {availableBytes !== undefined && (
+          <small className="recording-space-available">
+            Свободно {formatStorageSize(availableBytes)}
+          </small>
+        )}
+        <Toggle
+          label="Выбирать папку после каждой конференции"
+          description="Перед началом каждой записи FreeTalk спросит, куда сохранить видео."
+          checked={settings.recordingAskDirectory}
+          onChange={(value) => onSetting({ recordingAskDirectory: value }, false)}
+        />
+      </section>
+
+      <section className="settings-section recording-options-section">
+        <h3>Настройки записи</h3>
+        <p className="settings-section-description">
+          Запись создаётся в WebM или MP4 с высоким битрейтом и исходным разрешением выбранного
+          экрана.
+        </p>
+        <div className="video-toggle-list">
+          <Toggle
+            label="Показывать имена участников"
+            description="Добавляет имена участников комнаты в нижнюю часть записи."
+            checked={settings.recordingShowParticipantNames}
+            onChange={(value) => onSetting({ recordingShowParticipantNames: value }, false)}
+          />
+          <Toggle
+            label="Добавить временную метку"
+            description="Показывает локальные дату и время в правом верхнем углу записи."
+            checked={settings.recordingAddTimestamp}
+            onChange={(value) => onSetting({ recordingAddTimestamp: value }, false)}
+          />
+          <Toggle
+            label="Записывать видео при демонстрации экрана"
+            description="Использует уже выбранную демонстрацию без повторного запроса экрана."
+            checked={settings.recordingIncludeSharedVideo}
+            onChange={(value) => onSetting({ recordingIncludeSharedVideo: value }, false)}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatStorageSize(bytes: number) {
+  const gigabytes = bytes / 1024 ** 3;
+  return `${gigabytes >= 10 ? gigabytes.toFixed(0) : gigabytes.toFixed(1)} ГБ`;
 }
 
 function ChatsSettingsTab({

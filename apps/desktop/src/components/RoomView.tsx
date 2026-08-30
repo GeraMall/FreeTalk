@@ -4,6 +4,7 @@ import {
   Check,
   Camera,
   CameraOff,
+  CircleDot,
   Copy,
   Crown,
   LogOut,
@@ -29,6 +30,7 @@ import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
 import { BrandLogo } from './BrandLogo';
 import { RoomChatPanel } from './RoomChatPanel';
+import type { ScreenRecordingState } from '../lib/screen-recorder';
 
 export type PeerUiState = Record<
   string,
@@ -62,6 +64,8 @@ interface RoomViewProps {
   settings: LocalSettings;
   inviteCopied: boolean;
   turnAvailable: boolean;
+  recordingState: ScreenRecordingState;
+  recordingBannerVisible: boolean;
   onCopyInvite(): void;
   onMute(): void;
   onCamera(): void;
@@ -70,6 +74,8 @@ interface RoomViewProps {
   onRoomChatSend(text: string): boolean;
   onScreenFocusChange(active: boolean): void;
   onSettings(): void;
+  onRecording(): void;
+  onRecordingBannerClose(): void;
   onLeave(): void;
   onPeerVolume(peerId: string, value: number): void;
   onScreenVolume(peerId: string, value: number): void;
@@ -97,6 +103,8 @@ export function RoomView({
   settings,
   inviteCopied,
   turnAvailable,
+  recordingState,
+  recordingBannerVisible,
   onCopyInvite,
   onMute,
   onCamera,
@@ -105,6 +113,8 @@ export function RoomView({
   onRoomChatSend,
   onScreenFocusChange,
   onSettings,
+  onRecording,
+  onRecordingBannerClose,
   onLeave,
   onPeerVolume,
   onScreenVolume,
@@ -304,6 +314,33 @@ export function RoomView({
           <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
         </div>
         <div className="room-header-actions">
+          {self?.isOwner && (
+            <button
+              className={`room-recording-button ${recordingState.phase === 'recording' ? 'active' : ''}`}
+              aria-label={
+                recordingState.phase === 'recording'
+                  ? 'Остановить запись экрана'
+                  : recordingState.phase === 'saving'
+                    ? 'Запись сохраняется'
+                    : 'Начать запись экрана'
+              }
+              disabled={recordingState.phase === 'saving'}
+              onClick={onRecording}
+            >
+              {recordingState.phase === 'recording' ? (
+                <Square size={15} />
+              ) : (
+                <CircleDot size={18} />
+              )}
+              <span>
+                {recordingState.phase === 'recording'
+                  ? 'Остановить'
+                  : recordingState.phase === 'saving'
+                    ? 'Сохранение…'
+                    : 'Запись'}
+              </span>
+            </button>
+          )}
           <button
             className="room-settings-button"
             aria-label="Настройки аудио и устройств"
@@ -317,6 +354,15 @@ export function RoomView({
           </button>
         </div>
       </header>
+
+      {recordingBannerVisible && recordingState.phase === 'recording' && (
+        <div className="recording-start-banner" role="status">
+          <span>
+            <i /> Запись экрана началась и сохраняется локально
+          </span>
+          <button onClick={onRecordingBannerClose}>ОК</button>
+        </div>
+      )}
 
       <div className="room-body-layout">
         <section className={`room-main room-mode-${roomMode}`}>

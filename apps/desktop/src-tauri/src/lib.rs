@@ -18,6 +18,36 @@ fn macos_screen_audio_stop(
     macos_screen_audio::stop(&state)
 }
 
+#[tauri::command]
+fn open_recordings_directory(path: String) -> Result<(), String> {
+    let directory = std::path::PathBuf::from(path);
+    if !directory.is_dir() {
+        return Err("recordings directory does not exist".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    command
+        .arg(directory)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn recording_storage_available(path: String) -> Result<u64, String> {
+    let mut directory = std::path::PathBuf::from(path);
+    while !directory.exists() {
+        if !directory.pop() {
+            return Err("recordings volume is unavailable".to_string());
+        }
+    }
+    fs2::available_space(directory).map_err(|error| error.to_string())
+}
+
 #[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
     use tauri::Manager;
@@ -109,11 +139,15 @@ pub fn run() {
             secure_session::secure_session_clear,
             macos_screen_audio_start,
             macos_screen_audio_stop,
+            open_recordings_directory,
+            recording_storage_available,
             notification_overlay_show,
             notification_overlay_hide,
             notification_overlay_open_main
         ])
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

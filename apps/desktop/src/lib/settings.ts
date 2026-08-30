@@ -27,6 +27,11 @@ export interface LocalSettings extends VideoPreferences {
   chatWallpaperDataUrl: string;
   chatTextScale: number;
   chatMessageStyle: 'bubbles' | 'compact';
+  recordingDirectory: string;
+  recordingAskDirectory: boolean;
+  recordingShowParticipantNames: boolean;
+  recordingAddTimestamp: boolean;
+  recordingIncludeSharedVideo: boolean;
 }
 
 const KEY = 'freetalk.settings.v1';
@@ -54,6 +59,11 @@ const defaults: LocalSettings = {
   chatWallpaperDataUrl: '',
   chatTextScale: 1,
   chatMessageStyle: 'bubbles',
+  recordingDirectory: '',
+  recordingAskDirectory: false,
+  recordingShowParticipantNames: true,
+  recordingAddTimestamp: false,
+  recordingIncludeSharedVideo: true,
 };
 
 export function defaultSettings(): LocalSettings {
@@ -82,6 +92,20 @@ export function loadSettings(): LocalSettings {
           ? Math.min(1.3, Math.max(0.85, value.chatTextScale))
           : defaults.chatTextScale,
       chatMessageStyle: value.chatMessageStyle === 'compact' ? 'compact' : 'bubbles',
+      recordingDirectory:
+        typeof value.recordingDirectory === 'string' ? value.recordingDirectory : '',
+      recordingAskDirectory:
+        typeof value.recordingAskDirectory === 'boolean' ? value.recordingAskDirectory : false,
+      recordingShowParticipantNames:
+        typeof value.recordingShowParticipantNames === 'boolean'
+          ? value.recordingShowParticipantNames
+          : true,
+      recordingAddTimestamp:
+        typeof value.recordingAddTimestamp === 'boolean' ? value.recordingAddTimestamp : false,
+      recordingIncludeSharedVideo:
+        typeof value.recordingIncludeSharedVideo === 'boolean'
+          ? value.recordingIncludeSharedVideo
+          : true,
     };
   } catch {
     return { ...defaults };

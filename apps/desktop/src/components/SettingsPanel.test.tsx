@@ -91,4 +91,17 @@ describe('SettingsPanel profile actions', () => {
     expect(onSetting).toHaveBeenCalledWith({ chatMessageStyle: 'compact' }, false);
     expect(getByText('Обои всех чатов')).toBeTruthy();
   });
+
+  it('provides Zoom-style local recording settings without the side-by-side option', () => {
+    const { getByRole, queryByText, onSetting } = renderProfile();
+
+    fireEvent.click(getByRole('button', { name: 'Запись' }));
+    expect(getByRole('heading', { name: 'Локальная запись' })).toBeTruthy();
+    fireEvent.click(getByRole('switch', { name: 'Добавить временную метку' }));
+    fireEvent.click(getByRole('switch', { name: 'Записывать видео при демонстрации экрана' }));
+
+    expect(onSetting).toHaveBeenCalledWith({ recordingAddTimestamp: true }, false);
+    expect(onSetting).toHaveBeenCalledWith({ recordingIncludeSharedVideo: false }, false);
+    expect(queryByText(/рядом/i)).toBeNull();
+  });
 });

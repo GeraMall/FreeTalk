@@ -2469,6 +2469,55 @@ input[type='range']:hover::-webkit-slider-thumb {
   display: grid;
   gap: 15px;
 }
+.recording-settings-page {
+  display: grid;
+  gap: 18px;
+}
+.recording-storage-section,
+.recording-options-section {
+  display: grid;
+  gap: 14px;
+}
+.recording-storage-section .section-title-row p,
+.settings-section-description {
+  margin: 4px 0 0;
+  color: var(--ft-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.recording-directory-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+.recording-directory-value {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid #24374b;
+  border-radius: 9px;
+  color: #aebed0;
+  background: #0b1724;
+  font-size: 10px;
+}
+.recording-directory-value span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recording-directory-value svg {
+  flex: 0 0 auto;
+  color: #59bef9;
+}
+.recording-space-available {
+  margin-top: -8px;
+  color: var(--ft-text-muted);
+  font-size: 9px;
+}
 .video-settings-section h3 {
   margin: 0;
 }
@@ -4426,6 +4475,81 @@ html.notification-overlay-document #root {
   color: #eaffff;
   background: rgba(78, 243, 242, 0.07);
 }
+.room-recording-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid rgba(89, 190, 249, 0.2);
+  border-radius: 12px;
+  color: #b9c8d9;
+  background: rgba(5, 18, 32, 0.76);
+  font-size: 11px;
+  font-weight: 700;
+}
+.room-recording-button:hover:not(:disabled) {
+  border-color: rgba(78, 243, 242, 0.42);
+  color: #f4ffff;
+  background: rgba(78, 243, 242, 0.07);
+}
+.room-recording-button.active {
+  border-color: rgba(255, 79, 104, 0.5);
+  color: #ff9dad;
+  background: rgba(255, 79, 104, 0.09);
+}
+.room-recording-button:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+.recording-start-banner {
+  position: fixed;
+  z-index: 30;
+  top: 76px;
+  left: 50%;
+  display: flex;
+  min-width: min(520px, calc(100% - 36px));
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 5px 7px 5px 14px;
+  border: 1px solid rgba(255, 79, 104, 0.34);
+  border-radius: 9px;
+  color: #e8edf4;
+  background: rgba(13, 20, 31, 0.96);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  transform: translateX(-50%);
+  animation: recording-banner-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.recording-start-banner span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.recording-start-banner span i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff4f68;
+  box-shadow: 0 0 10px rgba(255, 79, 104, 0.72);
+}
+.recording-start-banner button {
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 7px;
+  color: #06121c;
+  background: #6de0ce;
+  font-size: 10px;
+  font-weight: 800;
+}
+@keyframes recording-banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
 .room-body-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4785,6 +4909,20 @@ html.notification-overlay-document #root {
   }
   .room-settings-button {
     display: none;
+  }
+  .room-recording-button span {
+    display: none;
+  }
+  .room-recording-button {
+    width: 42px;
+    padding: 0;
+    justify-content: center;
+  }
+  .recording-directory-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .recording-directory-value {
+    grid-column: 1 / -1;
   }
 }
 .page-enter {

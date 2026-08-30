@@ -16,6 +16,11 @@
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
+    "dialog:allow-open",
+    "fs:allow-create",
+    "fs:allow-mkdir",
+    "fs:allow-write",
+    "fs:allow-video-write-recursive",
     "updater:default",
     "process:allow-restart"
   ]
