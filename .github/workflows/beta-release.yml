@@ -58,6 +58,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
+      - name: Verify macOS runtime paths
+        run: |
+          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
+          executable="$app_path/Contents/MacOS/freetalk"
+          test -x "$executable"
+          otool -L "$executable"
+          if ! otool -l "$executable" | grep -A3 LC_RPATH | grep -q "path /usr/lib/swift"; then
+            echo "Missing /usr/lib/swift LC_RPATH; packaged app would crash before launch" >&2
+            exit 1
+          fi
       - name: Package macOS app
         run: |
           mkdir -p beta-assets
