@@ -53,3 +53,9 @@ The analytics deployment completed successfully. Production is running API
 applied. The updater was intentionally left on `0.4.0-beta.43`. See
 `PRODUCTION_DEPLOY_REPORT_2026-08-31.md` for the verification matrix, measured
 overhead, artifacts, limitations, and release recommendation.
+
+Follow-up (2026-09-01): after the remaining desktop smoke checks passed,
+`0.4.0-beta.74` was built for Windows x64, macOS Apple Silicon and macOS Intel
+and promoted to the public `releases/latest` updater channel. The production API
+was separately upgraded to `0.4.0-beta.16` for cached image thumbnails. See the
+final sections of `PRODUCTION_DEPLOY_REPORT_2026-08-31.md` for details.

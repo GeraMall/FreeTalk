@@ -157,3 +157,26 @@ Follow-up artifacts:
   `ccaef9a1c617ebbe39a353b25df917ee2df35132c99f2ed6ec09a56c15b40baa`;
 - immediate API rollback
   `/opt/freetalk/api-rollback-0.4.0-beta.16-pre-20260831T203208Z`.
+
+## Public beta.74 promotion — 2026-09-01
+
+The remaining chat/image smoke was accepted, screen-recording audio was confirmed
+by the product owner, and the forced-TURN exercise was explicitly deferred until
+there is evidence of a relay-path problem. Desktop `0.4.0-beta.74` was therefore
+promoted to the public updater channel.
+
+- Release: `https://github.com/GeraMall/FreeTalk/releases/tag/v0.4.0-beta.74`
+- Source commit: `9fb488a`
+- GitHub Actions run: `33438161328` — PASS
+- Windows x64 NSIS and portable artifacts: PASS
+- macOS Apple Silicon app, DMG and updater archive: PASS
+- macOS Intel app, DMG and updater archive: PASS
+- macOS `/usr/lib/swift` runtime-path verification: PASS on both architectures
+- Signed `latest.json`: Windows x64, Darwin arm64 and Darwin x64 entries present;
+  every referenced URL returned HTTP 200
+- GitHub `releases/latest`: `v0.4.0-beta.74`
+
+The release is updater-signed, but the macOS applications still use ad-hoc code
+signing. Developer ID signing and Apple notarization require Apple credentials and
+remain a distribution-hardening follow-up; Gatekeeper may require the standard
+manual confirmation on first launch.
