@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import type { Participant, Reaction, RoomChatMessage } from '@freetalk/protocol';
 import {
+  Ban,
   Check,
   Camera,
   CameraOff,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   CircleDot,
   Copy,
   Crown,
@@ -23,6 +30,11 @@ import {
   Volume2,
   VolumeX,
   X,
+  PictureInPicture2,
+  Eye,
+  ImagePlus,
+  SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
@@ -31,6 +43,13 @@ import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen'
 import { BrandLogo } from './BrandLogo';
 import { RoomChatPanel } from './RoomChatPanel';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
+import {
+  createCameraEffectCapture,
+  imageFileToCameraBackground,
+  type CameraBackgroundMode,
+  type CameraEffectCapture,
+} from '../lib/camera-background';
+import { cameraConstraints } from '../lib/video-manager';
 
 export type PeerUiState = Record<
   string,
@@ -65,10 +84,20 @@ interface RoomViewProps {
   inviteCopied: boolean;
   turnAvailable: boolean;
   recordingState: ScreenRecordingState;
-  recordingBannerVisible: boolean;
+  recordingBannerMessage: string;
+  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   onCopyInvite(): void;
   onMute(): void;
   onCamera(): void;
+  onInputDevice(deviceId: string): void;
+  onOutputDevice(deviceId: string): void;
+  onCameraDevice(deviceId: string): void;
+  onCameraBackground(
+    deviceId: string,
+    mode: CameraBackgroundMode,
+    dataUrl: string,
+    previewAlways: boolean,
+  ): void;
   onScreen(): void;
   onReaction(reaction: Reaction): void;
   onRoomChatSend(text: string): boolean;
@@ -104,10 +133,15 @@ export function RoomView({
   inviteCopied,
   turnAvailable,
   recordingState,
-  recordingBannerVisible,
+  recordingBannerMessage,
+  devices,
   onCopyInvite,
   onMute,
   onCamera,
+  onInputDevice,
+  onOutputDevice,
+  onCameraDevice,
+  onCameraBackground,
   onScreen,
   onReaction,
   onRoomChatSend,
@@ -128,6 +162,12 @@ export function RoomView({
   const [chatOpen, setChatOpen] = useState(false);
   const [chatClosing, setChatClosing] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [deviceMenu, setDeviceMenu] = useState<'audio' | 'camera'>();
+  const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  const [callFullscreen, setCallFullscreen] = useState(false);
+  const [callDetached, setCallDetached] = useState(false);
+  const roomShellRef = useRef<HTMLElement>(null);
+  const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
   const chatOpenRef = useRef(chatOpen);
   const elapsed = useCallDuration(roomStartedAt);
@@ -135,7 +175,7 @@ export function RoomView({
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
   const self = participants.find((participant) => participant.id === selfId);
-  const openSlots = Math.max(0, 6 - participants.length);
+  const openSlots = Math.max(0, ROOM_MAX_PARTICIPANTS - participants.length);
   const participantMedia = (participant: Participant) =>
     participant.id === selfId
       ? { camera: localVideo.cameraStream, screen: localVideo.screenStream }
@@ -166,6 +206,18 @@ export function RoomView({
   }, [chatOpen]);
 
   useEffect(() => {
+    if (!deviceMenu) return;
+    const closeDeviceMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.dock-device-menu') || target.closest('.dock-device-arrow')) return;
+      setDeviceMenu(undefined);
+    };
+    document.addEventListener('mousedown', closeDeviceMenu);
+    return () => document.removeEventListener('mousedown', closeDeviceMenu);
+  }, [deviceMenu]);
+
+  useEffect(() => {
     let unread = 0;
     for (const message of roomChatMessages) {
       if (knownChatMessages.current.has(message.id)) continue;
@@ -178,6 +230,47 @@ export function RoomView({
   useEffect(() => {
     if (!screenPresenter && screenFocusMode) onScreenFocusChange(false);
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
+
+  useEffect(() => {
+    const sync = () => setCallFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  useEffect(() => {
+    callDetachedRef.current = callDetached;
+    document.documentElement.classList.toggle('call-popout-active', callDetached);
+    return () => document.documentElement.classList.remove('call-popout-active');
+  }, [callDetached]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen('call-popout-restored', () => setCallDetached(false)).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+      document.documentElement.classList.remove('call-popout-active');
+      if (callDetachedRef.current) void invoke('call_popout_restore').catch(() => undefined);
+    };
+  }, []);
+
+  const toggleCallFullscreen = async () => {
+    if (!roomShellRef.current) return;
+    const mode = await toggleMediaFullscreen(roomShellRef.current).catch(() => 'none' as const);
+    setCallFullscreen(mode !== 'none');
+  };
+
+  const toggleCallPopout = async () => {
+    const nextDetached = !callDetached;
+    setCallDetached(nextDetached);
+    await invoke(nextDetached ? 'call_popout_open' : 'call_popout_restore').catch(() => {
+      setCallDetached(!nextDetached);
+    });
+  };
 
   const closeRoomChat = () => {
     if (chatOpen && !chatClosing) setChatClosing(true);
@@ -286,8 +379,9 @@ export function RoomView({
     );
   };
 
-  return (
+  const roomContent = (
     <main
+      ref={roomShellRef}
       className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
@@ -355,10 +449,10 @@ export function RoomView({
         </div>
       </header>
 
-      {recordingBannerVisible && recordingState.phase === 'recording' && (
+      {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
           <span>
-            <i /> Запись экрана началась и сохраняется локально
+            <i /> {recordingBannerMessage}
           </span>
           <button onClick={onRecordingBannerClose}>ОК</button>
         </div>
@@ -369,7 +463,9 @@ export function RoomView({
           <div className="participants-heading">
             <div>
               <h1>Участники</h1>
-              <p>{participants.length} из 6</p>
+              <p>
+                {participants.length} из {ROOM_MAX_PARTICIPANTS}
+              </p>
             </div>
             <span className="room-session-meta">
               <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
@@ -497,38 +593,102 @@ export function RoomView({
         })}
       </div>
 
+      <div className="call-view-controls" aria-label="Режим отображения звонка">
+        <button
+          aria-label={
+            callDetached ? 'Вернуть звонок в основное окно' : 'Открыть звонок в отдельном окне'
+          }
+          data-tooltip={callDetached ? 'Вернуть в основное окно' : 'В отдельном окне'}
+          onClick={() => void toggleCallPopout()}
+        >
+          <PictureInPicture2 size={19} />
+        </button>
+        <button
+          aria-label={
+            callFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть звонок во весь экран'
+          }
+          data-tooltip={callFullscreen ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим'}
+          onClick={() => void toggleCallFullscreen()}
+        >
+          {callFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
+        </button>
+      </div>
+
       <footer className="voice-dock" aria-label="Управление звонком">
-        <div className="dock-group dock-primary-actions">
-          <button
-            className={`dock-control mic-control ${muted ? 'muted' : 'active'}`}
-            aria-label={muted ? 'Включить микрофон' : 'Выключить микрофон'}
-            aria-pressed={!muted}
-            title={muted ? 'Включить микрофон' : 'Выключить микрофон'}
-            onClick={onMute}
+        <div className="dock-island dock-primary-actions">
+          <div className={`dock-split-control ${muted ? 'device-off' : 'device-on'}`}>
+            <button
+              className={`dock-control mic-control ${muted ? 'muted' : 'active'}`}
+              aria-label={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+              aria-pressed={!muted}
+              title={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+              onClick={onMute}
+            >
+              <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
+            </button>
+            <button
+              className="dock-device-arrow"
+              aria-label="Выбрать аудиоустройство"
+              aria-expanded={deviceMenu === 'audio'}
+              onClick={() => setDeviceMenu((menu) => (menu === 'audio' ? undefined : 'audio'))}
+            >
+              <ChevronUp size={15} />
+            </button>
+            {deviceMenu === 'audio' && (
+              <DeviceMenu
+                type="audio"
+                devices={devices}
+                settings={settings}
+                onInput={onInputDevice}
+                onOutput={onOutputDevice}
+                onCamera={onCameraDevice}
+                onClose={() => setDeviceMenu(undefined)}
+              />
+            )}
+          </div>
+          <div
+            className={`dock-split-control ${localVideo.cameraEnabled ? 'device-on' : 'device-off'}`}
           >
-            <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
-            <span className="dock-label">
-              <strong>Микрофон</strong>
-              <small>{muted ? 'Выкл' : 'Вкл'}</small>
-            </span>
-          </button>
-          <button
-            className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
-            aria-busy={videoBusy}
-            aria-label={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
-            aria-pressed={localVideo.cameraEnabled}
-            title={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
-            disabled={videoBusy}
-            onClick={onCamera}
-          >
-            <span className="dock-icon">
-              {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
-            </span>
-            <span className="dock-label">
-              <strong>Камера</strong>
-              <small>{localVideo.cameraEnabled ? 'Вкл' : 'Выкл'}</small>
-            </span>
-          </button>
+            <button
+              className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
+              aria-busy={videoBusy}
+              aria-label={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+              aria-pressed={localVideo.cameraEnabled}
+              title={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+              disabled={videoBusy}
+              onClick={() => {
+                if (localVideo.cameraEnabled || !settings.cameraPreviewAlways) onCamera();
+                else setCameraPreviewOpen(true);
+              }}
+            >
+              <span className="dock-icon">
+                {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
+              </span>
+            </button>
+            <button
+              className="dock-device-arrow"
+              aria-label="Выбрать камеру"
+              aria-expanded={deviceMenu === 'camera'}
+              onClick={() => setDeviceMenu((menu) => (menu === 'camera' ? undefined : 'camera'))}
+            >
+              <ChevronUp size={15} />
+            </button>
+            {deviceMenu === 'camera' && (
+              <DeviceMenu
+                type="camera"
+                devices={devices}
+                settings={settings}
+                onInput={onInputDevice}
+                onOutput={onOutputDevice}
+                onCamera={onCameraDevice}
+                onCameraPreview={() => setCameraPreviewOpen(true)}
+                onVideoSettings={onSettings}
+                onClose={() => setDeviceMenu(undefined)}
+              />
+            )}
+          </div>
+        </div>
+        <div className="dock-island dock-secondary-actions">
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
             aria-busy={videoBusy}
@@ -545,14 +705,7 @@ export function RoomView({
             <span className="dock-icon">
               {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
             </span>
-            <span className="dock-label">
-              <strong>{localVideo.screenEnabled ? 'Стоп' : 'Экран'}</strong>
-              <small>{localVideo.screenEnabled ? 'Идёт' : 'Поделиться'}</small>
-            </span>
           </button>
-        </div>
-        <div className="dock-divider" aria-hidden="true" />
-        <div className="dock-group dock-secondary-actions">
           <div className="reaction-control">
             <button
               className={`dock-control dock-control-secondary reaction-button ${reactionMenuOpen ? 'active' : ''}`}
@@ -563,9 +716,6 @@ export function RoomView({
             >
               <span className="dock-icon">
                 <SmilePlus />
-              </span>
-              <span className="dock-label">
-                <strong>Реакции</strong>
               </span>
             </button>
             {reactionMenuOpen && (
@@ -605,23 +755,44 @@ export function RoomView({
                 </b>
               )}
             </span>
-            <span className="dock-label">
-              <strong>Чат</strong>
+          </button>
+          <button
+            className="dock-control dock-control-secondary"
+            aria-label="Настройки звонка"
+            title="Настройки звонка"
+            onClick={onSettings}
+          >
+            <span className="dock-icon">
+              <MoreHorizontal />
             </span>
           </button>
         </div>
-        <div className="dock-spacer" />
         <button
           className="leave-button"
           aria-label="Выйти из комнаты"
           title="Выйти из комнаты"
           onClick={onLeave}
         >
-          <LogOut size={18} /> Выйти из комнаты
+          <LogOut size={18} />
         </button>
       </footer>
+      {cameraPreviewOpen && (
+        <CameraPreviewDialog
+          devices={devices.cameras}
+          settings={settings}
+          cameraEnabled={localVideo.cameraEnabled}
+          onApply={(deviceId, mode, dataUrl, previewAlways) => {
+            onCameraBackground(deviceId, mode, dataUrl, previewAlways);
+          }}
+          onEnable={() => {
+            if (!localVideo.cameraEnabled) onCamera();
+          }}
+          onClose={() => setCameraPreviewOpen(false)}
+        />
+      )}
     </main>
   );
+  return roomContent;
 }
 
 function useCallDuration(startedAt: number) {
@@ -638,6 +809,355 @@ function useCallDuration(startedAt: number) {
     .filter((_, index) => hours > 0 || index > 0)
     .map((value) => value.toString().padStart(2, '0'))
     .join(':');
+}
+
+function DeviceMenu({
+  type,
+  devices,
+  settings,
+  onInput,
+  onOutput,
+  onCamera,
+  onCameraPreview,
+  onVideoSettings,
+  onClose,
+}: {
+  type: 'audio' | 'camera';
+  devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
+  settings: LocalSettings;
+  onInput(deviceId: string): void;
+  onOutput(deviceId: string): void;
+  onCamera(deviceId: string): void;
+  onCameraPreview?(): void;
+  onVideoSettings?(): void;
+  onClose(): void;
+}) {
+  const [cameraListOpen, setCameraListOpen] = useState(false);
+  const choose = (action: (deviceId: string) => void, deviceId: string) => {
+    action(deviceId);
+    onClose();
+  };
+  if (type === 'camera')
+    return (
+      <div className="dock-device-menu camera-device-menu" role="menu" aria-label="Камера">
+        <strong>Камера</strong>
+        <button
+          type="button"
+          className="dock-device-current"
+          aria-expanded={cameraListOpen}
+          aria-haspopup="menu"
+          onClick={() => setCameraListOpen((open) => !open)}
+        >
+          <span>
+            {devices.cameras.find((device) => device.deviceId === settings.cameraDeviceId)?.label ||
+              'Системная камера'}
+          </span>
+          <ChevronRight size={16} />
+        </button>
+        {cameraListOpen && (
+          <DeviceMenuItem
+            label="Системная камера"
+            selected={!settings.cameraDeviceId}
+            onClick={() => choose(onCamera, '')}
+          />
+        )}
+        {cameraListOpen &&
+          devices.cameras.map((device, index) => (
+            <DeviceMenuItem
+              key={device.deviceId}
+              label={device.label || `Камера ${index + 1}`}
+              selected={settings.cameraDeviceId === device.deviceId}
+              onClick={() => choose(onCamera, device.deviceId)}
+            />
+          ))}
+        <div className="dock-device-menu-separator" />
+        <button
+          type="button"
+          className="dock-camera-menu-action"
+          onClick={() => {
+            onClose();
+            onCameraPreview?.();
+          }}
+        >
+          <span>
+            <Eye size={17} /> Предпросмотр камеры
+          </span>
+        </button>
+        <button
+          type="button"
+          className="dock-camera-menu-action"
+          onClick={() => {
+            onClose();
+            onVideoSettings?.();
+          }}
+        >
+          <span>
+            <SlidersHorizontal size={17} /> Настройки видео
+          </span>
+        </button>
+      </div>
+    );
+  return (
+    <div
+      className="dock-device-menu audio-device-menu"
+      role="menu"
+      aria-label="Выбор аудиоустройства"
+    >
+      <strong>Микрофон</strong>
+      <DeviceMenuItem
+        label="Системный микрофон"
+        selected={!settings.inputDeviceId}
+        onClick={() => choose(onInput, '')}
+      />
+      {devices.inputs.map((device, index) => (
+        <DeviceMenuItem
+          key={device.deviceId}
+          label={device.label || `Микрофон ${index + 1}`}
+          selected={settings.inputDeviceId === device.deviceId}
+          onClick={() => choose(onInput, device.deviceId)}
+        />
+      ))}
+      <strong>Динамики</strong>
+      <DeviceMenuItem
+        label="Системные динамики"
+        selected={!settings.outputDeviceId}
+        onClick={() => choose(onOutput, '')}
+      />
+      {devices.outputs.map((device, index) => (
+        <DeviceMenuItem
+          key={device.deviceId}
+          label={device.label || `Динамики ${index + 1}`}
+          selected={settings.outputDeviceId === device.deviceId}
+          onClick={() => choose(onOutput, device.deviceId)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CameraPreviewDialog({
+  devices,
+  settings,
+  cameraEnabled,
+  onApply,
+  onEnable,
+  onClose,
+}: {
+  devices: MediaDeviceInfo[];
+  settings: LocalSettings;
+  cameraEnabled: boolean;
+  onApply(
+    deviceId: string,
+    mode: CameraBackgroundMode,
+    dataUrl: string,
+    previewAlways: boolean,
+  ): void;
+  onEnable(): void;
+  onClose(): void;
+}) {
+  const [deviceId, setDeviceId] = useState(settings.cameraDeviceId);
+  const [mode, setMode] = useState<CameraBackgroundMode>(settings.cameraBackgroundMode);
+  const [dataUrl, setDataUrl] = useState(settings.cameraBackgroundDataUrl);
+  const [previewAlways, setPreviewAlways] = useState(settings.cameraPreviewAlways);
+  const [previewStream, setPreviewStream] = useState<MediaStream>();
+  const [previewError, setPreviewError] = useState('');
+  const [previewBusy, setPreviewBusy] = useState(true);
+  const captureRef = useRef<CameraEffectCapture | undefined>(undefined);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let nextCapture: CameraEffectCapture | undefined;
+    setPreviewBusy(true);
+    setPreviewError('');
+    setPreviewStream(undefined);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setPreviewError('Предпросмотр камеры недоступен в этой среде.');
+      setPreviewBusy(false);
+      return;
+    }
+    void navigator.mediaDevices
+      .getUserMedia({ audio: false, video: cameraConstraints(deviceId) })
+      .then((source) => createCameraEffectCapture(source, { mode, dataUrl }))
+      .then((capture) => {
+        nextCapture = capture;
+        if (cancelled) {
+          capture.dispose();
+          return;
+        }
+        captureRef.current = capture;
+        setPreviewStream(capture.stream);
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setPreviewError(error instanceof Error ? error.message : 'Не удалось открыть камеру.');
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewBusy(false);
+      });
+    return () => {
+      cancelled = true;
+      if (captureRef.current === nextCapture) captureRef.current = undefined;
+      nextCapture?.dispose();
+    };
+  }, [dataUrl, deviceId, mode]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = previewStream ?? null;
+    if (previewStream) void video.play().catch(() => undefined);
+    return () => {
+      video.srcObject = null;
+    };
+  }, [previewStream]);
+
+  const close = () => {
+    captureRef.current?.dispose();
+    captureRef.current = undefined;
+    onClose();
+  };
+  const apply = () => {
+    captureRef.current?.dispose();
+    captureRef.current = undefined;
+    onApply(deviceId, mode, dataUrl, previewAlways);
+    onEnable();
+    onClose();
+  };
+  const chooseCustomBackground = async (file?: File) => {
+    if (!file) return;
+    try {
+      setPreviewBusy(true);
+      const value = await imageFileToCameraBackground(file);
+      setDataUrl(value);
+      setMode('custom');
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'Не удалось выбрать фон.');
+      setPreviewBusy(false);
+    }
+  };
+
+  return (
+    <div className="camera-preview-backdrop" role="presentation" onMouseDown={close}>
+      <section
+        className="camera-preview-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="camera-preview-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <h2 id="camera-preview-title">Готовы к видеочату?</h2>
+          <button type="button" aria-label="Закрыть предпросмотр" onClick={close}>
+            <X />
+          </button>
+        </header>
+        <div className="camera-preview-stage">
+          <video ref={videoRef} muted playsInline />
+          {previewBusy && <span>Подготавливаем камеру…</span>}
+          {previewError && <span className="camera-preview-error">{previewError}</span>}
+        </div>
+        <label className="camera-preview-device">
+          <Camera size={17} />
+          <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}>
+            <option value="">Системная камера</option>
+            {devices.map((device, index) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label || `Камера ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={17} />
+        </label>
+        <div className="camera-background-section">
+          <strong>Фон видео</strong>
+          <div className="camera-background-options">
+            <button
+              type="button"
+              className={mode === 'none' ? 'selected' : ''}
+              onClick={() => setMode('none')}
+            >
+              <Ban />
+              <span>Пусто</span>
+            </button>
+            <button
+              type="button"
+              className={`camera-background-blur ${mode === 'blur' ? 'selected' : ''}`}
+              onClick={() => setMode('blur')}
+            >
+              <Sparkles />
+              <span>Размытие</span>
+            </button>
+            <button
+              type="button"
+              className={`camera-background-custom ${mode === 'custom' ? 'selected' : ''}`}
+              style={
+                dataUrl
+                  ? {
+                      backgroundImage: `linear-gradient(rgba(3, 10, 21, 0.28), rgba(3, 10, 21, 0.52)), url(${dataUrl})`,
+                    }
+                  : undefined
+              }
+              onClick={() => (dataUrl ? setMode('custom') : fileRef.current?.click())}
+            >
+              <ImagePlus />
+              <span>Свой фон</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            className="camera-background-upload"
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImagePlus size={16} /> {dataUrl ? 'Заменить свой фон' : 'Выбрать изображение'}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => void chooseCustomBackground(event.target.files?.[0])}
+          />
+        </div>
+        <footer>
+          <label>
+            <input
+              type="checkbox"
+              checked={previewAlways}
+              onChange={(event) => setPreviewAlways(event.target.checked)}
+            />
+            <span>Предпросмотр видео (всегда)</span>
+          </label>
+          <button
+            type="button"
+            className="camera-preview-confirm"
+            disabled={previewBusy || Boolean(previewError)}
+            onClick={apply}
+          >
+            {cameraEnabled ? 'Применить' : 'Включить камеру'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function DeviceMenuItem({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button role="menuitemradio" aria-checked={selected} onClick={onClick}>
+      <span>{label}</span>
+      {selected && <Check size={15} />}
+    </button>
+  );
 }
 
 function ParticipantVideo({

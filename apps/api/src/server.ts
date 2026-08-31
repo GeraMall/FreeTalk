@@ -21,6 +21,9 @@ import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
+import { registerAdminRoutes } from './admin-routes.js';
+import { startInfrastructureSampler } from './infrastructure-metrics.js';
+import { registerApiMetrics } from './api-metrics.js';
 import {
   displayNameSchema,
   emailSchema,
@@ -48,7 +51,17 @@ const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
     status: z.enum(['online', 'away', 'dnd', 'offline']),
   }),
 ]);
-const app = Fastify({ logger: true, bodyLimit: 64 * 1024, trustProxy: true });
+const app = Fastify({
+  logger: {
+    redact: {
+      paths: ['req.remoteAddress', 'req.remotePort'],
+      censor: '[REDACTED]',
+    },
+  },
+  bodyLimit: 64 * 1024,
+  trustProxy: true,
+});
+registerApiMetrics(app);
 await app.register(websocket, {
   options: { maxPayload: 8 * 1024, perMessageDeflate: false },
 });
@@ -61,8 +74,8 @@ await app.register(cors, {
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {
   // The desktop client reduces the original (up to 25 MB) before upload.
-  // Keep the server boundary tight around the optimized avatar/cover payload.
-  limits: { files: 1, fileSize: 3 * 1024 * 1024, fields: 2 },
+  // Chat images may include a separate lightweight thumbnail.
+  limits: { files: 2, fileSize: 3 * 1024 * 1024, fields: 2 },
 });
 
 app.setErrorHandler((error, _request, reply) => {
@@ -132,6 +145,13 @@ async function publishPresenceUpdate(
 }
 
 chatRealtimeHub.onPresenceChanged((userId, status) => {
+  void db
+    .query(
+      `INSERT INTO analytics_user_presence(user_id,status,updated_at) VALUES($1,$2,now())
+       ON CONFLICT(user_id) DO UPDATE SET status=EXCLUDED.status,updated_at=now()`,
+      [userId, status],
+    )
+    .catch((error) => app.log.warn({ err: error, userId }, 'Failed to persist presence'));
   void publishPresenceUpdate(userId, status).catch((error) =>
     app.log.warn({ err: error, userId }, 'Failed to publish presence update'),
   );
@@ -220,7 +240,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.10' };
+  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.16' };
 });
 
 app.post(
@@ -963,5 +983,7 @@ app.get('/v1/legal/privacy', async () => ({
 }));
 
 registerSocialRoutes(app, requireUser);
+registerAdminRoutes(app);
+startInfrastructureSampler();
 
 await app.listen({ host: env.API_HOST, port: env.API_PORT });

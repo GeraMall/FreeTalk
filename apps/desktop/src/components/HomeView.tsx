@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
+import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
+import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
+import { dataUrlToBlob } from '../lib/profile';
 import { generateRoomCode } from '../lib/room-code';
 import {
   activeCallRoomId,
@@ -374,10 +377,29 @@ export function HomeView({
     }
   };
 
-  const sendImage = async (dataUrl: string, caption: string) => {
+  const sendImage = async (dataUrl: string, caption: string, thumbnailDataUrl: string) => {
     if (!activeChat) return false;
     try {
-      const result = await accountClient.uploadChatImage<MessageItem>(activeChat, dataUrl, caption);
+      const result = await accountClient.uploadChatImage<MessageItem>(
+        activeChat,
+        dataUrl,
+        caption,
+        thumbnailDataUrl,
+      );
+      seedChatImageCache(
+        user.id,
+        result.message.id,
+        'full',
+        dataUrlToBlob(dataUrl),
+        result.message.expires_at,
+      );
+      seedChatImageCache(
+        user.id,
+        result.message.id,
+        'thumbnail',
+        dataUrlToBlob(thumbnailDataUrl),
+        result.message.expires_at,
+      );
       setMessages((current) => appendMessage(current, result.message));
       setChats((current) => promoteChat(current, activeChat, result.message));
       setSentMessageVersion((version) => version + 1);
@@ -543,6 +565,7 @@ export function HomeView({
     if (!activeChat) return;
     try {
       await accountClient.request(`/v1/chats/${activeChat}/messages`, { method: 'DELETE' });
+      await clearChatImageCache(user.id);
       setMessages([]);
       setChats((current) =>
         current.map((chat) =>
@@ -559,6 +582,7 @@ export function HomeView({
 
   const blockChatUser = async (userId: string) => {
     await accountClient.request(`/v1/blocks/${userId}`, { method: 'POST' });
+    await clearChatImageCache(user.id);
     setActiveChat(undefined);
     setMessages([]);
     await loadPage('chats');
@@ -568,6 +592,7 @@ export function HomeView({
   const leaveChat = async () => {
     if (!activeChat) return;
     await accountClient.request(`/v1/chats/${activeChat}/members/me`, { method: 'DELETE' });
+    await clearChatImageCache(user.id);
     setActiveChat(undefined);
     setMessages([]);
     await loadPage('chats');
@@ -630,7 +655,7 @@ export function HomeView({
             </section>
             <div className="home-proof-row" aria-label="Преимущества FreeTalk">
               <span>
-                <Users size={17} /> До 6 участников
+                <Users size={17} /> До {ROOM_MAX_PARTICIPANTS} участников
               </span>
               <span>
                 <ShieldCheck size={17} /> Приватный WebRTC

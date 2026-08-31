@@ -32,9 +32,13 @@ export interface LocalSettings extends VideoPreferences {
   recordingShowParticipantNames: boolean;
   recordingAddTimestamp: boolean;
   recordingIncludeSharedVideo: boolean;
+  cameraBackgroundMode: 'none' | 'blur' | 'custom';
+  cameraBackgroundDataUrl: string;
+  cameraPreviewAlways: boolean;
 }
 
 const KEY = 'freetalk.settings.v1';
+const MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION = 'freetalk.migration.mac-screen-audio-default-off.v1';
 const defaults: LocalSettings = {
   displayName: '',
   avatarDataUrl: '',
@@ -44,14 +48,14 @@ const defaults: LocalSettings = {
   outputDeviceId: '',
   transmissionMode: 'voice-activation',
   pushToTalkKey: 'Space',
-  vadThreshold: 0.045,
+  vadThreshold: 0.015,
   outputVolume: 0.85,
   noiseSuppression: true,
   autoGainControl: true,
   echoCancellation: true,
   echoDucking: true,
-  echoDuckingLevel: 0.35,
-  typingAttenuation: false,
+  echoDuckingLevel: 0.4,
+  typingAttenuation: true,
   comfortNoise: false,
   peerVolumes: {},
   screenVolumes: {},
@@ -64,10 +68,23 @@ const defaults: LocalSettings = {
   recordingShowParticipantNames: true,
   recordingAddTimestamp: false,
   recordingIncludeSharedVideo: true,
+  cameraBackgroundMode: 'none',
+  cameraBackgroundDataUrl: '',
+  cameraPreviewAlways: true,
 };
 
+function isMacOS() {
+  return typeof navigator !== 'undefined' && /Macintosh|Mac OS X/i.test(navigator.userAgent);
+}
+
 export function defaultSettings(): LocalSettings {
-  return { ...defaults, peerVolumes: {}, screenVolumes: {}, mutedPeers: {} };
+  return {
+    ...defaults,
+    screenAudioByDefault: isMacOS() ? false : defaults.screenAudioByDefault,
+    peerVolumes: {},
+    screenVolumes: {},
+    mutedPeers: {},
+  };
 }
 
 export function loadSettings(): LocalSettings {
@@ -75,10 +92,17 @@ export function loadSettings(): LocalSettings {
     const value = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<LocalSettings>;
     const legacy = value as Partial<LocalSettings> & { pushToTalk?: boolean };
     const video = normalizeVideoPreferences(value);
-    return {
+    const macOS = isMacOS();
+    const migrateMacScreenAudio =
+      macOS && localStorage.getItem(MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION) !== 'done';
+    const settings: LocalSettings = {
       ...defaults,
       ...value,
       ...video,
+      screenAudioByDefault:
+        macOS && (migrateMacScreenAudio || typeof value.screenAudioByDefault !== 'boolean')
+          ? false
+          : video.screenAudioByDefault,
       transmissionMode:
         value.transmissionMode ?? (legacy.pushToTalk ? 'push-to-talk' : 'voice-activation'),
       peerVolumes: value.peerVolumes ?? {},
@@ -106,9 +130,22 @@ export function loadSettings(): LocalSettings {
         typeof value.recordingIncludeSharedVideo === 'boolean'
           ? value.recordingIncludeSharedVideo
           : true,
+      cameraBackgroundMode:
+        value.cameraBackgroundMode === 'blur' || value.cameraBackgroundMode === 'custom'
+          ? value.cameraBackgroundMode
+          : 'none',
+      cameraBackgroundDataUrl:
+        typeof value.cameraBackgroundDataUrl === 'string' ? value.cameraBackgroundDataUrl : '',
+      cameraPreviewAlways:
+        typeof value.cameraPreviewAlways === 'boolean' ? value.cameraPreviewAlways : true,
     };
+    if (migrateMacScreenAudio) {
+      localStorage.setItem(KEY, JSON.stringify(settings));
+      localStorage.setItem(MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION, 'done');
+    }
+    return settings;
   } catch {
-    return { ...defaults };
+    return defaultSettings();
   }
 }
 

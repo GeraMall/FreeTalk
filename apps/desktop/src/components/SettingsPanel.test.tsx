@@ -92,6 +92,12 @@ describe('SettingsPanel profile actions', () => {
     expect(getByText('Обои всех чатов')).toBeTruthy();
   });
 
+  it('uses the FreeTalk-styled done action outside the profile tab', () => {
+    const { getByRole } = renderProfile();
+    fireEvent.click(getByRole('button', { name: 'Аудио' }));
+    expect(getByRole('button', { name: 'Готово' }).classList).toContain('settings-done');
+  });
+
   it('provides Zoom-style local recording settings without the side-by-side option', () => {
     const { getByRole, queryByText, onSetting } = renderProfile();
 

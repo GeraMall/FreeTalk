@@ -95,4 +95,33 @@ describe('PostgreSQL migration', () => {
     expect(source).toContain('VALUES($1::text,$2,(SELECT chat_id FROM messages');
     expect(source).toContain("metadata->>'roomId'=$1::text");
   });
+
+  it('adds bounded server-side admin analytics without storing media or message content', async () => {
+    const path = fileURLToPath(new URL('../migrations/008_admin_analytics.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    for (const table of [
+      'telemetry_connection_samples',
+      'telemetry_events',
+      'telemetry_reporters',
+      'infrastructure_samples',
+      'api_metric_minutes',
+      'analytics_alert_history',
+    ])
+      expect(sql).toContain(`create table ${table}`);
+    expect(sql).toMatch(/check \(role in \('user',\s*'admin'\)\)/);
+    expect(sql).toContain('octet_length(details::text) <= 4096');
+    expect(sql).not.toContain('password_hash text');
+    expect(sql).not.toContain('message_body');
+  });
+
+  it('adds bounded chat image thumbnails', async () => {
+    const path = fileURLToPath(
+      new URL('../migrations/009_chat_image_thumbnails.sql', import.meta.url),
+    );
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('add column thumbnail_mime');
+    expect(sql).toContain('add column thumbnail_data');
+    expect(sql).toContain('octet_length(thumbnail_data) <= 262144');
+    expect(sql).toContain('message_images_thumbnail_pair_check');
+  });
 });

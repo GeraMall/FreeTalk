@@ -38,6 +38,7 @@ import {
   type AccountPage,
 } from './components/AccountSidebar';
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
+import { clearChatImageCache } from './lib/chat-image-cache';
 import mascot from './assets/freetalk-mascot.png';
 import recordingStartSound from './assets/recording-start.mp3';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
@@ -87,6 +88,29 @@ function storedIdentity(key: string) {
   return value;
 }
 
+function telemetryPlatform():
+  'windows' | 'macos-arm64' | 'macos-x64' | 'linux' | 'web' | 'android' | 'ios' | 'unknown' {
+  const value = navigator.userAgent.toLowerCase();
+  if (value.includes('windows')) return 'windows';
+  if (value.includes('android')) return 'android';
+  if (value.includes('iphone') || value.includes('ipad')) return 'ios';
+  if (value.includes('mac')) return value.includes('arm64') ? 'macos-arm64' : 'macos-x64';
+  if (value.includes('linux')) return 'linux';
+  return typeof window !== 'undefined' ? 'web' : 'unknown';
+}
+
+function playRecordingStartNotification(settings: LocalSettings) {
+  const sound = new Audio(recordingStartSound);
+  sound.volume = settings.outputVolume;
+  const playSound = () => sound.play().catch(() => undefined);
+  if (settings.outputDeviceId && 'setSinkId' in sound)
+    return (sound as HTMLAudioElement & { setSinkId(deviceId: string): Promise<void> })
+      .setSinkId(settings.outputDeviceId)
+      .then(playSound)
+      .catch(playSound);
+  return playSound();
+}
+
 export function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [accountUser, setAccountUser] = useState<AccountUser>();
@@ -127,7 +151,7 @@ export function App() {
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
-  const [recordingBannerVisible, setRecordingBannerVisible] = useState(false);
+  const [recordingBannerMessage, setRecordingBannerMessage] = useState('');
 
   const openSettings = useCallback((tab: SettingsTab = 'audio') => {
     setSettingsInitialTab(tab);
@@ -161,7 +185,9 @@ export function App() {
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
   const reactionTimers = useRef(new Map<string, number>());
+  const recordingCompatibilityErrorUntil = useRef(0);
   const guestWarningTimer = useRef<number | undefined>(undefined);
+  const telemetryTimer = useRef<number | undefined>(undefined);
   const remoteAudio = useRef(
     new RemoteAudio((peerId, speaking) =>
       setPeerState((old) => ({
@@ -229,6 +255,8 @@ export function App() {
   const cleanup = useCallback(() => {
     if (joinTimer.current) window.clearTimeout(joinTimer.current);
     joinTimer.current = undefined;
+    if (telemetryTimer.current) window.clearInterval(telemetryTimer.current);
+    telemetryTimer.current = undefined;
     pendingRoomId.current = undefined;
     joinedRoom.current = false;
     awaitingRejoin.current = false;
@@ -271,7 +299,7 @@ export function App() {
     setReactions([]);
     setRoomChatMessages([]);
     setScreenFocusMode(false);
-    setRecordingBannerVisible(false);
+    setRecordingBannerMessage('');
   }, []);
 
   useEffect(() => {
@@ -393,6 +421,13 @@ export function App() {
   const handleServerMessage = useCallback(
     async (message: ServerMessage) => {
       if (message.type === 'error') {
+        if (
+          message.code === 'INVALID_MESSAGE' &&
+          Date.now() < recordingCompatibilityErrorUntil.current
+        ) {
+          recordingCompatibilityErrorUntil.current = 0;
+          return;
+        }
         setJoining(false);
         if (message.fatal) cleanup();
         setError(
@@ -517,6 +552,24 @@ export function App() {
           void peerManager.setVideoTrack(currentVideo.screen, 'screen', currentVideo.screenStream);
         for (const participant of message.participants)
           if (participant.id !== selfId.current) peerManager.ensure(participant.id);
+        if (telemetryTimer.current) window.clearInterval(telemetryTimer.current);
+        const reportTelemetry = async () => {
+          const connections = await peers.current?.collectTelemetry();
+          if (!connections || !joinedRoom.current) return;
+          signaling.current?.send({
+            type: 'telemetry-report',
+            report: {
+              eventVersion: 1,
+              timestamp: Date.now(),
+              clientVersion: __FREETALK_APP_VERSION__,
+              platform: telemetryPlatform(),
+              sessionId: sessionId.current,
+              connections,
+              events: connectionDiagnostics.drainTelemetryEvents(),
+            },
+          });
+        };
+        telemetryTimer.current = window.setInterval(() => void reportTelemetry(), 10_000);
         return;
       }
       if (message.type === 'participant-joined') {
@@ -557,6 +610,15 @@ export function App() {
         setRoomChatMessages((old) =>
           [...old.filter((item) => item.id !== message.message.id), message.message].slice(-200),
         );
+        return;
+      }
+      if (message.type === 'recording-started') {
+        setRecordingBannerMessage(
+          message.participantId === selfId.current
+            ? 'Запись экрана началась и сохраняется локально'
+            : `${message.participantName} начал(а) запись экрана`,
+        );
+        if (message.participantId !== selfId.current) void playRecordingStartNotification(settings);
         return;
       }
       if (message.type === 'participant-left') {
@@ -676,6 +738,10 @@ export function App() {
         setError,
         setNotice,
         videoPreferences(settings),
+        {
+          mode: settings.cameraBackgroundMode,
+          dataUrl: settings.cameraBackgroundDataUrl,
+        },
       );
       await refreshDevices();
       updateSettings({ displayName: cleanName });
@@ -801,6 +867,11 @@ export function App() {
       const destination = await recorder.start({
         settings,
         sharedScreenStream: localVideo.screenStream,
+        audioStreams: [
+          audio.current?.getStream(),
+          ...remoteAudio.current.getRecordingStreams(),
+          ...remoteScreenAudio.current.getRecordingStreams(),
+        ].filter((stream): stream is MediaStream => Boolean(stream)),
         participantNames: participants.map((participant) => participant.name),
       });
       if (
@@ -811,16 +882,10 @@ export function App() {
       ) {
         updateSettings({ recordingDirectory: destination.directory });
       }
-      const sound = new Audio(recordingStartSound);
-      sound.volume = settings.outputVolume;
-      const playSound = () => sound.play().catch(() => undefined);
-      if (settings.outputDeviceId && 'setSinkId' in sound)
-        void (sound as HTMLAudioElement & { setSinkId(deviceId: string): Promise<void> })
-          .setSinkId(settings.outputDeviceId)
-          .then(playSound)
-          .catch(playSound);
-      else void playSound();
-      setRecordingBannerVisible(true);
+      setRecordingBannerMessage('Запись экрана началась и сохраняется локально');
+      await playRecordingStartNotification(settings);
+      recordingCompatibilityErrorUntil.current = Date.now() + 5_000;
+      signaling.current?.send({ type: 'recording-started' });
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === 'AbortError') return;
       setError(caught instanceof Error ? caught.message : 'Не удалось начать запись экрана');
@@ -922,6 +987,7 @@ export function App() {
 
   const logoutAccount = async () => {
     cleanup();
+    if (accountUser) await clearChatImageCache(accountUser.id);
     await accountClient.logout();
     setAccountUser(undefined);
     setGuestMode(false);
@@ -989,6 +1055,33 @@ export function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось переключить камеру');
     }
+  };
+
+  const selectCameraBackground = (
+    deviceId: string,
+    mode: LocalSettings['cameraBackgroundMode'],
+    dataUrl: string,
+    previewAlways: boolean,
+  ) => {
+    const next = {
+      ...settings,
+      cameraDeviceId: deviceId,
+      cameraBackgroundMode: mode,
+      cameraBackgroundDataUrl: dataUrl,
+      cameraPreviewAlways: previewAlways,
+    };
+    updateSettings({
+      cameraDeviceId: deviceId,
+      cameraBackgroundMode: mode,
+      cameraBackgroundDataUrl: dataUrl,
+      cameraPreviewAlways: previewAlways,
+    });
+    video.current?.setPreferences(videoPreferences(next));
+    void video.current
+      ?.setCameraBackground({ mode, dataUrl })
+      .catch((caught) =>
+        setError(caught instanceof Error ? caught.message : 'Не удалось применить фон камеры'),
+      );
   };
 
   const runUpdateCheck = async () => {
@@ -1151,6 +1244,7 @@ export function App() {
       onAccountLogout={() => void logoutAccount()}
       onDeleteAccount={async (password) => {
         await accountClient.deleteAccount(password);
+        if (accountUser) await clearChatImageCache(accountUser.id);
         cleanup();
         setAccountUser(undefined);
         setSettingsOpen(false);
@@ -1246,17 +1340,22 @@ export function App() {
       inviteCopied={inviteCopied}
       turnAvailable={turnAvailable}
       recordingState={screenRecording}
-      recordingBannerVisible={recordingBannerVisible}
+      recordingBannerMessage={recordingBannerMessage}
+      devices={devices}
       onCopyInvite={() => void copyInvite()}
       onMute={toggleMute}
       onCamera={() => void runVideoAction('camera')}
+      onInputDevice={(deviceId) => void selectInput(deviceId)}
+      onOutputDevice={(deviceId) => void selectOutput(deviceId)}
+      onCameraDevice={(deviceId) => void selectCamera(deviceId)}
+      onCameraBackground={selectCameraBackground}
       onScreen={() => void runVideoAction('screen')}
       onReaction={sendReaction}
       onRoomChatSend={sendRoomChatMessage}
       onScreenFocusChange={setScreenFocusMode}
       onSettings={() => openSettings()}
       onRecording={() => void toggleScreenRecording()}
-      onRecordingBannerClose={() => setRecordingBannerVisible(false)}
+      onRecordingBannerClose={() => setRecordingBannerMessage('')}
       onLeave={cleanup}
       onPeerVolume={setPeerVolume}
       onScreenVolume={setScreenVolume}

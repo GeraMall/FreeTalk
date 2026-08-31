@@ -67,7 +67,7 @@ export class RoomManager {
 
     const existing = room.peers.get(clientId);
     if (!existing && room.peers.size >= ROOM_MAX_PARTICIPANTS) {
-      throw new RoomError('ROOM_FULL', 'В комнате уже шесть участников');
+      throw new RoomError('ROOM_FULL', 'В комнате уже восемь участников');
     }
     if (existing && existing.sessionId !== sessionId) {
       throw new RoomError('ROOM_FULL', 'Этот идентификатор участника уже используется');
@@ -203,6 +203,20 @@ export class RoomManager {
     return true;
   }
 
+  recordingStarted(roomId: string, clientId: string, now = Date.now()) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return 'TARGET_NOT_FOUND' as const;
+    if (room.ownerId !== clientId) return 'NOT_OWNER' as const;
+    this.broadcast(room, {
+      type: 'recording-started',
+      participantId: clientId,
+      participantName: peer.participant.name,
+      timestamp: now,
+    });
+    return 'OK' as const;
+  }
+
   moderationMute(roomId: string, requesterId: string, targetId: string) {
     const room = this.rooms.get(roomId);
     if (!room || room.ownerId !== requesterId) return 'NOT_OWNER' as const;
@@ -235,6 +249,9 @@ export class RoomManager {
   }
   roomSize(roomId: string) {
     return this.rooms.get(roomId)?.peers.size ?? 0;
+  }
+  hasParticipant(roomId: string, clientId: string) {
+    return this.rooms.get(roomId)?.peers.has(clientId) ?? false;
   }
 
   private broadcast(room: Room, message: ServerMessage, exceptId?: string) {

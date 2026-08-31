@@ -73,6 +73,23 @@ export async function recordCallEvent(input: {
   if (!response.ok) throw new Error(`Call event rejected: ${response.status}`);
 }
 
+export async function recordTelemetry(input: {
+  roomId: string;
+  reporterClientId: string;
+  userId?: string;
+  anonymousUserId?: string;
+  report: import('@freetalk/protocol').TelemetryReport;
+}) {
+  if (!apiUrl || !internalSecret) return;
+  const response = await fetch(`${apiUrl}/v1/internal/telemetry`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-freetalk-internal-secret': internalSecret },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!response.ok) throw new Error(`Telemetry rejected: ${response.status}`);
+}
+
 export async function getRegisteredProfile(userId: string) {
   if (!apiUrl || !internalSecret) return null;
   const response = await fetch(

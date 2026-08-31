@@ -8,8 +8,18 @@ const windowApi = vi.hoisted(() => ({
   isMaximized: vi.fn<() => Promise<boolean>>(),
   minimize: vi.fn().mockResolvedValue(undefined),
   onResized: vi.fn().mockResolvedValue(vi.fn()),
+  onMoved: vi.fn().mockResolvedValue(vi.fn()),
+  outerPosition: vi.fn().mockResolvedValue({ x: 100, y: 80 }),
+  scaleFactor: vi.fn().mockResolvedValue(1),
+  setPosition: vi.fn().mockResolvedValue(undefined),
   toggleMaximize: vi.fn().mockResolvedValue(undefined),
 }));
+
+const coreApi = vi.hoisted(() => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@tauri-apps/api/core', () => coreApi);
 
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => windowApi,
@@ -21,6 +31,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   windowApi.isMaximized.mockResolvedValue(false);
   windowApi.onResized.mockResolvedValue(vi.fn());
+  windowApi.onMoved.mockResolvedValue(vi.fn());
+  windowApi.outerPosition.mockResolvedValue({ x: 100, y: 80 });
+  windowApi.scaleFactor.mockResolvedValue(1);
+  windowApi.setPosition.mockResolvedValue(undefined);
+  coreApi.invoke.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -59,6 +74,16 @@ describe('CustomTitleBar', () => {
     await waitFor(() => expect(windowApi.isMaximized).toHaveBeenCalled());
     fireEvent.doubleClick(container.querySelector('.custom-titlebar-drag')!);
     await waitFor(() => expect(windowApi.toggleMaximize).toHaveBeenCalledOnce());
+  });
+
+  it('moves the real window while the title bar is dragged', async () => {
+    const { container } = render(<CustomTitleBar />);
+    await waitFor(() => expect(windowApi.outerPosition).toHaveBeenCalled());
+    const titlebar = container.querySelector('.custom-titlebar')!;
+    fireEvent.mouseDown(titlebar, { button: 0, screenX: 200, screenY: 100 });
+    expect(coreApi.invoke).toHaveBeenCalledWith('main_window_start_dragging');
+    fireEvent.mouseMove(window, { buttons: 1, screenX: 240, screenY: 125 });
+    await waitFor(() => expect(windowApi.setPosition).toHaveBeenCalled());
   });
 
   it('shows restore after the native window reports maximized state', async () => {

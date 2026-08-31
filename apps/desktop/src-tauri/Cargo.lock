@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "freetalk"
-version = "0.4.0-beta.43"
+version = "0.4.0-beta.74"
 dependencies = [
  "base64 0.22.1",
  "fs2",
@@ -1266,6 +1266,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "url",
+ "windows",
 ]
 
 [[package]]

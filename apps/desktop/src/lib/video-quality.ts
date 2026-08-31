@@ -1,6 +1,6 @@
 export type ScreenResolution = '720p' | '1080p' | '1440p';
 export type ScreenFrameRate = 15 | 30 | 60;
-export type ScreenContentMode = 'text' | 'video';
+export type ScreenContentMode = 'text' | 'balanced' | 'video';
 
 export interface VideoPreferences {
   cameraDeviceId: string;
@@ -28,7 +28,7 @@ export const DEFAULT_VIDEO_PREFERENCES: VideoPreferences = {
   cameraDeviceId: '',
   screenResolution: '1080p',
   screenFrameRate: 30,
-  screenContentMode: 'text',
+  screenContentMode: 'balanced',
   screenAudioByDefault: true,
   screenAdaptiveQuality: true,
 };
@@ -48,6 +48,8 @@ const BASE_BITRATES: Record<ScreenResolution, Record<ScreenFrameRate, number>> =
 const BITRATE_BY_LEVEL = [1, 0.62, 0.36, 0.2] as const;
 const TEXT_SCALE_BY_LEVEL = [1, 1, 1, 1.5] as const;
 const TEXT_FPS_BY_LEVEL = [1, 0.8, 0.5, 0.4] as const;
+const BALANCED_SCALE_BY_LEVEL = [1, 1.25, 1.5, 2] as const;
+const BALANCED_FPS_BY_LEVEL = [1, 0.9, 0.75, 0.6] as const;
 const VIDEO_SCALE_BY_LEVEL = [1, 1.5, 2, 3] as const;
 const VIDEO_FPS_BY_LEVEL = [1, 1, 0.75, 0.5] as const;
 
@@ -67,17 +69,22 @@ export function screenEncodingProfile(
 ): ScreenEncodingProfile {
   const level = Math.max(0, Math.min(3, Math.round(adaptiveLevel)));
   const baseBitrate = BASE_BITRATES[preferences.screenResolution][preferences.screenFrameRate];
-  const textMode = preferences.screenContentMode === 'text';
+  const scaleByLevel =
+    preferences.screenContentMode === 'text'
+      ? TEXT_SCALE_BY_LEVEL
+      : preferences.screenContentMode === 'balanced'
+        ? BALANCED_SCALE_BY_LEVEL
+        : VIDEO_SCALE_BY_LEVEL;
+  const fpsByLevel =
+    preferences.screenContentMode === 'text'
+      ? TEXT_FPS_BY_LEVEL
+      : preferences.screenContentMode === 'balanced'
+        ? BALANCED_FPS_BY_LEVEL
+        : VIDEO_FPS_BY_LEVEL;
   return {
     maxBitrate: Math.round(baseBitrate * BITRATE_BY_LEVEL[level]),
-    maxFramerate: Math.max(
-      12,
-      Math.round(
-        preferences.screenFrameRate *
-          (textMode ? TEXT_FPS_BY_LEVEL[level] : VIDEO_FPS_BY_LEVEL[level]),
-      ),
-    ),
-    scaleResolutionDownBy: textMode ? TEXT_SCALE_BY_LEVEL[level] : VIDEO_SCALE_BY_LEVEL[level],
+    maxFramerate: Math.max(12, Math.round(preferences.screenFrameRate * fpsByLevel[level])),
+    scaleResolutionDownBy: scaleByLevel[level],
   };
 }
 
@@ -120,7 +127,9 @@ export function normalizeVideoPreferences(value: Partial<VideoPreferences>): Vid
         ? value.screenFrameRate
         : DEFAULT_VIDEO_PREFERENCES.screenFrameRate,
     screenContentMode:
-      value.screenContentMode === 'text' || value.screenContentMode === 'video'
+      value.screenContentMode === 'text' ||
+      value.screenContentMode === 'balanced' ||
+      value.screenContentMode === 'video'
         ? value.screenContentMode
         : DEFAULT_VIDEO_PREFERENCES.screenContentMode,
     screenAudioByDefault:

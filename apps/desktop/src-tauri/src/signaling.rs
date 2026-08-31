@@ -325,16 +325,10 @@ mod tests {
 
     #[test]
     fn only_allows_freetalk_or_local_signaling() {
-        assert!(validate_url(
-            "wss://freetalk.191-44-38-60.sslip.io/ws?room=ABCDEFGH2345"
-        )
-        .is_ok());
+        assert!(validate_url("wss://freetalk.191-44-38-60.sslip.io/ws?room=ABCDEFGH2345").is_ok());
         assert!(validate_url("ws://127.0.0.1:8787/ws?room=ABCDEFGH2345").is_ok());
         assert!(validate_url("wss://example.com/ws").is_err());
-        assert!(validate_url(
-            "https://freetalk.191-44-38-60.sslip.io/ws"
-        )
-        .is_err());
+        assert!(validate_url("https://freetalk.191-44-38-60.sslip.io/ws").is_err());
     }
 
     #[test]

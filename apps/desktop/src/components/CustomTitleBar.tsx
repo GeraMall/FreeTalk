@@ -1,11 +1,31 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { ChevronLeft, ChevronRight, Copy, Minus, Square, X } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { BrandLogo } from './BrandLogo';
 
 export function CustomTitleBar() {
   const [maximized, setMaximized] = useState(false);
   const appWindow = useMemo(() => getCurrentWindow(), []);
+  const windowPosition = useRef({ x: 0, y: 0 });
+  const windowScaleFactor = useRef(1);
+  const drag = useRef<
+    | {
+        screenX: number;
+        screenY: number;
+        originX: number;
+        originY: number;
+      }
+    | undefined
+  >(undefined);
 
   const refreshMaximized = useCallback(async () => {
     setMaximized(await appWindow.isMaximized());
@@ -14,6 +34,13 @@ export function CustomTitleBar() {
   useEffect(() => {
     let disposed = false;
     let stopResize: (() => void) | undefined;
+    let stopMove: (() => void) | undefined;
+    void Promise.all([appWindow.outerPosition(), appWindow.scaleFactor()])
+      .then(([position, scaleFactor]) => {
+        windowPosition.current = position;
+        windowScaleFactor.current = scaleFactor;
+      })
+      .catch(() => undefined);
     void appWindow
       .isMaximized()
       .then((value) => {
@@ -27,9 +54,35 @@ export function CustomTitleBar() {
         else stopResize = unlisten;
       })
       .catch(() => undefined);
+    void appWindow
+      .onMoved(({ payload }) => {
+        windowPosition.current = payload;
+      })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else stopMove = unlisten;
+      })
+      .catch(() => undefined);
+    const moveWindow = (event: globalThis.MouseEvent) => {
+      const active = drag.current;
+      if (!active || event.buttons !== 1) return;
+      const scaleFactor = windowScaleFactor.current;
+      const x = active.originX + (event.screenX - active.screenX) * scaleFactor;
+      const y = active.originY + (event.screenY - active.screenY) * scaleFactor;
+      windowPosition.current = { x, y };
+      void appWindow.setPosition(new PhysicalPosition(x, y)).catch(() => undefined);
+    };
+    const stopMoving = () => {
+      drag.current = undefined;
+    };
+    window.addEventListener('mousemove', moveWindow);
+    window.addEventListener('mouseup', stopMoving);
     return () => {
       disposed = true;
       stopResize?.();
+      stopMove?.();
+      window.removeEventListener('mousemove', moveWindow);
+      window.removeEventListener('mouseup', stopMoving);
     };
   }, [appWindow, refreshMaximized]);
 
@@ -38,16 +91,27 @@ export function CustomTitleBar() {
     await refreshMaximized();
   };
 
-  const handleDoubleClick = (event: MouseEvent<HTMLElement>) => {
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest('button')) return;
     void toggleMaximize().catch(() => undefined);
+  };
+
+  const handleMouseDown = (event: ReactMouseEvent<HTMLElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    void invoke('main_window_start_dragging').catch(() => undefined);
+    drag.current = {
+      screenX: event.screenX,
+      screenY: event.screenY,
+      originX: windowPosition.current.x,
+      originY: windowPosition.current.y,
+    };
   };
 
   return (
     <header
       className={`custom-titlebar${maximized ? ' is-maximized' : ''}`}
-      data-tauri-drag-region
       onDoubleClick={handleDoubleClick}
+      onMouseDown={handleMouseDown}
     >
       <nav className="titlebar-navigation" aria-label="Навигация">
         <button type="button" aria-label="Назад" title="Назад" onClick={() => history.back()}>
@@ -57,8 +121,8 @@ export function CustomTitleBar() {
           <ChevronRight size={15} aria-hidden="true" />
         </button>
       </nav>
-      <span className="custom-titlebar-drag" data-tauri-drag-region aria-hidden="true" />
-      <span className="custom-titlebar-brand" data-tauri-drag-region>
+      <span className="custom-titlebar-drag" aria-hidden="true" />
+      <span className="custom-titlebar-brand">
         <BrandLogo variant="compact" />
       </span>
       <div className="window-controls" aria-label="Управление окном">

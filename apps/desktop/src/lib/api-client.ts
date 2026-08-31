@@ -249,10 +249,23 @@ export class AccountClient {
     });
   }
 
-  async uploadChatImage<T>(chatId: string, dataUrl: string, caption = '') {
+  async uploadChatImage<T>(
+    chatId: string,
+    dataUrl: string,
+    caption = '',
+    thumbnailDataUrl?: string,
+  ) {
     const blob = dataUrlToBlob(dataUrl);
     const form = new FormData();
     form.append('image', blob, `chat-image.${blob.type.split('/')[1] || 'webp'}`);
+    if (thumbnailDataUrl) {
+      const thumbnail = dataUrlToBlob(thumbnailDataUrl);
+      form.append(
+        'thumbnail',
+        thumbnail,
+        `chat-thumbnail.${thumbnail.type.split('/')[1] || 'webp'}`,
+      );
+    }
     const query = caption.trim() ? `?caption=${encodeURIComponent(caption.trim())}` : '';
     return this.request<{ message: T }>(`/v1/chats/${chatId}/images${query}`, {
       method: 'POST',
@@ -260,8 +273,9 @@ export class AccountClient {
     });
   }
 
-  async chatImageBlob(messageId: string) {
-    const response = await this.authenticatedFetch(`/v1/messages/${messageId}/image`);
+  async chatImageBlob(messageId: string, variant: 'full' | 'thumbnail' = 'full') {
+    const query = variant === 'thumbnail' ? '?variant=thumbnail' : '';
+    const response = await this.authenticatedFetch(`/v1/messages/${messageId}/image${query}`);
     if (!response.ok) return decode<never>(response);
     return response.blob();
   }

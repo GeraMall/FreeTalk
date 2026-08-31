@@ -3,15 +3,16 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 export type FullscreenMode = 'element' | 'window' | 'none';
 
 export async function toggleMediaFullscreen(element: HTMLElement): Promise<FullscreenMode> {
-  if (document.fullscreenElement) {
-    await document.exitFullscreen();
+  const ownerDocument = element.ownerDocument;
+  if (ownerDocument.fullscreenElement) {
+    await ownerDocument.exitFullscreen();
     return 'none';
   }
 
   if (element.requestFullscreen) {
     try {
       await element.requestFullscreen();
-      if (document.fullscreenElement) return 'element';
+      if (ownerDocument.fullscreenElement) return 'element';
     } catch {
       // WKWebView on macOS exposes the method on some versions but can reject it.
     }

@@ -299,6 +299,20 @@ describe('VideoManager', () => {
     expect(screenTracks[0]!.contentHint).toBe('motion');
   });
 
+  it('leaves codec optimization balanced in universal mode', async () => {
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      { ...DEFAULT_VIDEO_PREFERENCES, screenContentMode: 'balanced' },
+    );
+
+    await manager.toggleScreen();
+
+    expect(screenTracks[0]!.contentHint).toBe('');
+  });
+
   it('can share without audio and removes any unexpected audio track', async () => {
     const publish = vi.fn(async () => undefined);
     const onState = vi.fn();

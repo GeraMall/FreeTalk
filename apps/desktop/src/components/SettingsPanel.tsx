@@ -350,7 +350,7 @@ export function SettingsPanel({
 
           {tab !== 'profile' && (
             <footer className="settings-footer">
-              <button className="primary" onClick={onClose}>
+              <button className="primary settings-done" onClick={onClose}>
                 Готово
               </button>
             </footer>
@@ -770,11 +770,10 @@ function VideoTab({
               }
             >
               <option value="text">Текст · максимальная чёткость</option>
+              <option value="balanced">Универсальный · чётко и плавно</option>
               <option value="video">Видео · плавное движение</option>
             </select>
-            <small>
-              «Текст» сначала снижает FPS, «Видео» сохраняет плавность за счёт разрешения.
-            </small>
+            <small>«Текст» бережёт детали, универсальный режим балансирует их с движением.</small>
           </label>
           <label className="field-label">
             Максимальное разрешение
@@ -790,6 +789,7 @@ function VideoTab({
               <option value="1080p">Full HD · 1920×1080</option>
               <option value="1440p">2K · 2560×1440</option>
             </select>
+            <small>Задаёт верхнюю границу детализации передаваемого изображения.</small>
           </label>
           <label className="field-label">
             Частота кадров
@@ -805,6 +805,7 @@ function VideoTab({
               <option value="30">30 FPS · рекомендуется</option>
               <option value="60">60 FPS · плавно</option>
             </select>
+            <small>Определяет плавность движения при достаточной скорости сети.</small>
           </label>
         </div>
         <div className="video-toggle-list">

@@ -5,6 +5,7 @@ import {
   clientMessageSchema,
   parseClientMessage,
   serverMessageSchema,
+  telemetryReportSchema,
 } from '../src';
 
 const base = {
@@ -151,6 +152,56 @@ describe('protocol validation', () => {
         },
       }).success,
     ).toBe(true);
+  });
+
+  it('validates server-authenticated recording notifications', () => {
+    expect(clientMessageSchema.parse({ type: 'recording-started', name: 'Подмена' })).toEqual({
+      type: 'recording-started',
+    });
+    expect(
+      serverMessageSchema.safeParse({
+        type: 'recording-started',
+        participantId: base.clientId,
+        participantName: base.name,
+        timestamp: Date.now(),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts bounded anonymous connection telemetry and rejects oversized batches', () => {
+    const report = {
+      eventVersion: 1 as const,
+      timestamp: Date.now(),
+      clientVersion: '0.4.0-beta.73',
+      platform: 'windows' as const,
+      sessionId: base.sessionId,
+      connections: [
+        {
+          peerId: base.clientId,
+          connectionType: 'turn' as const,
+          localCandidateType: 'relay' as const,
+          remoteCandidateType: 'srflx' as const,
+          protocol: 'udp' as const,
+          connectionState: 'connected' as const,
+          iceState: 'completed' as const,
+          rttMs: 42,
+          availableOutgoingBitrate: 2_000_000,
+          availableIncomingBitrate: 4_000_000,
+          bytesSent: 1_000,
+          bytesReceived: 2_000,
+          media: [],
+        },
+      ],
+      events: [{ type: 'ice_restart' as const, timestamp: Date.now() }],
+    };
+    expect(telemetryReportSchema.safeParse(report).success).toBe(true);
+    expect(
+      telemetryReportSchema.safeParse({
+        ...report,
+        connections: Array(8).fill(report.connections[0]),
+      }).success,
+    ).toBe(false);
+    expect(JSON.stringify(report)).not.toContain('email');
   });
 
   it('validates authenticated realtime chat events', () => {

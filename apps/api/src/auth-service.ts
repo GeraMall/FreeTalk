@@ -23,6 +23,7 @@ export interface UserRow {
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
+  role: 'user' | 'admin';
 }
 
 export interface AuthenticatedUser extends UserRow {

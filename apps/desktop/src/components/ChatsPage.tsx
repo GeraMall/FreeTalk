@@ -36,7 +36,8 @@ import {
 import { createPortal } from 'react-dom';
 import { isNearBottom } from '../lib/chat-scroll';
 import { accountClient } from '../lib/api-client';
-import { prepareChatImage, prepareGroupAvatar } from '../lib/profile';
+import { loadChatImage } from '../lib/chat-image-cache';
+import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
 import type { PresenceStatus } from '@freetalk/protocol';
 
 const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
@@ -143,7 +144,7 @@ interface ChatsPageProps {
   onRetryMessages(): void;
   onLoadOlder?(): Promise<void>;
   onSendMessage(body: string): Promise<boolean>;
-  onSendImage?(dataUrl: string, caption: string): Promise<boolean>;
+  onSendImage?(dataUrl: string, caption: string, thumbnailDataUrl: string): Promise<boolean>;
   onCreateGroup(title: string, memberIds: string[]): Promise<boolean>;
   onJoinInvite(token: string): Promise<boolean>;
   onStartCall(): Promise<void>;
@@ -1319,6 +1320,7 @@ export function MessageList({
                   ) : (
                     <MessageBubble
                       message={message}
+                      accountId={userId}
                       own={message.sender_id === userId}
                       grouped={grouped}
                       showAuthor={groupChat && !grouped && message.sender_id !== userId}
@@ -1344,12 +1346,14 @@ export function MessageList({
 
 function MessageBubble({
   message,
+  accountId,
   own,
   grouped,
   showAuthor,
   onJoinInvite,
 }: {
   message: MessageItem;
+  accountId: string;
   own: boolean;
   grouped: boolean;
   showAuthor: boolean;
@@ -1371,7 +1375,7 @@ function MessageBubble({
       >
         {showAuthor && <strong>{message.display_name || message.username || 'Участник'}</strong>}
         {message.kind === 'image' ? (
-          <ChatImageMessage message={message} />
+          <ChatImageMessage message={message} accountId={accountId} />
         ) : inviteToken ? (
           <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
         ) : (
@@ -1472,22 +1476,48 @@ function InviteMessageCard({
   );
 }
 
-function ChatImageMessage({ message }: { message: MessageItem }) {
-  const [source, setSource] = useState('');
+function ChatImageMessage({ message, accountId }: { message: MessageItem; accountId: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [thumbnailSource, setThumbnailSource] = useState('');
+  const [viewerSource, setViewerSource] = useState('');
   const [failed, setFailed] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerClosing, setViewerClosing] = useState(false);
   useEffect(() => {
+    if (shouldLoad || typeof IntersectionObserver === 'undefined') return;
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '800px 0px' },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [shouldLoad]);
+
+  useEffect(() => {
+    if (!shouldLoad) return;
     let active = true;
     let objectUrl = '';
-    setSource('');
+    setThumbnailSource('');
     setFailed(false);
-    void accountClient
-      .chatImageBlob(message.id)
+    void loadChatImage({
+      accountId,
+      messageId: message.id,
+      variant: 'thumbnail',
+      expiresAt: message.expires_at,
+      fetcher: () => accountClient.chatImageBlob(message.id, 'thumbnail'),
+    })
       .then((blob) => {
         if (!active) return;
         objectUrl = URL.createObjectURL(blob);
-        setSource(objectUrl);
+        setThumbnailSource(objectUrl);
       })
       .catch(() => {
         if (active) setFailed(true);
@@ -1496,7 +1526,31 @@ function ChatImageMessage({ message }: { message: MessageItem }) {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [message.id]);
+  }, [accountId, message.expires_at, message.id, shouldLoad]);
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+    let active = true;
+    let objectUrl = '';
+    void loadChatImage({
+      accountId,
+      messageId: message.id,
+      variant: 'full',
+      expiresAt: message.expires_at,
+      fetcher: () => accountClient.chatImageBlob(message.id, 'full'),
+    })
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setViewerSource(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      setViewerSource('');
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [accountId, message.expires_at, message.id, viewerOpen]);
 
   useEffect(() => {
     if (!viewerOpen) return;
@@ -1517,8 +1571,8 @@ function ChatImageMessage({ message }: { message: MessageItem }) {
 
   return (
     <>
-      <div className="chat-image-message">
-        {source ? (
+      <div className="chat-image-message" ref={containerRef}>
+        {thumbnailSource ? (
           <button
             type="button"
             className="chat-image-open"
@@ -1529,7 +1583,7 @@ function ChatImageMessage({ message }: { message: MessageItem }) {
             }}
           >
             <img
-              src={source}
+              src={thumbnailSource}
               alt={alt}
               style={
                 message.metadata?.width && message.metadata?.height
@@ -1577,7 +1631,7 @@ function ChatImageMessage({ message }: { message: MessageItem }) {
               >
                 <X />
               </button>
-              <img src={source} alt={alt} />
+              <img src={viewerSource || thumbnailSource} alt={alt} />
               <div className="chat-image-viewer-caption">
                 <strong>{message.display_name || message.username || 'Участник'}</strong>
                 {message.body && <span>{message.body}</span>}
@@ -1700,20 +1754,24 @@ function MessageComposer({
 }: {
   disabled: boolean;
   onSend(body: string): Promise<boolean>;
-  onSendImage(dataUrl: string, caption: string): Promise<boolean>;
+  onSendImage(dataUrl: string, caption: string, thumbnailDataUrl: string): Promise<boolean>;
 }) {
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
   const [processingImage, setProcessingImage] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState('');
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
   const [imageError, setImageError] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const prepareSelectedImage = (file: File) => {
     if (processingImage) return;
     setProcessingImage(true);
     setImageError('');
-    void prepareChatImage(file)
-      .then(setImageDataUrl)
+    void prepareChatImageUpload(file)
+      .then((prepared) => {
+        setImageDataUrl(prepared.imageDataUrl);
+        setThumbnailDataUrl(prepared.thumbnailDataUrl);
+      })
       .catch((caught) =>
         setImageError(
           caught instanceof Error ? caught.message : 'Не удалось обработать фотографию',
@@ -1726,10 +1784,13 @@ function MessageComposer({
     if ((!body && !imageDataUrl) || sending || processingImage) return;
     setSending(true);
     try {
-      const sent = imageDataUrl ? await onSendImage(imageDataUrl, body) : await onSend(body);
+      const sent = imageDataUrl
+        ? await onSendImage(imageDataUrl, body, thumbnailDataUrl)
+        : await onSend(body);
       if (sent) {
         setValue('');
         setImageDataUrl('');
+        setThumbnailDataUrl('');
         setImageError('');
       }
     } finally {
@@ -1747,7 +1808,14 @@ function MessageComposer({
         <div className="composer-image-preview">
           <img src={imageDataUrl} alt="Предпросмотр отправляемой фотографии" />
           <span>Фотография готова к отправке</span>
-          <button type="button" aria-label="Убрать фотографию" onClick={() => setImageDataUrl('')}>
+          <button
+            type="button"
+            aria-label="Убрать фотографию"
+            onClick={() => {
+              setImageDataUrl('');
+              setThumbnailDataUrl('');
+            }}
+          >
             <X />
           </button>
         </div>

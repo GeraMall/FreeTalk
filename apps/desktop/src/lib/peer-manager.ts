@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@freetalk/protocol';
+import type { ServerMessage, TelemetryConnectionSample } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
 import type { VideoMediaSource } from './video-manager';
 import {
@@ -49,6 +49,10 @@ interface PeerContext {
   firstInboundRtpRecorded: boolean;
   inboundVideoRecorded: Set<VideoMediaSource>;
   outboundVideoRecorded: Set<VideoMediaSource>;
+  telemetrySnapshots: Map<
+    string,
+    { bytes: number; packets: number; packetsLost: number; timestamp: number }
+  >;
   videoSenders: Partial<Record<VideoMediaSource, VideoSenderContext>>;
   screenAudioSender?: VideoSenderContext;
   videoStateChannel?: RTCDataChannel;
@@ -87,6 +91,9 @@ interface CandidatePairStats extends RTCStats {
   state?: string;
   nominated?: boolean;
   requestsSent?: number;
+  currentRoundTripTime?: number;
+  availableOutgoingBitrate?: number;
+  availableIncomingBitrate?: number;
 }
 
 interface OutboundVideoStats extends RTCStats {
@@ -147,6 +154,7 @@ export class PeerManager {
       firstInboundRtpRecorded: false,
       inboundVideoRecorded: new Set(),
       outboundVideoRecorded: new Set(),
+      telemetrySnapshots: new Map(),
       videoSenders: {},
       remoteVideoState: {
         camera: { active: false, mid: null, trackId: null },
@@ -298,7 +306,7 @@ export class PeerManager {
         connection.connectionState === 'disconnected' ||
         connection.connectionState === 'failed'
       ) {
-        this.scheduleIceRestart(context);
+        this.scheduleIceRestart(peerId, context);
       } else if (connection.connectionState === 'closed') {
         this.clearDisconnectTimer(context);
       }
@@ -321,6 +329,20 @@ export class PeerManager {
       this.requestNegotiation(peerId, context);
     this.startDiagnosticTimer(peerId, context);
     return connection;
+  }
+
+  async collectTelemetry(): Promise<TelemetryConnectionSample[]> {
+    const samples = await Promise.all(
+      [...this.peers].map(async ([peerId, context]) => {
+        if (context.connection.signalingState === 'closed') return undefined;
+        try {
+          return await this.collectPeerTelemetry(peerId, context);
+        } catch {
+          return undefined;
+        }
+      }),
+    );
+    return samples.filter((sample): sample is TelemetryConnectionSample => Boolean(sample));
   }
 
   async handle(message: Extract<ServerMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>) {
@@ -519,7 +541,7 @@ export class PeerManager {
   updateIceServers(iceServers: RTCIceServer[]) {
     if (JSON.stringify(this.iceServers) === JSON.stringify(iceServers)) return;
     this.iceServers = iceServers;
-    for (const context of this.peers.values()) {
+    for (const [peerId, context] of this.peers) {
       const { connection } = context;
       if (connection.signalingState === 'closed') continue;
       connection.setConfiguration({ ...connection.getConfiguration(), iceServers });
@@ -528,6 +550,7 @@ export class PeerManager {
       // The signaling server intentionally issues short-lived TURN credentials
       // only after the participant joins. Restart gathering so connections that
       // already started with STUN can immediately discover relay candidates.
+      connectionDiagnostics.record('ice-restart:credentials:start', peerId);
       connection.restartIce();
     }
   }
@@ -550,7 +573,7 @@ export class PeerManager {
     for (const peerId of [...this.peers.keys()]) this.remove(peerId);
   }
 
-  private scheduleIceRestart(context: PeerContext) {
+  private scheduleIceRestart(peerId: string, context: PeerContext) {
     if (
       context.disconnectTimer ||
       context.iceRestartAttempts >= ICE_RESTART_DELAYS_MS.length ||
@@ -567,6 +590,9 @@ export class PeerManager {
         return;
       context.iceRestartAttempts += 1;
       try {
+        connectionDiagnostics.record('ice-restart:recovery:start', peerId, {
+          attempt: context.iceRestartAttempts,
+        });
         context.connection.restartIce();
       } catch {
         /* the peer may have closed between the state event and this timer */
@@ -912,7 +938,9 @@ export class PeerManager {
       source === 'screen'
         ? this.videoPreferences.screenContentMode === 'text'
           ? 'maintain-resolution'
-          : 'maintain-framerate'
+          : this.videoPreferences.screenContentMode === 'video'
+            ? 'maintain-framerate'
+            : 'balanced'
         : 'maintain-framerate';
     void videoSender.sender
       .setParameters(parameters)
@@ -1063,6 +1091,147 @@ export class PeerManager {
 
   private candidateType(candidate: string) {
     return candidate.match(/\btyp\s+(host|srflx|prflx|relay)\b/i)?.[1]?.toLowerCase();
+  }
+
+  private async collectPeerTelemetry(
+    peerId: string,
+    context: PeerContext,
+  ): Promise<TelemetryConnectionSample> {
+    const stats = await context.connection.getStats();
+    let selectedPair: RTCStats | undefined;
+    let bytesSent = 0;
+    let bytesReceived = 0;
+    const media: TelemetryConnectionSample['media'] = [];
+    for (const report of stats.values()) {
+      if (report.type === 'transport' && report.selectedCandidatePairId)
+        selectedPair = stats.get(String(report.selectedCandidatePairId));
+      if (
+        !selectedPair &&
+        report.type === 'candidate-pair' &&
+        report.state === 'succeeded' &&
+        report.nominated
+      )
+        selectedPair = report;
+      if (report.type === 'outbound-rtp') bytesSent += Number(report.bytesSent ?? 0);
+      if (report.type === 'inbound-rtp') bytesReceived += Number(report.bytesReceived ?? 0);
+      if (
+        (report.type !== 'outbound-rtp' && report.type !== 'inbound-rtp') ||
+        (report.kind ?? report.mediaType) !== 'video'
+      )
+        continue;
+      const direction = report.type === 'outbound-rtp' ? 'outbound' : 'inbound';
+      const source =
+        direction === 'outbound'
+          ? (['camera', 'screen'] as const).find(
+              (candidate) =>
+                context.videoSenders[candidate]?.transceiver.mid === String(report.mid ?? ''),
+            )
+          : this.remoteSourceForMedia(context, String(report.mid ?? ''), null);
+      if (!source) continue;
+      const rawBytes = Number(
+        direction === 'outbound' ? (report.bytesSent ?? 0) : (report.bytesReceived ?? 0),
+      );
+      const timestamp = Number(report.timestamp ?? performance.now());
+      const rawPackets = Number(
+        direction === 'outbound' ? (report.packetsSent ?? 0) : (report.packetsReceived ?? 0),
+      );
+      const rawPacketsLost = Math.max(0, Number(report.packetsLost ?? 0));
+      const previous = context.telemetrySnapshots.get(report.id);
+      const elapsedMs = previous ? timestamp - previous.timestamp : 0;
+      const bitrate =
+        previous && elapsedMs > 0 && rawBytes >= previous.bytes
+          ? Math.round(((rawBytes - previous.bytes) * 8 * 1_000) / elapsedMs)
+          : 0;
+      const packetsDelta =
+        previous && rawPackets >= previous.packets ? rawPackets - previous.packets : 0;
+      const packetsLostDelta =
+        previous && rawPacketsLost >= previous.packetsLost
+          ? rawPacketsLost - previous.packetsLost
+          : 0;
+      const packetTotal = packetsDelta + packetsLostDelta;
+      context.telemetrySnapshots.set(report.id, {
+        bytes: rawBytes,
+        packets: rawPackets,
+        packetsLost: rawPacketsLost,
+        timestamp,
+      });
+      const reason = String(report.qualityLimitationReason ?? 'none');
+      media.push({
+        source,
+        direction,
+        width: Math.min(8192, Math.max(0, Math.round(Number(report.frameWidth ?? 0)))),
+        height: Math.min(8192, Math.max(0, Math.round(Number(report.frameHeight ?? 0)))),
+        framesPerSecond: Math.min(240, Math.max(0, Number(report.framesPerSecond ?? 0))),
+        bitrate: Math.min(100_000_000, Math.max(0, Math.round(bitrate))),
+        packetsLost: Math.min(
+          2_147_483_647,
+          Math.max(0, Math.round(Number(report.packetsLost ?? 0))),
+        ),
+        packetsDelta: Math.min(2_147_483_647, Math.max(0, Math.round(packetsDelta))),
+        packetsLostDelta: Math.min(2_147_483_647, Math.max(0, Math.round(packetsLostDelta))),
+        packetLossPercent: packetTotal > 0 ? (packetsLostDelta / packetTotal) * 100 : 0,
+        framesSent:
+          direction === 'outbound'
+            ? Math.max(0, Math.round(Number(report.framesSent ?? 0)))
+            : undefined,
+        framesEncoded:
+          direction === 'outbound'
+            ? Math.max(0, Math.round(Number(report.framesEncoded ?? 0)))
+            : undefined,
+        framesDropped: Math.max(0, Math.round(Number(report.framesDropped ?? 0))),
+        qualityLimitationReason: (['none', 'bandwidth', 'cpu', 'other'] as const).includes(
+          reason as 'none',
+        )
+          ? (reason as 'none' | 'bandwidth' | 'cpu' | 'other')
+          : 'other',
+        mode:
+          source === 'screen'
+            ? this.videoPreferences.screenContentMode === 'balanced'
+              ? 'auto'
+              : this.videoPreferences.screenContentMode
+            : undefined,
+      });
+    }
+    const pair = selectedPair as CandidatePairStats | undefined;
+    const local = pair?.localCandidateId ? stats.get(pair.localCandidateId) : undefined;
+    const remote = pair?.remoteCandidateId ? stats.get(pair.remoteCandidateId) : undefined;
+    const localType = String(local?.candidateType ?? 'unknown');
+    const remoteType = String(remote?.candidateType ?? 'unknown');
+    const candidateType = (value: string) =>
+      (['host', 'srflx', 'prflx', 'relay'] as const).includes(value as 'host')
+        ? (value as 'host' | 'srflx' | 'prflx' | 'relay')
+        : 'unknown';
+    const rawProtocol = String(local?.relayProtocol ?? local?.protocol ?? 'unknown').toLowerCase();
+    const protocol = (['udp', 'tcp', 'tls'] as const).includes(rawProtocol as 'udp')
+      ? (rawProtocol as 'udp' | 'tcp' | 'tls')
+      : 'unknown';
+    return {
+      peerId,
+      connectionType: !pair
+        ? 'unknown'
+        : localType === 'relay' || remoteType === 'relay'
+          ? 'turn'
+          : localType === 'unknown' || remoteType === 'unknown'
+            ? 'unknown'
+            : 'direct',
+      localCandidateType: candidateType(localType),
+      remoteCandidateType: candidateType(remoteType),
+      protocol,
+      connectionState: context.connection.connectionState,
+      iceState: context.connection.iceConnectionState,
+      rttMs: pair?.currentRoundTripTime
+        ? Math.min(120_000, Math.max(0, Number(pair.currentRoundTripTime) * 1_000))
+        : null,
+      availableOutgoingBitrate: pair?.availableOutgoingBitrate
+        ? Math.min(10_000_000_000, Math.max(0, Math.round(Number(pair.availableOutgoingBitrate))))
+        : null,
+      availableIncomingBitrate: pair?.availableIncomingBitrate
+        ? Math.min(10_000_000_000, Math.max(0, Math.round(Number(pair.availableIncomingBitrate))))
+        : null,
+      bytesSent: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.round(bytesSent))),
+      bytesReceived: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.round(bytesReceived))),
+      media: media.slice(0, 4),
+    };
   }
 
   private async pollConnectionStats(peerId: string, context: PeerContext) {

@@ -23,6 +23,8 @@ interface Env {
   TURN_CREDENTIAL_TTL_SECONDS?: string;
   TURN_BROKER_TOKEN?: string;
   ALLOWED_ORIGIN?: string;
+  ACCOUNT_API_URL?: string;
+  INTERNAL_SIGNALING_SECRET?: string;
 }
 
 const fallbackIceServers: RTCIceServer[] = [
@@ -102,6 +104,7 @@ interface SocketAttachment {
   serverCloseCode?: number;
   serverCloseReason?: string;
   serverCloseCause?: string;
+  lastTelemetryAt?: number;
 }
 
 export default {
@@ -312,6 +315,23 @@ export class VoiceRoom implements DurableObject {
         this.broadcast({ type: 'room-chat-message', message: entry });
         return;
       }
+      if (message.type === 'recording-started') {
+        if (!attachment.isOwner) {
+          this.send(socket, {
+            type: 'error',
+            code: 'NOT_OWNER',
+            message: 'Только создатель комнаты может начать запись',
+          });
+          return;
+        }
+        this.broadcast({
+          type: 'recording-started',
+          participantId: attachment.clientId!,
+          participantName: attachment.name!,
+          timestamp: now,
+        });
+        return;
+      }
       if (message.type === 'moderation-mute') {
         if (!attachment.isOwner) {
           this.send(socket, {
@@ -339,6 +359,29 @@ export class VoiceRoom implements DurableObject {
           participantId: message.targetParticipantId,
           muted: true,
         });
+        return;
+      }
+      if (message.type === 'telemetry-report') {
+        if (attachment.lastTelemetryAt && now - attachment.lastTelemetryAt < 5_000) return;
+        attachment.lastTelemetryAt = now;
+        socket.serializeAttachment(attachment);
+        message.report.connections = message.report.connections.filter(
+          (connection) => this.find(connection.peerId) !== undefined,
+        );
+        if (this.env.ACCOUNT_API_URL && this.env.INTERNAL_SIGNALING_SECRET) {
+          void fetch(`${this.env.ACCOUNT_API_URL.replace(/\/$/, '')}/v1/internal/telemetry`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-freetalk-internal-secret': this.env.INTERNAL_SIGNALING_SECRET,
+            },
+            body: JSON.stringify({
+              roomId: attachment.roomId,
+              reporterClientId: attachment.clientId,
+              report: message.report,
+            }),
+          }).catch(() => undefined);
+        }
         return;
       }
       const target = this.find(message.to);
@@ -477,7 +520,7 @@ export class VoiceRoom implements DurableObject {
       this.send(socket, {
         type: 'error',
         code: 'ROOM_FULL',
-        message: 'В комнате уже шесть участников',
+        message: 'В комнате уже восемь участников',
         fatal: true,
       });
       return;

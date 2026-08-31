@@ -15,6 +15,7 @@ import {
   authorizeRoom,
   getRegisteredProfile,
   recordCallEvent,
+  recordTelemetry,
   type RoomAuthorization,
 } from './authorization.js';
 
@@ -34,6 +35,7 @@ const metadata = new WeakMap<
     guestExpiryTimer?: NodeJS.Timeout;
     authorization?: Extract<RoomAuthorization, { allowed: true }>;
     displayName?: string;
+    lastTelemetryAt?: number;
   }
 >();
 const upgradeMetadata = new WeakMap<
@@ -44,7 +46,7 @@ const upgradeMetadata = new WeakMap<
 const httpServer = createServer(async (request, response) => {
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.1' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -283,6 +285,19 @@ sockets.on('connection', (socket, request) => {
         case 'room-chat-message':
           manager.chat(meta.roomId, meta.clientId, message.id, message.text);
           break;
+        case 'recording-started': {
+          const result = manager.recordingStarted(meta.roomId, meta.clientId);
+          if (result !== 'OK')
+            send(socket, {
+              type: 'error',
+              code: result,
+              message:
+                result === 'NOT_OWNER'
+                  ? 'Только создатель комнаты может начать запись'
+                  : 'Комната уже недоступна',
+            });
+          break;
+        }
         case 'moderation-mute': {
           const result = manager.moderationMute(
             meta.roomId,
@@ -300,6 +315,26 @@ sockets.on('connection', (socket, request) => {
             });
           break;
         }
+        case 'telemetry-report':
+          if (meta.lastTelemetryAt && now - meta.lastTelemetryAt < 5_000) break;
+          meta.lastTelemetryAt = now;
+          message.report.connections = message.report.connections.filter((connection) =>
+            manager.hasParticipant(meta.roomId!, connection.peerId),
+          );
+          void recordTelemetry({
+            roomId: meta.roomId,
+            reporterClientId: meta.clientId,
+            userId:
+              meta.authorization && 'userId' in meta.authorization
+                ? meta.authorization.userId
+                : undefined,
+            anonymousUserId:
+              meta.authorization && 'anonymousUserId' in meta.authorization
+                ? meta.authorization.anonymousUserId
+                : undefined,
+            report: message.report,
+          }).catch((error) => logSocketEvent(socket, 'telemetry.error', { error: String(error) }));
+          break;
         case 'offer':
         case 'answer':
         case 'ice-candidate': {

@@ -6,6 +6,11 @@ import {
   type VideoPreferences,
 } from './video-quality';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
+import {
+  createCameraEffectCapture,
+  type CameraBackgroundSettings,
+  type CameraEffectCapture,
+} from './camera-background';
 
 export type LocalVideoSource = 'none' | 'camera' | 'screen';
 export type VideoMediaSource = Exclude<LocalVideoSource, 'none'>;
@@ -37,12 +42,14 @@ export function cameraConstraints(deviceId = ''): MediaTrackConstraints {
 
 export class VideoManager {
   private cameraTrack?: MediaStreamTrack;
+  private cameraCapture?: CameraEffectCapture;
   private screenTrack?: MediaStreamTrack;
   private screenStream?: MediaStream;
   private nativeScreenAudio = false;
   private operationQueue = Promise.resolve();
   private disposed = false;
   private preferences: VideoPreferences;
+  private cameraBackground: CameraBackgroundSettings;
 
   constructor(
     private readonly publish: PublishVideo,
@@ -50,8 +57,10 @@ export class VideoManager {
     private readonly onError: (message: string) => void = () => undefined,
     private readonly onNotice: (message: string) => void = () => undefined,
     preferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
+    cameraBackground: CameraBackgroundSettings = { mode: 'none', dataUrl: '' },
   ) {
     this.preferences = normalizeVideoPreferences(preferences);
+    this.cameraBackground = cameraBackground;
   }
 
   toggleCamera() {
@@ -76,6 +85,13 @@ export class VideoManager {
     });
   }
 
+  setCameraBackground(settings: CameraBackgroundSettings) {
+    return this.enqueue(async () => {
+      this.cameraBackground = settings;
+      if (this.cameraTrack) await this.replaceCamera();
+    });
+  }
+
   getCurrent() {
     const track = this.screenTrack ?? this.cameraTrack ?? null;
     return { track, source: this.source() };
@@ -92,10 +108,11 @@ export class VideoManager {
   dispose() {
     this.disposed = true;
     this.stopStream(this.screenStream);
-    this.detachAndStop(this.cameraTrack);
+    this.cameraCapture?.dispose();
     this.screenTrack = undefined;
     this.screenStream = undefined;
     this.cameraTrack = undefined;
+    this.cameraCapture = undefined;
     if (this.nativeScreenAudio) void stopNativeMacScreenAudio();
     this.nativeScreenAudio = false;
     this.emitState();
@@ -116,21 +133,36 @@ export class VideoManager {
       });
       throw new Error(cameraErrorMessage(error));
     }
-    const track = stream.getVideoTracks()[0];
-    if (!track) {
+    const sourceTrack = stream.getVideoTracks()[0];
+    if (!sourceTrack) {
       stream.getTracks().forEach((item) => item.stop());
       throw new Error('Камера не вернула видеопоток. Проверьте подключение устройства.');
     }
+    let capture: CameraEffectCapture;
+    try {
+      capture = await createCameraEffectCapture(stream, this.cameraBackground);
+    } catch (error) {
+      stream.getTracks().forEach((item) => item.stop());
+      throw error;
+    }
+    const track = capture.stream.getVideoTracks()[0];
+    if (!track) {
+      capture.dispose();
+      throw new Error('Камера не вернула видеопоток. Проверьте подключение устройства.');
+    }
     if (this.disposed) {
-      track.stop();
+      capture.dispose();
       return;
     }
     this.cameraTrack = track;
+    this.cameraCapture = capture;
     track.contentHint = 'motion';
     track.onended = () => {
       void this.enqueue(async () => {
         if (this.cameraTrack !== track) return;
         this.cameraTrack = undefined;
+        this.cameraCapture = undefined;
+        capture.dispose();
         connectionDiagnostics.record('camera-track:ended');
         await this.publish(null, 'camera');
         this.emitState();
@@ -139,6 +171,7 @@ export class VideoManager {
         );
       });
     };
+    if (sourceTrack !== track) sourceTrack.onended = track.onended;
     connectionDiagnostics.record('camera-capture:ready', undefined, videoTrackDetails(track));
     await this.publish(track, 'camera');
     this.emitState();
@@ -146,9 +179,12 @@ export class VideoManager {
 
   private async stopCamera() {
     const track = this.cameraTrack;
+    const capture = this.cameraCapture;
     this.cameraTrack = undefined;
+    this.cameraCapture = undefined;
     await this.publish(null, 'camera');
-    this.detachAndStop(track);
+    if (capture) capture.dispose();
+    else this.detachAndStop(track);
     connectionDiagnostics.record('camera-capture:stopped');
     this.emitState();
   }
@@ -164,23 +200,41 @@ export class VideoManager {
     } catch (error) {
       throw new Error(cameraErrorMessage(error));
     }
-    const replacement = stream.getVideoTracks()[0];
-    if (!replacement) {
+    const sourceTrack = stream.getVideoTracks()[0];
+    if (!sourceTrack) {
       this.stopStream(stream);
       throw new Error('Выбранная камера не вернула видеопоток.');
+    }
+    let capture: CameraEffectCapture;
+    try {
+      capture = await createCameraEffectCapture(stream, this.cameraBackground);
+    } catch (error) {
+      this.stopStream(stream);
+      throw error;
+    }
+    const replacement = capture.stream.getVideoTracks()[0];
+    if (!replacement) {
+      capture.dispose();
+      throw new Error('Не удалось создать видеодорожку камеры.');
     }
     replacement.contentHint = 'motion';
     replacement.onended = () => {
       void this.enqueue(async () => {
         if (this.cameraTrack !== replacement) return;
         this.cameraTrack = undefined;
+        this.cameraCapture = undefined;
+        capture.dispose();
         await this.publish(null, 'camera');
         this.emitState();
       });
     };
+    if (sourceTrack !== replacement) sourceTrack.onended = replacement.onended;
+    const previousCapture = this.cameraCapture;
     this.cameraTrack = replacement;
+    this.cameraCapture = capture;
     await this.publish(replacement, 'camera');
-    this.detachAndStop(previous);
+    if (previousCapture) previousCapture.dispose();
+    else this.detachAndStop(previous);
     connectionDiagnostics.record(
       'camera-device:switched',
       undefined,
@@ -235,7 +289,12 @@ export class VideoManager {
     }
     this.screenTrack = track;
     this.screenStream = stream;
-    track.contentHint = this.preferences.screenContentMode === 'text' ? 'detail' : 'motion';
+    track.contentHint =
+      this.preferences.screenContentMode === 'text'
+        ? 'detail'
+        : this.preferences.screenContentMode === 'video'
+          ? 'motion'
+          : '';
     let audioTrack = stream.getAudioTracks()[0];
     if (includeAudio && macOS && !audioTrack) {
       try {

@@ -43,6 +43,79 @@ const ice = z.object({
   usernameFragment: z.string().max(256).nullable().optional(),
 });
 
+export const telemetryMediaSampleSchema = z.object({
+  source: z.enum(['camera', 'screen']),
+  direction: z.enum(['outbound', 'inbound']),
+  width: z.number().int().min(0).max(8192),
+  height: z.number().int().min(0).max(8192),
+  framesPerSecond: z.number().min(0).max(240),
+  bitrate: z.number().int().min(0).max(100_000_000),
+  packetsLost: z.number().int().min(0).max(2_147_483_647),
+  packetsDelta: z.number().int().min(0).max(2_147_483_647).optional(),
+  packetsLostDelta: z.number().int().min(0).max(2_147_483_647).optional(),
+  packetLossPercent: z.number().min(0).max(100).optional(),
+  framesSent: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  framesEncoded: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  framesDropped: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  qualityLimitationReason: z.enum(['none', 'bandwidth', 'cpu', 'other']),
+  mode: z.enum(['text', 'video', 'auto']).optional(),
+});
+
+export const telemetryConnectionSampleSchema = z.object({
+  peerId: clientId,
+  connectionType: z.enum(['direct', 'turn', 'unknown']),
+  localCandidateType: z.enum(['host', 'srflx', 'prflx', 'relay', 'unknown']),
+  remoteCandidateType: z.enum(['host', 'srflx', 'prflx', 'relay', 'unknown']),
+  protocol: z.enum(['udp', 'tcp', 'tls', 'unknown']),
+  connectionState: z.enum(['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed']),
+  iceState: z.enum([
+    'new',
+    'checking',
+    'connected',
+    'completed',
+    'disconnected',
+    'failed',
+    'closed',
+  ]),
+  rttMs: z.number().min(0).max(120_000).nullable(),
+  availableOutgoingBitrate: z.number().int().min(0).max(10_000_000_000).nullable(),
+  availableIncomingBitrate: z.number().int().min(0).max(10_000_000_000).nullable(),
+  bytesSent: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  bytesReceived: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  media: z.array(telemetryMediaSampleSchema).max(4),
+});
+
+export const telemetryEventSchema = z.object({
+  type: z.enum(['signaling_reconnect', 'ice_failure', 'ice_restart']),
+  timestamp: z.number().int().nonnegative(),
+  details: z
+    .record(
+      z.string().max(32),
+      z.union([z.string().max(128), z.number().finite(), z.boolean(), z.null()]),
+    )
+    .refine((value) => Object.keys(value).length <= 8, 'Too many telemetry detail fields')
+    .optional(),
+});
+
+export const telemetryReportSchema = z.object({
+  eventVersion: z.literal(1),
+  timestamp: z.number().int().nonnegative(),
+  clientVersion: z.string().min(1).max(64),
+  platform: z.enum([
+    'windows',
+    'macos-arm64',
+    'macos-x64',
+    'linux',
+    'web',
+    'android',
+    'ios',
+    'unknown',
+  ]),
+  sessionId,
+  connections: z.array(telemetryConnectionSampleSchema).max(7),
+  events: z.array(telemetryEventSchema).max(20).default([]),
+});
+
 export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create-room'),
@@ -74,7 +147,9 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     id: z.string().uuid(),
     text: roomChatTextSchema,
   }),
+  z.object({ type: z.literal('recording-started') }),
   z.object({ type: z.literal('moderation-mute'), targetParticipantId: clientId }),
+  z.object({ type: z.literal('telemetry-report'), report: telemetryReportSchema }),
   z.object({ type: z.literal('ping'), timestamp: z.number().int().nonnegative() }),
 ]);
 
@@ -105,6 +180,12 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     reaction: reactionSchema,
   }),
   z.object({ type: z.literal('room-chat-message'), message: roomChatMessageSchema }),
+  z.object({
+    type: z.literal('recording-started'),
+    participantId: clientId,
+    participantName: displayName,
+    timestamp: z.number().int().nonnegative(),
+  }),
   z.object({
     type: z.literal('participant-left'),
     participantId: clientId,
@@ -156,6 +237,8 @@ export type RoomChatMessage = z.infer<typeof roomChatMessageSchema>;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type SignalMessage = Extract<ClientMessage, { type: 'offer' | 'answer' | 'ice-candidate' }>;
+export type TelemetryReport = z.infer<typeof telemetryReportSchema>;
+export type TelemetryConnectionSample = z.infer<typeof telemetryConnectionSampleSchema>;
 
 export const presenceStatusSchema = z.enum(['online', 'away', 'dnd', 'offline']);
 export type PresenceStatus = z.infer<typeof presenceStatusSchema>;

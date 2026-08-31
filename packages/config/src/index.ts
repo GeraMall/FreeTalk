@@ -1,4 +1,4 @@
-export const ROOM_MAX_PARTICIPANTS = 6;
+export const ROOM_MAX_PARTICIPANTS = 8;
 export const MAX_SIGNAL_BYTES = 32 * 1024;
 export const ROOM_CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/;
 // Protocol validation intentionally excludes ASCII control characters.

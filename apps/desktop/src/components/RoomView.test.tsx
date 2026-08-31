@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Participant, RoomChatMessage } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
 import { RoomView, type RemoteVideoUiState } from './RoomView';
@@ -13,6 +13,13 @@ const participants: Participant[] = [
   { id: peerId, name: 'Друг', muted: false, isOwner: false, connectedAt: 2 },
 ];
 const stream = {} as MediaStream;
+const { invokeMock, listenMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  listenMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
 
 beforeAll(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'play', {
@@ -21,7 +28,24 @@ beforeAll(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+});
+
+beforeEach(() => {
+  invokeMock.mockReset().mockResolvedValue(undefined);
+  listenMock.mockReset().mockResolvedValue(vi.fn());
+  const previewTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue({
+        getVideoTracks: () => [previewTrack],
+        getTracks: () => [previewTrack],
+      } as unknown as MediaStream),
+    },
+  });
+});
 
 function view(
   localSource: 'none' | 'camera' | 'screen' | 'both' = 'none',
@@ -33,6 +57,16 @@ function view(
   handlers: {
     onMute?: () => void;
     onCamera?: () => void;
+    onInputDevice?: (deviceId: string) => void;
+    onOutputDevice?: (deviceId: string) => void;
+    onCameraDevice?: (deviceId: string) => void;
+    onCameraBackground?: (
+      deviceId: string,
+      mode: 'none' | 'blur' | 'custom',
+      dataUrl: string,
+      previewAlways: boolean,
+    ) => void;
+    devices?: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
     onSettings?: () => void;
     onLeave?: () => void;
     onRoomChatSend?: (text: string) => boolean;
@@ -40,7 +74,7 @@ function view(
     roomChatMessages?: RoomChatMessage[];
     screenFocusMode?: boolean;
     recordingState?: { phase: 'idle' | 'recording' | 'saving'; path?: string; startedAt?: number };
-    recordingBannerVisible?: boolean;
+    recordingBannerMessage?: string;
     onRecording?: () => void;
     onRecordingBannerClose?: () => void;
   } = {},
@@ -76,10 +110,15 @@ function view(
       inviteCopied={false}
       turnAvailable
       recordingState={handlers.recordingState ?? { phase: 'idle' }}
-      recordingBannerVisible={handlers.recordingBannerVisible ?? false}
+      recordingBannerMessage={handlers.recordingBannerMessage ?? ''}
+      devices={handlers.devices ?? { inputs: [], outputs: [], cameras: [] }}
       onCopyInvite={vi.fn()}
       onMute={handlers.onMute ?? vi.fn()}
       onCamera={handlers.onCamera ?? vi.fn()}
+      onInputDevice={handlers.onInputDevice ?? vi.fn()}
+      onOutputDevice={handlers.onOutputDevice ?? vi.fn()}
+      onCameraDevice={handlers.onCameraDevice ?? vi.fn()}
+      onCameraBackground={handlers.onCameraBackground ?? vi.fn()}
       onScreen={onScreen}
       onReaction={onReaction}
       onRoomChatSend={handlers.onRoomChatSend ?? vi.fn(() => true)}
@@ -176,20 +215,92 @@ describe('RoomView media layouts', () => {
     expect(onScreen).toHaveBeenCalledOnce();
   });
 
+  it('centers call actions in islands and exposes fullscreen and popout controls', () => {
+    const { container, getByRole } = render(view());
+    expect(container.querySelectorAll('.voice-dock .dock-island')).toHaveLength(2);
+    expect(container.querySelectorAll('.dock-split-control.device-on')).toHaveLength(1);
+    expect(container.querySelectorAll('.dock-split-control.device-off')).toHaveLength(1);
+    expect(getByRole('button', { name: 'Открыть звонок во весь экран' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Открыть звонок в отдельном окне' })).not.toBeNull();
+  });
+
+  it('moves the active call to a native window and can restore it', async () => {
+    const { findByRole, getByRole } = render(view());
+
+    fireEvent.click(getByRole('button', { name: 'Открыть звонок в отдельном окне' }));
+
+    expect(invokeMock).toHaveBeenCalledWith('call_popout_open');
+    fireEvent.click(await findByRole('button', { name: 'Вернуть звонок в основное окно' }));
+    expect(invokeMock).toHaveBeenCalledWith('call_popout_restore');
+  });
+
+  it('quickly selects microphone, output, and camera devices from dock arrows', () => {
+    const onInputDevice = vi.fn();
+    const onOutputDevice = vi.fn();
+    const onCameraDevice = vi.fn();
+    const mediaDevice = (kind: MediaDeviceKind, deviceId: string, label: string) =>
+      ({ kind, deviceId, label, groupId: 'group', toJSON: () => ({}) }) as MediaDeviceInfo;
+    const { getByRole, queryByRole } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        devices: {
+          inputs: [mediaDevice('audioinput', 'mic-1', 'Микрофон USB')],
+          outputs: [mediaDevice('audiooutput', 'speaker-1', 'Наушники USB')],
+          cameras: [mediaDevice('videoinput', 'camera-1', 'Камера USB')],
+        },
+        onInputDevice,
+        onOutputDevice,
+        onCameraDevice,
+      }),
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Выбрать аудиоустройство' }));
+    fireEvent.click(getByRole('menuitemradio', { name: 'Микрофон USB' }));
+    expect(onInputDevice).toHaveBeenCalledWith('mic-1');
+
+    fireEvent.click(getByRole('button', { name: 'Выбрать аудиоустройство' }));
+    fireEvent.click(getByRole('menuitemradio', { name: 'Наушники USB' }));
+    expect(onOutputDevice).toHaveBeenCalledWith('speaker-1');
+
+    fireEvent.click(getByRole('button', { name: 'Выбрать камеру' }));
+    expect(queryByRole('menuitemradio', { name: 'Камера USB' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Системная камера' }));
+    fireEvent.click(getByRole('menuitemradio', { name: 'Камера USB' }));
+    expect(onCameraDevice).toHaveBeenCalledWith('camera-1');
+  });
+
+  it('closes the camera device menu when clicking outside it', () => {
+    const { getByRole, queryByRole } = render(view());
+    fireEvent.click(getByRole('button', { name: 'Выбрать камеру' }));
+    expect(getByRole('menu', { name: 'Камера' })).not.toBeNull();
+    fireEvent.mouseDown(document.body);
+    expect(queryByRole('menu', { name: 'Камера' })).toBeNull();
+  });
+
+  it('opens the same camera preview from the camera device menu', () => {
+    const { getByRole, getByText } = render(view());
+    fireEvent.click(getByRole('button', { name: 'Выбрать камеру' }));
+    fireEvent.click(getByRole('button', { name: 'Предпросмотр камеры' }));
+    expect(getByRole('dialog', { name: 'Готовы к видеочату?' })).not.toBeNull();
+    expect(getByText('Пусто')).not.toBeNull();
+    expect(getByText('Размытие')).not.toBeNull();
+    expect(getByText('Свой фон')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Закрыть предпросмотр' }));
+  });
+
   it('shows creator recording controls and a dismissible start banner', () => {
     const onRecording = vi.fn();
     const onRecordingBannerClose = vi.fn();
     const { getByRole, getByText } = render(
       view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
         recordingState: { phase: 'recording', startedAt: Date.now() },
-        recordingBannerVisible: true,
+        recordingBannerMessage: 'Гера начал(а) запись экрана',
         onRecording,
         onRecordingBannerClose,
       }),
     );
     fireEvent.click(getByRole('button', { name: 'Остановить запись экрана' }));
     expect(onRecording).toHaveBeenCalledOnce();
-    expect(getByText('Запись экрана началась и сохраняется локально')).not.toBeNull();
+    expect(getByText('Гера начал(а) запись экрана')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'ОК' }));
     expect(onRecordingBannerClose).toHaveBeenCalledOnce();
   });
@@ -204,7 +315,7 @@ describe('RoomView media layouts', () => {
     expect(onReaction).toHaveBeenCalledWith('🎉');
   });
 
-  it('keeps all existing call-control handlers wired', () => {
+  it('keeps all existing call-control handlers wired through camera preview', async () => {
     const handlers = {
       onMute: vi.fn(),
       onCamera: vi.fn(),
@@ -214,6 +325,10 @@ describe('RoomView media layouts', () => {
     const { getByRole } = render(view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), handlers));
     fireEvent.click(getByRole('button', { name: 'Выключить микрофон' }));
     fireEvent.click(getByRole('button', { name: 'Включить камеру' }));
+    const preview = getByRole('dialog', { name: 'Готовы к видеочату?' });
+    const enableCamera = within(preview).getByText('Включить камеру').closest('button')!;
+    await waitFor(() => expect((enableCamera as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(enableCamera);
     fireEvent.click(getByRole('button', { name: 'Настройки аудио и устройств' }));
     fireEvent.click(getByRole('button', { name: 'Выйти из комнаты' }));
     expect(handlers.onMute).toHaveBeenCalledOnce();

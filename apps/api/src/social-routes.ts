@@ -657,13 +657,20 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const user = await requireUser(request, reply);
     if (!user) return;
     const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+    const { variant } = z
+      .object({ variant: z.enum(['full', 'thumbnail']).default('full') })
+      .parse(request.query);
     const result = await db.query<{ mime: string; data: Buffer }>(
-      `SELECT image.mime,image.data FROM message_images image
+      `SELECT CASE WHEN $3='thumbnail' THEN COALESCE(image.thumbnail_mime,image.mime)
+                   ELSE image.mime END mime,
+              CASE WHEN $3='thumbnail' THEN COALESCE(image.thumbnail_data,image.data)
+                   ELSE image.data END data
+       FROM message_images image
        JOIN messages message ON message.id=image.message_id
        JOIN chat_members member ON member.chat_id=message.chat_id
-         AND member.user_id=$2 AND member.left_at IS NULL
+          AND member.user_id=$2 AND member.left_at IS NULL
        WHERE image.message_id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
-      [messageId, user.id],
+      [messageId, user.id, variant],
     );
     const image = result.rows[0];
     if (!image) return reply.code(404).send({ code: 'IMAGE_NOT_FOUND' });
@@ -690,13 +697,42 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
       if (!(await canInteractInChat(chatId, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
-      const file = await request.file();
-      if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype))
+      let imageFile: { mime: string; bytes: Buffer } | undefined;
+      let thumbnailFile: { mime: string; bytes: Buffer } | undefined;
+      for await (const part of request.parts()) {
+        if (part.type !== 'file') continue;
+        const candidate = { mime: part.mimetype, bytes: await part.toBuffer() };
+        if (part.fieldname === 'image') imageFile = candidate;
+        if (part.fieldname === 'thumbnail') thumbnailFile = candidate;
+      }
+      if (!imageFile || !['image/png', 'image/jpeg', 'image/webp'].includes(imageFile.mime))
         return reply.code(400).send({
           code: 'INVALID_IMAGE',
           message: 'Для отправки доступны изображения PNG, JPEG и WebP',
         });
-      const bytes = await file.toBuffer();
+      if (
+        thumbnailFile &&
+        (!['image/jpeg', 'image/webp'].includes(thumbnailFile.mime) ||
+          thumbnailFile.bytes.length > 256 * 1024)
+      )
+        return reply.code(400).send({
+          code: 'INVALID_IMAGE_THUMBNAIL',
+          message: 'Некорректная миниатюра изображения',
+        });
+      if (thumbnailFile) {
+        const thumbnailDimensions = safeImageDimensions(thumbnailFile.bytes);
+        if (
+          !thumbnailDimensions.width ||
+          !thumbnailDimensions.height ||
+          thumbnailDimensions.width > 1024 ||
+          thumbnailDimensions.height > 1024
+        )
+          return reply.code(400).send({
+            code: 'INVALID_IMAGE_THUMBNAIL',
+            message: 'Некорректная миниатюра изображения',
+          });
+      }
+      const bytes = imageFile.bytes;
       const dimensions = safeImageDimensions(bytes);
       if (
         !dimensions.width ||
@@ -715,8 +751,18 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           [chatId, user.id, caption ?? '', { width: dimensions.width, height: dimensions.height }],
         );
         await client.query(
-          `INSERT INTO message_images(message_id,mime,data,width,height) VALUES($1,$2,$3,$4,$5)`,
-          [message.rows[0]!.id, file.mimetype, bytes, dimensions.width, dimensions.height],
+          `INSERT INTO message_images(
+             message_id,mime,data,width,height,thumbnail_mime,thumbnail_data
+           ) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          [
+            message.rows[0]!.id,
+            imageFile.mime,
+            bytes,
+            dimensions.width,
+            dimensions.height,
+            thumbnailFile?.mime ?? null,
+            thumbnailFile?.bytes ?? null,
+          ],
         );
         return realtimeMessage(message.rows[0]!, {
           username: user.username,
@@ -983,6 +1029,11 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          WHERE chat_id=$1 AND (expires_at IS NULL OR expires_at>now())`,
         [chatId, retentionHours],
       );
+      await client.query(
+        `INSERT INTO analytics_daily_metrics(metric_day,retention_changes)
+         VALUES(current_date,1)
+         ON CONFLICT(metric_day) DO UPDATE SET retention_changes=analytics_daily_metrics.retention_changes+1`,
+      );
     });
     await publishChatEvent(chatId, { type: 'retention-changed', chatId, retentionHours });
     return { retentionHours };
@@ -1067,9 +1118,34 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
   });
 
   // Production can call this periodically; the process also performs best-effort cleanup.
-  const cleanup = setInterval(
-    () => void db.query('DELETE FROM messages WHERE expires_at<=now()'),
-    15 * 60_000,
-  );
+  const cleanup = setInterval(() => {
+    void db
+      .query(
+        `WITH expired AS (
+           SELECT message.id,message.kind,
+                  COALESCE(octet_length(image.data),0)+
+                  COALESCE(octet_length(image.thumbnail_data),0) image_bytes
+           FROM messages message LEFT JOIN message_images image ON image.message_id=message.id
+           WHERE message.expires_at<=now()
+         ), deleted AS (
+           DELETE FROM messages message USING expired
+           WHERE message.id=expired.id
+           RETURNING expired.kind,expired.image_bytes
+         ), totals AS (
+           SELECT count(*) messages_expired,
+                  count(*) FILTER(WHERE kind='image') image_messages_expired,
+                  COALESCE(sum(image_bytes),0) expired_image_bytes
+           FROM deleted
+         )
+         INSERT INTO analytics_daily_metrics(
+           metric_day,messages_expired,image_messages_expired,expired_image_bytes
+         ) SELECT current_date,messages_expired,image_messages_expired,expired_image_bytes FROM totals
+         ON CONFLICT(metric_day) DO UPDATE SET
+           messages_expired=analytics_daily_metrics.messages_expired+EXCLUDED.messages_expired,
+           image_messages_expired=analytics_daily_metrics.image_messages_expired+EXCLUDED.image_messages_expired,
+           expired_image_bytes=analytics_daily_metrics.expired_image_bytes+EXCLUDED.expired_image_bytes`,
+      )
+      .catch(() => undefined);
+  }, 15 * 60_000);
   cleanup.unref();
 }

@@ -4,6 +4,7 @@ export const MAX_PROFILE_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
 export const MAX_AVATAR_DATA_URL_LENGTH = 1_300_000;
 export const MAX_COVER_DATA_URL_LENGTH = 3_300_000;
 export const MAX_CHAT_IMAGE_DATA_URL_LENGTH = 3_900_000;
+export const MAX_CHAT_THUMBNAIL_DATA_URL_LENGTH = 340_000;
 export const MAX_CHAT_WALLPAPER_DATA_URL_LENGTH = 1_800_000;
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -179,31 +180,58 @@ export function prepareChatWallpaper(file: File) {
   });
 }
 
-export async function prepareChatImage(file: File) {
+export interface PreparedChatImage {
+  imageDataUrl: string;
+  thumbnailDataUrl: string;
+}
+
+export async function prepareChatImageUpload(file: File): Promise<PreparedChatImage> {
   validateImage(file, 'Фотография');
   const bitmap = await createImageBitmap(file);
   try {
     if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > MAX_DECODED_PIXELS)
       throw new Error('Разрешение изображения слишком большое.');
     const original = await readFileAsDataUrl(file);
-    if (original.length <= MAX_CHAT_IMAGE_DATA_URL_LENGTH) return original;
+    let imageDataUrl = original;
+    if (original.length > MAX_CHAT_IMAGE_DATA_URL_LENGTH) {
+      const scale = Math.min(1, 2560 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Не удалось обработать фотографию.');
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      imageDataUrl = encodeCanvas(
+        canvas,
+        MAX_CHAT_IMAGE_DATA_URL_LENGTH,
+        'Не удалось уменьшить фотографию до 3 МБ. Выберите другое изображение.',
+        [0.94, 0.9, 0.86, 0.8, 0.72, 0.64],
+      );
+    }
 
-    const scale = Math.min(1, 2560 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Не удалось обработать фотографию.');
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return encodeCanvas(
-      canvas,
-      MAX_CHAT_IMAGE_DATA_URL_LENGTH,
-      'Не удалось уменьшить фотографию до 3 МБ. Выберите другое изображение.',
-      [0.94, 0.9, 0.86, 0.8, 0.72, 0.64],
+    const thumbnailScale = Math.min(1, 960 / Math.max(bitmap.width, bitmap.height));
+    const thumbnailCanvas = document.createElement('canvas');
+    thumbnailCanvas.width = Math.max(1, Math.round(bitmap.width * thumbnailScale));
+    thumbnailCanvas.height = Math.max(1, Math.round(bitmap.height * thumbnailScale));
+    const thumbnailContext = thumbnailCanvas.getContext('2d');
+    if (!thumbnailContext) throw new Error('Не удалось подготовить миниатюру фотографии.');
+    thumbnailContext.imageSmoothingEnabled = true;
+    thumbnailContext.imageSmoothingQuality = 'high';
+    thumbnailContext.drawImage(bitmap, 0, 0, thumbnailCanvas.width, thumbnailCanvas.height);
+    const thumbnailDataUrl = encodeCanvas(
+      thumbnailCanvas,
+      MAX_CHAT_THUMBNAIL_DATA_URL_LENGTH,
+      'Не удалось подготовить миниатюру фотографии.',
+      [0.82, 0.74, 0.66, 0.58, 0.5],
     );
+    return { imageDataUrl, thumbnailDataUrl };
   } finally {
     bitmap.close();
   }
+}
+
+export async function prepareChatImage(file: File) {
+  return (await prepareChatImageUpload(file)).imageDataUrl;
 }

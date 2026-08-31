@@ -1,6 +1,6 @@
 {
   "name": "@freetalk/api",
-  "version": "0.4.0-beta.10",
+  "version": "0.4.0-beta.16",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,10 +8,12 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "migrate": "tsx src/migrate.ts",
+    "admin:grant": "tsx src/grant-admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@freetalk/protocol": "workspace:*",
     "@fastify/cors": "^11.1.0",
     "@fastify/multipart": "^9.2.1",
     "@fastify/rate-limit": "^10.3.0",

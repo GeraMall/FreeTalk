@@ -35,4 +35,22 @@ describe('connection diagnostics', () => {
     expect(report.entries[1]?.peer).toBe('peer-1');
     expect(report.entries.map((entry) => entry.sequence)).toEqual([1, 2]);
   });
+
+  it('queues only bounded operational telemetry and drains it once', () => {
+    connectionDiagnostics.startSession();
+    connectionDiagnostics.record('signaling-reconnect:start', 'secret-peer');
+    connectionDiagnostics.record('ice-connection:failed', 'secret-peer');
+    connectionDiagnostics.record('ice-restart:recovery:start', 'secret-peer', { attempt: 1 });
+    connectionDiagnostics.record('participant-profile', 'secret-peer', { name: 'never sent' });
+
+    const events = connectionDiagnostics.drainTelemetryEvents();
+    expect(events.map((event) => event.type)).toEqual([
+      'signaling_reconnect',
+      'ice_failure',
+      'ice_restart',
+    ]);
+    expect(JSON.stringify(events)).not.toContain('secret-peer');
+    expect(JSON.stringify(events)).not.toContain('never sent');
+    expect(connectionDiagnostics.drainTelemetryEvents()).toEqual([]);
+  });
 });

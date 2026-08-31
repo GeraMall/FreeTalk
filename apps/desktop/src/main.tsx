@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ChatLayoutPreview } from './components/ChatLayoutPreview';
+import { CallPopoutPlaceholder } from './components/CallPopoutPlaceholder';
 import { CustomTitleBar } from './components/CustomTitleBar';
 import { NotificationOverlay } from './components/NotificationOverlay';
 import { usesCustomWindowChrome } from './lib/window-chrome';
@@ -10,9 +11,14 @@ import './styles.css';
 const preview =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('chat-preview');
 const notificationOverlay = new URLSearchParams(window.location.search).has('notification-overlay');
+const callPlaceholder =
+  window.__FREETALK_CALL_PLACEHOLDER__ === true ||
+  new URLSearchParams(window.location.search).has('call-placeholder');
 if (notificationOverlay) document.documentElement.classList.add('notification-overlay-document');
 const content = notificationOverlay ? (
   <NotificationOverlay />
+) : callPlaceholder ? (
+  <CallPopoutPlaceholder />
 ) : preview ? (
   <ChatLayoutPreview />
 ) : (

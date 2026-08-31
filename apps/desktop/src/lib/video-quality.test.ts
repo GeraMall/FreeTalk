@@ -22,6 +22,7 @@ describe('video quality preferences', () => {
       ...DEFAULT_VIDEO_PREFERENCES,
       screenResolution: '1440p' as const,
       screenFrameRate: 60 as const,
+      screenContentMode: 'text' as const,
     };
     expect(screenEncodingProfile(preferences, 0)).toEqual({
       maxBitrate: 14_000_000,
@@ -47,6 +48,21 @@ describe('video quality preferences', () => {
       maxFramerate: 30,
       scaleResolutionDownBy: 3,
     });
+  });
+
+  it('balances detail and motion in universal mode', () => {
+    const preferences = {
+      ...DEFAULT_VIDEO_PREFERENCES,
+      screenResolution: '1440p' as const,
+      screenFrameRate: 60 as const,
+      screenContentMode: 'balanced' as const,
+    };
+    expect(screenEncodingProfile(preferences, 3)).toEqual({
+      maxBitrate: 2_800_000,
+      maxFramerate: 36,
+      scaleResolutionDownBy: 2,
+    });
+    expect(normalizeVideoPreferences(preferences).screenContentMode).toBe('balanced');
   });
 
   it('drops quality on loss or congestion and only restores it after stable samples', () => {

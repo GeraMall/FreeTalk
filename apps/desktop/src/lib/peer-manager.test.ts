@@ -7,6 +7,8 @@ class FakePeerConnection {
   static instances: FakePeerConnection[] = [];
 
   connectionState: RTCPeerConnectionState = 'new';
+  iceConnectionState: RTCIceConnectionState = 'new';
+  iceGatheringState: RTCIceGatheringState = 'new';
   signalingState: RTCSignalingState = 'stable';
   remoteDescription: RTCSessionDescription | null = null;
   localDescription: RTCSessionDescription | null = null;
@@ -14,6 +16,10 @@ class FakePeerConnection {
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   onnegotiationneeded: RTCPeerConnection['onnegotiationneeded'] = null;
   ontrack: RTCPeerConnection['ontrack'] = null;
+  oniceconnectionstatechange: RTCPeerConnection['oniceconnectionstatechange'] = null;
+  onicegatheringstatechange: RTCPeerConnection['onicegatheringstatechange'] = null;
+  onicecandidateerror: RTCPeerConnection['onicecandidateerror'] = null;
+  stats = new Map<string, Record<string, unknown>>();
   restartIce = vi.fn();
   addIceCandidate = vi.fn(async () => undefined);
   setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
@@ -32,6 +38,10 @@ class FakePeerConnection {
 
   getConfiguration() {
     return this.configuration;
+  }
+
+  async getStats() {
+    return this.stats as unknown as RTCStatsReport;
   }
 
   addTrack() {
@@ -162,4 +172,44 @@ describe('PeerManager ICE recovery', () => {
 
     expect(connection.setRemoteDescription).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['relay', 'turn'],
+    ['srflx', 'direct'],
+  ] as const)(
+    'classifies only the selected %s candidate pair as %s',
+    async (candidateType, expected) => {
+      const peers = manager();
+      const peerId = '386d39ef-61af-4aca-84b8-47f78b0f554b';
+      peers.ensure(peerId);
+      const connection = FakePeerConnection.instances[0]!;
+      connection.connectionState = 'connected';
+      connection.iceConnectionState = 'completed';
+      connection.stats = new Map([
+        ['transport', { id: 'transport', type: 'transport', selectedCandidatePairId: 'pair' }],
+        [
+          'pair',
+          {
+            id: 'pair',
+            type: 'candidate-pair',
+            state: 'succeeded',
+            nominated: true,
+            localCandidateId: 'local',
+            remoteCandidateId: 'remote',
+            bytesSent: 100,
+            bytesReceived: 200,
+          },
+        ],
+        ['local', { id: 'local', type: 'local-candidate', candidateType, protocol: 'udp' }],
+        ['remote', { id: 'remote', type: 'remote-candidate', candidateType: 'host' }],
+      ]);
+
+      const [sample] = await peers.collectTelemetry();
+      expect(sample).toMatchObject({
+        peerId,
+        connectionType: expected,
+        localCandidateType: candidateType,
+      });
+    },
+  );
 });

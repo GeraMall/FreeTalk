@@ -16,10 +16,15 @@ export default tseslint.config(
       '.playwright-cli/**',
       '.playwright-local/**',
       '.npm-cache-playwright/**',
+      'apps/desktop/public/**/*.js',
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, fetch: 'readonly' } },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },

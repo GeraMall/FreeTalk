@@ -70,4 +70,44 @@ describe('signaling account authorization adapter', () => {
       reason: 'AUTH_UNAVAILABLE',
     });
   });
+
+  it('keeps room authorization independent when the telemetry collector rejects a report', async () => {
+    vi.stubEnv('ACCOUNT_API_URL', 'http://127.0.0.1:8790');
+    vi.stubEnv('INTERNAL_SIGNALING_SECRET', 'internal-secret-value');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/v1/internal/telemetry')) return new Response(null, { status: 503 });
+        return new Response(
+          JSON.stringify({
+            allowed: true,
+            kind: 'registered',
+            userId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+            displayName: 'Гера',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }),
+    );
+    const { authorizeRoom, recordTelemetry } = await import('../src/authorization.js');
+    await expect(
+      recordTelemetry({
+        roomId: 'ABCDEFGH2345',
+        reporterClientId: 'a08e6f59-5d0d-45fc-abfa-317f401f84f8',
+        report: {
+          eventVersion: 1,
+          timestamp: Date.now(),
+          clientVersion: 'test',
+          platform: 'windows',
+          sessionId: 'collector-offline-test-session',
+          connections: [],
+          events: [],
+        },
+      }),
+    ).rejects.toThrow('Telemetry rejected: 503');
+    await expect(authorizeRoom('join', 'ABCDEFGH2345', 'a'.repeat(43))).resolves.toMatchObject({
+      allowed: true,
+      kind: 'registered',
+    });
+  });
 });

@@ -65,6 +65,15 @@ export class RemoteAudio {
     return 'setSinkId' in HTMLMediaElement.prototype;
   }
 
+  getRecordingStreams() {
+    return [...this.elements.values()].flatMap((audio) => {
+      if (audio.muted || !(audio.srcObject instanceof MediaStream)) return [];
+      return audio.srcObject.getAudioTracks().some((track) => track.readyState === 'live')
+        ? [audio.srcObject]
+        : [];
+    });
+  }
+
   remove(peerId: string) {
     const recoveryTimer = this.recoveryTimers.get(peerId);
     if (recoveryTimer) window.clearTimeout(recoveryTimer);

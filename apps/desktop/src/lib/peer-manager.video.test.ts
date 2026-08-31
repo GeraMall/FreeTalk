@@ -182,7 +182,7 @@ describe('PeerManager video sender lifecycle', () => {
     );
     expect(connection.transceivers[1]!.sender.setParameters).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        degradationPreference: 'maintain-resolution',
+        degradationPreference: 'balanced',
         encodings: [
           expect.objectContaining({
             maxBitrate: 6_000_000,
@@ -298,8 +298,8 @@ describe('PeerManager video sender lifecycle', () => {
         encodings: [
           expect.objectContaining({
             maxBitrate: 3_720_000,
-            maxFramerate: 24,
-            scaleResolutionDownBy: 1,
+            maxFramerate: 27,
+            scaleResolutionDownBy: 1.25,
           }),
         ],
       }),

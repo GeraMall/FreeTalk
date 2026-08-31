@@ -71,11 +71,16 @@ jobs:
       - name: Package macOS app
         run: |
           mkdir -p beta-assets
+          version=$(node -p "require('./package.json').version")
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) release_arch=aarch64 ;;
+            x86_64-apple-darwin) release_arch=x64 ;;
+          esac
           app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
           ditto -c -k --sequesterRsrc --keepParent "$app_path" "beta-assets/FreeTalk-${{ matrix.target }}.app.zip"
           cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg beta-assets/
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz beta-assets/
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig beta-assets/
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz "beta-assets/FreeTalk_${version}_${release_arch}.app.tar.gz"
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig "beta-assets/FreeTalk_${version}_${release_arch}.app.tar.gz.sig"
       - uses: actions/upload-artifact@v4
         with:
           name: beta-macos-${{ matrix.target }}
@@ -89,6 +94,41 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: { path: release-assets }
+      - name: Generate updater manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          windows_file=$(find release-assets -name "FreeTalk_${version}_x64-setup.exe" -print -quit)
+          arm_file=$(find release-assets -name "FreeTalk_${version}_aarch64.app.tar.gz" -print -quit)
+          intel_file=$(find release-assets -name "FreeTalk_${version}_x64.app.tar.gz" -print -quit)
+          test -f "$windows_file"
+          test -f "$windows_file.sig"
+          test -f "$arm_file"
+          test -f "$arm_file.sig"
+          test -f "$intel_file"
+          test -f "$intel_file.sig"
+          jq -n \
+            --arg version "$version" \
+            --arg notes "FreeTalk ${version}: улучшения звонков, отдельного окна, записи, видеофонов, чатов и локального кэша изображений." \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg windows_signature "$(cat "$windows_file.sig")" \
+            --arg windows_url "$base_url/$(basename "$windows_file")" \
+            --arg arm_signature "$(cat "$arm_file.sig")" \
+            --arg arm_url "$base_url/$(basename "$arm_file")" \
+            --arg intel_signature "$(cat "$intel_file.sig")" \
+            --arg intel_url "$base_url/$(basename "$intel_file")" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "windows-x86_64": { signature: $windows_signature, url: $windows_url },
+                "darwin-aarch64": { signature: $arm_signature, url: $arm_url },
+                "darwin-x86_64": { signature: $intel_signature, url: $intel_url }
+              }
+            }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: true

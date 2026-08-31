@@ -18,11 +18,13 @@
 - invite/session tokens создаются CSPRNG и хранятся в БД только как SHA-256 hash с server pepper; случайный код комнаты остаётся короткоживущим locator и не считается секретом уровня пароля;
 - React escaping; `dangerouslySetInnerHTML`, shell plugin и remote code отсутствуют;
 - Tauri CSP, минимальная capability, подписанный Tauri updater и фиксированный native WSS host;
-- signaling message size/rate limits, максимум 6 участников, server-controlled owner moderation и guest expiration.
+- signaling message size/rate limits, максимум 8 участников, server-controlled owner moderation и guest expiration.
 
 ## Privacy
 
 API хранит account/social data, текст временных сообщений до их expiration, историю факта звонка и псевдонимизированные security events. Он не получает и не хранит аудио, видео, экран или содержимое разговора. Development email mode пишет одноразовые коды в локальный серверный журнал; production-конфигурация с таким режимом не запускается.
+
+Desktop сохраняет просмотренные изображения чатов в локальном профиле WebView, разделяя записи по account ID. Кэш ограничен 384 МиБ и 800 объектами, учитывает `expires_at` и очищается при выходе из аккаунта, очистке истории, блокировке пользователя или выходе из чата. Он ускоряет повторный просмотр, но остаётся локальной копией приватных данных, защищённой средствами учётной записи ОС, а не отдельным E2EE-хранилищем.
 
 ## Ограничения beta
 

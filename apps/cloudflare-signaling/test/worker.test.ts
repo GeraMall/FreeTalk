@@ -208,6 +208,48 @@ describe('Cloudflare voice room reconnects', () => {
     const snapshot = late.sent.find((message) => message.type === 'joined-room');
     expect(snapshot?.type === 'joined-room' ? snapshot.roomChatMessages : []).toHaveLength(1);
   });
+
+  it('announces screen recording to the room only when the owner starts it', async () => {
+    const owner = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+        sessionId: 'session-123456789',
+        name: 'Owner',
+        isOwner: true,
+        connectedAt: 1,
+      }),
+    );
+    const member = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '386d39ef-61af-4aca-84b8-47f78b0f554b',
+        sessionId: 'session-223456789',
+        name: 'Member',
+        isOwner: false,
+        connectedAt: 2,
+      }),
+    );
+    const room = roomWith([owner, member]);
+
+    await room.webSocketMessage(
+      owner as unknown as WebSocket,
+      JSON.stringify({ type: 'recording-started' }),
+    );
+
+    expect(member.sent.at(-1)).toMatchObject({
+      type: 'recording-started',
+      participantId: owner.attachment.clientId,
+      participantName: 'Owner',
+    });
+
+    await room.webSocketMessage(
+      member as unknown as WebSocket,
+      JSON.stringify({ type: 'recording-started' }),
+    );
+
+    expect(member.sent.at(-1)).toMatchObject({ type: 'error', code: 'NOT_OWNER' });
+  });
 });
 
 describe('Cloudflare TURN IP fallback', () => {

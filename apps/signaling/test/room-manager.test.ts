@@ -34,13 +34,13 @@ describe('RoomManager', () => {
     expect(second.messages.at(-1)?.type).toBe('offer');
   });
 
-  it('enforces the six participant limit', () => {
+  it('enforces the eight participant limit', () => {
     const manager = new RoomManager();
     manager.create(room, id(1), 'session-123456789', 'One', new FakeConnection());
-    for (let n = 2; n <= 6; n++)
+    for (let n = 2; n <= 8; n++)
       manager.join(room, id(n), `session-${n}23456789`, `P${n}`, new FakeConnection());
     expect(() =>
-      manager.join(room, id(7), 'session-723456789', 'Seven', new FakeConnection()),
+      manager.join(room, id(9), 'session-923456789', 'Nine', new FakeConnection()),
     ).toThrow(RoomError);
   });
 
@@ -160,6 +160,23 @@ describe('RoomManager', () => {
     expect(manager.react(room, id(1), id(8), '🎉', 1_000)).toBe(true);
     expect(manager.react(room, id(1), id(9), '🔥', 1_200)).toBe(false);
     expect(owner.messages.some((message) => message.type === 'reaction')).toBe(true);
+  });
+
+  it('broadcasts recording starts only when announced by the owner', () => {
+    const manager = new RoomManager();
+    const owner = new FakeConnection();
+    const member = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'Owner', owner);
+    manager.join(room, id(2), 'session-223456789', 'Member', member);
+
+    expect(manager.recordingStarted(room, id(2), 12_000)).toBe('NOT_OWNER');
+    expect(manager.recordingStarted(room, id(1), 12_345)).toBe('OK');
+    expect(member.messages.at(-1)).toEqual({
+      type: 'recording-started',
+      participantId: id(1),
+      participantName: 'Owner',
+      timestamp: 12_345,
+    });
   });
 
   it('broadcasts room chat in realtime and includes its history for late joiners', () => {

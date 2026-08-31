@@ -281,10 +281,13 @@ describe('MessageList rendering', () => {
     const image = await findByAltText('Фотография от Алексей');
     expect(image.getAttribute('src')).toBe('blob:freetalk-photo');
     expect(image.closest('.message-bubble')?.classList.contains('image-message-bubble')).toBe(true);
-    expect(accountClient.chatImageBlob).toHaveBeenCalledWith(imageMessage.id);
+    expect(accountClient.chatImageBlob).toHaveBeenCalledWith(imageMessage.id, 'thumbnail');
     fireEvent.click(image);
     const viewer = getByRole('dialog', { name: 'Фотография от Алексей' });
     expect(viewer).toBeTruthy();
+    await waitFor(() =>
+      expect(accountClient.chatImageBlob).toHaveBeenCalledWith(imageMessage.id, 'full'),
+    );
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.animationEnd(viewer);
     expect(queryByRole('dialog', { name: 'Фотография от Алексей' })).toBeNull();
@@ -500,6 +503,14 @@ describe('Resizable chat list', () => {
       'createImageBitmap',
       vi.fn(async () => ({ width: 320, height: 180, close })),
     );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      imageSmoothingEnabled: true,
+      imageSmoothingQuality: 'high',
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+      'data:image/webp;base64,dGh1bWI=',
+    );
     const { getByRole, findByAltText } = renderPage(onSendImage);
     const textarea = getByRole('textbox', { name: 'Сообщение' });
     const image = new File(['photo'], 'clipboard.png', { type: 'image/png' });
@@ -517,6 +528,7 @@ describe('Resizable chat list', () => {
       expect(onSendImage).toHaveBeenCalledWith(
         expect.stringMatching(/^data:image\/png;base64,/),
         'Из буфера',
+        'data:image/webp;base64,dGh1bWI=',
       ),
     );
     expect(close).toHaveBeenCalledOnce();

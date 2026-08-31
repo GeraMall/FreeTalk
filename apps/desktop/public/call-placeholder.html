@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreeTalk</title>
+    <link rel="stylesheet" href="/call-placeholder.css" />
+    <script src="/call-placeholder.js" defer></script>
+  </head>
+  <body>
+    <header class="titlebar" id="titlebar">
+      <span class="titlebar-logo" aria-label="FreeTalk"><i aria-hidden="true">◉</i>FreeTalk</span>
+      <div class="window-controls" aria-label="Управление окном">
+        <button id="minimize" type="button" aria-label="Свернуть">−</button>
+        <button id="maximize" type="button" aria-label="Развернуть">□</button>
+        <button id="close" type="button" aria-label="Свернуть в фон">×</button>
+      </div>
+    </header>
+    <main>
+      <section class="message" aria-live="polite">
+        <span class="popout-icon" aria-hidden="true"><i></i></span>
+        <strong>Вы вывели плеер в отдельное окно</strong>
+        <small>Звонок продолжается без переподключения</small>
+        <button id="restore" class="restore" type="button">Вернуть в приложение</button>
+      </section>
+    </main>
+  </body>
+</html>

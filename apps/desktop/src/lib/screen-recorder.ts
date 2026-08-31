@@ -1,6 +1,7 @@
 import type { LocalSettings } from './settings';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import { createRecordingDestination, type RecordingDestination } from './recording-storage';
+import { connectionDiagnostics } from './connection-diagnostics';
 
 export type ScreenRecordingPhase = 'idle' | 'recording' | 'saving';
 
@@ -13,6 +14,7 @@ export interface ScreenRecordingState {
 export interface StartScreenRecordingOptions {
   settings: LocalSettings;
   sharedScreenStream?: MediaStream;
+  audioStreams?: MediaStream[];
   participantNames: string[];
 }
 
@@ -30,6 +32,8 @@ export class ScreenRecorder {
   private ownsSource = false;
   private nativeScreenAudio = false;
   private recordingError?: Error;
+  private audioContext?: AudioContext;
+  private audioSources: MediaStreamAudioSourceNode[] = [];
 
   constructor(private readonly onState: (state: ScreenRecordingState) => void) {}
 
@@ -66,6 +70,7 @@ export class ScreenRecorder {
         options.settings.recordingAskDirectory,
         mediaRecorderOptions.mimeType?.startsWith('video/mp4') ? 'mp4' : 'webm',
       );
+      let recordingVideoStream: MediaStream;
       if (
         options.settings.recordingShowParticipantNames ||
         options.settings.recordingAddTimestamp
@@ -75,10 +80,20 @@ export class ScreenRecorder {
           options,
           (frame) => (this.animationFrame = frame),
         );
-        this.recordingStream = composition.stream;
+        recordingVideoStream = composition.stream;
         this.sourceVideo = composition.video;
-      } else
-        this.recordingStream = new MediaStream(source.getTracks().map((track) => track.clone()));
+      } else recordingVideoStream = new MediaStream([videoTrack.clone()]);
+      const audioMix = await createRecordingAudioMix([source, ...(options.audioStreams ?? [])]);
+      this.audioContext = audioMix.context;
+      this.audioSources = audioMix.sources;
+      this.recordingStream = recordingVideoStream;
+      if (audioMix.track) this.recordingStream.addTrack(audioMix.track);
+      connectionDiagnostics.record('screen-recording:media-ready', undefined, {
+        sourceAudioTracks: source.getAudioTracks().length,
+        additionalAudioStreams: options.audioStreams?.length ?? 0,
+        mixedAudio: Boolean(audioMix.track),
+        mimeType: mediaRecorderOptions.mimeType ?? 'browser-default',
+      });
       const recorder = new MediaRecorder(this.recordingStream, mediaRecorderOptions);
       this.recorder = recorder;
       this.writeQueue = Promise.resolve();
@@ -158,6 +173,10 @@ export class ScreenRecorder {
     stopStream(this.recordingStream);
     if (this.ownsSource) stopStream(this.sourceStream);
     if (this.nativeScreenAudio) void stopNativeMacScreenAudio();
+    this.audioSources.forEach((source) => source.disconnect());
+    void this.audioContext?.close().catch(() => undefined);
+    this.audioContext = undefined;
+    this.audioSources = [];
   }
 
   private reset() {
@@ -201,9 +220,35 @@ async function composeRecording(
     onFrame(requestAnimationFrame(draw));
   };
   draw();
-  const output = canvas.captureStream(frameRate);
-  for (const track of source.getAudioTracks()) output.addTrack(track.clone());
-  return { stream: output, video };
+  return { stream: canvas.captureStream(frameRate), video };
+}
+
+async function createRecordingAudioMix(streams: MediaStream[]) {
+  const tracks = new Map<string, MediaStreamTrack>();
+  for (const stream of streams) {
+    for (const track of stream.getAudioTracks()) {
+      if (track.readyState === 'live') tracks.set(track.id, track);
+    }
+  }
+  if (!tracks.size)
+    return {
+      track: undefined,
+      context: undefined,
+      sources: [] as MediaStreamAudioSourceNode[],
+    };
+  const context = new AudioContext({ sampleRate: 48_000 });
+  const destination = context.createMediaStreamDestination();
+  const sources = [...tracks.values()].map((track) => {
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    source.connect(destination);
+    return source;
+  });
+  if (context.state === 'suspended') await context.resume();
+  return {
+    track: destination.stream.getAudioTracks()[0],
+    context,
+    sources,
+  };
 }
 
 function drawRecordingOverlays(
@@ -263,11 +308,12 @@ function recorderOptions(track: MediaStreamTrack): MediaRecorderOptions {
   const settings = track.getSettings();
   const pixels = (settings.width ?? 1920) * (settings.height ?? 1080);
   const mimeType = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    'video/mp4',
   ].find((type) => MediaRecorder.isTypeSupported(type));
   return {
     ...(mimeType ? { mimeType } : {}),
