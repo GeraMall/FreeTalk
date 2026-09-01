@@ -8879,10 +8879,17 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   content: '';
   background: rgba(89, 190, 249, 0.13);
   transition:
+    opacity 120ms var(--ft-ease),
     width 160ms var(--ft-ease),
     background 160ms var(--ft-ease),
     box-shadow 160ms var(--ft-ease);
   transform: translateX(-50%);
+}
+.account-sidebar-profile-open + .account-sidebar-resizer {
+  pointer-events: none;
+}
+.account-sidebar-profile-open + .account-sidebar-resizer::after {
+  opacity: 0;
 }
 .conversation-sidebar-resizer:hover::after,
 .conversation-sidebar-resizer:focus-visible::after {
@@ -9629,7 +9636,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .account-sidebar-resizer {
   position: absolute;
-  z-index: 30;
+  z-index: 19;
   top: 0;
   bottom: 0;
   left: var(--account-sidebar-width, 280px);

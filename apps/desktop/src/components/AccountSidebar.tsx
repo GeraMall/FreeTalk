@@ -247,7 +247,7 @@ export function AccountSidebar({
 
   return (
     <aside
-      className={`account-sidebar${chatNavigationEnabled ? ' account-sidebar-with-chats' : ''}`}
+      className={`account-sidebar${chatNavigationEnabled ? ' account-sidebar-with-chats' : ''}${menuOpen ? ' account-sidebar-profile-open' : ''}`}
     >
       {chatNavigationEnabled ? (
         <>
