@@ -239,23 +239,28 @@ export function AccountSidebar({
       className={`account-sidebar${chatNavigationEnabled ? ' account-sidebar-with-chats' : ''}`}
     >
       {chatNavigationEnabled ? (
-        <div className="account-sidebar-brand-search">
-          <BrandLogo variant="compact" />
-          <label className="account-chat-search">
-            <Search aria-hidden="true" />
-            <span className="sr-only">Поиск по чатам</span>
-            <input
-              value={chatSearch}
-              placeholder="Поиск по чатам"
-              onChange={(event) => setChatSearch(event.target.value)}
-            />
-            {chatSearch ? (
-              <button type="button" aria-label="Очистить поиск" onClick={() => setChatSearch('')}>
-                <X />
-              </button>
-            ) : null}
-          </label>
-        </div>
+        <>
+          <div className="account-sidebar-brand-search">
+            <BrandLogo variant="compact" />
+            <label className="account-chat-search">
+              <Search aria-hidden="true" />
+              <span className="sr-only">Поиск по чатам</span>
+              <input
+                value={chatSearch}
+                placeholder="Поиск по чатам"
+                onChange={(event) => setChatSearch(event.target.value)}
+              />
+              {chatSearch ? (
+                <button type="button" aria-label="Очистить поиск" onClick={() => setChatSearch('')}>
+                  <X />
+                </button>
+              ) : null}
+            </label>
+          </div>
+          <div className="account-online-status">
+            <i /> Сервисы доступны
+          </div>
+        </>
       ) : (
         <>
           <BrandLogo variant="compact" />
@@ -373,7 +378,7 @@ export function AccountSidebar({
             </div>
           ) : null}
           <div className="account-sidebar-chat-list">
-            {chatsLoading ? (
+            {chatsLoading && (chats?.length ?? 0) === 0 ? (
               <div className="account-sidebar-chat-state">Загружаем чаты…</div>
             ) : sidebarChats.length > 0 ? (
               sidebarChats.map((chat) => {

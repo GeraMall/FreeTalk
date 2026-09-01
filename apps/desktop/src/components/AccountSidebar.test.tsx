@@ -371,11 +371,12 @@ describe('AccountSidebar in an active room', () => {
         members: [{ id: user.id, username: user.username, displayName: user.displayName }],
       },
     ];
-    const { getByRole, queryByRole } = render(
+    const { getByRole, queryByRole, queryByText } = render(
       <AccountSidebar
         user={user}
         activePage="home"
         chats={chats}
+        chatsLoading
         friends={[{ id: 'friend-1', displayName: 'Анна' }]}
         onNavigate={onNavigate}
         onOpenChat={onOpenChat}
@@ -386,6 +387,8 @@ describe('AccountSidebar in an active room', () => {
     );
 
     expect(queryByRole('button', { name: 'Чаты' })).toBeNull();
+    expect(getByRole('button', { name: 'Анна' })).toBeTruthy();
+    expect(queryByText('Загружаем чаты…')).toBeNull();
     fireEvent.change(getByRole('textbox', { name: 'Поиск по чатам' }), {
       target: { value: 'ком' },
     });

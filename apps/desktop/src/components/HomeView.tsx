@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, type AccountUser } from '../lib/api-client';
@@ -19,6 +28,26 @@ import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
 const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
+const ACCOUNT_SIDEBAR_WIDTH_KEY = 'freetalkAccountSidebarWidth';
+const ACCOUNT_SIDEBAR_MIN_WIDTH = 240;
+const ACCOUNT_SIDEBAR_MAX_WIDTH = 380;
+
+function defaultAccountSidebarWidth() {
+  if (typeof window === 'undefined') return 280;
+  return Math.min(300, Math.max(250, window.innerWidth * 0.16));
+}
+
+function clampAccountSidebarWidth(width: number) {
+  return Math.min(ACCOUNT_SIDEBAR_MAX_WIDTH, Math.max(ACCOUNT_SIDEBAR_MIN_WIDTH, width));
+}
+
+function storedAccountSidebarWidth() {
+  if (typeof window === 'undefined') return defaultAccountSidebarWidth();
+  const stored = Number(window.localStorage.getItem(ACCOUNT_SIDEBAR_WIDTH_KEY));
+  return Number.isFinite(stored) && stored > 0
+    ? clampAccountSidebarWidth(stored)
+    : defaultAccountSidebarWidth();
+}
 
 function isAccountPage(value: unknown): value is AccountPage {
   return typeof value === 'string' && ACCOUNT_PAGES.includes(value as AccountPage);
@@ -79,8 +108,13 @@ export function HomeView({
   const [history, setHistory] = useState<CallItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
+  const [accountSidebarWidth, setAccountSidebarWidth] = useState(storedAccountSidebarWidth);
   const activeChatRef = useRef(activeChat);
   const navigationInitialized = useRef(false);
+  const accountSidebarWidthRef = useRef(accountSidebarWidth);
+  const accountSidebarResizeRef = useRef<
+    { pointerId: number; startX: number; startWidth: number } | undefined
+  >(undefined);
   const chatFriendOptions = useMemo(
     () =>
       friends.map((friend) => ({
@@ -90,6 +124,51 @@ export function HomeView({
       })),
     [friends],
   );
+
+  const updateAccountSidebarWidth = (width: number) => {
+    const nextWidth = clampAccountSidebarWidth(width);
+    accountSidebarWidthRef.current = nextWidth;
+    setAccountSidebarWidth(nextWidth);
+  };
+
+  const startAccountSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button > 0 || window.innerWidth <= 760) return;
+    accountSidebarResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: accountSidebarWidthRef.current,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const resizeAccountSidebar = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = accountSidebarResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    updateAccountSidebarWidth(resize.startWidth + event.clientX - resize.startX);
+  };
+
+  const finishAccountSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = accountSidebarResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    accountSidebarResizeRef.current = undefined;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    window.localStorage.setItem(ACCOUNT_SIDEBAR_WIDTH_KEY, String(accountSidebarWidthRef.current));
+  };
+
+  const resizeAccountSidebarWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    updateAccountSidebarWidth(
+      accountSidebarWidthRef.current + (event.key === 'ArrowLeft' ? -12 : 12),
+    );
+    window.localStorage.setItem(ACCOUNT_SIDEBAR_WIDTH_KEY, String(accountSidebarWidthRef.current));
+  };
+
+  const resetAccountSidebarWidth = () => {
+    updateAccountSidebarWidth(defaultAccountSidebarWidth());
+    window.localStorage.removeItem(ACCOUNT_SIDEBAR_WIDTH_KEY);
+  };
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -627,6 +706,11 @@ export function HomeView({
       className={`${embedded ? 'account-view-embedded' : 'account-shell account-shell-with-chat-sidebar'} ${
         page === 'home' ? 'account-home-shell' : ''
       }`}
+      style={
+        embedded
+          ? undefined
+          : ({ '--account-sidebar-width': `${accountSidebarWidth}px` } as CSSProperties)
+      }
     >
       {!embedded && (
         <AccountSidebar
@@ -643,6 +727,25 @@ export function HomeView({
           onLogout={onLogout}
         />
       )}
+      {!embedded ? (
+        <div
+          className="account-sidebar-resizer"
+          role="separator"
+          aria-label="Изменить ширину боковой панели"
+          aria-orientation="vertical"
+          aria-valuemin={ACCOUNT_SIDEBAR_MIN_WIDTH}
+          aria-valuemax={ACCOUNT_SIDEBAR_MAX_WIDTH}
+          aria-valuenow={Math.round(accountSidebarWidth)}
+          title="Потяните для изменения ширины. Двойной щелчок — размер по умолчанию"
+          tabIndex={0}
+          onDoubleClick={resetAccountSidebarWidth}
+          onPointerDown={startAccountSidebarResize}
+          onPointerMove={resizeAccountSidebar}
+          onPointerUp={finishAccountSidebarResize}
+          onPointerCancel={finishAccountSidebarResize}
+          onKeyDown={resizeAccountSidebarWithKeyboard}
+        />
+      ) : null}
       <section
         className={`account-content page-enter ${page === 'chats' ? 'account-content-chat' : ''}`}
       >

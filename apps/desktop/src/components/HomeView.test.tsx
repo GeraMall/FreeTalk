@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AccountUser } from '../lib/api-client';
 import {
@@ -27,6 +27,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   homeViewHarness.request.mockReset();
+  localStorage.clear();
 });
 
 describe('HomeView chat navigation', () => {
@@ -62,7 +63,7 @@ describe('HomeView chat navigation', () => {
       throw new Error(`Unexpected request: ${path}`);
     });
 
-    const { findByRole } = render(
+    const { findByRole, getByRole } = render(
       <HomeView
         user={user}
         busy={false}
@@ -76,6 +77,14 @@ describe('HomeView chat navigation', () => {
 
     expect(await findByRole('button', { name: 'Анна' })).toBeTruthy();
     expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats');
+
+    const resizer = getByRole('separator', { name: 'Изменить ширину боковой панели' });
+    const initialWidth = Number(resizer.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(resizer, { key: 'ArrowRight' });
+    expect(Number(resizer.getAttribute('aria-valuenow'))).toBeGreaterThan(initialWidth);
+    expect(Number(localStorage.getItem('freetalkAccountSidebarWidth'))).toBeGreaterThan(
+      initialWidth,
+    );
   });
 });
 

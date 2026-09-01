@@ -9564,7 +9564,45 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
 /* Unified Discord-like navigation: account actions and conversations share one rail. */
 .account-shell-with-chat-sidebar {
-  grid-template-columns: clamp(304px, 20vw, 340px) minmax(0, 1fr);
+  position: relative;
+  grid-template-columns: var(--account-sidebar-width, 280px) minmax(0, 1fr);
+}
+.account-sidebar-resizer {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: var(--account-sidebar-width, 280px);
+  width: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  transform: translateX(-50%);
+}
+.account-sidebar-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  content: '';
+  background: rgba(89, 190, 249, 0.14);
+  transition:
+    width 160ms var(--ft-ease),
+    background 160ms var(--ft-ease),
+    box-shadow 160ms var(--ft-ease);
+  transform: translateX(-50%);
+}
+.account-sidebar-resizer:hover::after,
+.account-sidebar-resizer:focus-visible::after,
+.account-sidebar-resizer:active::after {
+  width: 2px;
+  background: rgba(78, 243, 242, 0.68);
+  box-shadow: 0 0 10px rgba(78, 243, 242, 0.24);
 }
 .account-sidebar-with-chats {
   gap: 9px;
@@ -9912,13 +9950,16 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
 @media (max-width: 1280px) {
   .account-shell-with-chat-sidebar {
-    grid-template-columns: 288px minmax(0, 1fr);
+    grid-template-columns: var(--account-sidebar-width, 260px) minmax(0, 1fr);
   }
   .account-shell-with-chat-sidebar > .account-sidebar-with-chats {
     padding: 12px 10px 9px;
   }
   .account-shell-with-chat-sidebar > .account-sidebar-with-chats nav button span {
     display: inline;
+  }
+  .account-shell-with-chat-sidebar > .account-sidebar-with-chats .account-online-status {
+    display: flex;
   }
   .messenger-layout.external-sidebar,
   .messenger-layout.external-sidebar.profile-hidden {
@@ -9939,6 +9980,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     justify-content: center;
   }
   .account-sidebar-with-chats .account-chat-search,
+  .account-sidebar-with-chats .account-online-status,
   .account-sidebar-with-chats .brand-wordmark,
   .account-sidebar-with-chats .account-create-group,
   .account-sidebar-with-chats .account-group-form,
@@ -9947,6 +9989,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   .account-sidebar-with-chats .account-sidebar-chat-list > button > b,
   .account-sidebar-with-chats .account-profile-mini > span,
   .account-sidebar-with-chats .account-profile-settings-button {
+    display: none;
+  }
+  .account-sidebar-resizer {
     display: none;
   }
   .account-sidebar-with-chats nav button {
