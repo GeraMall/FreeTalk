@@ -7871,6 +7871,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   grid-template-columns: 48px minmax(0, 1fr);
   border-color: rgba(127, 145, 168, 0.18);
 }
+.chat-invite-card.expired .chat-invite-avatar {
+  border-color: rgba(255, 90, 119, 0.25);
+  color: #ff5a77;
+  background: rgba(75, 17, 35, 0.72);
+}
 .chat-invite-avatar {
   width: 54px;
   height: 54px;

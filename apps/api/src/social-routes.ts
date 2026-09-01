@@ -1089,6 +1089,38 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     return reply.code(201).send({ call: { roomId } });
   });
 
+  app.get('/v1/room-invites/:roomId/preview', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { roomId } = z
+      .object({ roomId: z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/) })
+      .parse(request.params);
+    const result = await db.query<{
+      started_at: Date;
+      ended_at: Date | null;
+      participant_count: number;
+    }>(
+      `SELECT session.started_at,session.ended_at,
+       (SELECT count(*)::int FROM call_participants participant
+        WHERE participant.call_id=session.id AND participant.left_at IS NULL) AS participant_count
+       FROM call_sessions session
+       WHERE session.room_id=$1
+       ORDER BY session.started_at DESC
+       LIMIT 1`,
+      [roomId],
+    );
+    const session = result.rows[0];
+    const active = Boolean(session && !session.ended_at);
+    return {
+      room: {
+        roomId,
+        active,
+        startedAt: session?.started_at.toISOString() ?? null,
+        participantCount: active ? (session?.participant_count ?? 0) : 0,
+      },
+    };
+  });
+
   app.get('/v1/history', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;

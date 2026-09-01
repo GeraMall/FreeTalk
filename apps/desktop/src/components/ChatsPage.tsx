@@ -37,6 +37,7 @@ import { createPortal } from 'react-dom';
 import { isNearBottom } from '../lib/chat-scroll';
 import { accountClient } from '../lib/api-client';
 import { loadChatImage } from '../lib/chat-image-cache';
+import { parseRoomDeepLink } from '../lib/deep-link';
 import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
 import type { PresenceStatus } from '@freetalk/protocol';
 
@@ -1330,6 +1331,7 @@ export function MessageList({
                       own={message.sender_id === userId}
                       grouped={grouped}
                       showAuthor={groupChat && !grouped && message.sender_id !== userId}
+                      onJoinCall={onJoinCall}
                       onJoinInvite={onJoinInvite}
                     />
                   )}
@@ -1356,6 +1358,7 @@ function MessageBubble({
   own,
   grouped,
   showAuthor,
+  onJoinCall,
   onJoinInvite,
 }: {
   message: MessageItem;
@@ -1363,9 +1366,12 @@ function MessageBubble({
   own: boolean;
   grouped: boolean;
   showAuthor: boolean;
+  onJoinCall(roomId: string): void;
   onJoinInvite(token: string): Promise<boolean>;
 }) {
   const inviteToken = extractChatInviteToken(message.body);
+  const roomInviteId = parseRoomDeepLink(message.body.trim());
+  const isInvite = Boolean(inviteToken || roomInviteId);
   return (
     <article className={`message-bubble-row ${own ? 'own' : 'remote'} ${grouped ? 'grouped' : ''}`}>
       {!grouped && (
@@ -1377,13 +1383,15 @@ function MessageBubble({
         />
       )}
       <div
-        className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${inviteToken ? ' invite-message-bubble' : ''}`}
+        className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}`}
       >
         {showAuthor && <strong>{message.display_name || message.username || 'Участник'}</strong>}
         {message.kind === 'image' ? (
           <ChatImageMessage message={message} accountId={accountId} />
         ) : inviteToken ? (
           <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
+        ) : roomInviteId ? (
+          <RoomInviteMessageCard roomId={roomInviteId} onJoin={onJoinCall} />
         ) : (
           <p>{message.body}</p>
         )}
@@ -1391,6 +1399,106 @@ function MessageBubble({
       </div>
     </article>
   );
+}
+
+interface RoomInvitePreview {
+  roomId: string;
+  active: boolean;
+  startedAt: string | null;
+  participantCount: number;
+}
+
+function RoomInviteMessageCard({
+  roomId,
+  onJoin,
+}: {
+  roomId: string;
+  onJoin(roomId: string): void;
+}) {
+  const [preview, setPreview] = useState<RoomInvitePreview>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      try {
+        const result = await accountClient.request<{ room: RoomInvitePreview }>(
+          `/v1/room-invites/${roomId}/preview`,
+        );
+        if (!active) return;
+        setPreview(result.room);
+        setFailed(false);
+        if (result.room.active) timer = setTimeout(load, 5_000);
+      } catch {
+        if (active) setFailed(true);
+      }
+    };
+    setPreview(undefined);
+    setFailed(false);
+    void load();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [roomId]);
+
+  if (failed)
+    return (
+      <div className="chat-invite-card unavailable">
+        <span className="chat-invite-avatar">
+          <Phone />
+        </span>
+        <span>
+          <strong>Не удалось проверить ссылку</strong>
+          <small>Проверьте подключение и откройте чат снова</small>
+        </span>
+      </div>
+    );
+
+  if (preview && !preview.active)
+    return (
+      <div className="chat-invite-card unavailable expired">
+        <span className="chat-invite-avatar">
+          <Phone />
+        </span>
+        <span>
+          <strong>Ссылка истекла</strong>
+          <small>Этот звонок уже завершён</small>
+        </span>
+      </div>
+    );
+
+  return (
+    <div className={`chat-invite-card${preview ? '' : ' loading'}`}>
+      <span className="chat-invite-avatar">
+        <Phone />
+      </span>
+      <span className="chat-invite-copy">
+        <small>Приглашение в звонок</small>
+        <strong>{preview ? 'Голосовая комната' : 'Проверяем ссылку…'}</strong>
+        <span>
+          {preview
+            ? `${preview.participantCount} ${participantWord(preview.participantCount)}`
+            : 'Получаем информацию'}
+        </span>
+      </span>
+      {preview && (
+        <button type="button" onClick={() => onJoin(roomId)}>
+          Присоединиться
+        </button>
+      )}
+    </div>
+  );
+}
+
+function participantWord(count: number) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'участников';
+  if (last === 1) return 'участник';
+  if (last >= 2 && last <= 4) return 'участника';
+  return 'участников';
 }
 
 interface InvitePreview {

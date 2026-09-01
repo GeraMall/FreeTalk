@@ -263,6 +263,38 @@ describe('MessageList rendering', () => {
     await waitFor(() => expect(onJoinInvite).toHaveBeenCalledWith(token));
   });
 
+  it('turns an active room link into a call invitation card', async () => {
+    const roomId = 'ABCDEFGHJKLM';
+    vi.spyOn(accountClient, 'request').mockResolvedValue({
+      room: {
+        roomId,
+        active: true,
+        startedAt: '2026-08-26T10:00:00.000Z',
+        participantCount: 2,
+      },
+    });
+    const onJoinCall = vi.fn();
+    const invite = message('6', 'friend', `https://freetalk.191-44-38-60.sslip.io/join/${roomId}`);
+    const { findByText, getByRole } = render(view('chat-a', [invite], 0, onJoinCall));
+
+    expect(await findByText('Приглашение в звонок')).toBeTruthy();
+    expect(await findByText('2 участника')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Присоединиться' }));
+    expect(onJoinCall).toHaveBeenCalledWith(roomId);
+  });
+
+  it('marks a room invitation as expired after the call has ended', async () => {
+    const roomId = 'ABCDEFGHJKLM';
+    vi.spyOn(accountClient, 'request').mockResolvedValue({
+      room: { roomId, active: false, startedAt: null, participantCount: 0 },
+    });
+    const invite = message('7', 'friend', `freetalk://join/${roomId}`);
+    const { findByText, queryByRole } = render(view('chat-a', [invite]));
+
+    expect(await findByText('Ссылка истекла')).toBeTruthy();
+    expect(queryByRole('button', { name: 'Присоединиться' })).toBeNull();
+  });
+
   it('loads protected image messages through the authenticated client', async () => {
     const createObjectUrl = vi.fn(() => 'blob:freetalk-photo');
     const revokeObjectUrl = vi.fn();
