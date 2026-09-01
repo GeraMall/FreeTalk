@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AccountUser } from '../lib/api-client';
 import {
@@ -79,13 +79,15 @@ describe('HomeView chat navigation', () => {
 
     expect(await findByRole('button', { name: 'Анна' })).toBeTruthy();
     expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats');
-    expect(onSidebarStateChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        chats: [expect.objectContaining({ id: 'chat-1' })],
-        chatsLoading: false,
-        openChat: expect.any(Function),
-        createGroup: expect.any(Function),
-      }),
+    await waitFor(() =>
+      expect(onSidebarStateChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          chats: [expect.objectContaining({ id: 'chat-1' })],
+          chatsLoading: false,
+          openChat: expect.any(Function),
+          createGroup: expect.any(Function),
+        }),
+      ),
     );
 
     const resizer = getByRole('separator', { name: 'Изменить ширину боковой панели' });
