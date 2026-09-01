@@ -9589,7 +9589,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   height: 36px;
 }
 .account-sidebar-brand-search .brand-wordmark {
-  font-size: 16px;
+  display: none;
 }
 .account-chat-search {
   position: relative;
@@ -9755,17 +9755,18 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border-bottom: 1px solid rgba(89, 190, 249, 0.11);
 }
 .account-sidebar-with-chats nav button {
-  min-height: 35px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  min-height: 41px;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 14px;
 }
 .account-sidebar-with-chats nav button:hover {
   transform: none;
 }
 .account-sidebar-with-chats nav button svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 .account-sidebar-chats {
   display: flex;
@@ -9912,7 +9913,6 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   .account-shell-with-chat-sidebar > .account-sidebar-with-chats {
     padding: 12px 10px 9px;
   }
-  .account-shell-with-chat-sidebar > .account-sidebar-with-chats .brand-wordmark,
   .account-shell-with-chat-sidebar > .account-sidebar-with-chats nav button span {
     display: inline;
   }

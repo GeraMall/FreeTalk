@@ -2,16 +2,81 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AccountUser } from '../lib/api-client';
 import {
   activeCallRoomId,
   hasConversationParticipants,
   uniqueCallParticipants,
 } from '../lib/call-history';
-import { RecentRooms, TransientNotice } from './HomeView';
+import { HomeView, RecentRooms, TransientNotice } from './HomeView';
+
+const homeViewHarness = vi.hoisted(() => ({ request: vi.fn() }));
+
+vi.mock('../lib/api-client', () => ({
+  accountClient: { request: homeViewHarness.request },
+}));
+
+vi.mock('../lib/chat-realtime', () => ({
+  ChatRealtimeClient: class {
+    start() {}
+    stop() {}
+  },
+}));
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  homeViewHarness.request.mockReset();
+});
+
+describe('HomeView chat navigation', () => {
+  it('loads chats for the shared sidebar while the home page is open', async () => {
+    const user: AccountUser = {
+      id: 'self',
+      email: 'gera@example.com',
+      username: 'german',
+      displayName: 'Гера',
+      emailVerified: true,
+      avatarUrl: null,
+      registeredAt: '2026-08-26T00:00:00.000Z',
+    };
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats') {
+        return {
+          chats: [
+            {
+              id: 'chat-1',
+              type: 'direct',
+              title: null,
+              members: [
+                { id: 'self', username: 'german', displayName: 'Гера' },
+                { id: 'friend-1', username: 'anna', displayName: 'Анна' },
+              ],
+              lastMessage: 'До встречи',
+            },
+          ],
+        };
+      }
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    const { findByRole } = render(
+      <HomeView
+        user={user}
+        busy={false}
+        error=""
+        onCreateRoom={vi.fn()}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(await findByRole('button', { name: 'Анна' })).toBeTruthy();
+    expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats');
+  });
 });
 
 describe('TransientNotice', () => {

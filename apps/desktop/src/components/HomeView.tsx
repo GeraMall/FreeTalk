@@ -275,44 +275,58 @@ export function HomeView({
 
   const loadPage = useCallback(async (next: AccountPage) => {
     setLocalError('');
+    setChatsLoading(true);
     if (next === 'friends') {
       setFriendsLoading(true);
       setFriendsLoadError('');
     }
-    if (next === 'chats') setChatsLoading(true);
     if (next === 'home' || next === 'history') setHistoryLoading(true);
+
+    const sidebarRequest = Promise.all([
+      accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
+      accountClient.request<{
+        friends: FriendItem[];
+        pending: PendingItem[];
+        blocked: BlockedItem[];
+      }>('/v1/friends'),
+    ]);
+    const historyRequest =
+      next === 'home' || next === 'history'
+        ? accountClient.request<{ calls: CallItem[] }>('/v1/history')
+        : undefined;
+    const historyOutcome = historyRequest?.then(
+      (result) => ({ result }) as const,
+      (error: unknown) => ({ error }) as const,
+    );
+
     try {
+      const [chatResult, friendResult] = await sidebarRequest;
+      setChats(chatResult.chats);
+      setFriends(friendResult.friends);
       if (next === 'friends') {
-        const result = await accountClient.request<{
-          friends: FriendItem[];
-          pending: PendingItem[];
-          blocked: BlockedItem[];
-        }>('/v1/friends');
-        setFriends(result.friends);
-        setPending(result.pending);
-        setBlocked(result.blocked);
-      }
-      if (next === 'chats') {
-        const [chatResult, friendResult] = await Promise.all([
-          accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
-          accountClient.request<{ friends: FriendItem[] }>('/v1/friends'),
-        ]);
-        setChats(chatResult.chats);
-        setFriends(friendResult.friends);
-      }
-      if (next === 'home' || next === 'history') {
-        const result = await accountClient.request<{ calls: CallItem[] }>('/v1/history');
-        setHistory(result.calls.filter((call) => hasConversationParticipants(call.participants)));
+        setPending(friendResult.pending);
+        setBlocked(friendResult.blocked);
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Ошибка загрузки';
+      const message = caught instanceof Error ? caught.message : 'Не удалось загрузить чаты';
       if (next === 'friends') setFriendsLoadError(message);
       else setLocalError(message);
     } finally {
-      if (next === 'friends') setFriendsLoading(false);
-      if (next === 'chats') setChatsLoading(false);
-      if (next === 'home' || next === 'history') setHistoryLoading(false);
+      setChatsLoading(false);
     }
+
+    if (historyOutcome) {
+      const outcome = await historyOutcome;
+      if ('result' in outcome) {
+        setHistory(
+          outcome.result.calls.filter((call) => hasConversationParticipants(call.participants)),
+        );
+      } else {
+        setLocalError(outcome.error instanceof Error ? outcome.error.message : 'Ошибка загрузки');
+      }
+    }
+    if (next === 'friends') setFriendsLoading(false);
+    if (next === 'home' || next === 'history') setHistoryLoading(false);
   }, []);
 
   useEffect(() => {
