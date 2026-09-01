@@ -5,8 +5,11 @@ import { ChatLayoutPreview } from './components/ChatLayoutPreview';
 import { CallPopoutPlaceholder } from './components/CallPopoutPlaceholder';
 import { CustomTitleBar } from './components/CustomTitleBar';
 import { NotificationOverlay } from './components/NotificationOverlay';
+import { installInteractionGuards } from './lib/interaction-guards';
 import { usesCustomWindowChrome } from './lib/window-chrome';
 import './styles.css';
+
+installInteractionGuards();
 
 const preview =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('chat-preview');

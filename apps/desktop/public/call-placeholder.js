@@ -25,3 +25,4 @@ titlebar?.addEventListener('dblclick', (event) => {
   if (event.target.closest('button')) return;
   void windowCommand('toggle_maximize');
 });
+document.addEventListener('contextmenu', (event) => event.preventDefault(), { capture: true });
