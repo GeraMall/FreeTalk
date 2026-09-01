@@ -9666,7 +9666,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .account-sidebar-with-chats {
   gap: 9px;
-  overflow: hidden;
+  overflow: visible;
   padding: 14px 12px 10px;
   background: rgba(2, 9, 19, 0.97);
   box-shadow: 12px 0 44px rgba(0, 0, 0, 0.18);
