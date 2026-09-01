@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, type AccountUser } from '../lib/api-client';
@@ -81,6 +81,15 @@ export function HomeView({
   const [localError, setLocalError] = useState('');
   const activeChatRef = useRef(activeChat);
   const navigationInitialized = useRef(false);
+  const chatFriendOptions = useMemo(
+    () =>
+      friends.map((friend) => ({
+        id: friend.id,
+        displayName: friend.displayName ?? friend.display_name,
+        avatarUrl: friend.avatarUrl,
+      })),
+    [friends],
+  );
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -601,7 +610,7 @@ export function HomeView({
 
   return (
     <main
-      className={`${embedded ? 'account-view-embedded' : 'account-shell'} ${
+      className={`${embedded ? 'account-view-embedded' : 'account-shell account-shell-with-chat-sidebar'} ${
         page === 'home' ? 'account-home-shell' : ''
       }`}
     >
@@ -610,7 +619,12 @@ export function HomeView({
           user={user}
           activePage={page}
           readingChatId={activeChat}
+          chats={chats}
+          friends={chatFriendOptions}
+          chatsLoading={chatsLoading}
           onNavigate={(next) => next !== 'room' && navigatePage(next)}
+          onOpenChat={openChat}
+          onCreateGroup={createGroup}
           onSettings={onSettings}
           onLogout={onLogout}
         />
@@ -755,13 +769,10 @@ export function HomeView({
         )}
         {page === 'chats' && (
           <ChatsPage
+            externalSidebar
             userId={user.id}
             chats={chats}
-            friends={friends.map((friend) => ({
-              id: friend.id,
-              displayName: friend.displayName ?? friend.display_name,
-              avatarUrl: friend.avatarUrl,
-            }))}
+            friends={chatFriendOptions}
             activeChatId={activeChat}
             messages={messages}
             chatsLoading={chatsLoading}

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountUser } from '../lib/api-client';
 import { AccountSidebar } from './AccountSidebar';
+import type { ChatItem } from './ChatsPage';
 
 const realtimeHarness = vi.hoisted(() => ({
   onEvent: undefined as ((event: unknown) => void) | undefined,
@@ -346,5 +347,61 @@ describe('AccountSidebar in an active room', () => {
         body: 'Сообщение во время звонка',
       }),
     );
+  });
+
+  it('combines chat search, navigation and group creation in the account sidebar', async () => {
+    const onNavigate = vi.fn();
+    const onOpenChat = vi.fn();
+    const onCreateGroup = vi.fn().mockResolvedValue(true);
+    const chats: ChatItem[] = [
+      {
+        id: 'chat-friend',
+        type: 'direct',
+        title: null,
+        members: [
+          { id: user.id, username: user.username, displayName: user.displayName },
+          { id: 'friend-1', username: 'anna', displayName: 'Анна', presence: 'online' },
+        ],
+        lastMessage: 'Увидимся вечером',
+      },
+      {
+        id: 'chat-group',
+        type: 'group',
+        title: 'Команда',
+        members: [{ id: user.id, username: user.username, displayName: user.displayName }],
+      },
+    ];
+    const { getByRole, queryByRole } = render(
+      <AccountSidebar
+        user={user}
+        activePage="home"
+        chats={chats}
+        friends={[{ id: 'friend-1', displayName: 'Анна' }]}
+        onNavigate={onNavigate}
+        onOpenChat={onOpenChat}
+        onCreateGroup={onCreateGroup}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(queryByRole('button', { name: 'Чаты' })).toBeNull();
+    fireEvent.change(getByRole('textbox', { name: 'Поиск по чатам' }), {
+      target: { value: 'ком' },
+    });
+    await waitFor(() => expect(queryByRole('button', { name: 'Анна' })).toBeNull());
+    fireEvent.click(getByRole('button', { name: 'Команда' }));
+    expect(onNavigate).toHaveBeenCalledWith('chats');
+    expect(onOpenChat).toHaveBeenCalledWith('chat-group');
+
+    fireEvent.click(getByRole('button', { name: /Создать групповой чат/ }));
+    fireEvent.change(getByRole('textbox', { name: 'Название группы' }), {
+      target: { value: 'Проект' },
+    });
+    fireEvent.click(getByRole('checkbox', { name: /Анна/ }));
+    fireEvent.click(getByRole('button', { name: 'Создать группу' }));
+
+    await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Проект', ['friend-1']));
+    expect(queryByRole('textbox', { name: 'Название группы' })).toBeNull();
   });
 });

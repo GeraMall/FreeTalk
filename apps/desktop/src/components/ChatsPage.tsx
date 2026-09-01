@@ -129,6 +129,7 @@ interface FriendOption {
 }
 
 interface ChatsPageProps {
+  externalSidebar?: boolean;
   userId: string;
   chats: ChatItem[];
   friends: FriendOption[];
@@ -165,6 +166,7 @@ interface ChatsPageProps {
 }
 
 export function ChatsPage({
+  externalSidebar = false,
   userId,
   chats,
   friends,
@@ -357,175 +359,179 @@ export function ChatsPage({
 
   return (
     <div
-      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}`}
+      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}`}
       style={
         chatSidebarWidth
           ? ({ '--conversation-sidebar-width': `${chatSidebarWidth}px` } as CSSProperties)
           : undefined
       }
     >
-      <aside
-        ref={conversationSidebarRef}
-        className="conversation-sidebar"
-        aria-label="Список чатов"
-      >
-        <header className="conversation-sidebar-header">
-          <div>
-            <p className="messenger-eyebrow">СООБЩЕНИЯ</p>
-            <h1>Чаты</h1>
-            <p>Срок хранения задаётся для каждого чата</p>
-          </div>
-          <button
-            className="new-chat-button"
-            title="Новый групповой чат"
-            aria-label="Новый групповой чат"
-            aria-expanded={showGroup}
-            onClick={() => setShowGroup((visible) => !visible)}
-          >
-            <Plus />
-          </button>
-        </header>
-
-        <label className="conversation-search">
-          <Search aria-hidden="true" />
-          <span className="sr-only">Поиск по чатам</span>
-          <input
-            value={search}
-            placeholder="Поиск по чатам"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          {search && (
-            <button aria-label="Очистить поиск" onClick={() => setSearch('')}>
-              <X />
-            </button>
-          )}
-        </label>
-
-        <button
-          className="join-chat-button"
-          aria-expanded={showInvite}
-          onClick={() => setShowInvite((visible) => !visible)}
+      {!externalSidebar ? (
+        <aside
+          ref={conversationSidebarRef}
+          className="conversation-sidebar"
+          aria-label="Список чатов"
         >
-          <Link2 /> Войти по приглашению
-        </button>
-
-        {showInvite && (
-          <div className="compact-chat-form chat-popover-card">
+          <header className="conversation-sidebar-header">
             <div>
-              <strong>Приглашение в чат</strong>
-              <button aria-label="Закрыть" onClick={() => setShowInvite(false)}>
-                <X />
-              </button>
-            </div>
-            <input
-              value={inviteToken}
-              placeholder="Вставьте ссылку или токен"
-              onChange={(event) => setInviteToken(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && void joinInvite()}
-            />
-            <button
-              disabled={!inviteToken.trim() || actionBusy === 'invite'}
-              onClick={() => void joinInvite()}
-            >
-              Войти
-            </button>
-          </div>
-        )}
-
-        {showGroup && (
-          <div className="compact-chat-form group-chat-form">
-            <div>
-              <strong>Новый групповой чат</strong>
-              <button aria-label="Закрыть" onClick={() => setShowGroup(false)}>
-                <X />
-              </button>
-            </div>
-            <input
-              value={groupTitle}
-              maxLength={80}
-              placeholder="Название группы"
-              onChange={(event) => setGroupTitle(event.target.value)}
-            />
-            <div className="group-member-options">
-              {friends.map((friend) => (
-                <label key={friend.id}>
-                  <input
-                    type="checkbox"
-                    checked={groupMembers.includes(friend.id)}
-                    onChange={(event) =>
-                      setGroupMembers((old) =>
-                        event.target.checked
-                          ? [...old, friend.id]
-                          : old.filter((id) => id !== friend.id),
-                      )
-                    }
-                  />
-                  <ChatAvatar
-                    name={friend.displayName}
-                    group={false}
-                    avatarUrl={friend.avatarUrl}
-                    compact
-                  />
-                  <span>{friend.displayName}</span>
-                  {groupMembers.includes(friend.id) && <Check />}
-                </label>
-              ))}
-              {friends.length === 0 && <small>Сначала добавьте друзей</small>}
+              <p className="messenger-eyebrow">СООБЩЕНИЯ</p>
+              <h1>Чаты</h1>
+              <p>Срок хранения задаётся для каждого чата</p>
             </div>
             <button
-              disabled={!groupTitle.trim() || groupMembers.length === 0 || actionBusy === 'group'}
-              onClick={() => void createGroup()}
+              className="new-chat-button"
+              title="Новый групповой чат"
+              aria-label="Новый групповой чат"
+              aria-expanded={showGroup}
+              onClick={() => setShowGroup((visible) => !visible)}
             >
-              <Users /> Создать группу
+              <Plus />
             </button>
-          </div>
-        )}
+          </header>
 
-        <div className="conversation-list">
-          {chatsLoading ? (
-            <ChatListSkeleton />
-          ) : visibleChats.length > 0 ? (
-            visibleChats.map((chat) => (
-              <ChatListItem
-                key={chat.id}
-                chat={chat}
-                userId={userId}
-                active={chat.id === activeChatId}
-                onClick={() => void onOpenChat(chat.id)}
+          <label className="conversation-search">
+            <Search aria-hidden="true" />
+            <span className="sr-only">Поиск по чатам</span>
+            <input
+              value={search}
+              placeholder="Поиск по чатам"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            {search && (
+              <button aria-label="Очистить поиск" onClick={() => setSearch('')}>
+                <X />
+              </button>
+            )}
+          </label>
+
+          <button
+            className="join-chat-button"
+            aria-expanded={showInvite}
+            onClick={() => setShowInvite((visible) => !visible)}
+          >
+            <Link2 /> Войти по приглашению
+          </button>
+
+          {showInvite && (
+            <div className="compact-chat-form chat-popover-card">
+              <div>
+                <strong>Приглашение в чат</strong>
+                <button aria-label="Закрыть" onClick={() => setShowInvite(false)}>
+                  <X />
+                </button>
+              </div>
+              <input
+                value={inviteToken}
+                placeholder="Вставьте ссылку или токен"
+                onChange={(event) => setInviteToken(event.target.value)}
+                onKeyDown={(event) => event.key === 'Enter' && void joinInvite()}
               />
-            ))
-          ) : chats.length > 0 ? (
-            <div className="conversation-list-empty">
-              <Search />
-              <strong>Чаты не найдены</strong>
-              <small>Попробуйте другой запрос</small>
-            </div>
-          ) : (
-            <div className="conversation-list-empty">
-              <MessageCircle />
-              <strong>Чатов пока нет</strong>
-              <small>Начните личный чат из раздела «Друзья»</small>
-              <button onClick={() => setShowGroup(true)}>Новый групповой чат</button>
+              <button
+                disabled={!inviteToken.trim() || actionBusy === 'invite'}
+                onClick={() => void joinInvite()}
+              >
+                Войти
+              </button>
             </div>
           )}
-        </div>
-      </aside>
 
-      <div
-        className="conversation-sidebar-resizer"
-        role="separator"
-        aria-label="Изменить ширину списка чатов"
-        aria-orientation="vertical"
-        aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
-        aria-valuemax={Math.round(defaultChatSidebarWidth())}
-        aria-valuenow={Math.round(chatSidebarWidth ?? defaultChatSidebarWidth())}
-        tabIndex={0}
-        onPointerDown={startChatSidebarResize}
-        onPointerMove={resizeChatSidebar}
-        onPointerUp={finishChatSidebarResize}
-        onPointerCancel={finishChatSidebarResize}
-        onKeyDown={resizeChatSidebarWithKeyboard}
-      />
+          {showGroup && (
+            <div className="compact-chat-form group-chat-form">
+              <div>
+                <strong>Новый групповой чат</strong>
+                <button aria-label="Закрыть" onClick={() => setShowGroup(false)}>
+                  <X />
+                </button>
+              </div>
+              <input
+                value={groupTitle}
+                maxLength={80}
+                placeholder="Название группы"
+                onChange={(event) => setGroupTitle(event.target.value)}
+              />
+              <div className="group-member-options">
+                {friends.map((friend) => (
+                  <label key={friend.id}>
+                    <input
+                      type="checkbox"
+                      checked={groupMembers.includes(friend.id)}
+                      onChange={(event) =>
+                        setGroupMembers((old) =>
+                          event.target.checked
+                            ? [...old, friend.id]
+                            : old.filter((id) => id !== friend.id),
+                        )
+                      }
+                    />
+                    <ChatAvatar
+                      name={friend.displayName}
+                      group={false}
+                      avatarUrl={friend.avatarUrl}
+                      compact
+                    />
+                    <span>{friend.displayName}</span>
+                    {groupMembers.includes(friend.id) && <Check />}
+                  </label>
+                ))}
+                {friends.length === 0 && <small>Сначала добавьте друзей</small>}
+              </div>
+              <button
+                disabled={!groupTitle.trim() || groupMembers.length === 0 || actionBusy === 'group'}
+                onClick={() => void createGroup()}
+              >
+                <Users /> Создать группу
+              </button>
+            </div>
+          )}
+
+          <div className="conversation-list">
+            {chatsLoading ? (
+              <ChatListSkeleton />
+            ) : visibleChats.length > 0 ? (
+              visibleChats.map((chat) => (
+                <ChatListItem
+                  key={chat.id}
+                  chat={chat}
+                  userId={userId}
+                  active={chat.id === activeChatId}
+                  onClick={() => void onOpenChat(chat.id)}
+                />
+              ))
+            ) : chats.length > 0 ? (
+              <div className="conversation-list-empty">
+                <Search />
+                <strong>Чаты не найдены</strong>
+                <small>Попробуйте другой запрос</small>
+              </div>
+            ) : (
+              <div className="conversation-list-empty">
+                <MessageCircle />
+                <strong>Чатов пока нет</strong>
+                <small>Начните личный чат из раздела «Друзья»</small>
+                <button onClick={() => setShowGroup(true)}>Новый групповой чат</button>
+              </div>
+            )}
+          </div>
+        </aside>
+      ) : null}
+
+      {!externalSidebar ? (
+        <div
+          className="conversation-sidebar-resizer"
+          role="separator"
+          aria-label="Изменить ширину списка чатов"
+          aria-orientation="vertical"
+          aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
+          aria-valuemax={Math.round(defaultChatSidebarWidth())}
+          aria-valuenow={Math.round(chatSidebarWidth ?? defaultChatSidebarWidth())}
+          tabIndex={0}
+          onPointerDown={startChatSidebarResize}
+          onPointerMove={resizeChatSidebar}
+          onPointerUp={finishChatSidebarResize}
+          onPointerCancel={finishChatSidebarResize}
+          onKeyDown={resizeChatSidebarWithKeyboard}
+        />
+      ) : null}
 
       <section className="active-conversation" aria-label="Активный чат">
         {activeChat ? (

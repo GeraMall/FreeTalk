@@ -11,10 +11,13 @@ import {
   MinusCircle,
   Moon,
   PhoneCall,
+  Plus,
+  Search,
   Settings,
   Users,
+  X,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AccountUser } from '../lib/api-client';
 import type { PresenceStatus } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
@@ -31,6 +34,7 @@ import {
 } from '../lib/presence-preference';
 import { BrandLogo } from './BrandLogo';
 import type { ChatNotificationPreview } from './ChatNotificationStack';
+import type { ChatItem } from './ChatsPage';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
 export type AccountDestination = AccountPage | 'room';
@@ -40,7 +44,12 @@ export function AccountSidebar({
   activePage,
   roomActive = false,
   readingChatId,
+  chats,
+  friends = [],
+  chatsLoading = false,
   onNavigate,
+  onOpenChat,
+  onCreateGroup,
   onSettings,
   onLogout,
 }: {
@@ -48,7 +57,12 @@ export function AccountSidebar({
   activePage: AccountDestination;
   roomActive?: boolean;
   readingChatId?: string;
+  chats?: ChatItem[];
+  friends?: Array<{ id: string; displayName: string; avatarUrl?: string | null }>;
+  chatsLoading?: boolean;
   onNavigate(page: AccountDestination): void;
+  onOpenChat?(chatId: string): Promise<void> | void;
+  onCreateGroup?(title: string, memberIds: string[]): Promise<boolean>;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
 }) {
@@ -57,6 +71,11 @@ export function AccountSidebar({
   const [statusOpen, setStatusOpen] = useState(false);
   const [presenceMode, setLocalPresenceMode] = useState(getPresenceMode);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});
+  const [chatSearch, setChatSearch] = useState('');
+  const [groupFormOpen, setGroupFormOpen] = useState(false);
+  const [groupTitle, setGroupTitle] = useState('');
+  const [groupMembers, setGroupMembers] = useState<string[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const statusPickerRef = useRef<HTMLDivElement>(null);
   const activePageRef = useRef(activePage);
@@ -173,17 +192,144 @@ export function AccountSidebar({
   };
 
   const inlinePresence = getInlinePresence(presenceMode, presence);
-  const unreadChatCount = Math.min(
-    99,
-    Object.values(unreadByChat).reduce((total, count) => total + count, 0),
-  );
+  const unreadChatCount = useMemo(() => {
+    if (!chats) {
+      return Math.min(
+        99,
+        Object.values(unreadByChat).reduce((total, count) => total + count, 0),
+      );
+    }
+    const listedChatIds = new Set(chats.map((chat) => chat.id));
+    const listedTotal = chats.reduce(
+      (total, chat) => total + Math.max(chat.unreadCount ?? 0, unreadByChat[chat.id] ?? 0),
+      0,
+    );
+    const pendingTotal = Object.entries(unreadByChat).reduce(
+      (total, [chatId, count]) => total + (listedChatIds.has(chatId) ? 0 : count),
+      0,
+    );
+    return Math.min(99, listedTotal + pendingTotal);
+  }, [chats, unreadByChat]);
+  const deferredChatSearch = useDeferredValue(chatSearch);
+  const sidebarChats = useMemo(() => {
+    const query = deferredChatSearch.trim().toLocaleLowerCase('ru-RU');
+    if (!query) return chats ?? [];
+    return (chats ?? []).filter((chat) =>
+      sidebarChatName(chat, user.id).toLocaleLowerCase('ru-RU').includes(query),
+    );
+  }, [chats, deferredChatSearch, user.id]);
+  const chatNavigationEnabled = chats !== undefined && Boolean(onOpenChat && onCreateGroup);
+
+  const createGroup = async () => {
+    if (!onCreateGroup || groupBusy || !groupTitle.trim() || groupMembers.length === 0) return;
+    setGroupBusy(true);
+    try {
+      if (!(await onCreateGroup(groupTitle, groupMembers))) return;
+      setGroupTitle('');
+      setGroupMembers([]);
+      setGroupFormOpen(false);
+      onNavigate('chats');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
 
   return (
-    <aside className="account-sidebar">
-      <BrandLogo variant="compact" />
-      <div className="account-online-status">
-        <i /> Сервисы доступны
-      </div>
+    <aside
+      className={`account-sidebar${chatNavigationEnabled ? ' account-sidebar-with-chats' : ''}`}
+    >
+      {chatNavigationEnabled ? (
+        <div className="account-sidebar-brand-search">
+          <BrandLogo variant="compact" />
+          <label className="account-chat-search">
+            <Search aria-hidden="true" />
+            <span className="sr-only">Поиск по чатам</span>
+            <input
+              value={chatSearch}
+              placeholder="Поиск по чатам"
+              onChange={(event) => setChatSearch(event.target.value)}
+            />
+            {chatSearch ? (
+              <button type="button" aria-label="Очистить поиск" onClick={() => setChatSearch('')}>
+                <X />
+              </button>
+            ) : null}
+          </label>
+        </div>
+      ) : (
+        <>
+          <BrandLogo variant="compact" />
+          <div className="account-online-status">
+            <i /> Сервисы доступны
+          </div>
+        </>
+      )}
+
+      {chatNavigationEnabled ? (
+        <>
+          <button
+            type="button"
+            className="account-create-group"
+            aria-expanded={groupFormOpen}
+            onClick={() => setGroupFormOpen((open) => !open)}
+          >
+            <Plus /> Создать групповой чат
+          </button>
+          {groupFormOpen ? (
+            <div className="account-group-form">
+              <div>
+                <strong>Новый групповой чат</strong>
+                <button
+                  type="button"
+                  aria-label="Закрыть создание группы"
+                  onClick={() => setGroupFormOpen(false)}
+                >
+                  <X />
+                </button>
+              </div>
+              <input
+                value={groupTitle}
+                maxLength={80}
+                aria-label="Название группы"
+                placeholder="Название группы"
+                onChange={(event) => setGroupTitle(event.target.value)}
+              />
+              <div className="account-group-friends">
+                {friends.map((friend) => {
+                  const selected = groupMembers.includes(friend.id);
+                  return (
+                    <label key={friend.id}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={(event) =>
+                          setGroupMembers((current) =>
+                            event.target.checked
+                              ? [...current, friend.id]
+                              : current.filter((id) => id !== friend.id),
+                          )
+                        }
+                      />
+                      <SidebarAvatar name={friend.displayName} avatarUrl={friend.avatarUrl} />
+                      <span>{friend.displayName}</span>
+                      {selected ? <Check aria-hidden="true" /> : null}
+                    </label>
+                  );
+                })}
+                {friends.length === 0 ? <small>Сначала добавьте друзей</small> : null}
+              </div>
+              <button
+                type="button"
+                disabled={!groupTitle.trim() || groupMembers.length === 0 || groupBusy}
+                onClick={() => void createGroup()}
+              >
+                Создать группу
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       <nav>
         {roomActive && (
           <Nav
@@ -206,13 +352,15 @@ export function AccountSidebar({
           label="Друзья"
           onClick={() => onNavigate('friends')}
         />
-        <Nav
-          active={activePage === 'chats'}
-          icon={<MessageCircle />}
-          label="Чаты"
-          unread={unreadChatCount}
-          onClick={() => onNavigate('chats')}
-        />
+        {!chatNavigationEnabled && (
+          <Nav
+            active={activePage === 'chats'}
+            icon={<MessageCircle />}
+            label="Чаты"
+            unread={unreadChatCount}
+            onClick={() => onNavigate('chats')}
+          />
+        )}
         <Nav
           active={activePage === 'history'}
           icon={<History />}
@@ -220,6 +368,60 @@ export function AccountSidebar({
           onClick={() => onNavigate('history')}
         />
       </nav>
+      {chatNavigationEnabled ? (
+        <section className="account-sidebar-chats" aria-label="Чаты и группы">
+          <header>
+            <span>Чаты и группы</span>
+            {unreadChatCount > 0 ? <b>{unreadChatCount > 99 ? '99+' : unreadChatCount}</b> : null}
+          </header>
+          <div className="account-sidebar-chat-list">
+            {chatsLoading ? (
+              <div className="account-sidebar-chat-state">Загружаем чаты…</div>
+            ) : sidebarChats.length > 0 ? (
+              sidebarChats.map((chat) => {
+                const name = sidebarChatName(chat, user.id);
+                const other = chat.members.find((member) => member.id !== user.id);
+                const unread = Math.max(chat.unreadCount ?? 0, unreadByChat[chat.id] ?? 0);
+                return (
+                  <button
+                    type="button"
+                    className={chat.id === readingChatId ? 'active' : ''}
+                    aria-current={chat.id === readingChatId ? 'true' : undefined}
+                    aria-label={unread > 0 ? `${name}, непрочитанных сообщений: ${unread}` : name}
+                    key={chat.id}
+                    onClick={() => {
+                      onNavigate('chats');
+                      void onOpenChat?.(chat.id);
+                    }}
+                  >
+                    <SidebarAvatar
+                      name={name}
+                      avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+                      group={chat.type === 'group'}
+                    />
+                    <span>
+                      <strong>{name}</strong>
+                      <small>
+                        {chat.lastMessage ||
+                          (chat.type === 'group'
+                            ? `${chat.members.length} участников`
+                            : other?.presence === 'online'
+                              ? 'В сети'
+                              : 'Личный чат')}
+                      </small>
+                    </span>
+                    {unread > 0 ? <b>{unread > 99 ? '99+' : unread}</b> : null}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="account-sidebar-chat-state">
+                {chats?.length ? 'Ничего не найдено' : 'Чатов пока нет'}
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
       <div className="account-profile-menu-anchor" ref={profileMenuRef}>
         {menuOpen && (
           <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
@@ -346,6 +548,31 @@ export function AccountSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function sidebarChatName(chat: ChatItem, userId: string) {
+  if (chat.type === 'group') return chat.title?.trim() || 'Групповой чат';
+  return chat.members.find((member) => member.id !== userId)?.displayName || 'Личный чат';
+}
+
+function SidebarAvatar({
+  name,
+  avatarUrl,
+  group = false,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+  group?: boolean;
+}) {
+  return (
+    <span className={`account-sidebar-chat-avatar${group ? ' group' : ''}`} aria-hidden="true">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
+      ) : (
+        name[0] || '?'
+      )}
+    </span>
   );
 }
 

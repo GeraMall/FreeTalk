@@ -64,17 +64,23 @@ const messages: MessageItem[] = [
 export function ChatLayoutPreview() {
   const showNotice = new URLSearchParams(window.location.search).has('notice');
   return (
-    <main className="account-shell">
+    <main className="account-shell account-shell-with-chat-sidebar">
       {showNotice && <TransientNotice message="Комната не найдена" onDismiss={() => {}} />}
       <AccountSidebar
         user={self}
         activePage="chats"
+        readingChatId={chats[0]!.id}
+        chats={chats}
+        friends={[{ id: friendId, displayName: 'Алексей', avatarUrl: mascot }]}
         onNavigate={() => {}}
+        onOpenChat={async () => {}}
+        onCreateGroup={async () => true}
         onSettings={() => {}}
         onLogout={() => {}}
       />
       <section className="account-content account-content-chat">
         <ChatsPage
+          externalSidebar
           userId={self.id}
           chats={chats}
           friends={[]}
