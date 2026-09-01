@@ -2866,7 +2866,8 @@ input[type='range']:hover::-webkit-slider-thumb {
   grid-template-rows: minmax(0, 1fr);
 }
 .call-popout-active .custom-titlebar,
-.call-popout-active .room-account-shell > .account-sidebar {
+.call-popout-active .room-account-shell > .account-sidebar,
+.call-popout-active .room-account-shell > .account-sidebar-resizer {
   display: none;
 }
 .call-popout-active .room-account-shell {
@@ -5161,6 +5162,7 @@ html.notification-overlay-document #root {
 }
 .account-room-workspace,
 .room-view-slot,
+.account-page-slot,
 .account-view-embedded {
   min-width: 0;
   height: 100%;
@@ -5169,7 +5171,8 @@ html.notification-overlay-document #root {
   position: relative;
   overflow: hidden;
 }
-.room-view-slot.is-hidden {
+.room-view-slot.is-hidden,
+.account-page-slot.is-hidden {
   display: none;
 }
 .account-view-embedded {
@@ -9864,6 +9867,10 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(89, 190, 249, 0.11);
 }
+.account-sidebar-with-chats nav.account-sidebar-call-navigation {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .account-sidebar-with-chats nav button {
   min-height: 41px;
   gap: 10px;
@@ -10114,5 +10121,19 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     grid-template-columns: 36px;
     justify-content: center;
     padding: 7px 0;
+  }
+}
+
+.room-account-shell.account-shell-with-chat-sidebar:not(.screen-focus-active)
+  .room-shell-embedded
+  .voice-dock {
+  transform: translateX(calc(50% + var(--account-sidebar-center-offset, 140px)));
+}
+
+@media (max-width: 760px) {
+  .room-account-shell.account-shell-with-chat-sidebar:not(.screen-focus-active)
+    .room-shell-embedded
+    .voice-dock {
+    transform: translateX(50%);
   }
 }

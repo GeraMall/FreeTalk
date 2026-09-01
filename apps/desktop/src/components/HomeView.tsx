@@ -1,19 +1,15 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
 import { dataUrlToBlob } from '../lib/profile';
+import {
+  ACCOUNT_SIDEBAR_MAX_WIDTH,
+  ACCOUNT_SIDEBAR_MIN_WIDTH,
+  useAccountSidebarWidth,
+} from '../lib/account-sidebar-width';
 import { generateRoomCode } from '../lib/room-code';
 import type { UpdateStatus } from '../lib/updater';
 import {
@@ -29,27 +25,6 @@ import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
 const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
-const ACCOUNT_SIDEBAR_WIDTH_KEY = 'freetalkAccountSidebarWidth';
-const ACCOUNT_SIDEBAR_MIN_WIDTH = 240;
-const ACCOUNT_SIDEBAR_MAX_WIDTH = 380;
-
-function defaultAccountSidebarWidth() {
-  if (typeof window === 'undefined') return 280;
-  return Math.min(300, Math.max(250, window.innerWidth * 0.16));
-}
-
-function clampAccountSidebarWidth(width: number) {
-  return Math.min(ACCOUNT_SIDEBAR_MAX_WIDTH, Math.max(ACCOUNT_SIDEBAR_MIN_WIDTH, width));
-}
-
-function storedAccountSidebarWidth() {
-  if (typeof window === 'undefined') return defaultAccountSidebarWidth();
-  const stored = Number(window.localStorage.getItem(ACCOUNT_SIDEBAR_WIDTH_KEY));
-  return Number.isFinite(stored) && stored > 0
-    ? clampAccountSidebarWidth(stored)
-    : defaultAccountSidebarWidth();
-}
-
 function isAccountPage(value: unknown): value is AccountPage {
   return typeof value === 'string' && ACCOUNT_PAGES.includes(value as AccountPage);
 }
@@ -60,6 +35,14 @@ export interface CallItem {
   started_at: string;
   duration_seconds: number;
   participants: CallHistoryParticipant[];
+}
+
+export interface HomeSidebarState {
+  chats: ChatItem[];
+  friends: Array<{ id: string; displayName: string; avatarUrl?: string | null }>;
+  chatsLoading: boolean;
+  openChat(chatId: string): Promise<void>;
+  createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
 export function HomeView({
@@ -74,6 +57,7 @@ export function HomeView({
   page: controlledPage,
   onPageChange,
   onActiveChatChange,
+  onSidebarStateChange,
   updateStatus,
   onInstallUpdate,
   embedded = false,
@@ -89,6 +73,7 @@ export function HomeView({
   page?: AccountPage;
   onPageChange?(page: AccountPage): void;
   onActiveChatChange?(chatId?: string): void;
+  onSidebarStateChange?(state: HomeSidebarState): void;
   updateStatus?: UpdateStatus;
   onInstallUpdate?(): void;
   embedded?: boolean;
@@ -113,13 +98,16 @@ export function HomeView({
   const [history, setHistory] = useState<CallItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
-  const [accountSidebarWidth, setAccountSidebarWidth] = useState(storedAccountSidebarWidth);
+  const {
+    width: accountSidebarWidth,
+    startResize: startAccountSidebarResize,
+    resize: resizeAccountSidebar,
+    finishResize: finishAccountSidebarResize,
+    resizeWithKeyboard: resizeAccountSidebarWithKeyboard,
+    resetWidth: resetAccountSidebarWidth,
+  } = useAccountSidebarWidth();
   const activeChatRef = useRef(activeChat);
   const navigationInitialized = useRef(false);
-  const accountSidebarWidthRef = useRef(accountSidebarWidth);
-  const accountSidebarResizeRef = useRef<
-    { pointerId: number; startX: number; startWidth: number } | undefined
-  >(undefined);
   const chatFriendOptions = useMemo(
     () =>
       friends.map((friend) => ({
@@ -129,51 +117,6 @@ export function HomeView({
       })),
     [friends],
   );
-
-  const updateAccountSidebarWidth = (width: number) => {
-    const nextWidth = clampAccountSidebarWidth(width);
-    accountSidebarWidthRef.current = nextWidth;
-    setAccountSidebarWidth(nextWidth);
-  };
-
-  const startAccountSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button > 0 || window.innerWidth <= 760) return;
-    accountSidebarResizeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: accountSidebarWidthRef.current,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  };
-
-  const resizeAccountSidebar = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const resize = accountSidebarResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    updateAccountSidebarWidth(resize.startWidth + event.clientX - resize.startX);
-  };
-
-  const finishAccountSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const resize = accountSidebarResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    accountSidebarResizeRef.current = undefined;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    window.localStorage.setItem(ACCOUNT_SIDEBAR_WIDTH_KEY, String(accountSidebarWidthRef.current));
-  };
-
-  const resizeAccountSidebarWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault();
-    updateAccountSidebarWidth(
-      accountSidebarWidthRef.current + (event.key === 'ArrowLeft' ? -12 : 12),
-    );
-    window.localStorage.setItem(ACCOUNT_SIDEBAR_WIDTH_KEY, String(accountSidebarWidthRef.current));
-  };
-
-  const resetAccountSidebarWidth = () => {
-    updateAccountSidebarWidth(defaultAccountSidebarWidth());
-    window.localStorage.removeItem(ACCOUNT_SIDEBAR_WIDTH_KEY);
-  };
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -438,14 +381,17 @@ export function HomeView({
     }
   }, []);
 
-  const openChat = async (chatId: string) => {
-    setActiveChat(chatId);
-    setChats((current) =>
-      current.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat)),
-    );
-    setMessages([]);
-    await loadChatMessages(chatId);
-  };
+  const openChat = useCallback(
+    async (chatId: string) => {
+      setActiveChat(chatId);
+      setChats((current) =>
+        current.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat)),
+      );
+      setMessages([]);
+      await loadChatMessages(chatId);
+    },
+    [loadChatMessages],
+  );
 
   const loadOlderMessages = async () => {
     if (!activeChat || !hasMoreMessages || !messages[0]) return;
@@ -531,20 +477,33 @@ export function HomeView({
     }
   };
 
-  const createGroup = async (title: string, memberIds: string[]) => {
-    if (!title.trim() || !memberIds.length) return false;
-    try {
-      await accountClient.request('/v1/chats', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'group', title, memberIds }),
-      });
-      await loadPage('chats');
-      return true;
-    } catch (caught) {
-      setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать группу');
-      return false;
-    }
-  };
+  const createGroup = useCallback(
+    async (title: string, memberIds: string[]) => {
+      if (!title.trim() || !memberIds.length) return false;
+      try {
+        await accountClient.request('/v1/chats', {
+          method: 'POST',
+          body: JSON.stringify({ type: 'group', title, memberIds }),
+        });
+        await loadPage('chats');
+        return true;
+      } catch (caught) {
+        setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать группу');
+        return false;
+      }
+    },
+    [loadPage],
+  );
+
+  useEffect(() => {
+    onSidebarStateChange?.({
+      chats,
+      friends: chatFriendOptions,
+      chatsLoading,
+      openChat,
+      createGroup,
+    });
+  }, [chatFriendOptions, chats, chatsLoading, createGroup, onSidebarStateChange, openChat]);
 
   const createInvite = async () => {
     if (!activeChat) return;

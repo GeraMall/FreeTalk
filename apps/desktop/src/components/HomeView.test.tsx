@@ -63,6 +63,7 @@ describe('HomeView chat navigation', () => {
       throw new Error(`Unexpected request: ${path}`);
     });
 
+    const onSidebarStateChange = vi.fn();
     const { findByRole, getByRole } = render(
       <HomeView
         user={user}
@@ -72,11 +73,20 @@ describe('HomeView chat navigation', () => {
         onJoinRoom={vi.fn()}
         onSettings={vi.fn()}
         onLogout={vi.fn()}
+        onSidebarStateChange={onSidebarStateChange}
       />,
     );
 
     expect(await findByRole('button', { name: 'Анна' })).toBeTruthy();
     expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats');
+    expect(onSidebarStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        chats: [expect.objectContaining({ id: 'chat-1' })],
+        chatsLoading: false,
+        openChat: expect.any(Function),
+        createGroup: expect.any(Function),
+      }),
+    );
 
     const resizer = getByRole('separator', { name: 'Изменить ширину боковой панели' });
     const initialWidth = Number(resizer.getAttribute('aria-valuenow'));

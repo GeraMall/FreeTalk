@@ -82,6 +82,39 @@ describe('AccountSidebar in an active room', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'room');
   });
 
+  it('keeps the current call directly below chat search in the unified sidebar', () => {
+    const { getByRole } = render(
+      <AccountSidebar
+        user={user}
+        activePage="room"
+        roomActive
+        chats={[]}
+        friends={[]}
+        updateStatus={{ kind: 'available', version: '0.4.0-beta.76' }}
+        onNavigate={vi.fn()}
+        onOpenChat={vi.fn()}
+        onCreateGroup={vi.fn().mockResolvedValue(true)}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    const search = getByRole('textbox', { name: 'Поиск по чатам' });
+    const currentCall = getByRole('button', { name: /Текущий звонок/ });
+    const update = getByRole('button', { name: 'Обновиться до версии Beta 76' });
+    const home = getByRole('button', { name: 'Главная' });
+
+    expect(search.compareDocumentPosition(currentCall) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(currentCall.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(currentCall.compareDocumentPosition(home) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it('keeps profile controls available in the shared panel', () => {
     const onSettings = vi.fn();
     const onLogout = vi.fn();

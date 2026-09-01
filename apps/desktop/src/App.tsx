@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
@@ -31,7 +31,7 @@ import {
 import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
-import { HomeView } from './components/HomeView';
+import { HomeView, type HomeSidebarState } from './components/HomeView';
 import {
   AccountSidebar,
   type AccountDestination,
@@ -39,6 +39,11 @@ import {
 } from './components/AccountSidebar';
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 import { clearChatImageCache } from './lib/chat-image-cache';
+import {
+  ACCOUNT_SIDEBAR_MAX_WIDTH,
+  ACCOUNT_SIDEBAR_MIN_WIDTH,
+  useAccountSidebarWidth,
+} from './lib/account-sidebar-width';
 import mascot from './assets/freetalk-mascot.png';
 import recordingStartSound from './assets/recording-start.mp3';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
@@ -123,6 +128,7 @@ export function App() {
   const [roomId, setRoomId] = useState<string>();
   const [roomDestination, setRoomDestination] = useState<AccountDestination>('room');
   const [roomActiveChatId, setRoomActiveChatId] = useState<string>();
+  const [roomSidebarState, setRoomSidebarState] = useState<HomeSidebarState>();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [peerState, setPeerState] = useState<PeerUiState>({});
   const [localSpeaking, setLocalSpeaking] = useState(false);
@@ -152,6 +158,14 @@ export function App() {
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
   const [recordingBannerMessage, setRecordingBannerMessage] = useState('');
+  const {
+    width: roomSidebarWidth,
+    startResize: startRoomSidebarResize,
+    resize: resizeRoomSidebar,
+    finishResize: finishRoomSidebarResize,
+    resizeWithKeyboard: resizeRoomSidebarWithKeyboard,
+    resetWidth: resetRoomSidebarWidth,
+  } = useAccountSidebarWidth();
 
   const openSettings = useCallback((tab: SettingsTab = 'audio') => {
     setSettingsInitialTab(tab);
@@ -1370,31 +1384,64 @@ export function App() {
     <>
       {accountUser ? (
         <main
-          className={`account-shell room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}`}
+          className={`account-shell account-shell-with-chat-sidebar room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}`}
+          style={
+            {
+              '--account-sidebar-width': `${roomSidebarWidth}px`,
+              '--account-sidebar-center-offset': `${roomSidebarWidth / 2}px`,
+            } as CSSProperties
+          }
         >
           <AccountSidebar
             user={accountUser}
             activePage={roomDestination}
             roomActive
             readingChatId={roomDestination === 'chats' ? roomActiveChatId : undefined}
+            chats={roomSidebarState?.chats ?? []}
+            friends={roomSidebarState?.friends ?? []}
+            chatsLoading={roomSidebarState?.chatsLoading ?? true}
+            updateStatus={updateStatus}
             onNavigate={setRoomDestination}
+            onOpenChat={(chatId) => roomSidebarState?.openChat(chatId)}
+            onCreateGroup={(title, memberIds) =>
+              roomSidebarState?.createGroup(title, memberIds) ?? Promise.resolve(false)
+            }
+            onInstallUpdate={() => void installUpdate()}
             onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
+          />
+          <div
+            className="account-sidebar-resizer"
+            role="separator"
+            aria-label="Изменить ширину боковой панели"
+            aria-orientation="vertical"
+            aria-valuemin={ACCOUNT_SIDEBAR_MIN_WIDTH}
+            aria-valuemax={ACCOUNT_SIDEBAR_MAX_WIDTH}
+            aria-valuenow={Math.round(roomSidebarWidth)}
+            title="Потяните для изменения ширины. Двойной щелчок — размер по умолчанию"
+            tabIndex={0}
+            onDoubleClick={resetRoomSidebarWidth}
+            onPointerDown={startRoomSidebarResize}
+            onPointerMove={resizeRoomSidebar}
+            onPointerUp={finishRoomSidebarResize}
+            onPointerCancel={finishRoomSidebarResize}
+            onKeyDown={resizeRoomSidebarWithKeyboard}
           />
           <section className="account-room-workspace">
             <div className={`room-view-slot ${roomDestination === 'room' ? '' : 'is-hidden'}`}>
               {roomView}
             </div>
-            {roomDestination !== 'room' && (
+            <div className={`account-page-slot ${roomDestination === 'room' ? 'is-hidden' : ''}`}>
               <HomeView
                 embedded
-                page={roomDestination as AccountPage}
+                page={roomDestination === 'room' ? 'home' : (roomDestination as AccountPage)}
                 user={accountUser}
                 busy={joining}
                 error={error}
                 onClearError={() => setError('')}
                 onPageChange={(page) => setRoomDestination(page)}
                 onActiveChatChange={setRoomActiveChatId}
+                onSidebarStateChange={setRoomSidebarState}
                 onCreateRoom={() => {
                   setNotice('Вы уже находитесь в звонке');
                   setRoomDestination('room');
@@ -1403,7 +1450,7 @@ export function App() {
                 onSettings={(tab) => openSettings(tab)}
                 onLogout={() => void logoutAccount()}
               />
-            )}
+            </div>
           </section>
         </main>
       ) : (

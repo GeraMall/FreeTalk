@@ -268,28 +268,40 @@ export function AccountSidebar({
               ) : null}
             </label>
           </div>
-          {updateVersion ? (
-            <button
-              type="button"
-              className="account-sidebar-update"
-              disabled={updateStatus?.kind === 'downloading'}
-              onClick={onInstallUpdate}
-            >
-              <Download aria-hidden="true" />
-              <span>
-                {updateStatus?.kind === 'downloading'
-                  ? `Загрузка ${Math.round(updateStatus.progress)}%`
-                  : `Обновиться до версии ${compactVersionLabel(updateVersion)}`}
-              </span>
-            </button>
-          ) : null}
         </>
       ) : (
         <BrandLogo variant="compact" />
       )}
 
+      {chatNavigationEnabled && roomActive ? (
+        <nav className="account-sidebar-call-navigation">
+          <Nav
+            active={activePage === 'room'}
+            icon={<PhoneCall />}
+            label="Текущий звонок"
+            live
+            onClick={() => onNavigate('room')}
+          />
+        </nav>
+      ) : null}
+      {chatNavigationEnabled && updateVersion ? (
+        <button
+          type="button"
+          className="account-sidebar-update"
+          disabled={updateStatus?.kind === 'downloading'}
+          onClick={onInstallUpdate}
+        >
+          <Download aria-hidden="true" />
+          <span>
+            {updateStatus?.kind === 'downloading'
+              ? `Загрузка ${Math.round(updateStatus.progress)}%`
+              : `Обновиться до версии ${compactVersionLabel(updateVersion)}`}
+          </span>
+        </button>
+      ) : null}
+
       <nav>
-        {roomActive && (
+        {roomActive && !chatNavigationEnabled && (
           <Nav
             active={activePage === 'room'}
             icon={<PhoneCall />}
