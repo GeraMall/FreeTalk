@@ -8891,6 +8891,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .account-sidebar-profile-open + .account-sidebar-resizer::after {
   opacity: 0;
 }
+.account-sidebar-profile-open {
+  border-right-color: transparent;
+}
 .conversation-sidebar-resizer:hover::after,
 .conversation-sidebar-resizer:focus-visible::after {
   width: 2px;
