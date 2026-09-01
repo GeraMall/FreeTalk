@@ -234,8 +234,36 @@ body {
   height: 5px;
   margin-right: 6px;
   border-radius: 50%;
-  background: var(--ft-accent);
-  box-shadow: 0 0 8px rgba(78, 243, 242, 0.78);
+  background: #5fffff;
+  box-shadow:
+    0 0 4px #5fffff,
+    0 0 9px rgba(78, 243, 242, 0.95),
+    0 0 15px rgba(78, 243, 242, 0.5);
+  animation: titlebar-status-glow 2.2s ease-in-out infinite;
+}
+@keyframes titlebar-status-glow {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(0.92);
+    box-shadow:
+      0 0 3px #5fffff,
+      0 0 7px rgba(78, 243, 242, 0.8),
+      0 0 12px rgba(78, 243, 242, 0.38);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+    box-shadow:
+      0 0 5px #5fffff,
+      0 0 11px rgba(78, 243, 242, 1),
+      0 0 18px rgba(78, 243, 242, 0.62);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .titlebar-service-status i {
+    animation: none;
+  }
 }
 .window-controls {
   display: flex;
