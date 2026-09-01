@@ -9611,6 +9611,28 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   background: rgba(2, 9, 19, 0.97);
   box-shadow: 12px 0 44px rgba(0, 0, 0, 0.18);
 }
+.account-sidebar-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+.account-sidebar-meta .account-online-status {
+  flex: none;
+}
+.account-version-badge {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 5px 9px;
+  border: 1px solid rgba(78, 243, 242, 0.16);
+  border-radius: 999px;
+  color: var(--ft-text-muted);
+  background: rgba(78, 243, 242, 0.04);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
 .account-sidebar-brand-search {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -9980,6 +10002,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     justify-content: center;
   }
   .account-sidebar-with-chats .account-chat-search,
+  .account-sidebar-with-chats .account-sidebar-meta,
   .account-sidebar-with-chats .account-online-status,
   .account-sidebar-with-chats .brand-wordmark,
   .account-sidebar-with-chats .account-create-group,

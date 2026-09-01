@@ -240,6 +240,12 @@ export function AccountSidebar({
     >
       {chatNavigationEnabled ? (
         <>
+          <div className="account-sidebar-meta">
+            <div className="account-online-status">
+              <i /> Сервисы доступны
+            </div>
+            <div className="account-version-badge">{sidebarVersionLabel()}</div>
+          </div>
           <div className="account-sidebar-brand-search">
             <BrandLogo variant="compact" />
             <label className="account-chat-search">
@@ -256,9 +262,6 @@ export function AccountSidebar({
                 </button>
               ) : null}
             </label>
-          </div>
-          <div className="account-online-status">
-            <i /> Сервисы доступны
           </div>
         </>
       ) : (
@@ -557,6 +560,11 @@ export function AccountSidebar({
 function sidebarChatName(chat: ChatItem, userId: string) {
   if (chat.type === 'group') return chat.title?.trim() || 'Групповой чат';
   return chat.members.find((member) => member.id !== userId)?.displayName || 'Личный чат';
+}
+
+function sidebarVersionLabel() {
+  const betaNumber = __FREETALK_APP_VERSION__.match(/beta\.(\d+)/i)?.[1];
+  return betaNumber ? `Beta ${betaNumber}` : `v${__FREETALK_APP_VERSION__}`;
 }
 
 function SidebarAvatar({
