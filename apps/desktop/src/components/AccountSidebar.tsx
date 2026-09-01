@@ -265,16 +265,61 @@ export function AccountSidebar({
         </>
       )}
 
+      <nav>
+        {roomActive && (
+          <Nav
+            active={activePage === 'room'}
+            icon={<PhoneCall />}
+            label="Текущий звонок"
+            live
+            onClick={() => onNavigate('room')}
+          />
+        )}
+        <Nav
+          active={activePage === 'home'}
+          icon={<DoorOpen />}
+          label="Главная"
+          onClick={() => onNavigate('home')}
+        />
+        <Nav
+          active={activePage === 'friends'}
+          icon={<Users />}
+          label="Друзья"
+          onClick={() => onNavigate('friends')}
+        />
+        {!chatNavigationEnabled && (
+          <Nav
+            active={activePage === 'chats'}
+            icon={<MessageCircle />}
+            label="Чаты"
+            unread={unreadChatCount}
+            onClick={() => onNavigate('chats')}
+          />
+        )}
+        <Nav
+          active={activePage === 'history'}
+          icon={<History />}
+          label="История"
+          onClick={() => onNavigate('history')}
+        />
+      </nav>
       {chatNavigationEnabled ? (
-        <>
-          <button
-            type="button"
-            className="account-create-group"
-            aria-expanded={groupFormOpen}
-            onClick={() => setGroupFormOpen((open) => !open)}
-          >
-            <Plus /> Создать групповой чат
-          </button>
+        <section className="account-sidebar-chats" aria-label="Чаты и группы">
+          <header>
+            <span className="account-sidebar-chat-heading">
+              <span>Чаты и группы</span>
+              {unreadChatCount > 0 ? <b>{unreadChatCount > 99 ? '99+' : unreadChatCount}</b> : null}
+            </span>
+            <button
+              type="button"
+              className="account-sidebar-chat-add"
+              aria-label="Создать групповой чат"
+              aria-expanded={groupFormOpen}
+              onClick={() => setGroupFormOpen((open) => !open)}
+            >
+              <Plus aria-hidden="true" />
+            </button>
+          </header>
           {groupFormOpen ? (
             <div className="account-group-form">
               <div>
@@ -327,53 +372,6 @@ export function AccountSidebar({
               </button>
             </div>
           ) : null}
-        </>
-      ) : null}
-
-      <nav>
-        {roomActive && (
-          <Nav
-            active={activePage === 'room'}
-            icon={<PhoneCall />}
-            label="Текущий звонок"
-            live
-            onClick={() => onNavigate('room')}
-          />
-        )}
-        <Nav
-          active={activePage === 'home'}
-          icon={<DoorOpen />}
-          label="Главная"
-          onClick={() => onNavigate('home')}
-        />
-        <Nav
-          active={activePage === 'friends'}
-          icon={<Users />}
-          label="Друзья"
-          onClick={() => onNavigate('friends')}
-        />
-        {!chatNavigationEnabled && (
-          <Nav
-            active={activePage === 'chats'}
-            icon={<MessageCircle />}
-            label="Чаты"
-            unread={unreadChatCount}
-            onClick={() => onNavigate('chats')}
-          />
-        )}
-        <Nav
-          active={activePage === 'history'}
-          icon={<History />}
-          label="История"
-          onClick={() => onNavigate('history')}
-        />
-      </nav>
-      {chatNavigationEnabled ? (
-        <section className="account-sidebar-chats" aria-label="Чаты и группы">
-          <header>
-            <span>Чаты и группы</span>
-            {unreadChatCount > 0 ? <b>{unreadChatCount > 99 ? '99+' : unreadChatCount}</b> : null}
-          </header>
           <div className="account-sidebar-chat-list">
             {chatsLoading ? (
               <div className="account-sidebar-chat-state">Загружаем чаты…</div>

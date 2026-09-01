@@ -9644,32 +9644,6 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   width: 13px;
   height: 13px;
 }
-.account-create-group {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  min-height: 31px;
-  padding: 5px 10px;
-  border: 1px solid rgba(78, 243, 242, 0.19);
-  border-radius: 8px;
-  color: #b9c9d8;
-  background: rgba(8, 22, 36, 0.78);
-  font-size: 11px;
-  font-weight: 650;
-  box-shadow: none;
-}
-.account-create-group:hover,
-.account-create-group[aria-expanded='true'] {
-  border-color: rgba(78, 243, 242, 0.42);
-  color: #eefaff;
-  background: rgba(13, 36, 52, 0.95);
-}
-.account-create-group svg {
-  width: 14px;
-  height: 14px;
-}
 .account-group-form {
   display: grid;
   gap: 9px;
@@ -9787,6 +9761,36 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   font-weight: 750;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+.account-sidebar-chat-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.account-sidebar-chat-add {
+  display: grid;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #7f95a9;
+  background: transparent;
+  box-shadow: none;
+  place-items: center;
+}
+.account-sidebar-chat-add:hover,
+.account-sidebar-chat-add[aria-expanded='true'] {
+  border-color: rgba(78, 243, 242, 0.25);
+  color: var(--ft-cyan);
+  background: rgba(78, 243, 242, 0.08);
+}
+.account-sidebar-chat-add svg {
+  width: 16px;
+  height: 16px;
 }
 .account-sidebar-chats > header b,
 .account-sidebar-chat-list > button > b {
