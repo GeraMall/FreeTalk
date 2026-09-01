@@ -29,12 +29,15 @@ import { CustomTitleBar } from './CustomTitleBar';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  windowApi.close.mockResolvedValue(undefined);
   windowApi.isMaximized.mockResolvedValue(false);
+  windowApi.minimize.mockResolvedValue(undefined);
   windowApi.onResized.mockResolvedValue(vi.fn());
   windowApi.onMoved.mockResolvedValue(vi.fn());
   windowApi.outerPosition.mockResolvedValue({ x: 100, y: 80 });
   windowApi.scaleFactor.mockResolvedValue(1);
   windowApi.setPosition.mockResolvedValue(undefined);
+  windowApi.toggleMaximize.mockResolvedValue(undefined);
   coreApi.invoke.mockResolvedValue(undefined);
 });
 
@@ -44,6 +47,13 @@ afterEach(() => {
 });
 
 describe('CustomTitleBar', () => {
+  it('shows service availability and the compact app version beside navigation', () => {
+    const { getByText } = render(<CustomTitleBar />);
+
+    expect(getByText('Сервисы доступны')).toBeTruthy();
+    expect(getByText(/^Beta \d+$/)).toBeTruthy();
+  });
+
   it('keeps minimize, maximize and background close connected to the native window', async () => {
     const { getByRole } = render(<CustomTitleBar />);
     await waitFor(() => expect(windowApi.isMaximized).toHaveBeenCalled());

@@ -15,6 +15,7 @@ import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
 import { dataUrlToBlob } from '../lib/profile';
 import { generateRoomCode } from '../lib/room-code';
+import type { UpdateStatus } from '../lib/updater';
 import {
   activeCallRoomId,
   hasConversationParticipants,
@@ -73,6 +74,8 @@ export function HomeView({
   page: controlledPage,
   onPageChange,
   onActiveChatChange,
+  updateStatus,
+  onInstallUpdate,
   embedded = false,
 }: {
   user: AccountUser;
@@ -86,6 +89,8 @@ export function HomeView({
   page?: AccountPage;
   onPageChange?(page: AccountPage): void;
   onActiveChatChange?(chatId?: string): void;
+  updateStatus?: UpdateStatus;
+  onInstallUpdate?(): void;
   embedded?: boolean;
 }) {
   const [internalPage, setInternalPage] = useState<AccountPage>('home');
@@ -720,9 +725,11 @@ export function HomeView({
           chats={chats}
           friends={chatFriendOptions}
           chatsLoading={chatsLoading}
+          updateStatus={updateStatus}
           onNavigate={(next) => next !== 'room' && navigatePage(next)}
           onOpenChat={openChat}
           onCreateGroup={createGroup}
+          onInstallUpdate={onInstallUpdate}
           onSettings={onSettings}
           onLogout={onLogout}
         />

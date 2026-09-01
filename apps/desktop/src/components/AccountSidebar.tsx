@@ -2,6 +2,7 @@ import {
   Check,
   ChevronDown,
   Circle,
+  Download,
   DoorOpen,
   Edit3,
   EyeOff,
@@ -19,6 +20,8 @@ import {
 } from 'lucide-react';
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AccountUser } from '../lib/api-client';
+import type { UpdateStatus } from '../lib/updater';
+import { compactVersionLabel } from '../lib/version-label';
 import type { PresenceStatus } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import {
@@ -47,9 +50,11 @@ export function AccountSidebar({
   chats,
   friends = [],
   chatsLoading = false,
+  updateStatus,
   onNavigate,
   onOpenChat,
   onCreateGroup,
+  onInstallUpdate,
   onSettings,
   onLogout,
 }: {
@@ -60,9 +65,11 @@ export function AccountSidebar({
   chats?: ChatItem[];
   friends?: Array<{ id: string; displayName: string; avatarUrl?: string | null }>;
   chatsLoading?: boolean;
+  updateStatus?: UpdateStatus;
   onNavigate(page: AccountDestination): void;
   onOpenChat?(chatId: string): Promise<void> | void;
   onCreateGroup?(title: string, memberIds: string[]): Promise<boolean>;
+  onInstallUpdate?(): void;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
 }) {
@@ -219,6 +226,10 @@ export function AccountSidebar({
     );
   }, [chats, deferredChatSearch, user.id]);
   const chatNavigationEnabled = chats !== undefined && Boolean(onOpenChat && onCreateGroup);
+  const updateVersion =
+    updateStatus?.kind === 'available' || updateStatus?.kind === 'downloading'
+      ? updateStatus.version
+      : undefined;
 
   const createGroup = async () => {
     if (!onCreateGroup || groupBusy || !groupTitle.trim() || groupMembers.length === 0) return;
@@ -240,12 +251,6 @@ export function AccountSidebar({
     >
       {chatNavigationEnabled ? (
         <>
-          <div className="account-sidebar-meta">
-            <div className="account-online-status">
-              <i /> Сервисы доступны
-            </div>
-            <div className="account-version-badge">{sidebarVersionLabel()}</div>
-          </div>
           <div className="account-sidebar-brand-search">
             <BrandLogo variant="compact" />
             <label className="account-chat-search">
@@ -263,14 +268,24 @@ export function AccountSidebar({
               ) : null}
             </label>
           </div>
+          {updateVersion ? (
+            <button
+              type="button"
+              className="account-sidebar-update"
+              disabled={updateStatus?.kind === 'downloading'}
+              onClick={onInstallUpdate}
+            >
+              <Download aria-hidden="true" />
+              <span>
+                {updateStatus?.kind === 'downloading'
+                  ? `Загрузка ${Math.round(updateStatus.progress)}%`
+                  : `Обновиться до версии ${compactVersionLabel(updateVersion)}`}
+              </span>
+            </button>
+          ) : null}
         </>
       ) : (
-        <>
-          <BrandLogo variant="compact" />
-          <div className="account-online-status">
-            <i /> Сервисы доступны
-          </div>
-        </>
+        <BrandLogo variant="compact" />
       )}
 
       <nav>
@@ -560,11 +575,6 @@ export function AccountSidebar({
 function sidebarChatName(chat: ChatItem, userId: string) {
   if (chat.type === 'group') return chat.title?.trim() || 'Групповой чат';
   return chat.members.find((member) => member.id !== userId)?.displayName || 'Личный чат';
-}
-
-function sidebarVersionLabel() {
-  const betaNumber = __FREETALK_APP_VERSION__.match(/beta\.(\d+)/i)?.[1];
-  return betaNumber ? `Beta ${betaNumber}` : `v${__FREETALK_APP_VERSION__}`;
 }
 
 function SidebarAvatar({

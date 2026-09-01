@@ -10,6 +10,7 @@ import { ChevronLeft, ChevronRight, Copy, Minus, Square, X } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { compactVersionLabel } from '../lib/version-label';
 import { BrandLogo } from './BrandLogo';
 
 export function CustomTitleBar() {
@@ -121,6 +122,14 @@ export function CustomTitleBar() {
           <ChevronRight size={15} aria-hidden="true" />
         </button>
       </nav>
+      <div className="titlebar-meta" aria-label="Состояние приложения">
+        <span className="titlebar-service-status">
+          <i aria-hidden="true" /> Сервисы доступны
+        </span>
+        <span className="titlebar-version-badge">
+          {compactVersionLabel(__FREETALK_APP_VERSION__)}
+        </span>
+      </div>
       <span className="custom-titlebar-drag" aria-hidden="true" />
       <span className="custom-titlebar-brand">
         <BrandLogo variant="compact" />

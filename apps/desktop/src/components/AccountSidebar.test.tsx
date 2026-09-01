@@ -407,4 +407,25 @@ describe('AccountSidebar in an active room', () => {
     await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Проект', ['friend-1']));
     expect(queryByRole('textbox', { name: 'Название группы' })).toBeNull();
   });
+
+  it('offers an available update directly below chat search', () => {
+    const onInstallUpdate = vi.fn();
+    const { getByRole } = render(
+      <AccountSidebar
+        user={user}
+        activePage="home"
+        chats={[]}
+        updateStatus={{ kind: 'available', version: '0.4.0-beta.76' }}
+        onNavigate={vi.fn()}
+        onOpenChat={vi.fn()}
+        onCreateGroup={vi.fn().mockResolvedValue(true)}
+        onInstallUpdate={onInstallUpdate}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Обновиться до версии Beta 76' }));
+    expect(onInstallUpdate).toHaveBeenCalledOnce();
+  });
 });

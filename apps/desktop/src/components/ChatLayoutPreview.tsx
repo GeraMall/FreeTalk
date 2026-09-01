@@ -71,10 +71,12 @@ export function ChatLayoutPreview() {
         activePage="chats"
         readingChatId={chats[0]!.id}
         chats={chats}
+        updateStatus={{ kind: 'available', version: '0.4.0-beta.76' }}
         friends={[{ id: friendId, displayName: 'Алексей', avatarUrl: mascot }]}
         onNavigate={() => {}}
         onOpenChat={async () => {}}
         onCreateGroup={async () => true}
+        onInstallUpdate={() => {}}
         onSettings={() => {}}
         onLogout={() => {}}
       />

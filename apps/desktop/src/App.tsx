@@ -1274,6 +1274,8 @@ export function App() {
             onJoinRoom={(code) => void enterRoom(false, { room: code })}
             onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
+            updateStatus={updateStatus}
+            onInstallUpdate={() => void installUpdate()}
           />
         ) : (
           <WelcomeScreen
