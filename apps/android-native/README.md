@@ -13,6 +13,7 @@ Current native foundation:
 - shared FreeTalk mobile design system with the production logo, mascot, gradients,
   navigation, room hero, recent-room cards and cached remote avatars;
 - production WSS room creation;
+- native room navigation after create/join and an initial mobile room controls screen;
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.
 

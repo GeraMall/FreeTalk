@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,8 +49,14 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PeopleOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.VideocamOff
+import androidx.compose.material.icons.outlined.CallEnd
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -309,6 +316,21 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
     LaunchedEffect(user.id) { load() }
 
+    if (roomId != null) {
+        RoomScreen(
+            user = user,
+            roomId = roomId!!,
+            status = roomStatus,
+            onLeave = {
+                signaling.close()
+                roomId = null
+                roomStatus = ""
+                load()
+            },
+        )
+        return
+    }
+
     if (activeChat != null) {
         ChatScreen(api, user, activeChat!!, onBack = { activeChat = null }, onChanged = load)
         return
@@ -367,16 +389,89 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
 }
 
 @Composable
+private fun RoomScreen(user: SignedInUser, roomId: String, status: String, onLeave: () -> Unit) {
+    var isMuted by remember { mutableStateOf(false) }
+    var cameraEnabled by remember { mutableStateOf(false) }
+    Scaffold(
+        modifier = Modifier.background(appBackground), containerColor = Color.Transparent,
+        topBar = {
+            Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(painterResource(R.drawable.freetalk_mascot), null, modifier = Modifier.size(38.dp))
+                        Text("FreeTalk", fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 7.dp))
+                    }
+                    Text("Голосовая комната", color = muted, fontSize = 13.sp)
+                }
+                HorizontalDivider(color = Color(0xFF102537), modifier = Modifier.padding(top = 10.dp))
+            }
+        },
+        bottomBar = {
+            Row(
+                Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RoomControl(if (isMuted) Icons.Outlined.MicOff else Icons.Outlined.Mic, isMuted) { isMuted = !isMuted }
+                RoomControl(if (cameraEnabled) Icons.Outlined.Videocam else Icons.Outlined.VideocamOff, !cameraEnabled) { cameraEnabled = !cameraEnabled }
+                RoomControl(Icons.Outlined.MoreHoriz, false) {}
+                Box(
+                    Modifier.padding(start = 14.dp).size(58.dp).clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFFE83F5F)).clickable(onClick = onLeave),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.CallEnd, "Завершить звонок", tint = Color.White) }
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)) {
+            Text("Участники", fontSize = 28.sp, fontWeight = FontWeight.Black)
+            Text("Комната · $roomId", color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
+            Surface(
+                Modifier.fillMaxWidth().padding(top = 28.dp), color = Color(0xD9051424),
+                shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x443D8AA7)),
+            ) {
+                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(92.dp).clip(CircleShape).background(Color(0xFF10354A))
+                            .border(2.dp, colors.primary, CircleShape), contentAlignment = Alignment.Center,
+                    ) {
+                        if (user.avatarUrl != null) AsyncImage(
+                            model = user.avatarUrl, contentDescription = user.displayName,
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                        ) else Text(user.displayName.take(1).uppercase(), fontSize = 32.sp, fontWeight = FontWeight.Black)
+                    }
+                    Text(user.displayName, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp))
+                    Text("Создатель комнаты", color = colors.primary, fontSize = 12.sp)
+                    Text(if (isMuted) "Микрофон выключен" else "В звонке", color = if (isMuted) danger else good, fontSize = 13.sp, modifier = Modifier.padding(top = 9.dp))
+                }
+            }
+            Text(status, color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 18.dp))
+        }
+    }
+}
+
+@Composable
+private fun RoomControl(icon: androidx.compose.ui.graphics.vector.ImageVector, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.padding(horizontal = 4.dp).size(52.dp).clip(RoundedCornerShape(17.dp))
+            .background(if (active) Color(0xFF351522) else Color(0xFF092231)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, null, tint = if (active) danger else colors.primary) }
+}
+
+@Composable
 private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(R.drawable.freetalk_wordmark),
-                contentDescription = "FreeTalk",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.width(142.dp).height(52.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(R.drawable.freetalk_mascot),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(49.dp),
+                )
+                Text("FreeTalk", fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 9.dp))
+            }
             Box(
                 Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF10354A))
                     .border(1.dp, Color(0x664EF3F2), CircleShape).clickable { open = !open },
@@ -491,7 +586,7 @@ private fun HomePage(
             item { EmptyState("Недавних комнат пока нет", "Создайте первую комнату — она появится здесь") }
         } else {
             items(recentCalls, key = { it.id }) { call ->
-                RecentRoomCard(call, onCreateRoom)
+                RecentRoomCard(call, user.id, onCreateRoom)
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
@@ -499,12 +594,13 @@ private fun HomePage(
 }
 
 @Composable
-private fun RecentRoomCard(call: CallSummary, onCreateAgain: () -> Unit) {
-    val otherNames = call.participants.filter { it.isNotBlank() }
-    val title = when (otherNames.size) {
+private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAgain: () -> Unit) {
+    val others = call.participants.filter { it.userId != currentUserId }
+    val visible = (if (others.isNotEmpty()) others else call.participants).take(3)
+    val title = when (others.size) {
         0 -> "Приватная комната"
-        1 -> "Комната с ${otherNames.first()}"
-        else -> "Групповой звонок · ${otherNames.size}"
+        1 -> "Комната с ${others.first().displayName}"
+        else -> "Групповой звонок · ${call.participants.size}"
     }
     Surface(
         Modifier.fillMaxWidth(), color = Color(0xD9030C18), shape = RoundedCornerShape(18.dp),
@@ -512,10 +608,22 @@ private fun RecentRoomCard(call: CallSummary, onCreateAgain: () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(cyanBlueGradient),
-                    contentAlignment = Alignment.Center,
-                ) { Text(otherNames.firstOrNull()?.take(1)?.uppercase() ?: "☎", color = Color.White, fontWeight = FontWeight.Bold) }
+                Row(Modifier.width(if (visible.size > 1) 68.dp else 46.dp)) {
+                    visible.forEachIndexed { index, participant ->
+                        Box(
+                            Modifier.offset(x = (-index * 10).dp).size(46.dp).clip(CircleShape)
+                                .background(cyanBlueGradient).border(2.dp, Color(0xFF061322), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (participant.avatarUrl != null) {
+                                AsyncImage(
+                                    model = participant.avatarUrl, contentDescription = participant.displayName,
+                                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                )
+                            } else Text(participant.displayName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Column(Modifier.weight(1f).padding(start = 13.dp)) {
                     Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 13.sp)
@@ -582,7 +690,11 @@ private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, 
         item { Text("История", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
         if (calls.isEmpty()) item { EmptyState("Звонков пока нет", "Завершённые разговоры появятся здесь") }
         items(calls, key = { it.id }) { call ->
-            ListCard(call.participants.joinToString().ifBlank { "Звонок" }, formatDuration(call.durationSeconds), "☎")
+            ListCard(
+                call.participants.joinToString { it.displayName }.ifBlank { "Звонок" },
+                formatDuration(call.durationSeconds), "☎",
+                imageUrl = call.participants.firstOrNull()?.avatarUrl,
+            )
         }
         item { SectionTitle("Устройства (${devices.size})") }
         items(devices, key = { it.id }) { device ->

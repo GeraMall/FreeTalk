@@ -41,7 +41,14 @@ data class ChatSummary(
         ?: "Чат"
 }
 data class FriendSummary(val id: String, val username: String, val displayName: String, val avatarUrl: String?, val presence: String)
-data class CallSummary(val id: String, val roomId: String, val startedAt: String, val durationSeconds: Int, val participants: List<String>)
+data class CallParticipant(val userId: String?, val displayName: String, val avatarUrl: String?)
+data class CallSummary(
+    val id: String,
+    val roomId: String,
+    val startedAt: String,
+    val durationSeconds: Int,
+    val participants: List<CallParticipant>,
+)
 data class ChatMessage(val id: String, val body: String, val senderId: String?, val senderName: String, val createdAt: String)
 data class AccountDevice(val id: String, val current: Boolean, val userAgent: String, val lastActiveAt: String)
 data class AccountData(
@@ -196,7 +203,13 @@ class FreeTalkApi(private val sessions: SessionStore) {
         json.optString("id"), json.optString("room_id", json.optString("roomId")),
         json.optString("started_at", json.optString("startedAt")),
         json.optInt("duration_seconds", json.optInt("durationSeconds")),
-        (json.optJSONArray("participants") ?: JSONArray()).objects().map { it.optString("displayName", "Участник") },
+        (json.optJSONArray("participants") ?: JSONArray()).objects().map {
+            CallParticipant(
+                userId = it.nullableString("userId"),
+                displayName = it.optString("displayName", "Участник"),
+                avatarUrl = it.nullableString("avatarUrl"),
+            )
+        },
     )
 
     private fun parseMessage(json: JSONObject) = ChatMessage(
