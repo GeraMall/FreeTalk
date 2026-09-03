@@ -248,7 +248,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
 
     if (activeChat != null) {
-        ChatScreen(api, user, activeChat!!, onBack = { activeChat = null }, onChanged = load)
+        NativeChatScreen(api, cache, user, activeChat!!, onBack = { activeChat = null }, onChanged = load)
         return
     }
 
@@ -601,7 +601,9 @@ private fun FriendsPage(friends: List<FriendSummary>, pending: Int, onRefresh: (
 
 @Composable
 private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, cache: MediaCache) {
-    var cacheBytes by remember { mutableLongStateOf(cache.sizeBytes()) }
+    var cacheBytes by remember { mutableLongStateOf(0) }
+    val cacheScope = rememberCoroutineScope()
+    LaunchedEffect(cache) { cacheBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.sizeBytes() } }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("История", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
         if (calls.isEmpty()) item { EmptyState("Звонков пока нет", "Завершённые разговоры появятся здесь") }
@@ -622,73 +624,13 @@ private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, 
                 Column(Modifier.padding(16.dp)) {
                     Text("Кэш изображений: ${formatBytes(cacheBytes)}", fontWeight = FontWeight.SemiBold)
                     Text("Лимит 384 МБ. Старые файлы удаляются автоматически.", color = muted, fontSize = 13.sp)
-                    OutlinedButton(onClick = { cache.clear(); cacheBytes = 0 }, modifier = Modifier.padding(top = 10.dp)) { Text("Очистить кэш") }
+                    OutlinedButton(onClick = { cacheScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.clear() }; cacheBytes = 0 } }, modifier = Modifier.padding(top = 10.dp)) { Text("Очистить кэш") }
                 }
             }
         }
     }
 }
 
-@Composable
-private fun ChatScreen(api: FreeTalkApi, user: SignedInUser, chat: ChatSummary, onBack: () -> Unit, onChanged: () -> Unit) {
-    var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf("") }
-    var input by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(chat.id) {
-        runCatching { api.loadMessages(chat.id) }
-            .onSuccess { messages = it }.onFailure { error = it.message ?: "Не удалось открыть чат" }
-        loading = false
-    }
-    Scaffold(
-        containerColor = colors.background,
-        topBar = {
-            Row(Modifier.fillMaxWidth().safeDrawingPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("‹ Назад") }
-                Text(chat.displayTitle(user.id), fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        },
-        bottomBar = {
-            Row(Modifier.fillMaxWidth().safeDrawingPadding().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(input, { input = it }, placeholder = { Text("Сообщение") }, modifier = Modifier.weight(1f), maxLines = 4)
-                Button(
-                    onClick = {
-                        val text = input.trim(); if (text.isEmpty()) return@Button
-                        input = ""
-                        scope.launch {
-                            runCatching { api.sendMessage(chat.id, text) }
-                                .onSuccess { messages = messages + it; onChanged() }
-                                .onFailure { error = it.message ?: "Не отправлено"; input = text }
-                        }
-                    },
-                    modifier = Modifier.padding(start = 8.dp),
-                ) { Text("➤") }
-            }
-        },
-    ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (loading) item { LoadingScreen("Загружаем сообщения…") }
-            if (error.isNotBlank()) item { Text(error, color = danger) }
-            if (!loading && messages.isEmpty()) item { EmptyState("Начните разговор", "Сообщения будут синхронизированы с FreeTalk") }
-            items(messages, key = { it.id }) { message ->
-                val mine = message.senderId == user.id
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(0.82f),
-                        color = if (mine) Color(0xFF0D4658) else colors.surface,
-                        shape = RoundedCornerShape(18.dp),
-                    ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                            if (!mine) Text(message.senderName, color = colors.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text(message.body)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun ListCard(

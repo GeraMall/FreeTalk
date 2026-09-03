@@ -49,7 +49,11 @@ data class CallSummary(
     val durationSeconds: Int,
     val participants: List<CallParticipant>,
 )
-data class ChatMessage(val id: String, val body: String, val senderId: String?, val senderName: String, val createdAt: String)
+data class ChatMessage(
+    val id: String, val body: String, val senderId: String?, val senderName: String, val createdAt: String,
+    val kind: String = "text", val avatarUrl: String? = null, val expiresAt: String? = null,
+    val width: Int = 0, val height: Int = 0,
+)
 data class AccountDevice(val id: String, val current: Boolean, val userAgent: String, val lastActiveAt: String)
 data class AccountData(
     val chats: List<ChatSummary>,
@@ -129,6 +133,39 @@ class FreeTalkApi(private val sessions: SessionStore) {
     suspend fun sendMessage(chatId: String, body: String): ChatMessage {
         val json = authorizedJson("/v1/chats/$chatId/messages", "POST", JSONObject().put("body", body.trim()))
         return parseMessage(json.getJSONObject("message"))
+    }
+
+    suspend fun downloadChatImage(messageId: String, full: Boolean): ByteArray = withContext(Dispatchers.IO) {
+        require(runCatching { UUID.fromString(messageId) }.isSuccess)
+        val token = accessToken ?: throw ApiException("UNAUTHORIZED", "Требуется вход", 401)
+        val path = "/v1/messages/$messageId/image?variant=" + if (full) "full" else "thumbnail"
+        fun fetch(bearer: String): ByteArray = client.newCall(
+            Request.Builder().url(API_BASE + path).header("Authorization", "Bearer $bearer").build(),
+        ).execute().use { response ->
+            if (!response.isSuccessful) throw ApiException("IMAGE_FAILED", "Не удалось загрузить фото (${response.code})", response.code)
+            val body = response.body ?: error("Пустое изображение")
+            require(body.contentType()?.type == "image") { "Сервер вернул не изображение" }
+            val limit = 20 * 1024 * 1024
+            require(body.contentLength() <= limit) { "Изображение слишком большое" }
+            val output = java.io.ByteArrayOutputStream()
+            body.byteStream().use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    require(output.size() + count <= limit) { "Изображение слишком большое" }
+                    output.write(buffer, 0, count)
+                }
+            }
+            output.toByteArray()
+        }
+        try { fetch(token) } catch (error: ApiException) {
+            if (error.status != 401) throw error
+            refreshMutex.withLock {
+                if (accessToken == token) refresh(sessions.readRefreshToken() ?: throw error)
+            }
+            fetch(accessToken ?: throw error)
+        }
     }
 
     private suspend fun publicJson(path: String, body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
@@ -216,6 +253,9 @@ class FreeTalkApi(private val sessions: SessionStore) {
         json.optString("id"), json.optString("body"), json.nullableString("sender_id"),
         json.optString("display_name", json.optString("displayName", "FreeTalk")),
         json.optString("created_at", json.optString("createdAt")),
+        json.optString("kind", "text"), json.nullableString("avatar_url"), json.nullableString("expires_at"),
+        json.optJSONObject("metadata")?.optInt("width") ?: 0,
+        json.optJSONObject("metadata")?.optInt("height") ?: 0,
     )
 }
 

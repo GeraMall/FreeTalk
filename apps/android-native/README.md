@@ -12,6 +12,10 @@ Current native foundation:
 - production HTTPS login, registration and email confirmation;
 - Android Keystore-backed refresh-token storage and automatic session restore;
 - real chats, text messages, friends, call history and account-device data;
+- styled native conversation bubbles with avatars, timestamps, selectable text and
+  automatic foreground refresh every five seconds;
+- authenticated image thumbnails and full-size viewing on tap, with account-isolated
+  disk caching, expiry checks, two concurrent downloads and LRU eviction;
 - shared FreeTalk mobile design system with the production logo, mascot, gradients,
   navigation, room hero, recent-room cards and cached remote avatars;
 - production WSS room creation;
@@ -19,8 +23,13 @@ Current native foundation:
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.
 
-The native WebRTC media engine, chat realtime transport, image messages, profile editing and
+The native WebRTC media engine, chat realtime transport, image uploading, profile editing and
 background call service are the next implementation layer before this client is release-ready.
+
+System message notifications are not implemented: the manifest permission alone does
+not deliver notifications. Refresh runs only while the conversation is in the foreground.
+Downloaded chat photos use the 384 MB cache, clearable under History → Storage.
+Alpha.7 is a debug build; on-device visual and network testing is still required.
 
 The bundled Geist variable TTF comes from `google/fonts/ofl/geist/Geist[wght].ttf`.
 Its SIL Open Font License is included in `app/src/main/assets/licenses`.
