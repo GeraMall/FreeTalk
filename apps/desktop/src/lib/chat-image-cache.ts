@@ -195,3 +195,17 @@ export async function clearChatImageCache(accountId: string) {
     )) as IDBValidKey[] | undefined) ?? [];
   await removePersistent(keys.map(String));
 }
+
+export async function getChatImageCacheStats(accountId: string) {
+  const database = await openDatabase();
+  if (!database) return { bytes: 0, entries: 0 };
+  const transaction = database.transaction(STORE_NAME, 'readonly');
+  const entries =
+    ((await requestResult(
+      transaction.objectStore(STORE_NAME).index('accountId').getAll(accountId),
+    )) as CacheEntry[] | undefined) ?? [];
+  return {
+    bytes: entries.reduce((total, entry) => total + entry.size, 0),
+    entries: entries.length,
+  };
+}

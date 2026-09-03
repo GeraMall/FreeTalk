@@ -1298,6 +1298,10 @@ export function App() {
         await accountClient.changePassword(currentPassword, newPassword);
         setNotice('Пароль изменён, остальные сессии завершены');
       }}
+      onClearChatCache={async () => {
+        if (accountUser) await clearChatImageCache(accountUser.id);
+        setNotice('Кэш изображений очищен');
+      }}
     />
   ) : null;
 

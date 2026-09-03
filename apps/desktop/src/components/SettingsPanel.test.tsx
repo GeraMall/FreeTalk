@@ -75,6 +75,7 @@ function renderProfile() {
       onAccountLogout={vi.fn()}
       onDeleteAccount={vi.fn().mockResolvedValue(undefined)}
       onChangePassword={vi.fn().mockResolvedValue(undefined)}
+      onClearChatCache={vi.fn().mockResolvedValue(undefined)}
     />,
   );
   return { ...view, onClose, onSaveProfile, onSetting, onVideoSetting };

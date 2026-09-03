@@ -56,6 +56,7 @@ import {
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
 } from '../lib/username';
+import { getChatImageCacheStats } from '../lib/chat-image-cache';
 
 export type SettingsTab =
   'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
@@ -92,6 +93,7 @@ interface SettingsPanelProps {
   onAccountLogout(): void;
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
+  onClearChatCache(): Promise<void>;
 }
 
 export function SettingsPanel({
@@ -120,6 +122,7 @@ export function SettingsPanel({
   onAccountLogout,
   onDeleteAccount,
   onChangePassword,
+  onClearChatCache,
 }: SettingsPanelProps) {
   const mobileLayout = useMobileLayout();
   const [tab, setTab] = useState<SettingsTab | null>(() =>
@@ -361,7 +364,14 @@ export function SettingsPanel({
                 onSetting={onSetting}
               />
             )}
-            {tab === 'chats' && <ChatsSettingsTab settings={settings} onSetting={onSetting} />}
+            {tab === 'chats' && (
+              <ChatsSettingsTab
+                settings={settings}
+                accountId={accountUser?.id}
+                onSetting={onSetting}
+                onClearCache={onClearChatCache}
+              />
+            )}
             {tab === 'recording' && (
               <RecordingSettingsTab settings={settings} onSetting={onSetting} />
             )}
@@ -1708,12 +1718,39 @@ function formatStorageSize(bytes: number) {
 
 function ChatsSettingsTab({
   settings,
+  accountId,
   onSetting,
+  onClearCache,
 }: {
   settings: LocalSettings;
+  accountId?: string;
   onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
+  onClearCache(): Promise<void>;
 }) {
   const [wallpaperError, setWallpaperError] = useState('');
+  const [cacheBytes, setCacheBytes] = useState(0);
+  const [cacheEntries, setCacheEntries] = useState(0);
+  const [cacheBusy, setCacheBusy] = useState(false);
+
+  useEffect(() => {
+    if (!accountId) return;
+    void getChatImageCacheStats(accountId).then(({ bytes, entries }) => {
+      setCacheBytes(bytes);
+      setCacheEntries(entries);
+    });
+  }, [accountId]);
+
+  const clearCache = async () => {
+    setCacheBusy(true);
+    try {
+      await onClearCache();
+      setCacheBytes(0);
+      setCacheEntries(0);
+    } finally {
+      setCacheBusy(false);
+    }
+  };
+
   return (
     <section className="settings-section chat-settings-section">
       <div className="chat-settings-preview-card">
@@ -1815,8 +1852,31 @@ function ChatsSettingsTab({
           )}
         </div>
       </div>
+
+      <div className="chat-wallpaper-setting">
+        <div>
+          <strong>Кэш изображений</strong>
+          <small>
+            {formatCacheSize(cacheBytes)} · {cacheEntries} файлов. Кэш ускоряет повторное открытие
+            фотографий и хранится только на этом устройстве.
+          </small>
+        </div>
+        <button
+          type="button"
+          className="secondary compact settings-action-button"
+          disabled={cacheBusy || cacheEntries === 0}
+          onClick={() => void clearCache()}
+        >
+          <Trash2 size={15} /> {cacheBusy ? 'Очищаем…' : 'Очистить кэш'}
+        </button>
+      </div>
     </section>
   );
+}
+
+function formatCacheSize(bytes: number) {
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / 1024 ** 2).toFixed(bytes < 10 * 1024 ** 2 ? 1 : 0)} МБ`;
 }
 
 function TabButton({
