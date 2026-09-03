@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { AccountSidebar } from './AccountSidebar';
 import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { TransientNotice } from './HomeView';
 import mascot from '../assets/freetalk-mascot.png';
+import { useMobileLayout } from '../lib/mobile-layout';
 
 const self = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -63,10 +65,16 @@ const messages: MessageItem[] = [
 
 export function ChatLayoutPreview() {
   const showNotice = new URLSearchParams(window.location.search).has('notice');
+  const mobile = useMobileLayout();
+  const [activeChatId, setActiveChatId] = useState<string | undefined>(
+    new URLSearchParams(window.location.search).has('list') ? undefined : chats[0]!.id,
+  );
   return (
-    <main className="account-shell account-shell-with-chat-sidebar">
+    <main
+      className={`account-shell account-shell-with-chat-sidebar${mobile ? ' mobile-account-shell mobile-chat-open' : ''}`}
+    >
       {showNotice && <TransientNotice message="Комната не найдена" onDismiss={() => {}} />}
-      <AccountSidebar
+      {!mobile ? <AccountSidebar
         user={self}
         activePage="chats"
         readingChatId={chats[0]!.id}
@@ -79,20 +87,22 @@ export function ChatLayoutPreview() {
         onInstallUpdate={() => {}}
         onSettings={() => {}}
         onLogout={() => {}}
-      />
+      /> : null}
       <section className="account-content account-content-chat">
         <ChatsPage
-          externalSidebar
+          externalSidebar={!mobile}
+          mobile={mobile}
           userId={self.id}
           chats={chats}
           friends={[]}
-          activeChatId={chats[0]!.id}
+          activeChatId={activeChatId}
           messages={messages}
           chatsLoading={false}
           messagesLoading={false}
           messagesError=""
           sentMessageVersion={0}
-          onOpenChat={async () => {}}
+          onOpenChat={async (chatId) => setActiveChatId(chatId)}
+          onCloseChat={() => setActiveChatId(undefined)}
           onRetryMessages={() => {}}
           onSendMessage={async () => true}
           onCreateGroup={async () => true}

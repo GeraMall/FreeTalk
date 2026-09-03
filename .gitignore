@@ -16,11 +16,12 @@ Thumbs.db
 *.tsbuildinfo
 coverage/
 .wrangler/
-apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/schemas/
 work/
 outputs/
 output/
 artifacts/
 .playwright-cli/
+.toolchains/
 node_modules.corrupt-backup/

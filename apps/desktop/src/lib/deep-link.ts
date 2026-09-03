@@ -11,7 +11,8 @@ export function parseRoomDeepLink(value: string, baseUrl = DEFAULT_INVITE_BASE_U
   try {
     const url = new URL(value);
     const expectedOrigin = new URL(baseUrl).origin;
-    const customScheme = url.protocol === 'freetalk:' && url.hostname === 'join';
+    const customScheme =
+      url.protocol === 'freetalk:' && (url.hostname === 'room' || url.hostname === 'join');
     const webInvite = url.protocol === 'https:' && url.origin === expectedOrigin;
     if (!customScheme && !webInvite) return null;
     const parts = url.pathname.split('/').filter(Boolean);

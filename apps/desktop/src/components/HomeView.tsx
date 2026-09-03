@@ -22,6 +22,9 @@ import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
 import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
+import { BrandLogo } from './BrandLogo';
+import { MobileNavigation } from './MobileNavigation';
+import { useMobileLayout } from '../lib/mobile-layout';
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
 const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
@@ -98,6 +101,7 @@ export function HomeView({
   const [history, setHistory] = useState<CallItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
+  const mobileLayout = useMobileLayout();
   const {
     width: accountSidebarWidth,
     startResize: startAccountSidebarResize,
@@ -669,14 +673,14 @@ export function HomeView({
     <main
       className={`${embedded ? 'account-view-embedded' : 'account-shell account-shell-with-chat-sidebar'} ${
         page === 'home' ? 'account-home-shell' : ''
-      }`}
+      }${mobileLayout ? ' mobile-account-shell' : ''}${page === 'chats' && activeChat ? ' mobile-chat-open' : ''}`}
       style={
         embedded
           ? undefined
           : ({ '--account-sidebar-width': `${accountSidebarWidth}px` } as CSSProperties)
       }
     >
-      {!embedded && (
+      {!embedded && !mobileLayout && (
         <AccountSidebar
           user={user}
           activePage={page}
@@ -693,7 +697,7 @@ export function HomeView({
           onLogout={onLogout}
         />
       )}
-      {!embedded ? (
+      {!embedded && !mobileLayout ? (
         <div
           className="account-sidebar-resizer"
           role="separator"
@@ -711,6 +715,18 @@ export function HomeView({
           onPointerCancel={finishAccountSidebarResize}
           onKeyDown={resizeAccountSidebarWithKeyboard}
         />
+      ) : null}
+      {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
+        <header className="mobile-app-header">
+          <BrandLogo variant="compact" />
+          <button type="button" aria-label="Открыть профиль" onClick={() => onSettings('profile')}>
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              user.displayName.slice(0, 1).toUpperCase()
+            )}
+          </button>
+        </header>
       ) : null}
       <section
         className={`account-content page-enter ${page === 'chats' ? 'account-content-chat' : ''}`}
@@ -852,7 +868,8 @@ export function HomeView({
         )}
         {page === 'chats' && (
           <ChatsPage
-            externalSidebar
+            externalSidebar={!mobileLayout}
+            mobile={mobileLayout}
             userId={user.id}
             chats={chats}
             friends={chatFriendOptions}
@@ -865,6 +882,10 @@ export function HomeView({
             hasMoreMessages={hasMoreMessages}
             profileRevision={profileRevision}
             onOpenChat={openChat}
+            onCloseChat={() => {
+              setActiveChat(undefined);
+              setMessages([]);
+            }}
             onRetryMessages={() => activeChat && void loadChatMessages(activeChat)}
             onLoadOlder={loadOlderMessages}
             onSendMessage={sendMessage}
@@ -911,6 +932,9 @@ export function HomeView({
           </div>
         )}
       </section>
+      {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
+        <MobileNavigation activePage={page} onNavigate={navigatePage} />
+      ) : null}
     </main>
   );
 }

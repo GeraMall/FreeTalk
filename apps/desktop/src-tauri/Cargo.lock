@@ -1248,6 +1248,7 @@ name = "freetalk"
 version = "0.4.0-beta.78"
 dependencies = [
  "base64 0.22.1",
+ "freetalk-secure-session",
  "fs2",
  "futures-util",
  "screencapturekit",
@@ -1267,6 +1268,16 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "windows",
+]
+
+[[package]]
+name = "freetalk-secure-session"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

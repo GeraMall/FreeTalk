@@ -7,6 +7,7 @@ describe('room deep links', () => {
   it('creates a public HTTPS invitation and parses both supported forms', () => {
     expect(roomInviteUrl(code)).toBe(`https://freetalk.191-44-38-60.sslip.io/join/${code}`);
     expect(parseRoomDeepLink(`freetalk://join/${code}`)).toBe(code);
+    expect(parseRoomDeepLink(`freetalk://room/${code}`)).toBe(code);
     expect(parseRoomDeepLink(roomInviteUrl(code))).toBe(code);
   });
 

@@ -1,0 +1,12 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "FreeTalk",
+        "decorations": false,
+        "backgroundColor": "#030a15"
+      }
+    ]
+  }
+}

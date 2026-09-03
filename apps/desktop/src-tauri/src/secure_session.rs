@@ -1,5 +1,7 @@
+#[cfg(not(target_os = "android"))]
 const SERVICE: &str = "io.freetalk.desktop.refresh-token";
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secure_session_set(refresh_token: String) -> Result<(), String> {
     if refresh_token.len() < 32 || refresh_token.len() > 256 {
@@ -8,6 +10,7 @@ pub fn secure_session_set(refresh_token: String) -> Result<(), String> {
     platform::set(refresh_token.as_bytes())
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secure_session_get() -> Result<Option<String>, String> {
     platform::get()?
@@ -16,9 +19,40 @@ pub fn secure_session_get() -> Result<Option<String>, String> {
         .map_err(|_| "invalid stored token".into())
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secure_session_clear() -> Result<(), String> {
     platform::delete()
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn secure_session_set(app: tauri::AppHandle, refresh_token: String) -> Result<(), String> {
+    use tauri::Manager;
+    if refresh_token.len() < 32 || refresh_token.len() > 256 {
+        return Err("invalid refresh token".into());
+    }
+    app.state::<freetalk_secure_session::SecureSession<tauri::Wry>>()
+        .set(&refresh_token)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn secure_session_get(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri::Manager;
+    app.state::<freetalk_secure_session::SecureSession<tauri::Wry>>()
+        .get()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub fn secure_session_clear(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    app.state::<freetalk_secure_session::SecureSession<tauri::Wry>>()
+        .clear()
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -287,7 +321,7 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "android")))]
 mod platform {
     pub fn set(_: &[u8]) -> Result<(), String> {
         Err("secure storage is unsupported".into())

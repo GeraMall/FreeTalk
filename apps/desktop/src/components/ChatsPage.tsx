@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   ArrowDown,
+  ArrowLeft,
   Ban,
   Check,
   Clock3,
@@ -43,6 +44,7 @@ import type { PresenceStatus } from '@freetalk/protocol';
 
 const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
 const CHAT_SIDEBAR_MIN_WIDTH = 190;
+const MOBILE_CHAT_HISTORY_KEY = 'freetalkMobileChatId';
 
 function defaultChatSidebarWidth() {
   if (typeof window === 'undefined') return 330;
@@ -131,6 +133,7 @@ interface FriendOption {
 
 interface ChatsPageProps {
   externalSidebar?: boolean;
+  mobile?: boolean;
   userId: string;
   chats: ChatItem[];
   friends: FriendOption[];
@@ -143,6 +146,7 @@ interface ChatsPageProps {
   hasMoreMessages?: boolean;
   profileRevision?: number;
   onOpenChat(chatId: string): Promise<void>;
+  onCloseChat?(): void;
   onRetryMessages(): void;
   onLoadOlder?(): Promise<void>;
   onSendMessage(body: string): Promise<boolean>;
@@ -168,6 +172,7 @@ interface ChatsPageProps {
 
 export function ChatsPage({
   externalSidebar = false,
+  mobile = false,
   userId,
   chats,
   friends,
@@ -180,6 +185,7 @@ export function ChatsPage({
   hasMoreMessages = false,
   profileRevision = 0,
   onOpenChat,
+  onCloseChat = () => {},
   onRetryMessages,
   onLoadOlder = async () => {},
   onSendMessage,
@@ -209,7 +215,7 @@ export function ChatsPage({
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showGroupAvatarEditor, setShowGroupAvatarEditor] = useState(false);
-  const [profileVisible, setProfileVisible] = useState(true);
+  const [profileVisible, setProfileVisible] = useState(!mobile);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
   const [chatSidebarWidth, setChatSidebarWidth] = useState<number | undefined>(
@@ -278,6 +284,27 @@ export function ChatsPage({
   };
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const closeMobileChat = useCallback(() => {
+    if (window.history.state?.[MOBILE_CHAT_HISTORY_KEY] === activeChatId) {
+      window.history.back();
+    } else {
+      onCloseChat();
+    }
+  }, [activeChatId, onCloseChat]);
+  useEffect(() => {
+    if (!mobile || !activeChatId) return;
+    if (window.history.state?.[MOBILE_CHAT_HISTORY_KEY] !== activeChatId) {
+      window.history.pushState(
+        { ...window.history.state, [MOBILE_CHAT_HISTORY_KEY]: activeChatId },
+        '',
+      );
+    }
+    const handleBack = () => {
+      if (window.history.state?.[MOBILE_CHAT_HISTORY_KEY] !== activeChatId) onCloseChat();
+    };
+    window.addEventListener('popstate', handleBack);
+    return () => window.removeEventListener('popstate', handleBack);
+  }, [activeChatId, mobile, onCloseChat]);
   const retentionHours = activeChat?.retentionHours === undefined ? 720 : activeChat.retentionHours;
   const profileTarget =
     activeChat?.type === 'direct'
@@ -360,7 +387,7 @@ export function ChatsPage({
 
   return (
     <div
-      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}`}
+      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}${mobile ? ' mobile-messenger' : ''}${mobile && activeChat ? ' has-active-chat' : ''}`}
       style={
         chatSidebarWidth
           ? ({ '--conversation-sidebar-width': `${chatSidebarWidth}px` } as CSSProperties)
@@ -539,6 +566,7 @@ export function ChatsPage({
           <>
             <ChatHeader
               chat={activeChat}
+              onBack={mobile ? closeMobileChat : undefined}
               userId={userId}
               showMember={showMember}
               memberUsername={memberUsername}
@@ -713,6 +741,7 @@ function ChatListItem({
 
 function ChatHeader({
   chat,
+  onBack,
   userId,
   showMember,
   memberUsername,
@@ -732,6 +761,7 @@ function ChatHeader({
   onSaveAvatar,
 }: {
   chat: ChatItem;
+  onBack?(): void;
   userId: string;
   showMember: boolean;
   memberUsername: string;
@@ -761,6 +791,11 @@ function ChatHeader({
     chat.type === 'group' && ['owner', 'admin'].includes(chat.currentUserRole ?? '');
   return (
     <header className="active-chat-header">
+      {onBack ? (
+        <button type="button" className="mobile-chat-back" aria-label="Назад к чатам" onClick={onBack}>
+          <ArrowLeft />
+        </button>
+      ) : null}
       {chat.type === 'group' ? (
         <button
           className="group-avatar-trigger"

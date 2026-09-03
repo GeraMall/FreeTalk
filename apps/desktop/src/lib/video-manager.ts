@@ -32,11 +32,13 @@ type PublishVideo = (
 ) => Promise<void>;
 
 export function cameraConstraints(deviceId = ''): MediaTrackConstraints {
+  const android = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
   return {
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 60, max: 60 },
+    ...(!deviceId && android ? { facingMode: { ideal: 'user' } } : {}),
+    width: { ideal: android ? 1280 : 1920 },
+    height: { ideal: android ? 720 : 1080 },
+    frameRate: { ideal: android ? 30 : 60, max: android ? 30 : 60 },
   };
 }
 

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
+  ArrowLeft,
   AudioLines,
   Ban,
   Camera,
   ChevronDown,
+  ChevronRight,
   CircleDot,
   Download,
   FolderOpen,
@@ -22,6 +24,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
+import { useMobileLayout } from '../lib/mobile-layout';
 import type { LocalSettings } from '../lib/settings';
 import {
   prepareAvatar,
@@ -118,7 +121,10 @@ export function SettingsPanel({
   onDeleteAccount,
   onChangePassword,
 }: SettingsPanelProps) {
-  const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const mobileLayout = useMobileLayout();
+  const [tab, setTab] = useState<SettingsTab | null>(() =>
+    mobileLayout && initialTab === 'audio' ? null : initialTab,
+  );
   const [capturing, setCapturing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
@@ -190,16 +196,27 @@ export function SettingsPanel({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
-        className="settings-modal"
+        className={`settings-modal${mobileLayout ? ' mobile-settings-modal' : ''}${tab ? ' mobile-settings-section-open' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="settings-title"
+        aria-label="Настройки"
       >
         <aside className="settings-sidebar">
           <div className="settings-sidebar-brand">
             <BrandLogo variant="compact" />
           </div>
-          <div className="settings-sidebar-title">Настройки</div>
+          <div className="settings-sidebar-title">
+            <span>Настройки</span>
+            {mobileLayout && (
+              <button
+                className="icon-button quiet"
+                aria-label="Закрыть настройки"
+                onClick={onClose}
+              >
+                <X size={21} />
+              </button>
+            )}
+          </div>
           <nav aria-label="Разделы настроек">
             <TabButton
               active={tab === 'audio'}
@@ -249,8 +266,18 @@ export function SettingsPanel({
           </button>
         </aside>
 
-        <div className="settings-workspace">
-          <header className="settings-header">
+        {(!mobileLayout || tab) && (
+          <div className="settings-workspace">
+            <header className="settings-header">
+            {mobileLayout && (
+              <button
+                className="icon-button quiet mobile-settings-back"
+                aria-label="Вернуться к разделам настроек"
+                onClick={() => setTab(null)}
+              >
+                <ArrowLeft size={21} />
+              </button>
+            )}
             <div>
               <p className="eyebrow">
                 {tab === 'audio'
@@ -286,7 +313,7 @@ export function SettingsPanel({
             <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
               <X size={21} />
             </button>
-          </header>
+            </header>
 
           <div className={`settings-content${tab === 'profile' ? ' profile-content' : ''}`}>
             {tab === 'audio' && (
@@ -367,7 +394,8 @@ export function SettingsPanel({
               </button>
             </footer>
           )}
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -1809,7 +1837,8 @@ function TabButton({
       onClick={onClick}
     >
       {icon}
-      {label}
+      <span>{label}</span>
+      <ChevronRight className="mobile-settings-chevron" aria-hidden="true" />
     </button>
   );
 }

@@ -1,4 +1,6 @@
+#[cfg(desktop)]
 mod diagnostics;
+#[cfg(desktop)]
 mod macos_screen_audio;
 mod secure_session;
 mod signaling;
@@ -17,18 +19,27 @@ fn log_call_popout(app: &tauri::AppHandle, event: &str) {
     };
     let _ = std::fs::create_dir_all(&directory);
     let path = directory.join("call-popout.log");
-    if path.metadata().map(|metadata| metadata.len() > 256 * 1024).unwrap_or(false) {
+    if path
+        .metadata()
+        .map(|metadata| metadata.len() > 256 * 1024)
+        .unwrap_or(false)
+    {
         let _ = std::fs::remove_file(&path);
     }
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|value| value.as_millis())
         .unwrap_or_default();
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(file, "{{\"timestampMs\":{timestamp},\"event\":{event:?}}}");
     }
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn macos_screen_audio_start(
     app: tauri::AppHandle,
@@ -37,6 +48,7 @@ fn macos_screen_audio_start(
     macos_screen_audio::start(app, &state)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn macos_screen_audio_stop(
     state: tauri::State<'_, macos_screen_audio::MacosScreenAudioState>,
@@ -44,6 +56,7 @@ fn macos_screen_audio_stop(
     macos_screen_audio::stop(&state)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn open_recordings_directory(path: String) -> Result<(), String> {
     let directory = std::path::PathBuf::from(path);
@@ -63,6 +76,7 @@ fn open_recordings_directory(path: String) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn recording_storage_available(path: String) -> Result<u64, String> {
     let mut directory = std::path::PathBuf::from(path);
@@ -167,10 +181,7 @@ fn main_window_start_dragging(window: tauri::Window) -> Result<(), String> {
     {
         use windows::Win32::{
             Foundation::{LPARAM, WPARAM},
-            UI::{
-                Input::KeyboardAndMouse::ReleaseCapture,
-                WindowsAndMessaging::PostMessageW,
-            },
+            UI::{Input::KeyboardAndMouse::ReleaseCapture, WindowsAndMessaging::PostMessageW},
         };
 
         // Always move the caller's native HWND. While a call is detached the
@@ -242,7 +253,10 @@ fn open_call_popout(app: &tauri::AppHandle) -> Result<(), String> {
     let main_maximized = main_window.is_maximized().unwrap_or(false);
     let _ = placeholder.unmaximize();
     placeholder
-        .set_position(tauri::PhysicalPosition::new(main_position.x, main_position.y))
+        .set_position(tauri::PhysicalPosition::new(
+            main_position.x,
+            main_position.y,
+        ))
         .map_err(|error| error.to_string())?;
     placeholder
         .set_size(tauri::PhysicalSize::new(main_size.width, main_size.height))
@@ -360,7 +374,7 @@ fn call_popout_restore(app: tauri::AppHandle) -> Result<(), String> {
     schedule_call_popout_transition(app, "restore", restore_call_popout)
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg(desktop)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -563,4 +577,26 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("failed to run FreeTalk");
+}
+
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(signaling::NativeSignalingState::default())
+        .invoke_handler(tauri::generate_handler![
+            signaling::signaling_connect,
+            signaling::signaling_receive,
+            signaling::signaling_send,
+            signaling::signaling_close,
+            secure_session::secure_session_set,
+            secure_session::secure_session_get,
+            secure_session::secure_session_clear,
+        ])
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(freetalk_secure_session::init())
+        .run(tauri::generate_context!())
+        .expect("failed to run FreeTalk on Android");
 }

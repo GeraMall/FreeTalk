@@ -50,6 +50,11 @@
         "appPosition": { "x": 180, "y": 190 },
         "applicationFolderPosition": { "x": 480, "y": 190 }
       }
+    },
+    "android": {
+      "minSdkVersion": 29,
+      "versionCode": 400078,
+      "debugApplicationIdSuffix": ".debug"
     }
   },
   "plugins": {

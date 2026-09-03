@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/android-schema.json",
+  "identifier": "android",
+  "description": "Минимальные разрешения Android-клиента FreeTalk",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "dialog:allow-open",
+    "fs:allow-create",
+    "fs:allow-mkdir",
+    "fs:allow-write",
+    "fs:allow-video-write-recursive",
+    "deep-link:default"
+  ]
+}

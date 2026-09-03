@@ -1,0 +1,15 @@
+[package]
+name = "freetalk-secure-session"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+links = "freetalk-secure-session"
+build = "build.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2.10", default-features = false }
+thiserror = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2.5", features = ["build"] }
