@@ -21,6 +21,15 @@ export interface AccountUser {
   registeredAt: string;
 }
 
+export interface AccountSession {
+  id: string;
+  current: boolean;
+  userAgent: string;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+}
+
 interface SessionPayload {
   accessToken: string;
   refreshToken: string;

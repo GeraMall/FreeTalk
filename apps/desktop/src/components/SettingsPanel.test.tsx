@@ -2,11 +2,14 @@
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AccountUser } from '../lib/api-client';
+import { accountClient, type AccountUser } from '../lib/api-client';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const user: AccountUser = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -24,6 +27,27 @@ function renderProfile() {
   const onClose = vi.fn();
   const onSaveProfile = vi.fn().mockResolvedValue(undefined);
   const onSetting = vi.fn();
+  const onVideoSetting = vi.fn();
+  vi.spyOn(accountClient, 'request').mockResolvedValue({
+    sessions: [
+      {
+        id: 'session-current',
+        current: true,
+        userAgent: 'FreeTalk/0.4 Windows NT 10.0',
+        createdAt: '2026-08-26T00:00:00.000Z',
+        lastActiveAt: '2026-09-03T10:00:00.000Z',
+        expiresAt: '2026-10-03T10:00:00.000Z',
+      },
+      {
+        id: 'session-mac',
+        current: false,
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)',
+        createdAt: '2026-08-30T00:00:00.000Z',
+        lastActiveAt: '2026-09-02T10:00:00.000Z',
+        expiresAt: '2026-10-02T10:00:00.000Z',
+      },
+    ],
+  });
   const view = render(
     <SettingsPanel
       initialTab="profile"
@@ -41,7 +65,7 @@ function renderProfile() {
       onOutput={vi.fn()}
       onCamera={vi.fn()}
       onSetting={onSetting}
-      onVideoSetting={vi.fn()}
+      onVideoSetting={onVideoSetting}
       onKey={vi.fn()}
       onReset={vi.fn()}
       onCheckUpdate={vi.fn()}
@@ -53,7 +77,7 @@ function renderProfile() {
       onChangePassword={vi.fn().mockResolvedValue(undefined)}
     />,
   );
-  return { ...view, onClose, onSaveProfile, onSetting };
+  return { ...view, onClose, onSaveProfile, onSetting, onVideoSetting };
 }
 
 describe('SettingsPanel profile actions', () => {
@@ -109,5 +133,26 @@ describe('SettingsPanel profile actions', () => {
     expect(onSetting).toHaveBeenCalledWith({ recordingAddTimestamp: true }, false);
     expect(onSetting).toHaveBeenCalledWith({ recordingIncludeSharedVideo: false }, false);
     expect(queryByText(/рядом/i)).toBeNull();
+  });
+
+  it('shows active account devices with the current session marked', async () => {
+    const { findByText, getByText } = renderProfile();
+
+    expect(await findByText('2 устройства')).toBeTruthy();
+    fireEvent.click(getByText('Подключённые устройства'));
+    expect(getByText('FreeTalk · Windows')).toBeTruthy();
+    expect(getByText('Это устройство')).toBeTruthy();
+    expect(getByText('FreeTalk Web · macOS')).toBeTruthy();
+  });
+
+  it('combines video, backgrounds and independently controlled event sounds', () => {
+    const { getByRole, getByText, onVideoSetting } = renderProfile();
+
+    fireEvent.click(getByRole('button', { name: 'Видео и звуки' }));
+    expect(getByRole('heading', { name: 'Видео и звуки' })).toBeTruthy();
+    expect(getByText('Фон видео')).toBeTruthy();
+    expect(getByRole('button', { name: 'Размытие' })).toBeTruthy();
+    fireEvent.click(getByRole('switch', { name: 'Участник подключился' }));
+    expect(onVideoSetting).toHaveBeenCalledWith({ participantJoinedSound: false });
   });
 });

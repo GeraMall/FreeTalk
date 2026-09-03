@@ -35,6 +35,9 @@ export interface LocalSettings extends VideoPreferences {
   cameraBackgroundMode: 'none' | 'blur' | 'custom';
   cameraBackgroundDataUrl: string;
   cameraPreviewAlways: boolean;
+  participantJoinedSound: boolean;
+  participantDisconnectedSound: boolean;
+  recordingStartSound: boolean;
 }
 
 const KEY = 'freetalk.settings.v1';
@@ -71,6 +74,9 @@ const defaults: LocalSettings = {
   cameraBackgroundMode: 'none',
   cameraBackgroundDataUrl: '',
   cameraPreviewAlways: true,
+  participantJoinedSound: true,
+  participantDisconnectedSound: true,
+  recordingStartSound: true,
 };
 
 function isMacOS() {
@@ -138,6 +144,14 @@ export function loadSettings(): LocalSettings {
         typeof value.cameraBackgroundDataUrl === 'string' ? value.cameraBackgroundDataUrl : '',
       cameraPreviewAlways:
         typeof value.cameraPreviewAlways === 'boolean' ? value.cameraPreviewAlways : true,
+      participantJoinedSound:
+        typeof value.participantJoinedSound === 'boolean' ? value.participantJoinedSound : true,
+      participantDisconnectedSound:
+        typeof value.participantDisconnectedSound === 'boolean'
+          ? value.participantDisconnectedSound
+          : true,
+      recordingStartSound:
+        typeof value.recordingStartSound === 'boolean' ? value.recordingStartSound : true,
     };
     if (migrateMacScreenAudio) {
       localStorage.setItem(KEY, JSON.stringify(settings));

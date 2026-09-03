@@ -596,7 +596,8 @@ export function App() {
           message.participant,
         ]);
         peers.current?.ensure(message.participant.id);
-        if (shouldNotify) void notificationSounds.current.playJoined();
+        if (shouldNotify && settings.participantJoinedSound)
+          void notificationSounds.current.playJoined();
         return;
       }
       if (message.type === 'participant-updated') {
@@ -632,7 +633,8 @@ export function App() {
             ? 'Запись экрана началась и сохраняется локально'
             : `${message.participantName} начал(а) запись экрана`,
         );
-        if (message.participantId !== selfId.current) void playRecordingStartNotification(settings);
+        if (message.participantId !== selfId.current && settings.recordingStartSound)
+          void playRecordingStartNotification(settings);
         return;
       }
       if (message.type === 'participant-left') {
@@ -650,7 +652,8 @@ export function App() {
           delete next[message.participantId];
           return next;
         });
-        if (shouldNotify) void notificationSounds.current.playDisconnected();
+        if (shouldNotify && settings.participantDisconnectedSound)
+          void notificationSounds.current.playDisconnected();
         return;
       }
       if (message.type === 'participants') {
@@ -897,7 +900,7 @@ export function App() {
         updateSettings({ recordingDirectory: destination.directory });
       }
       setRecordingBannerMessage('Запись экрана началась и сохраняется локально');
-      await playRecordingStartNotification(settings);
+      if (settings.recordingStartSound) await playRecordingStartNotification(settings);
       recordingCompatibilityErrorUntil.current = Date.now() + 5_000;
       signaling.current?.send({ type: 'recording-started' });
     } catch (caught) {

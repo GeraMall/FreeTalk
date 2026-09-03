@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AudioLines,
+  Ban,
+  Camera,
+  ChevronDown,
   CircleDot,
   Download,
   FolderOpen,
   Info,
   ImagePlus,
+  Laptop,
   MessageCircle,
   Mic2,
   MonitorSpeaker,
   RefreshCw,
   RotateCcw,
   Save,
+  Sparkles,
   Trash2,
   UserRound,
   Video,
@@ -26,7 +31,14 @@ import {
 } from '../lib/profile';
 import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
 import type { UpdateStatus } from '../lib/updater';
-import type { AccountUser } from '../lib/api-client';
+import { accountClient, type AccountSession, type AccountUser } from '../lib/api-client';
+import {
+  createCameraEffectCapture,
+  imageFileToCameraBackground,
+  type CameraEffectCapture,
+} from '../lib/camera-background';
+import { cameraConstraints } from '../lib/video-manager';
+import recordingStartSoundUrl from '../assets/recording-start.mp3';
 import {
   chooseRecordingDirectory,
   defaultRecordingDirectory,
@@ -204,7 +216,7 @@ export function SettingsPanel({
             <TabButton
               active={tab === 'video'}
               icon={<Video />}
-              label="Видео"
+              label="Видео и звуки"
               onClick={() => setTab('video')}
             />
             <TabButton
@@ -246,7 +258,7 @@ export function SettingsPanel({
                   : tab === 'profile'
                     ? 'ПРОФИЛЬ'
                     : tab === 'video'
-                      ? 'ВИДЕО'
+                      ? 'ВИДЕО И ЗВУКИ'
                       : tab === 'devices'
                         ? 'УСТРОЙСТВА'
                         : tab === 'recording'
@@ -261,7 +273,7 @@ export function SettingsPanel({
                   : tab === 'profile'
                     ? 'Ваш профиль'
                     : tab === 'video'
-                      ? 'Камера и демонстрация'
+                      ? 'Видео и звуки'
                       : tab === 'devices'
                         ? 'Аудиоустройства'
                         : tab === 'recording'
@@ -361,6 +373,31 @@ export function SettingsPanel({
   );
 }
 
+function deviceCountWord(count: number) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'устройств';
+  if (last === 1) return 'устройство';
+  if (last >= 2 && last <= 4) return 'устройства';
+  return 'устройств';
+}
+
+function sessionDeviceName(userAgent: string) {
+  const platform = /Windows/i.test(userAgent)
+    ? 'Windows'
+    : /Macintosh|Mac OS/i.test(userAgent)
+      ? 'macOS'
+      : /Android/i.test(userAgent)
+        ? 'Android'
+        : /iPhone|iPad/i.test(userAgent)
+          ? 'iPhone или iPad'
+          : /Linux/i.test(userAgent)
+            ? 'Linux'
+            : 'Неизвестное устройство';
+  const client = /FreeTalk/i.test(userAgent) ? 'FreeTalk' : 'FreeTalk Web';
+  return `${client} · ${platform}`;
+}
+
 function ProfileTab({
   settings,
   accountUser,
@@ -400,6 +437,9 @@ function ProfileTab({
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [sessions, setSessions] = useState<AccountSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState(false);
   const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
   const usernameValid = isValidUsername(draftUsername);
   const changed =
@@ -423,6 +463,30 @@ function ProfileTab({
     settings.avatarDataUrl,
     settings.displayName,
   ]);
+
+  useEffect(() => {
+    if (!accountUser) {
+      setSessionsLoading(false);
+      return;
+    }
+    let active = true;
+    setSessionsLoading(true);
+    setSessionsError(false);
+    void accountClient
+      .request<{ sessions: AccountSession[] }>('/v1/me/sessions')
+      .then((result) => {
+        if (active) setSessions(result.sessions);
+      })
+      .catch(() => {
+        if (active) setSessionsError(true);
+      })
+      .finally(() => {
+        if (active) setSessionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountUser]);
 
   const save = async () => {
     const name = draftName.trim();
@@ -620,6 +684,48 @@ function ProfileTab({
             </span>
             <small>Ник и аватар вместе можно сохранять не более пяти раз за пять часов.</small>
           </div>
+          <details className="connected-devices">
+            <summary>
+              <span className="connected-devices-icon">
+                <Laptop />
+              </span>
+              <span>
+                <strong>Подключённые устройства</strong>
+                <small>
+                  {sessionsLoading
+                    ? 'Проверяем активные сеансы…'
+                    : sessionsError
+                      ? 'Не удалось получить список'
+                      : `${sessions.length} ${deviceCountWord(sessions.length)}`}
+                </small>
+              </span>
+              {!sessionsLoading && !sessionsError && <b>{sessions.length}</b>}
+              <ChevronDown className="connected-devices-chevron" />
+            </summary>
+            <div className="connected-device-list">
+              {sessionsError ? (
+                <p>Не удалось загрузить информацию об устройствах.</p>
+              ) : sessions.length === 0 && !sessionsLoading ? (
+                <p>Активных устройств нет.</p>
+              ) : (
+                sessions.map((session) => (
+                  <article key={session.id}>
+                    <Laptop />
+                    <span>
+                      <strong>{sessionDeviceName(session.userAgent)}</strong>
+                      <small>
+                        Активность: {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
+                      </small>
+                      <small>
+                        Подключено: {new Date(session.createdAt).toLocaleDateString('ru-RU')}
+                      </small>
+                    </span>
+                    {session.current && <em>Это устройство</em>}
+                  </article>
+                ))
+              )}
+            </div>
+          </details>
           {error && <small className="inline-error">{error}</small>}
           {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
           <div className="account-actions">
@@ -734,21 +840,45 @@ function VideoTab({
       )}
       <section className="settings-section video-settings-section">
         <h3>Камера</h3>
-        <label className="field-label">
-          Устройство камеры
-          <select
-            value={settings.cameraDeviceId}
-            onChange={(event) => onCamera(event.target.value)}
-          >
-            <option value="">Системная камера по умолчанию</option>
-            {cameras.map((device, index) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label || `Камера ${index + 1}`}
-              </option>
-            ))}
-          </select>
-          <small>Если камера уже включена, устройство переключится без выхода из комнаты.</small>
-        </label>
+        <CameraSettingsEditor
+          settings={settings}
+          cameras={cameras}
+          onCamera={onCamera}
+          onVideoSetting={onVideoSetting}
+        />
+      </section>
+
+      <section className="settings-section video-settings-section sound-settings-section">
+        <div className="section-title-row">
+          <div>
+            <h3>Звуки событий</h3>
+            <p className="settings-section-description">
+              Каждый звук можно отключить отдельно и предварительно прослушать.
+            </p>
+          </div>
+        </div>
+        <div className="sound-setting-list">
+          <SoundSetting
+            label="Участник подключился"
+            checked={settings.participantJoinedSound}
+            onChange={(value) => onVideoSetting({ participantJoinedSound: value })}
+            onPreview={() => void playSettingsSound('/sounds/participant-joined.mp3', settings)}
+          />
+          <SoundSetting
+            label="Участник отключился"
+            checked={settings.participantDisconnectedSound}
+            onChange={(value) => onVideoSetting({ participantDisconnectedSound: value })}
+            onPreview={() =>
+              void playSettingsSound('/sounds/participant-disconnected.mp3', settings)
+            }
+          />
+          <SoundSetting
+            label="Начало записи"
+            checked={settings.recordingStartSound}
+            onChange={(value) => onVideoSetting({ recordingStartSound: value })}
+            onPreview={() => void playSettingsSound(recordingStartSoundUrl, settings)}
+          />
+        </div>
       </section>
 
       <section className="settings-section video-settings-section">
@@ -836,6 +966,234 @@ function VideoTab({
       </section>
     </fieldset>
   );
+}
+
+function CameraSettingsEditor({
+  settings,
+  cameras,
+  onCamera,
+  onVideoSetting,
+}: {
+  settings: LocalSettings;
+  cameras: MediaDeviceInfo[];
+  onCamera(value: string): void;
+  onVideoSetting(patch: Partial<LocalSettings>): void;
+}) {
+  const [previewing, setPreviewing] = useState(false);
+  const [previewStream, setPreviewStream] = useState<MediaStream>();
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const captureRef = useRef<CameraEffectCapture | undefined>(undefined);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!previewing) return;
+    let active = true;
+    let capture: CameraEffectCapture | undefined;
+    setPreviewBusy(true);
+    setPreviewError('');
+    setPreviewStream(undefined);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setPreviewError('Предпросмотр камеры недоступен в этой среде.');
+      setPreviewBusy(false);
+      return;
+    }
+    void navigator.mediaDevices
+      .getUserMedia({ audio: false, video: cameraConstraints(settings.cameraDeviceId) })
+      .then((source) =>
+        createCameraEffectCapture(source, {
+          mode: settings.cameraBackgroundMode,
+          dataUrl: settings.cameraBackgroundDataUrl,
+        }),
+      )
+      .then((nextCapture) => {
+        capture = nextCapture;
+        if (!active) return nextCapture.dispose();
+        captureRef.current = nextCapture;
+        setPreviewStream(nextCapture.stream);
+      })
+      .catch((caught) => {
+        if (active)
+          setPreviewError(caught instanceof Error ? caught.message : 'Не удалось открыть камеру.');
+      })
+      .finally(() => {
+        if (active) setPreviewBusy(false);
+      });
+    return () => {
+      active = false;
+      if (captureRef.current === capture) captureRef.current = undefined;
+      capture?.dispose();
+    };
+  }, [
+    previewing,
+    settings.cameraBackgroundDataUrl,
+    settings.cameraBackgroundMode,
+    settings.cameraDeviceId,
+  ]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = previewStream ?? null;
+    if (previewStream) void video.play().catch(() => undefined);
+    return () => {
+      video.srcObject = null;
+    };
+  }, [previewStream]);
+
+  const chooseBackground = async (file?: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await imageFileToCameraBackground(file);
+      onVideoSetting({ cameraBackgroundDataUrl: dataUrl, cameraBackgroundMode: 'custom' });
+    } catch (caught) {
+      setPreviewError(
+        caught instanceof Error ? caught.message : 'Не удалось обработать изображение.',
+      );
+    }
+  };
+
+  return (
+    <div className="settings-camera-editor">
+      <div className={`settings-camera-preview${previewing ? ' active' : ''}`}>
+        {previewing && <video ref={videoRef} muted playsInline />}
+        {!previewing && (
+          <button type="button" className="primary" onClick={() => setPreviewing(true)}>
+            <Camera /> Проверить видео
+          </button>
+        )}
+        {previewBusy && <span>Подготавливаем камеру…</span>}
+        {previewError && <span className="camera-preview-error">{previewError}</span>}
+        {previewing && (
+          <button
+            type="button"
+            className="settings-camera-preview-stop"
+            onClick={() => setPreviewing(false)}
+          >
+            Остановить предпросмотр
+          </button>
+        )}
+      </div>
+      <Toggle
+        label="Предпросмотр видео (всегда)"
+        description="Показывать окно подготовки каждый раз перед включением камеры."
+        checked={settings.cameraPreviewAlways}
+        onChange={(value) => onVideoSetting({ cameraPreviewAlways: value })}
+      />
+      <label className="field-label">
+        Камера
+        <select value={settings.cameraDeviceId} onChange={(event) => onCamera(event.target.value)}>
+          <option value="">Системная камера</option>
+          {cameras.map((device, index) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label || `Камера ${index + 1}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="settings-camera-backgrounds">
+        <strong>Фон видео</strong>
+        <div>
+          <button
+            type="button"
+            className={settings.cameraBackgroundMode === 'none' ? 'selected' : ''}
+            onClick={() => onVideoSetting({ cameraBackgroundMode: 'none' })}
+          >
+            <Ban />
+            <span>Пусто</span>
+          </button>
+          <button
+            type="button"
+            className={`blur${settings.cameraBackgroundMode === 'blur' ? ' selected' : ''}`}
+            onClick={() => onVideoSetting({ cameraBackgroundMode: 'blur' })}
+          >
+            <Sparkles />
+            <span>Размытие</span>
+          </button>
+          <button
+            type="button"
+            className={`custom${settings.cameraBackgroundMode === 'custom' ? ' selected' : ''}`}
+            style={
+              settings.cameraBackgroundDataUrl
+                ? { backgroundImage: `url(${settings.cameraBackgroundDataUrl})` }
+                : undefined
+            }
+            onClick={() =>
+              settings.cameraBackgroundDataUrl
+                ? onVideoSetting({ cameraBackgroundMode: 'custom' })
+                : fileRef.current?.click()
+            }
+          >
+            <ImagePlus />
+            <span>Свой фон</span>
+          </button>
+        </div>
+        <button
+          type="button"
+          className="secondary compact"
+          onClick={() => fileRef.current?.click()}
+        >
+          <ImagePlus />{' '}
+          {settings.cameraBackgroundDataUrl ? 'Заменить свой фон' : 'Выбрать свой фон'}
+        </button>
+        <input
+          ref={fileRef}
+          hidden
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.currentTarget.value = '';
+            void chooseBackground(file);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SoundSetting({
+  label,
+  checked,
+  onChange,
+  onPreview,
+}: {
+  label: string;
+  checked: boolean;
+  onChange(value: boolean): void;
+  onPreview(): void;
+}) {
+  return (
+    <div className="sound-setting-row">
+      <span>
+        <strong>{label}</strong>
+        <button type="button" onClick={onPreview}>
+          Прослушать звук
+        </button>
+      </span>
+      <label className="toggle-control">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label={label}
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <i />
+      </label>
+    </div>
+  );
+}
+
+async function playSettingsSound(url: string, settings: LocalSettings) {
+  const audio = new Audio(url);
+  audio.volume = settings.outputVolume;
+  if (settings.outputDeviceId && 'setSinkId' in audio)
+    await (audio as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
+      .setSinkId(settings.outputDeviceId)
+      .catch(() => undefined);
+  await audio.play().catch(() => undefined);
 }
 
 function AudioTab({

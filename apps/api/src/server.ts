@@ -477,6 +477,34 @@ app.get('/v1/me', async (request, reply) => {
   return user ? { user: publicUser(user) } : undefined;
 });
 
+app.get('/v1/me/sessions', async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const result = await db.query<{
+    id: string;
+    user_agent: string | null;
+    created_at: Date;
+    last_used_at: Date;
+    refresh_expires_at: Date;
+  }>(
+    `SELECT id,user_agent,created_at,last_used_at,refresh_expires_at
+     FROM sessions
+     WHERE user_id=$1 AND revoked_at IS NULL AND refresh_expires_at>now()
+     ORDER BY (id=$2) DESC,last_used_at DESC`,
+    [user.id, user.sessionId],
+  );
+  return {
+    sessions: result.rows.map((session) => ({
+      id: session.id,
+      current: session.id === user.sessionId,
+      userAgent: session.user_agent ?? '',
+      createdAt: session.created_at.toISOString(),
+      lastActiveAt: session.last_used_at.toISOString(),
+      expiresAt: session.refresh_expires_at.toISOString(),
+    })),
+  };
+});
+
 app.patch('/v1/me', async (request, reply) => {
   const user = await requireUser(request, reply);
   if (!user) return;
