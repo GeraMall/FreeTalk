@@ -7,6 +7,8 @@ frontend or a WebView.
 Current native foundation:
 
 - Compose mobile shell and bottom navigation;
+- adaptive launcher icon using the FreeTalk mascot and bundled Geist typography
+  across all Compose text roles (Latin/Cyrillic, weights 100–900, offline);
 - production HTTPS login, registration and email confirmation;
 - Android Keystore-backed refresh-token storage and automatic session restore;
 - real chats, text messages, friends, call history and account-device data;
@@ -19,6 +21,9 @@ Current native foundation:
 
 The native WebRTC media engine, chat realtime transport, image messages, profile editing and
 background call service are the next implementation layer before this client is release-ready.
+
+The bundled Geist variable TTF comes from `google/fonts/ofl/geist/Geist[wght].ttf`.
+Its SIL Open Font License is included in `app/src/main/assets/licenses`.
 
 Build from the repository root using the shared Gradle wrapper:
 

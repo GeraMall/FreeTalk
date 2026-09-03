@@ -128,7 +128,7 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
         restoring = false
     }
 
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = colors, typography = freeTalkTypography) {
         Surface(Modifier.fillMaxSize(), color = colors.background) {
             when {
                 restoring -> LoadingScreen("Восстанавливаем вход…")
