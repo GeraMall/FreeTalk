@@ -7,13 +7,14 @@ frontend or a WebView.
 Current native foundation:
 
 - Compose mobile shell and bottom navigation;
-- production HTTPS login;
-- Android Keystore-backed refresh-token storage;
+- production HTTPS login, registration and email confirmation;
+- Android Keystore-backed refresh-token storage and automatic session restore;
+- real chats, text messages, friends, call history and account-device data;
 - production WSS room creation;
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.
 
-The native WebRTC media engine, complete chats/friends/history screens, registration and
+The native WebRTC media engine, chat realtime transport, image messages, profile editing and
 background call service are the next implementation layer before this client is release-ready.
 
 Build from the repository root using the shared Gradle wrapper:
