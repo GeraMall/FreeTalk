@@ -477,8 +477,10 @@ export function App() {
         remoteScreenAudio.current.closeAll();
         remoteVideoStreams.current.clear();
         setRemoteVideos({});
-        const localStream = audio.current?.getStream();
-        if (!localStream) return;
+        // Android may enter the room before microphone permission is granted.
+        // An empty stream still lets signaling, chat and receive-only WebRTC start;
+        // the microphone track is attached later when the user unmutes.
+        const localStream = audio.current?.getStream() ?? new MediaStream();
         const peerManager = new PeerManager(
           selfId.current,
           currentIceServers.current,
@@ -743,10 +745,17 @@ export function App() {
         setInputLevel,
         processingSettings(settings),
       );
-      const stream = await manager.start(settings.inputDeviceId);
-      void stream;
-      manager.setMuted(false);
-      audio.current = manager;
+      try {
+        await manager.start(settings.inputDeviceId);
+        manager.setMuted(false);
+        audio.current = manager;
+      } catch (microphoneError) {
+        manager.stop();
+        if (telemetryPlatform() !== 'android') throw microphoneError;
+        audio.current = undefined;
+        setMuted(true);
+        setNotice('Комната откроется без микрофона. Разрешите доступ при его включении.');
+      }
       video.current = new VideoManager(
         async (track, source, stream) => {
           await peers.current?.setVideoTrack(track, source, stream);
@@ -828,8 +837,26 @@ export function App() {
     void enterRoomRef.current(false, { room: code });
   }, [accountReady, accountUser, joining, pendingInviteRoom, roomId]);
 
-  const toggleMute = () => {
+  const toggleMute = async () => {
     const next = !muted;
+    if (!next && !audio.current) {
+      setError('');
+      try {
+        const manager = new AudioManager(
+          setLocalSpeaking,
+          setInputLevel,
+          processingSettings(settings),
+        );
+        const stream = await manager.start(settings.inputDeviceId);
+        manager.setMuted(false);
+        audio.current = manager;
+        const track = stream.getAudioTracks()[0];
+        if (track) await peers.current?.replaceAudioTrack(track, stream);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Не удалось включить микрофон');
+        return;
+      }
+    }
     setMuted(next);
     audio.current?.setMuted(next);
     signaling.current?.send({ type: 'mute-changed', muted: next });

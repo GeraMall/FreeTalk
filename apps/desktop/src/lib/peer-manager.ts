@@ -460,10 +460,17 @@ export class PeerManager {
       this.negotiateWhenStable(message.from, context);
   }
 
-  async replaceAudioTrack(track: MediaStreamTrack) {
+  async replaceAudioTrack(track: MediaStreamTrack, stream?: MediaStream) {
     await Promise.all(
       [...this.peers.values()].map(async (context) => {
-        if (context.voiceSender) await context.voiceSender.replaceTrack(track);
+        if (context.voiceSender) {
+          await context.voiceSender.replaceTrack(track);
+          return;
+        }
+        context.voiceSender = context.connection.addTrack(
+          track,
+          stream ?? new MediaStream([track]),
+        );
       }),
     );
   }

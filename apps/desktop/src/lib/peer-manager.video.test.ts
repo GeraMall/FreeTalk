@@ -470,6 +470,25 @@ describe('PeerManager video sender lifecycle', () => {
     expect(screenAudioSender.replaceTrack).not.toHaveBeenCalledWith(replacement);
   });
 
+  it('attaches a microphone after joining a room without initial permission', async () => {
+    const manager = new PeerManager(
+      '286d39ef-61af-4aca-84b8-47f78b0f554a',
+      [],
+      new FakeStream([]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('386d39ef-61af-4aca-84b8-47f78b0f554b');
+    const connection = VideoPeerConnection.instances[0]!;
+    const microphone = track('audio', 'late-microphone');
+    const stream = new FakeStream([microphone]) as unknown as MediaStream;
+
+    await manager.replaceAudioTrack(microphone, stream);
+
+    expect(connection.senders).toHaveLength(1);
+    expect(connection.senders[0]!.track).toBe(microphone);
+  });
+
   it('identifies screen audio by its transceiver even before its stream contains video', () => {
     const voice = track('audio', 'voice');
     const onTrack = vi.fn();
