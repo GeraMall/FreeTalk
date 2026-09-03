@@ -111,7 +111,7 @@ jobs:
           test -f "$intel_file.sig"
           jq -n \
             --arg version "$version" \
-            --arg notes "FreeTalk ${version}: улучшения звонков, отдельного окна, записи, видеофонов, чатов и локального кэша изображений." \
+            --arg notes "FreeTalk ${version}: настройки камеры и видеофона, управление звуками событий и список подключённых устройств аккаунта." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg windows_signature "$(cat "$windows_file.sig")" \
             --arg windows_url "$base_url/$(basename "$windows_file")" \
