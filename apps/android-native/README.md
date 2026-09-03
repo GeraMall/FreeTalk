@@ -10,6 +10,8 @@ Current native foundation:
 - production HTTPS login, registration and email confirmation;
 - Android Keystore-backed refresh-token storage and automatic session restore;
 - real chats, text messages, friends, call history and account-device data;
+- shared FreeTalk mobile design system with the production logo, mascot, gradients,
+  navigation, room hero, recent-room cards and cached remote avatars;
 - production WSS room creation;
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.

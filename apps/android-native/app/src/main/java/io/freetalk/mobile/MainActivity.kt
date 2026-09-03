@@ -7,7 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +41,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material.icons.outlined.PeopleOutline
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,9 +60,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -57,7 +74,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import coil.compose.AsyncImage
 import java.security.SecureRandom
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,13 +91,19 @@ class MainActivity : ComponentActivity() {
 }
 
 private val colors = darkColorScheme(
-    primary = Color(0xFF43E1E8), background = Color(0xFF030A15),
-    surface = Color(0xFF071523), surfaceVariant = Color(0xFF0A1C2D),
+    primary = Color(0xFF4EF3F2), background = Color(0xFF010811),
+    surface = Color(0xFF03101E), surfaceVariant = Color(0xFF071827),
     onPrimary = Color(0xFF02101A), onBackground = Color(0xFFF4F8FF), onSurface = Color(0xFFF4F8FF),
 )
 private val muted = Color(0xFF91A4B8)
 private val good = Color(0xFF55EFB7)
 private val danger = Color(0xFFFF8096)
+private val cyanBlueGradient = Brush.linearGradient(
+    listOf(Color(0xFF4EF3F2), Color(0xFF59BEF9), Color(0xFF3D7BFF)),
+)
+private val appBackground = Brush.radialGradient(
+    listOf(Color(0xFF0A3540), Color(0xFF07182B), Color(0xFF010811)), radius = 1350f,
+)
 
 private enum class AuthPage { Login, Register, Verify }
 
@@ -288,27 +315,49 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
 
     Scaffold(
-        containerColor = colors.background,
+        modifier = Modifier.background(appBackground),
+        containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar(containerColor = Color(0xFF061321)) {
+            NavigationBar(containerColor = Color(0xF7061321), tonalElevation = 0.dp) {
                 listOf("Главная", "Чаты", "Друзья", "История").forEachIndexed { index, title ->
                     NavigationBarItem(
                         selected = page == index, onClick = { page = index },
-                        icon = { Text(listOf("⌂", "●", "♙", "◷")[index]) }, label = { Text(title, maxLines = 1) },
+                        icon = {
+                            Icon(
+                                listOf(Icons.Outlined.Home, Icons.Outlined.ChatBubbleOutline, Icons.Outlined.PeopleOutline, Icons.Outlined.History)[index],
+                                contentDescription = title,
+                            )
+                        },
+                        label = { Text(title, maxLines = 1, fontWeight = if (page == index) FontWeight.Bold else FontWeight.Medium) },
+                        colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
+                            selectedIconColor = colors.primary,
+                            selectedTextColor = colors.primary,
+                            indicatorColor = Color(0xFF09242F),
+                            unselectedIconColor = Color(0xFF6E849B),
+                            unselectedTextColor = Color(0xFF6E849B),
+                        ),
                     )
                 }
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AppHeader(user, data?.devices?.size ?: 0, onLogout)
             if (error.isNotBlank()) ErrorCard(error, load)
             when {
                 refreshing && data == null -> LoadingScreen("Загружаем FreeTalk…")
-                page == 0 -> HomePage(user, data, roomId, roomStatus) {
-                    val code = generateRoomCode(); roomStatus = "Создаём комнату…"
-                    signaling.create(code, user, api.accessToken ?: return@HomePage)
-                }
+                page == 0 -> HomePage(
+                    user = user, data = data, roomId = roomId, status = roomStatus,
+                    onCreateRoom = {
+                        val code = generateRoomCode(); roomStatus = "Создаём комнату…"
+                        api.accessToken?.let { signaling.create(code, user, it) }
+                    },
+                    onJoinRoom = { rawCode ->
+                        val code = normalizeRoomCode(rawCode)
+                        roomStatus = "Подключаемся…"
+                        api.accessToken?.let { signaling.join(code, user, it) }
+                    },
+                )
                 page == 1 -> ChatsPage(user, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load)
                 page == 2 -> FriendsPage(data?.friends.orEmpty(), data?.pendingFriends ?: 0, load)
                 else -> HistoryPage(data?.calls.orEmpty(), data?.devices.orEmpty(), cache)
@@ -320,13 +369,26 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
 @Composable
 private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 16.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("◉ FreeTalk", fontSize = 25.sp, fontWeight = FontWeight.Black)
+            Image(
+                painter = painterResource(R.drawable.freetalk_wordmark),
+                contentDescription = "FreeTalk",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.width(142.dp).height(52.dp),
+            )
             Box(
-                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF10354A)).clickable { open = !open },
+                Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF10354A))
+                    .border(1.dp, Color(0x664EF3F2), CircleShape).clickable { open = !open },
                 contentAlignment = Alignment.Center,
-            ) { Text(user.displayName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold) }
+            ) {
+                if (user.avatarUrl != null) {
+                    AsyncImage(
+                        model = user.avatarUrl, contentDescription = user.displayName,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    )
+                } else Text(user.displayName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
+            }
         }
         if (open) {
             Surface(Modifier.fillMaxWidth().padding(top = 12.dp), color = colors.surface, shape = RoundedCornerShape(18.dp)) {
@@ -338,6 +400,7 @@ private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit
                 }
             }
         }
+        HorizontalDivider(color = Color(0xFF102537), modifier = Modifier.padding(top = if (open) 12.dp else 6.dp))
     }
 }
 
@@ -352,33 +415,120 @@ private fun ErrorCard(message: String, retry: () -> Unit) {
 }
 
 @Composable
-private fun HomePage(user: SignedInUser, data: AccountData?, roomId: String?, status: String, onCreateRoom: () -> Unit) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun HomePage(
+    user: SignedInUser,
+    data: AccountData?,
+    roomId: String?,
+    status: String,
+    onCreateRoom: () -> Unit,
+    onJoinRoom: (String) -> Unit,
+) {
+    var roomCode by remember { mutableStateOf("") }
+    val recentCalls = data?.calls.orEmpty().take(4)
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
-            Text("Добрый вечер, ${user.displayName}", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-            Text("Стабильная связь и работа без VPN", color = muted, modifier = Modifier.padding(top = 4.dp, bottom = 20.dp))
-            Button(
-                onClick = onCreateRoom, modifier = Modifier.fillMaxWidth().height(58.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-            ) { Text("Создать комнату", fontWeight = FontWeight.Bold) }
-            if (roomId != null) Text("Комната: $roomId", color = good, modifier = Modifier.padding(top = 12.dp))
-            if (status.isNotBlank()) Text(status, color = muted, modifier = Modifier.padding(top = 5.dp))
-        }
-        item { SectionTitle("Обзор") }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Чаты", data?.chats?.size ?: 0, Modifier.weight(1f))
-                MetricCard("Друзья", data?.friends?.size ?: 0, Modifier.weight(1f))
-                MetricCard("Звонки", data?.calls?.size ?: 0, Modifier.weight(1f))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xEE071D2D), Color(0xED0A1C38), Color(0xEF03101E))))
+                    .border(1.dp, Color(0x55376A8E), RoundedCornerShape(22.dp)),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.freetalk_mascot), contentDescription = null,
+                    modifier = Modifier.align(Alignment.CenterEnd).size(225.dp).graphicsLayer(alpha = 0.12f, rotationZ = -7f),
+                    contentScale = ContentScale.Fit,
+                )
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
+                    Text(
+                        "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!", color = colors.primary,
+                        fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.8.sp,
+                    )
+                    Text(
+                        "Добрый вечер,\n${user.displayName}", fontSize = 35.sp, lineHeight = 37.sp,
+                        fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 24.dp),
+                    )
+                    Text(
+                        "Создайте приватную комнату или войдите по приглашению.",
+                        color = Color(0xFFAEBCCE), fontSize = 16.sp, lineHeight = 23.sp,
+                        modifier = Modifier.fillMaxWidth(0.87f).padding(top = 18.dp, bottom = 24.dp),
+                    )
+                    Box(
+                        Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(13.dp))
+                            .background(cyanBlueGradient).clickable(onClick = onCreateRoom),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.MeetingRoom, null, tint = Color(0xFF031018), modifier = Modifier.size(27.dp))
+                            Text("Создать комнату", color = Color(0xFF031018), fontWeight = FontWeight.Black, fontSize = 19.sp, modifier = Modifier.padding(start = 10.dp))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            roomCode, { roomCode = it }, placeholder = { Text("Код или ссылка комнаты", color = Color(0xFF61758D)) },
+                            singleLine = true, modifier = Modifier.weight(1f).height(58.dp),
+                        )
+                        Box(
+                            Modifier.padding(start = 8.dp).size(58.dp).clip(RoundedCornerShape(13.dp))
+                                .background(Color(0xB9051220)).border(1.dp, Color(0x553D9CAB), RoundedCornerShape(13.dp))
+                                .clickable(enabled = roomCode.isNotBlank()) { onJoinRoom(roomCode) },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.AutoMirrored.Outlined.ArrowForward, "Войти", tint = if (roomCode.isBlank()) muted else colors.primary) }
+                    }
+                    if (roomId != null) Text("Комната: $roomId", color = good, modifier = Modifier.padding(top = 12.dp))
+                    if (status.isNotBlank()) Text(status, color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 5.dp))
+                }
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                Column {
+                    Text("ВАШИ ЗВОНКИ", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
+                    Text("Недавние комнаты", fontSize = 28.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
+                }
+                Text("Последние ${recentCalls.size}", color = muted, fontSize = 13.sp)
+            }
+        }
+        if (recentCalls.isEmpty()) {
+            item { EmptyState("Недавних комнат пока нет", "Создайте первую комнату — она появится здесь") }
+        } else {
+            items(recentCalls, key = { it.id }) { call ->
+                RecentRoomCard(call, onCreateRoom)
+            }
+        }
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 
 @Composable
-private fun MetricCard(label: String, count: Int, modifier: Modifier) {
-    Surface(modifier, color = colors.surface, shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.padding(14.dp)) { Text(count.toString(), fontSize = 23.sp, fontWeight = FontWeight.Bold); Text(label, color = muted, fontSize = 12.sp) }
+private fun RecentRoomCard(call: CallSummary, onCreateAgain: () -> Unit) {
+    val otherNames = call.participants.filter { it.isNotBlank() }
+    val title = when (otherNames.size) {
+        0 -> "Приватная комната"
+        1 -> "Комната с ${otherNames.first()}"
+        else -> "Групповой звонок · ${otherNames.size}"
+    }
+    Surface(
+        Modifier.fillMaxWidth(), color = Color(0xD9030C18), shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x332F6B8D)),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(cyanBlueGradient),
+                    contentAlignment = Alignment.Center,
+                ) { Text(otherNames.firstOrNull()?.take(1)?.uppercase() ?: "☎", color = Color.White, fontWeight = FontWeight.Bold) }
+                Column(Modifier.weight(1f).padding(start = 13.dp)) {
+                    Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 13.sp)
+                }
+            }
+            OutlinedButton(
+                onClick = onCreateAgain, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(46.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x664EF3F2)),
+            ) {
+                Icon(Icons.Outlined.Call, null, modifier = Modifier.size(19.dp))
+                Text("Создать снова", modifier = Modifier.padding(start = 8.dp))
+            }
+        }
     }
 }
 
@@ -395,7 +545,11 @@ private fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: 
         LazyColumn(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (shown.isEmpty()) item { EmptyState("Чатов пока нет", "Новые личные и групповые чаты появятся здесь") }
             items(shown, key = { it.id }) { chat ->
-                ListCard(chat.displayTitle(user.id), chat.lastMessage ?: "Сообщений пока нет", chat.displayTitle(user.id).take(1)) { activeChat(chat) }
+                ListCard(
+                    chat.displayTitle(user.id), chat.lastMessage ?: "Сообщений пока нет",
+                    chat.displayTitle(user.id).take(1),
+                    imageUrl = chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl,
+                ) { activeChat(chat) }
             }
         }
     }
@@ -412,7 +566,10 @@ private fun FriendsPage(friends: List<FriendSummary>, pending: Int, onRefresh: (
             if (friends.isEmpty()) item { EmptyState("Список пуст", "Добавленные друзья появятся здесь") }
             items(friends, key = { it.id }) { friend ->
                 val online = friend.presence != "offline"
-                ListCard(friend.displayName, "@${friend.username} · ${if (online) "В сети" else "Не в сети"}", friend.displayName.take(1), online = online)
+                ListCard(
+                    friend.displayName, "@${friend.username} · ${if (online) "В сети" else "Не в сети"}",
+                    friend.displayName.take(1), imageUrl = friend.avatarUrl, online = online,
+                )
             }
         }
     }
@@ -506,11 +663,26 @@ private fun ChatScreen(api: FreeTalkApi, user: SignedInUser, chat: ChatSummary, 
 }
 
 @Composable
-private fun ListCard(title: String, subtitle: String, initial: String, online: Boolean = false, onClick: (() -> Unit)? = null) {
+private fun ListCard(
+    title: String,
+    subtitle: String,
+    initial: String,
+    imageUrl: String? = null,
+    online: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
     val modifier = if (onClick != null) Modifier.fillMaxWidth().clickable(onClick = onClick) else Modifier.fillMaxWidth()
     Surface(modifier, color = colors.surface, shape = RoundedCornerShape(16.dp)) {
         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF123046)), contentAlignment = Alignment.Center) { Text(initial, color = colors.primary, fontWeight = FontWeight.Bold) }
+            Box(
+                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF123046))
+                    .border(1.dp, Color(0x553D9CAB), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (imageUrl != null) {
+                    AsyncImage(model = imageUrl, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else Text(initial, color = colors.primary, fontWeight = FontWeight.Bold)
+            }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(subtitle, color = if (online) good else muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -537,6 +709,13 @@ private fun generateRoomCode(): String {
     val random = SecureRandom()
     return buildString { repeat(12) { append(alphabet[random.nextInt(alphabet.length)]) } }
 }
+
+private fun normalizeRoomCode(value: String): String = value.trim()
+    .substringBefore('?').substringBefore('#').trimEnd('/').substringAfterLast('/').uppercase()
+
+private fun formatCallDate(value: String): String = runCatching {
+    OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern("dd MMM", Locale.forLanguageTag("ru"))).trimEnd('.')
+}.getOrDefault("Недавно")
 
 private fun formatDuration(seconds: Int): String = if (seconds < 60) "$seconds сек" else "${seconds / 60} мин"
 private fun formatBytes(bytes: Long): String = if (bytes < 1024 * 1024) "${bytes / 1024} КБ" else "%.1f МБ".format(bytes / 1024.0 / 1024.0)

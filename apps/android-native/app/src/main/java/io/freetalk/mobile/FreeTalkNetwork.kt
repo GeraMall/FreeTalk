@@ -220,14 +220,17 @@ class RoomSignaling(private val onEvent: (RoomEvent) -> Unit) {
     private val client = OkHttpClient.Builder().pingInterval(10, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
     private var socket: WebSocket? = null
 
-    fun create(roomId: String, user: SignedInUser, accessToken: String) {
+    fun create(roomId: String, user: SignedInUser, accessToken: String) = connect("create-room", roomId, user, accessToken)
+    fun join(roomId: String, user: SignedInUser, accessToken: String) = connect("join-room", roomId, user, accessToken)
+
+    private fun connect(action: String, roomId: String, user: SignedInUser, accessToken: String) {
         close()
         val request = Request.Builder().url("wss://freetalk.191-44-38-60.sslip.io/ws?room=$roomId&cid=${UUID.randomUUID()}").build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 onEvent(RoomEvent.Connected)
                 webSocket.send(
-                    JSONObject().put("type", "create-room").put("roomId", roomId)
+                    JSONObject().put("type", action).put("roomId", roomId)
                         .put("clientId", UUID.randomUUID().toString()).put("sessionId", UUID.randomUUID().toString())
                         .put("authToken", accessToken).put("name", user.displayName).toString(),
                 )
