@@ -112,7 +112,7 @@ private val appBackground = Brush.radialGradient(
     listOf(Color(0xFF0A3540), Color(0xFF07182B), Color(0xFF010811)), radius = 1350f,
 )
 
-private enum class AuthPage { Login, Register, Verify }
+internal enum class AuthPage { Login, Register, Verify }
 
 @Composable
 private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
@@ -131,8 +131,8 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
     MaterialTheme(colorScheme = colors, typography = freeTalkTypography) {
         Surface(Modifier.fillMaxSize(), color = colors.background) {
             when {
-                restoring -> LoadingScreen("Восстанавливаем вход…")
-                user == null -> AuthScreen(
+                restoring -> BrandedStartupScreen()
+                user == null -> BrandedAuthScreen(
                     page = authPage,
                     status = status,
                     verificationEmail = verificationEmail,
@@ -196,90 +196,6 @@ private fun LoadingScreen(label: String) {
     }
 }
 
-@Composable
-private fun AuthScreen(
-    page: AuthPage,
-    status: String,
-    verificationEmail: String,
-    onPage: (AuthPage) -> Unit,
-    onLogin: (String, String) -> Unit,
-    onRegister: (String, String, String, String) -> Unit,
-    onVerify: (String, String) -> Unit,
-    onResend: (String) -> Unit,
-) {
-    var login by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var email by remember(verificationEmail) { mutableStateOf(verificationEmail) }
-    var username by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    LazyColumn(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        item {
-            Text("◉ FreeTalk", fontSize = 38.sp, fontWeight = FontWeight.Black)
-            Text("Нативная Android Beta", color = colors.primary, modifier = Modifier.padding(top = 4.dp, bottom = 26.dp))
-            when (page) {
-                AuthPage.Login -> {
-                    AuthField(login, { login = it }, "Почта или @username")
-                    AuthField(password, { password = it }, "Пароль", password = true)
-                    PrimaryAction("Войти", login.isNotBlank() && password.isNotBlank()) { onLogin(login, password) }
-                    TextButton(onClick = { onPage(AuthPage.Register) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Создать аккаунт")
-                    }
-                }
-                AuthPage.Register -> {
-                    Text("Новый аккаунт", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
-                    AuthField(email, { email = it }, "Почта", KeyboardType.Email)
-                    AuthField(username, { username = it }, "Имя пользователя")
-                    AuthField(name, { name = it }, "Отображаемое имя")
-                    AuthField(password, { password = it }, "Пароль", password = true)
-                    PrimaryAction("Продолжить", email.isNotBlank() && username.length >= 3 && name.isNotBlank() && password.length >= 8) {
-                        onRegister(email, username, name, password)
-                    }
-                    TextButton(onClick = { onPage(AuthPage.Login) }, modifier = Modifier.fillMaxWidth()) { Text("Уже есть аккаунт") }
-                }
-                AuthPage.Verify -> {
-                    Text("Подтвердите почту", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text("Введите шестизначный код из письма", color = muted, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp))
-                    AuthField(email, { email = it }, "Почта", KeyboardType.Email)
-                    AuthField(code, { code = it.filter(Char::isDigit).take(6) }, "Код", KeyboardType.Number)
-                    PrimaryAction("Подтвердить", email.isNotBlank() && code.length == 6) { onVerify(email, code) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(onClick = { onPage(AuthPage.Login) }) { Text("Назад") }
-                        TextButton(onClick = { onResend(email) }, enabled = email.isNotBlank()) { Text("Отправить ещё раз") }
-                    }
-                }
-            }
-            if (status.isNotBlank()) Text(status, modifier = Modifier.padding(top = 12.dp), color = if (status.contains("отправ", true)) good else danger)
-        }
-    }
-}
-
-@Composable
-private fun AuthField(
-    value: String,
-    onValue: (String) -> Unit,
-    label: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    password: Boolean = false,
-) {
-    OutlinedTextField(
-        value, onValue, label = { Text(label) }, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        singleLine = true,
-    )
-}
-
-@Composable
-private fun PrimaryAction(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(54.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-    ) { Text(label, fontWeight = FontWeight.Bold) }
-}
 
 @Composable
 private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser, onLogout: () -> Unit) {
