@@ -33,7 +33,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,14 +54,25 @@ internal fun NativeChatScreen(api: FreeTalkApi, cache: MediaCache, user: SignedI
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(chat.id, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
+            api.chatEvents.onStart { emit(org.json.JSONObject().put("type", "ready")) }.collect { event ->
+                if (event.optString("type") == "disconnected") {
+                    error = "Соединение потеряно. Переподключаемся…"
+                    return@collect
+                }
+                if (event.optString("type") != "ready" && event.optString("chatId") != chat.id) return@collect
                 mutex.withLock {
+                    if (event.optString("type") == "message-created" && !loading) {
+                        event.optJSONObject("message")?.let {
+                            messages = (messages + api.parseMessage(it)).distinctBy { message -> message.id }
+                            error = ""
+                        }
+                        return@withLock
+                    }
                     try { messages = api.loadMessages(chat.id); error = "" }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) { error = e.message ?: "Не удалось загрузить сообщения" }
                     finally { loading = false }
                 }
-                delay(5000)
             }
         }
     }

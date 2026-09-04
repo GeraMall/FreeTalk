@@ -81,6 +81,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
 import java.security.SecureRandom
 import java.time.OffsetDateTime
@@ -231,6 +238,26 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
         }
     }
     LaunchedEffect(user.id) { load() }
+    val notificationContext = LocalContext.current
+    val notifications = remember(user.id) { ChatNotifications(notificationContext) }
+    val latestChat by rememberUpdatedState(activeChat?.id)
+    val latestLoad by rememberUpdatedState(load)
+    val accountLifecycle = LocalLifecycleOwner.current.lifecycle
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(user.id) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+    LaunchedEffect(user.id, accountLifecycle) {
+        accountLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            chatLiveEvents(api).collect { event ->
+                api.chatEvents.emit(event)
+                when (event.optString("type")) {
+                    "message-created" -> { notifications.show(event, user.id, latestChat); latestLoad() }
+                    "ready", "chat-updated", "history-cleared" -> latestLoad()
+                }
+            }
+        }
+    }
 
     if (roomId != null) {
         RoomScreen(

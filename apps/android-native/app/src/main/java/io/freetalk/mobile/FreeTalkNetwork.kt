@@ -66,6 +66,11 @@ data class AccountData(
 class ApiException(val code: String, message: String, val status: Int) : IllegalStateException(message)
 
 class FreeTalkApi(private val sessions: SessionStore) {
+    val chatEvents = kotlinx.coroutines.flow.MutableSharedFlow<JSONObject>(extraBufferCapacity = 64)
+    suspend fun realtimeToken(): String {
+        authorizedJson("/v1/me")
+        return accessToken ?: error("Требуется вход")
+    }
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     private val refreshMutex = Mutex()
@@ -249,7 +254,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
         },
     )
 
-    private fun parseMessage(json: JSONObject) = ChatMessage(
+    internal fun parseMessage(json: JSONObject) = ChatMessage(
         json.optString("id"), json.optString("body"), json.nullableString("sender_id"),
         json.optString("display_name", json.optString("displayName", "FreeTalk")),
         json.optString("created_at", json.optString("createdAt")),

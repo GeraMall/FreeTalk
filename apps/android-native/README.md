@@ -13,7 +13,8 @@ Current native foundation:
 - Android Keystore-backed refresh-token storage and automatic session restore;
 - real chats, text messages, friends, call history and account-device data;
 - styled native conversation bubbles with avatars, timestamps, selectable text and
-  automatic foreground refresh every five seconds;
+  account-wide authenticated WebSocket delivery (no five-second polling),
+  reconnect backoff and snapshot recovery after reconnection;
 - authenticated image thumbnails and full-size viewing on tap, with account-isolated
   disk caching, expiry checks, two concurrent downloads and LRU eviction;
 - shared FreeTalk mobile design system with the production logo, mascot, gradients,
@@ -23,13 +24,16 @@ Current native foundation:
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.
 
-The native WebRTC media engine, chat realtime transport, image uploading, profile editing and
+The native WebRTC media engine, image uploading, profile editing and
 background call service are the next implementation layer before this client is release-ready.
 
-System message notifications are not implemented: the manifest permission alone does
-not deliver notifications. Refresh runs only while the conversation is in the foreground.
+Alpha.8 displays Android message notifications while the app is visible, excluding
+the open conversation and self-sent messages. Android 13+ requests notification permission.
+The account socket runs only while the app is STARTED; background/closed-app push is
+NOT connected. Firebase project/client configuration and server delivery credentials
+are still required. Never put server credentials into the APK or repository.
 Downloaded chat photos use the 384 MB cache, clearable under History → Storage.
-Alpha.7 is a debug build; on-device visual and network testing is still required.
+Alpha.8 is a debug build; on-device visual and network testing is still required.
 
 The bundled Geist variable TTF comes from `google/fonts/ofl/geist/Geist[wght].ttf`.
 Its SIL Open Font License is included in `app/src/main/assets/licenses`.
