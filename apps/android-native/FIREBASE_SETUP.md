@@ -14,7 +14,7 @@ Implemented:
 - Worker rechecks session, chat membership, expiry and blocking before sending;
   invalid tokens are removed, transient failures retry, queue lifetime is one hour.
 
-Deployment still required:
+Deployment procedure (production completed 2026-09-04; see docs/ANDROID_PUSH_DEPLOY_2026-09-04.md):
 1. Apply API migration 010_android_push.sql via the existing migration command.
 2. Configure Firebase Admin credentials on the API server using workload identity
    or a dedicated service-account file outside the repository and container image.
@@ -27,7 +27,8 @@ Deployment still required:
    locked screen, process recreation, logout and account switch. Verify no duplicates.
 
 The client configuration alone does not activate production message delivery.
-No production credentials were generated or deployed by this change.
+Production credentials were supplied separately by the user and deployed through
+systemd LoadCredential on 2026-09-04. They are not in this repository.
 Google Play services are needed for this FCM integration. Android force-stop,
 denied notification permission and device/network restrictions can prevent delivery.
 Notification tap currently opens the application, not a specific conversation.

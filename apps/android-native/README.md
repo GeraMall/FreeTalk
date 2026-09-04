@@ -29,8 +29,9 @@ background call service are the next implementation layer before this client is 
 
 Alpha.9 integrates Firebase Messaging for project trlka-b5d34, alongside foreground
 WebSocket notifications. Android 13+ requests notification permission.
-Production background push is pending server credentials and deployment; see
-FIREBASE_SETUP.md for activation steps, limitations and the device test checklist.
+Production server push was enabled on 2026-09-04 and passed an FCM dry-run.
+Real-phone delivery remains to be verified; see FIREBASE_SETUP.md for limitations
+and the device test checklist.
 Never put server credentials into the APK or repository.
 Downloaded chat photos use the 384 MB cache, clearable under History → Storage.
 Alpha.9 is a debug build; on-device visual and network testing is still required.
