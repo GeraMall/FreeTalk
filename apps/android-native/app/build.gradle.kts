@@ -1,4 +1,5 @@
 plugins {
+    id("com.google.gms.google-services")
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -11,8 +12,8 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.1.0-native-alpha.8"
+        versionCode = 9
+        versionName = "0.1.0-native-alpha.9"
     }
 
     buildTypes {
@@ -35,6 +36,8 @@ android {
 }
 
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:34.2.0"))
+    implementation("com.google.firebase:firebase-messaging")
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)
     androidTestImplementation(composeBom)

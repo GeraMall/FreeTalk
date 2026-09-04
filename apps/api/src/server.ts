@@ -18,6 +18,7 @@ import { db, transaction } from './db.js';
 import { env, publicApiUrl, publicAvatarUrl } from './env.js';
 import { sendPasswordReset, sendVerification } from './mailer.js';
 import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
+import { registerAndroidPush, startAndroidPush } from './android-push.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
@@ -1011,6 +1012,8 @@ app.get('/v1/legal/privacy', async () => ({
 }));
 
 registerSocialRoutes(app, requireUser);
+registerAndroidPush(app, requireUser);
+startAndroidPush(app);
 registerAdminRoutes(app);
 startInfrastructureSampler();
 

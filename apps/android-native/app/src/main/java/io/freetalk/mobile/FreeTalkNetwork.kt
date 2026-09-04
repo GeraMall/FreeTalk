@@ -114,6 +114,10 @@ class FreeTalkApi(private val sessions: SessionStore) {
         clearSession()
     }
 
+    suspend fun registerPushToken(token: String) {
+        authorizedJson("/v1/me/push-token", "POST", JSONObject().put("token", token))
+    }
+
     suspend fun loadAccountData(): AccountData = withContext(Dispatchers.IO) {
         val chatsJson = authorizedJson("/v1/chats").optJSONArray("chats") ?: JSONArray()
         val friendsJson = authorizedJson("/v1/friends")

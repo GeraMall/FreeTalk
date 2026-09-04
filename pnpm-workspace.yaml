@@ -3,8 +3,10 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@firebase/util': false
   argon2: true
   esbuild: true
+  protobufjs: false
   workerd: true
 
 onlyBuiltDependencies:

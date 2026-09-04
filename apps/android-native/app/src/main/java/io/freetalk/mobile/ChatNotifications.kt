@@ -13,13 +13,19 @@ import org.json.JSONObject
 
 internal class ChatNotifications(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
-    private val seen = LinkedHashSet<String>()
+    companion object { private val lock = Any() }
     init { manager.createNotificationChannel(NotificationChannel("messages", "Сообщения", NotificationManager.IMPORTANCE_HIGH)) }
     fun show(event: JSONObject, currentUserId: String, openChatId: String?) {
         val message = event.optJSONObject("message") ?: return
         val id = message.optString("id")
-        if (id.isBlank() || !seen.add(id)) return
-        if (seen.size > 500) seen.remove(seen.first())
+        if (id.isBlank()) return
+        val preferences = context.getSharedPreferences("push_seen", Context.MODE_PRIVATE)
+        synchronized(lock) {
+            val seen = preferences.getStringSet(currentUserId, emptySet()).orEmpty().toMutableSet()
+            if (!seen.add(id)) return
+            if (seen.size > 500) seen.remove(seen.first { it != id })
+            preferences.edit().putStringSet(currentUserId, seen).apply()
+        }
         if (message.optString("sender_id") == currentUserId || event.optString("chatId") == openChatId) return
         if (message.optString("kind") !in listOf("text", "image")) return
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return

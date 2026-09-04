@@ -123,6 +123,7 @@ internal enum class AuthPage { Login, Register, Verify }
 
 @Composable
 private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
+    val appContext = LocalContext.current.applicationContext
     var user by remember { mutableStateOf<SignedInUser?>(null) }
     var restoring by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
@@ -185,6 +186,11 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
                 else -> NativeShell(
                     api = api, cache = cache, user = user!!,
                     onLogout = {
+                        appContext.getSharedPreferences("push", android.content.Context.MODE_PRIVATE).edit().remove("userId").apply()
+                        appContext.getSystemService(android.app.NotificationManager::class.java).cancelAll()
+                        PushRuntime.registration?.cancel()
+                        PushRuntime.api = null
+                        PushRuntime.userId = null
                         scope.launch { api.logout(); user = null; authPage = AuthPage.Login; status = "" }
                     },
                 )
@@ -239,6 +245,17 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
     LaunchedEffect(user.id) { load() }
     val notificationContext = LocalContext.current
+    androidx.compose.runtime.DisposableEffect(user.id) {
+        PushRuntime.api = api
+        PushRuntime.userId = user.id
+        notificationContext.getSharedPreferences("push", android.content.Context.MODE_PRIVATE).edit().putString("userId", user.id).apply()
+        onDispose {
+            PushRuntime.registration?.cancel()
+            PushRuntime.api = null
+            PushRuntime.userId = null
+            PushRuntime.visibleChatId = null
+        }
+    }
     val notifications = remember(user.id) { ChatNotifications(notificationContext) }
     val latestChat by rememberUpdatedState(activeChat?.id)
     val latestLoad by rememberUpdatedState(load)
@@ -249,6 +266,9 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
     LaunchedEffect(user.id, accountLifecycle) {
         accountLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                if (PushRuntime.userId == user.id) PushRuntime.syncToken(notificationContext.applicationContext, token)
+            }
             chatLiveEvents(api).collect { event ->
                 api.chatEvents.emit(event)
                 when (event.optString("type")) {
@@ -257,6 +277,14 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 }
             }
         }
+    }
+    androidx.compose.runtime.DisposableEffect(activeChat?.id, accountLifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            PushRuntime.visibleChatId = if (event == Lifecycle.Event.ON_START || accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) activeChat?.id else null
+        }
+        accountLifecycle.addObserver(observer)
+        PushRuntime.visibleChatId = if (accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) activeChat?.id else null
+        onDispose { accountLifecycle.removeObserver(observer); PushRuntime.visibleChatId = null }
     }
 
     if (roomId != null) {

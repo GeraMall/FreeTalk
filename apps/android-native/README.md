@@ -27,13 +27,13 @@ Current native foundation:
 The native WebRTC media engine, image uploading, profile editing and
 background call service are the next implementation layer before this client is release-ready.
 
-Alpha.8 displays Android message notifications while the app is visible, excluding
-the open conversation and self-sent messages. Android 13+ requests notification permission.
-The account socket runs only while the app is STARTED; background/closed-app push is
-NOT connected. Firebase project/client configuration and server delivery credentials
-are still required. Never put server credentials into the APK or repository.
+Alpha.9 integrates Firebase Messaging for project trlka-b5d34, alongside foreground
+WebSocket notifications. Android 13+ requests notification permission.
+Production background push is pending server credentials and deployment; see
+FIREBASE_SETUP.md for activation steps, limitations and the device test checklist.
+Never put server credentials into the APK or repository.
 Downloaded chat photos use the 384 MB cache, clearable under History → Storage.
-Alpha.8 is a debug build; on-device visual and network testing is still required.
+Alpha.9 is a debug build; on-device visual and network testing is still required.
 
 The bundled Geist variable TTF comes from `google/fonts/ofl/geist/Geist[wght].ttf`.
 Its SIL Open Font License is included in `app/src/main/assets/licenses`.
