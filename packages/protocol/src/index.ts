@@ -252,6 +252,77 @@ export type TelemetryConnectionSample = z.infer<typeof telemetryConnectionSample
 export const presenceStatusSchema = z.enum(['online', 'away', 'dnd', 'offline']);
 export type PresenceStatus = z.infer<typeof presenceStatusSchema>;
 
+function isSingleEmojiGrapheme(value: string) {
+  if (!value || new TextEncoder().encode(value).length > 64) return false;
+  if (typeof Intl.Segmenter === 'function') {
+    const graphemes = [...new Intl.Segmenter('und', { granularity: 'grapheme' }).segment(value)];
+    if (graphemes.length !== 1) return false;
+    return /(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3)/u.test(value);
+  }
+  return /^(?:\p{Regional_Indicator}{2}|[#*0-9]\ufe0f?\u20e3|\p{Extended_Pictographic}(?:\ufe0f|\p{Emoji_Modifier})?(?:\u200d\p{Extended_Pictographic}(?:\ufe0f|\p{Emoji_Modifier})?)*)$/u.test(
+    value,
+  );
+}
+
+export const chatReactionEmojiSchema = z
+  .string()
+  .refine(isSingleEmojiGrapheme, 'Reaction must be one emoji grapheme');
+
+const wikimediaUploadUrlSchema = z
+  .string()
+  .url()
+  .max(2_048)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        url.hostname === 'upload.wikimedia.org' &&
+        url.port === '' &&
+        url.username === '' &&
+        url.password === ''
+      );
+    } catch {
+      return false;
+    }
+  }, 'GIF URL must use the Wikimedia upload host');
+
+const wikimediaCommonsPageUrlSchema = z
+  .string()
+  .url()
+  .max(2_048)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        url.hostname === 'commons.wikimedia.org' &&
+        url.port === '' &&
+        url.username === '' &&
+        url.password === ''
+      );
+    } catch {
+      return false;
+    }
+  }, 'Attribution URL must use Wikimedia Commons');
+
+export const chatGifMetadataSchema = z.object({
+  url: wikimediaUploadUrlSchema,
+  previewUrl: wikimediaUploadUrlSchema.optional(),
+  width: z.number().int().min(1).max(4_096).optional(),
+  height: z.number().int().min(1).max(4_096).optional(),
+  alt: z.string().trim().min(1).max(200),
+  attribution: z.object({
+    provider: z.literal('Wikimedia Commons'),
+    title: z.string().trim().min(1).max(200),
+    pageUrl: wikimediaCommonsPageUrlSchema,
+    author: z.string().trim().min(1).max(200).optional(),
+    license: z.string().trim().min(1).max(100).optional(),
+  }),
+});
+
+export type ChatGifMetadata = z.infer<typeof chatGifMetadataSchema>;
+
 export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('authenticate'),
@@ -263,7 +334,22 @@ export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-const realtimeChatMessage = z.object({
+export const chatMessageReplySchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(['text', 'system', 'call', 'image']),
+  body: z.string().max(4_000),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  sender_id: z.string().uuid().nullable(),
+  display_name: z.string().nullable().optional(),
+});
+
+export const chatMessageReactionSummarySchema = z.object({
+  emoji: chatReactionEmojiSchema,
+  count: z.number().int().min(1),
+  userIds: z.array(z.string().uuid()),
+});
+
+export const realtimeChatMessageSchema = z.object({
   id: z.string().uuid(),
   kind: z.enum(['text', 'system', 'call', 'image']),
   body: z.string().max(4000),
@@ -274,14 +360,22 @@ const realtimeChatMessage = z.object({
   avatar_url: z.string().url().nullable().optional(),
   created_at: z.string(),
   expires_at: z.string().nullable(),
+  reply_to: chatMessageReplySchema.nullable().optional(),
+  reactions: z.array(chatMessageReactionSummarySchema).optional(),
+  pinned_at: z.string().datetime({ offset: true }).nullable().optional(),
+  pinned_by: z.string().uuid().nullable().optional(),
 });
+
+export type RealtimeChatMessage = z.infer<typeof realtimeChatMessageSchema>;
+export type ChatMessageReply = z.infer<typeof chatMessageReplySchema>;
+export type ChatMessageReactionSummary = z.infer<typeof chatMessageReactionSummarySchema>;
 
 export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
   z.object({
     type: z.literal('message-created'),
     chatId: z.string().uuid(),
-    message: realtimeChatMessage,
+    message: realtimeChatMessageSchema,
   }),
   z.object({
     type: z.literal('message-updated'),
@@ -290,6 +384,27 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     metadata: z.record(z.string(), z.unknown()),
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
+  z.object({
+    type: z.literal('message-reactions-updated'),
+    chatId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    reactions: z.array(chatMessageReactionSummarySchema),
+  }),
+  z.object({
+    type: z.literal('message-pin-updated'),
+    chatId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    pinnedAt: z.string().datetime({ offset: true }).nullable(),
+    pinnedBy: z.string().uuid().nullable(),
+    pinnedMessage: realtimeChatMessageSchema.nullable().optional(),
+  }),
+  z.object({
+    type: z.literal('message-deleted'),
+    chatId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    latestMessage: realtimeChatMessageSchema.nullable().optional(),
+    pinnedMessage: realtimeChatMessageSchema.nullable().optional(),
+  }),
   z.object({ type: z.literal('chat-removed'), chatId: z.string().uuid() }),
   z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
   z.object({

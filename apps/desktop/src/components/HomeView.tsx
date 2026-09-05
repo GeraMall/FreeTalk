@@ -22,7 +22,13 @@ import {
 } from '../lib/call-history';
 import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
-import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
+import {
+  ChatsPage,
+  type ChatItem,
+  type GifMessageData,
+  type MessageItem,
+  type MessageReaction,
+} from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
 import { BrandLogo } from './BrandLogo';
 import { MobileNavigation } from './MobileNavigation';
@@ -101,6 +107,7 @@ export function HomeView({
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [activeChat, setActiveChat] = useState<string>();
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [pinnedMessage, setPinnedMessage] = useState<MessageItem>();
   const [chatsLoading, setChatsLoading] = useState(controlledPage === 'chats');
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState('');
@@ -122,6 +129,8 @@ export function HomeView({
     resetWidth: resetAccountSidebarWidth,
   } = useAccountSidebarWidth();
   const activeChatRef = useRef(activeChat);
+  const messagesRequestIdRef = useRef(0);
+  const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({});
   const navigationInitialized = useRef(false);
   const chatFriendOptions = useMemo(
     () =>
@@ -168,7 +177,9 @@ export function HomeView({
       if (event.type === 'message-created') {
         setChats((current) =>
           promoteChat(current, event.chatId, event.message).map((chat) =>
-            chat.id === event.chatId && activeChatRef.current !== event.chatId
+            chat.id === event.chatId &&
+            activeChatRef.current !== event.chatId &&
+            event.message.sender_id !== user.id
               ? { ...chat, unreadCount: (chat.unreadCount ?? 0) + 1 }
               : chat,
           ),
@@ -184,8 +195,45 @@ export function HomeView({
                 : message,
             ),
           );
+      } else if (event.type === 'message-reactions-updated') {
+        if (activeChatRef.current === event.chatId)
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === event.messageId
+                ? { ...message, reactions: event.reactions as MessageReaction[] }
+                : message,
+            ),
+          );
+      } else if (event.type === 'message-pin-updated') {
+        if (activeChatRef.current === event.chatId) {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === event.messageId
+                ? { ...message, pinned_at: event.pinnedAt, pinned_by: event.pinnedBy }
+                : message,
+            ),
+          );
+          if (event.pinnedMessage !== undefined)
+            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+        }
+      } else if (event.type === 'message-deleted') {
+        if (activeChatRef.current === event.chatId) {
+          setMessages((current) => removeMessageAndMarkReplies(current, event.messageId));
+          if (event.pinnedMessage !== undefined)
+            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+        }
+        setChats((current) =>
+          current.map((chat) =>
+            chat.id === event.chatId ? chatWithLatestMessage(chat, event.latestMessage) : chat,
+          ),
+        );
       } else if (event.type === 'history-cleared') {
-        if (activeChatRef.current === event.chatId) setMessages([]);
+        if (activeChatRef.current === event.chatId) {
+          messagesPageStartRef.current = { chatId: event.chatId };
+          setMessages([]);
+          setPinnedMessage(undefined);
+          setHasMoreMessages(false);
+        }
         setChats((current) =>
           current.map((chat) =>
             chat.id === event.chatId
@@ -197,8 +245,13 @@ export function HomeView({
         void clearChatImageCache(user.id);
         setChats((current) => current.filter((chat) => chat.id !== event.chatId));
         if (activeChatRef.current === event.chatId) {
+          activeChatRef.current = undefined;
+          messagesRequestIdRef.current += 1;
+          messagesPageStartRef.current = {};
           setActiveChat(undefined);
           setMessages([]);
+          setPinnedMessage(undefined);
+          setHasMoreMessages(false);
         }
       } else if (event.type === 'retention-changed') {
         setChats((current) =>
@@ -389,45 +442,68 @@ export function HomeView({
   }, [loadPage, page]);
 
   const loadChatMessages = useCallback(async (chatId: string, silent = false) => {
+    const requestId = ++messagesRequestIdRef.current;
     if (!silent) {
       setMessagesLoading(true);
       setMessagesError('');
     }
     try {
-      const result = await accountClient.request<{ messages: MessageItem[]; hasMore?: boolean }>(
-        `/v1/chats/${chatId}/messages`,
-      );
+      const result = await accountClient.request<{
+        messages: MessageItem[];
+        hasMore?: boolean;
+        pinnedMessage?: MessageItem | null;
+      }>(`/v1/chats/${chatId}/messages`);
+      if (requestId !== messagesRequestIdRef.current || activeChatRef.current !== chatId)
+        return false;
       setMessages(result.messages);
+      setPinnedMessage(result.pinnedMessage ?? undefined);
       setHasMoreMessages(Boolean(result.hasMore));
+      messagesPageStartRef.current = {
+        chatId,
+        createdAt: result.messages[0]?.created_at,
+      };
       return true;
     } catch (caught) {
-      if (!silent)
+      if (!silent && requestId === messagesRequestIdRef.current && activeChatRef.current === chatId)
         setMessagesError(caught instanceof Error ? caught.message : 'Не удалось открыть чат');
       return false;
     } finally {
-      if (!silent) setMessagesLoading(false);
+      if (!silent && requestId === messagesRequestIdRef.current) setMessagesLoading(false);
     }
   }, []);
 
   const openChat = useCallback(
     async (chatId: string) => {
+      activeChatRef.current = chatId;
+      messagesPageStartRef.current = { chatId };
       setActiveChat(chatId);
       setChats((current) =>
         current.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat)),
       );
       setMessages([]);
+      setPinnedMessage(undefined);
       await loadChatMessages(chatId);
     },
     [loadChatMessages],
   );
 
   const loadOlderMessages = async () => {
-    if (!activeChat || !hasMoreMessages || !messages[0]) return;
+    if (!activeChat || !hasMoreMessages) return;
+    const chatId = activeChat;
+    const pageStart = messagesPageStartRef.current;
+    if (pageStart.chatId !== chatId || !pageStart.createdAt) return;
     try {
-      const before = encodeURIComponent(messages[0].created_at);
+      const before = encodeURIComponent(pageStart.createdAt);
       const result = await accountClient.request<{ messages: MessageItem[]; hasMore: boolean }>(
-        `/v1/chats/${activeChat}/messages?before=${before}`,
+        `/v1/chats/${chatId}/messages?before=${before}`,
       );
+      if (activeChatRef.current !== chatId) return;
+      if (result.messages[0]) {
+        messagesPageStartRef.current = {
+          chatId,
+          createdAt: result.messages[0].created_at,
+        };
+      }
       setMessages((current) => {
         const known = new Set(current.map((message) => message.id));
         return [...result.messages.filter((message) => !known.has(message.id)), ...current];
@@ -438,30 +514,32 @@ export function HomeView({
     }
   };
 
-  const sendMessage = async (body: string) => {
+  const sendMessage = async (body: string, replyToMessageId?: string) => {
     if (!activeChat || !body.trim()) return false;
-    const pacing = chatSendPacerRef.current.check(activeChat);
+    const chatId = activeChat;
+    const pacing = chatSendPacerRef.current.check(chatId);
     if (pacing.limited) {
-      setChatSlowMode({ chatId: activeChat, until: pacing.blockedUntil });
+      setChatSlowMode({ chatId, until: pacing.blockedUntil });
       return false;
     }
     try {
       const result = await accountClient.request<{ message: MessageItem }>(
-        `/v1/chats/${activeChat}/messages`,
+        `/v1/chats/${chatId}/messages`,
         {
           method: 'POST',
-          body: JSON.stringify({ body }),
+          body: JSON.stringify({ body, replyToMessageId }),
         },
       );
-      setMessages((current) => appendMessage(current, result.message));
-      setChats((current) => promoteChat(current, activeChat, result.message));
+      if (activeChatRef.current === chatId)
+        setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, chatId, result.message));
       setSentMessageVersion((version) => version + 1);
       return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
         const retryAfter = Number(caught.details.retryAfterSeconds);
         setChatSlowMode({
-          chatId: activeChat,
+          chatId,
           until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
         });
         return false;
@@ -471,19 +549,26 @@ export function HomeView({
     }
   };
 
-  const sendImage = async (dataUrl: string, caption: string, thumbnailDataUrl: string) => {
+  const sendImage = async (
+    dataUrl: string,
+    caption: string,
+    thumbnailDataUrl: string,
+    replyToMessageId?: string,
+  ) => {
     if (!activeChat) return false;
-    const pacing = chatSendPacerRef.current.check(activeChat);
+    const chatId = activeChat;
+    const pacing = chatSendPacerRef.current.check(chatId);
     if (pacing.limited) {
-      setChatSlowMode({ chatId: activeChat, until: pacing.blockedUntil });
+      setChatSlowMode({ chatId, until: pacing.blockedUntil });
       return false;
     }
     try {
       const result = await accountClient.uploadChatImage<MessageItem>(
-        activeChat,
+        chatId,
         dataUrl,
         caption,
         thumbnailDataUrl,
+        replyToMessageId,
       );
       seedChatImageCache(
         user.id,
@@ -499,20 +584,153 @@ export function HomeView({
         dataUrlToBlob(thumbnailDataUrl),
         result.message.expires_at,
       );
-      setMessages((current) => appendMessage(current, result.message));
-      setChats((current) => promoteChat(current, activeChat, result.message));
+      if (activeChatRef.current === chatId)
+        setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, chatId, result.message));
       setSentMessageVersion((version) => version + 1);
       return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
         const retryAfter = Number(caught.details.retryAfterSeconds);
         setChatSlowMode({
-          chatId: activeChat,
+          chatId,
           until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
         });
         return false;
       }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить фотографию');
+      return false;
+    }
+  };
+
+  const sendGif = async (gif: GifMessageData, replyToMessageId?: string) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    const pacing = chatSendPacerRef.current.check(chatId);
+    if (pacing.limited) {
+      setChatSlowMode({ chatId, until: pacing.blockedUntil });
+      return false;
+    }
+    try {
+      const result = await accountClient.request<{ message: MessageItem }>(
+        `/v1/chats/${chatId}/gifs`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ ...gif, replyToMessageId }),
+        },
+      );
+      if (activeChatRef.current === chatId)
+        setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, chatId, result.message));
+      setSentMessageVersion((version) => version + 1);
+      return true;
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
+        const retryAfter = Number(caught.details.retryAfterSeconds);
+        setChatSlowMode({
+          chatId,
+          until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
+        });
+        return false;
+      }
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить GIF');
+      return false;
+    }
+  };
+
+  const reactToMessage = async (messageId: string, emoji: string | null) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    try {
+      const result = await accountClient.request<{ reactions: MessageReaction[] }>(
+        `/v1/messages/${messageId}/reaction`,
+        { method: 'PUT', body: JSON.stringify({ emoji }) },
+      );
+      if (activeChatRef.current === chatId)
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId ? { ...message, reactions: result.reactions } : message,
+          ),
+        );
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось поставить реакцию');
+      return false;
+    }
+  };
+
+  const pinMessage = async (messageId: string, pinned: boolean) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    try {
+      const result = await accountClient.request<{
+        pinnedAt: string | null;
+        pinnedBy: string | null;
+        pinnedMessage?: MessageItem | null;
+      }>(`/v1/messages/${messageId}/pin`, {
+        method: 'PUT',
+        body: JSON.stringify({ pinned }),
+      });
+      if (activeChatRef.current === chatId)
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId
+              ? { ...message, pinned_at: result.pinnedAt, pinned_by: result.pinnedBy }
+              : message,
+          ),
+        );
+      if (activeChatRef.current === chatId && result.pinnedMessage !== undefined)
+        setPinnedMessage(result.pinnedMessage ?? undefined);
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось закрепить сообщение');
+      return false;
+    }
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    try {
+      await accountClient.request(`/v1/messages/${messageId}`, { method: 'DELETE' });
+      if (activeChatRef.current === chatId)
+        setMessages((current) => removeMessageAndMarkReplies(current, messageId));
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось удалить сообщение');
+      return false;
+    }
+  };
+
+  const forwardMessage = async (messageId: string, targetChatId: string) => {
+    try {
+      const result = await accountClient.request<{ message: MessageItem }>(
+        `/v1/chats/${targetChatId}/messages/forward`,
+        { method: 'POST', body: JSON.stringify({ sourceMessageId: messageId }) },
+      );
+      if (activeChatRef.current === targetChatId)
+        setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, targetChatId, result.message));
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось переслать сообщение');
+      return false;
+    }
+  };
+
+  const revealMessage = async (messageId: string) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    if (messages.some((message) => message.id === messageId)) return true;
+    try {
+      const result = await accountClient.request<{ message: MessageItem }>(
+        `/v1/chats/${chatId}/messages/${messageId}`,
+      );
+      if (activeChatRef.current !== chatId) return false;
+      setMessages((current) => appendMessage(current, result.message));
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Сообщение больше недоступно');
       return false;
     }
   };
@@ -709,7 +927,10 @@ export function HomeView({
     try {
       await accountClient.request(`/v1/chats/${activeChat}/messages`, { method: 'DELETE' });
       await clearChatImageCache(user.id);
+      messagesPageStartRef.current = { chatId: activeChat };
       setMessages([]);
+      setPinnedMessage(undefined);
+      setHasMoreMessages(false);
       setChats((current) =>
         current.map((chat) =>
           chat.id === activeChat
@@ -726,8 +947,13 @@ export function HomeView({
   const blockChatUser = async (userId: string) => {
     await accountClient.request(`/v1/blocks/${userId}`, { method: 'POST' });
     await clearChatImageCache(user.id);
+    activeChatRef.current = undefined;
+    messagesRequestIdRef.current += 1;
+    messagesPageStartRef.current = {};
     setActiveChat(undefined);
     setMessages([]);
+    setPinnedMessage(undefined);
+    setHasMoreMessages(false);
     await loadPage('chats');
     setLocalError('Пользователь заблокирован');
   };
@@ -735,8 +961,13 @@ export function HomeView({
   const removeChatLocally = (chatId: string) => {
     setChats((current) => current.filter((chat) => chat.id !== chatId));
     if (activeChatRef.current !== chatId) return;
+    activeChatRef.current = undefined;
+    messagesRequestIdRef.current += 1;
+    messagesPageStartRef.current = {};
     setActiveChat(undefined);
     setMessages([]);
+    setPinnedMessage(undefined);
+    setHasMoreMessages(false);
   };
 
   const leaveGroup = async (chatId = activeChat) => {
@@ -971,6 +1202,7 @@ export function HomeView({
             friends={chatFriendOptions}
             activeChatId={activeChat}
             messages={messages}
+            pinnedMessage={pinnedMessage}
             chatsLoading={chatsLoading}
             messagesLoading={messagesLoading}
             messagesError={messagesError}
@@ -982,13 +1214,24 @@ export function HomeView({
             }
             onOpenChat={openChat}
             onCloseChat={() => {
+              activeChatRef.current = undefined;
+              messagesRequestIdRef.current += 1;
+              messagesPageStartRef.current = {};
               setActiveChat(undefined);
               setMessages([]);
+              setPinnedMessage(undefined);
+              setHasMoreMessages(false);
             }}
             onRetryMessages={() => activeChat && void loadChatMessages(activeChat)}
             onLoadOlder={loadOlderMessages}
             onSendMessage={sendMessage}
             onSendImage={sendImage}
+            onSendGif={sendGif}
+            onReactMessage={reactToMessage}
+            onPinMessage={pinMessage}
+            onDeleteMessage={deleteMessage}
+            onForwardMessage={forwardMessage}
+            onRevealMessage={revealMessage}
             onCreateGroup={createGroup}
             onJoinInvite={joinInvite}
             onStartCall={startChatCall}
@@ -1214,6 +1457,28 @@ function appendMessage(messages: MessageItem[], message: MessageItem) {
   );
 }
 
+function removeMessageAndMarkReplies(messages: MessageItem[], messageId: string) {
+  return messages
+    .filter((message) => message.id !== messageId)
+    .map((message) => {
+      const replyTo = message.reply_to;
+      const metadataReply = message.metadata?.replyTo;
+      if (replyTo?.id !== messageId && metadataReply?.id !== messageId) return message;
+      return {
+        ...message,
+        ...(replyTo?.id === messageId ? { reply_to: { ...replyTo, body: '', deleted: true } } : {}),
+        ...(metadataReply?.id === messageId
+          ? {
+              metadata: {
+                ...message.metadata,
+                replyTo: { ...metadataReply, body: '', deleted: true },
+              },
+            }
+          : {}),
+      };
+    });
+}
+
 function promoteChat(chats: ChatItem[], chatId: string, message: MessageItem) {
   const changed = chats.find((chat) => chat.id === chatId);
   if (!changed) return chats;
@@ -1226,6 +1491,16 @@ function promoteChat(chats: ChatItem[], chatId: string, message: MessageItem) {
     },
     ...chats.filter((chat) => chat.id !== chatId),
   ];
+}
+
+function chatWithLatestMessage(chat: ChatItem, message?: MessageItem | null): ChatItem {
+  if (!message) return { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null };
+  return {
+    ...chat,
+    lastMessage: message.kind === 'image' ? message.body || 'Фотография' : message.body,
+    lastMessageAt: message.created_at,
+    lastMessageKind: message.kind,
+  };
 }
 
 function Header({ title, subtitle }: { title: string; subtitle: string }) {

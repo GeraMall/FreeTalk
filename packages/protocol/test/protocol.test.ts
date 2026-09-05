@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chatGifMetadataSchema,
+  chatReactionEmojiSchema,
   chatRealtimeClientMessageSchema,
   chatRealtimeServerMessageSchema,
   clientMessageSchema,
@@ -264,5 +266,96 @@ describe('protocol validation', () => {
         chatId: base.clientId,
       }).success,
     ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-reactions-updated',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        reactions: [{ emoji: '👨‍👩‍👧‍👦', count: 1, userIds: [base.clientId] }],
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-pin-updated',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        pinnedAt: new Date().toISOString(),
+        pinnedBy: base.clientId,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-deleted',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        latestMessage: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts exactly one arbitrary emoji grapheme for persistent chat reactions', () => {
+    for (const emoji of ['👍', '🫠', '👨‍👩‍👧‍👦', '🇷🇺', '1️⃣', '😀‍😀‍😀‍😀‍😀‍😀‍😀‍😀‍😀'])
+      expect(chatReactionEmojiSchema.safeParse(emoji).success).toBe(true);
+    for (const invalid of ['', 'A', '👍🔥', 'not emoji'])
+      expect(chatReactionEmojiSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it('does not discard valid reaction summaries from larger group chats', () => {
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-reactions-updated',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        reactions: [{ emoji: '🔥', count: 51, userIds: Array(51).fill(base.clientId) }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('allows GIF media only from the exact Wikimedia upload host', () => {
+    const gif = {
+      url: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/example.gif',
+      previewUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/example.gif',
+      width: 640,
+      height: 360,
+      alt: 'Example GIF',
+      attribution: {
+        provider: 'Wikimedia Commons',
+        title: 'Example',
+        pageUrl: 'https://commons.wikimedia.org/wiki/File:Example.gif',
+        author: 'Example author',
+        license: 'CC BY-SA 4.0',
+      },
+    } as const;
+    expect(chatGifMetadataSchema.safeParse(gif).success).toBe(true);
+    expect(
+      chatGifMetadataSchema.safeParse({
+        url: gif.url,
+        alt: gif.alt,
+        attribution: {
+          provider: gif.attribution.provider,
+          title: gif.attribution.title,
+          pageUrl: gif.attribution.pageUrl,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      chatGifMetadataSchema.safeParse({
+        ...gif,
+        url: 'https://upload.wikimedia.org.evil.example/example.gif',
+      }).success,
+    ).toBe(false);
+    expect(
+      chatGifMetadataSchema.safeParse({ ...gif, url: 'http://upload.wikimedia.org/example.gif' })
+        .success,
+    ).toBe(false);
+    expect(
+      chatGifMetadataSchema.safeParse({
+        ...gif,
+        attribution: {
+          ...gif.attribution,
+          pageUrl: 'https://commons.wikimedia.org.evil.example/wiki/File:Example.gif',
+        },
+      }).success,
+    ).toBe(false);
   });
 });

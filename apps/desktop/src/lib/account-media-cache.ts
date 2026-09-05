@@ -15,8 +15,12 @@ const DATABASE_NAME = 'freetalk-account-media-v1';
 const STORE_NAME = 'media';
 const MAX_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 600;
+const MAX_SINGLE_MEDIA_BYTES = 20 * 1024 * 1024;
+const MAX_MEMORY_CACHE_BYTES = 64 * 1024 * 1024;
+const MAX_MEMORY_CACHE_ENTRIES = 600;
 const memoryCache = new Map<string, MemoryEntry>();
 const inFlight = new Map<string, Promise<string>>();
+let memoryCacheBytes = 0;
 let databasePromise: Promise<IDBDatabase | undefined> | undefined;
 let activeAccountId: string | undefined;
 
@@ -105,12 +109,43 @@ async function persist(entry: AccountMediaEntry) {
   await prunePersistent(database);
 }
 
+function revokeMemoryEntry(entry: MemoryEntry) {
+  if (entry.displayUrl.startsWith('blob:') && typeof URL.revokeObjectURL === 'function')
+    URL.revokeObjectURL(entry.displayUrl);
+}
+
+function removeMemoryEntry(key: string) {
+  const entry = memoryCache.get(key);
+  if (!entry) return;
+  memoryCache.delete(key);
+  memoryCacheBytes = Math.max(0, memoryCacheBytes - entry.size);
+  revokeMemoryEntry(entry);
+}
+
+function touchMemoryEntry(key: string, entry: MemoryEntry) {
+  entry.accessedAt = Date.now();
+  memoryCache.delete(key);
+  memoryCache.set(key, entry);
+  return entry.displayUrl;
+}
+
+function pruneMemory() {
+  while (memoryCacheBytes > MAX_MEMORY_CACHE_BYTES || memoryCache.size > MAX_MEMORY_CACHE_ENTRIES) {
+    const oldestKey = memoryCache.keys().next().value;
+    if (!oldestKey) break;
+    removeMemoryEntry(oldestKey);
+  }
+}
+
 function remember(entry: AccountMediaEntry) {
   const existing = memoryCache.get(entry.key);
-  if (existing) return existing.displayUrl;
+  if (existing) return touchMemoryEntry(entry.key, existing);
   const displayUrl =
     typeof URL.createObjectURL === 'function' ? URL.createObjectURL(entry.blob) : entry.sourceUrl;
-  memoryCache.set(entry.key, { ...entry, displayUrl });
+  const memoryEntry = { ...entry, size: entry.blob.size, displayUrl };
+  memoryCache.set(entry.key, memoryEntry);
+  memoryCacheBytes += memoryEntry.size;
+  pruneMemory();
   return displayUrl;
 }
 
@@ -124,17 +159,16 @@ export function getActiveAccountMediaScope() {
 
 export function peekAccountMedia(sourceUrl?: string | null, accountId = activeAccountId) {
   if (!sourceUrl || !isRemoteMedia(sourceUrl) || !accountId) return sourceUrl ?? undefined;
-  return memoryCache.get(mediaKey(accountId, sourceUrl))?.displayUrl;
+  const key = mediaKey(accountId, sourceUrl);
+  const entry = memoryCache.get(key);
+  return entry ? touchMemoryEntry(key, entry) : undefined;
 }
 
 export async function loadAccountMedia(sourceUrl: string, accountId = activeAccountId) {
   if (!isRemoteMedia(sourceUrl) || !accountId) return sourceUrl;
   const key = mediaKey(accountId, sourceUrl);
   const memory = memoryCache.get(key);
-  if (memory) {
-    memory.accessedAt = Date.now();
-    return memory.displayUrl;
-  }
+  if (memory) return touchMemoryEntry(key, memory);
   const pending = inFlight.get(key);
   if (pending) return pending;
 
@@ -147,8 +181,13 @@ export async function loadAccountMedia(sourceUrl: string, accountId = activeAcco
     }
     const response = await fetch(sourceUrl, { cache: 'force-cache', credentials: 'omit' });
     if (!response.ok) throw new Error(`Не удалось загрузить изображение (${response.status})`);
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_SINGLE_MEDIA_BYTES)
+      throw new Error('Изображение превышает допустимый размер');
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) throw new Error('Сервер вернул не изображение');
+    if (blob.size > MAX_SINGLE_MEDIA_BYTES)
+      throw new Error('Изображение превышает допустимый размер');
     const entry: AccountMediaEntry = {
       key,
       accountId,
@@ -217,8 +256,7 @@ export function collectAccountMediaUrls(...values: unknown[]) {
 export async function clearAccountMediaCache(accountId: string) {
   for (const [key, entry] of memoryCache) {
     if (entry.accountId !== accountId) continue;
-    if (entry.displayUrl.startsWith('blob:')) URL.revokeObjectURL(entry.displayUrl);
-    memoryCache.delete(key);
+    removeMemoryEntry(key);
   }
   const database = await openDatabase();
   if (!database) return;

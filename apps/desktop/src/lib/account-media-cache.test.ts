@@ -53,6 +53,67 @@ describe('account media cache', () => {
     expect(peekAccountMedia(sourceUrl, 'account-b')).toBeUndefined();
   });
 
+  it('rejects oversized remote media before storing it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(new Blob([], { type: 'image/gif' }), {
+            status: 200,
+            headers: {
+              'content-type': 'image/gif',
+              'content-length': String(21 * 1024 * 1024),
+            },
+          }),
+      ),
+    );
+
+    await expect(loadAccountMedia('https://upload.wikimedia.org/oversized.gif')).rejects.toThrow(
+      'превышает допустимый размер',
+    );
+  });
+
+  it('evicts the least recently used blobs when the memory byte budget is exceeded', async () => {
+    const mediaBytes = 20 * 1024 * 1024;
+    let objectUrlSequence = 0;
+    const createObjectUrl = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation(() => `blob:cached-${objectUrlSequence++}`);
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const blob = new Blob(['gif'], { type: 'image/gif' });
+        Object.defineProperty(blob, 'size', { value: mediaBytes });
+        return {
+          ok: true,
+          headers: new Headers({
+            'content-type': 'image/gif',
+            'content-length': String(mediaBytes),
+          }),
+          blob: async () => blob,
+        } as Response;
+      }),
+    );
+    const urls = Array.from(
+      { length: 4 },
+      (_, index) => `https://upload.wikimedia.org/lru-${index}.gif`,
+    );
+
+    const firstDisplayUrl = await loadAccountMedia(urls[0]);
+    const secondDisplayUrl = await loadAccountMedia(urls[1]);
+    await loadAccountMedia(urls[2]);
+    expect(peekAccountMedia(urls[0])).toBe(firstDisplayUrl);
+    await loadAccountMedia(urls[3]);
+
+    expect(peekAccountMedia(urls[0])).toBe(firstDisplayUrl);
+    expect(peekAccountMedia(urls[1])).toBeUndefined();
+    expect(peekAccountMedia(urls[2])).toBeTruthy();
+    expect(peekAccountMedia(urls[3])).toBeTruthy();
+    expect(createObjectUrl).toHaveBeenCalledTimes(4);
+    expect(revokeObjectUrl).toHaveBeenCalledWith(secondDisplayUrl);
+  });
+
   it('collects avatars and covers from startup payloads and warms them', async () => {
     const payload = {
       user: { avatarUrl: 'https://api.example.test/user.webp', coverUrl: null },

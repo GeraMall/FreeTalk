@@ -273,6 +273,7 @@ export class AccountClient {
     dataUrl: string,
     caption = '',
     thumbnailDataUrl?: string,
+    replyToMessageId?: string,
   ) {
     const blob = dataUrlToBlob(dataUrl);
     const form = new FormData();
@@ -285,8 +286,12 @@ export class AccountClient {
         `chat-thumbnail.${thumbnail.type.split('/')[1] || 'webp'}`,
       );
     }
-    const query = caption.trim() ? `?caption=${encodeURIComponent(caption.trim())}` : '';
-    return this.request<{ message: T }>(`/v1/chats/${chatId}/images${query}`, {
+    const query = new URLSearchParams();
+    if (caption.trim()) query.set('caption', caption.trim());
+    if (replyToMessageId) query.set('replyToMessageId', replyToMessageId);
+    const serializedQuery = query.toString();
+    const suffix = serializedQuery ? `?${serializedQuery}` : '';
+    return this.request<{ message: T }>(`/v1/chats/${chatId}/images${suffix}`, {
       method: 'POST',
       body: form,
     });

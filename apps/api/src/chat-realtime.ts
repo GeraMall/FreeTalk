@@ -1,46 +1,7 @@
 import type { WebSocket } from 'ws';
-export type PresenceStatus = 'online' | 'away' | 'dnd' | 'offline';
+import type { ChatRealtimeServerMessage, PresenceStatus } from '@freetalk/protocol';
 
-type RealtimeChatMessage = {
-  id: string;
-  kind: 'text' | 'system' | 'call' | 'image';
-  body: string;
-  metadata?: Record<string, unknown>;
-  sender_id: string | null;
-  username?: string | null;
-  display_name?: string | null;
-  avatar_url?: string | null;
-  created_at: string;
-  expires_at: string | null;
-};
-
-export type ChatRealtimeServerMessage =
-  | { type: 'ready' }
-  | { type: 'message-created'; chatId: string; message: RealtimeChatMessage }
-  | {
-      type: 'message-updated';
-      chatId: string;
-      messageId: string;
-      metadata: Record<string, unknown>;
-    }
-  | { type: 'history-cleared'; chatId: string }
-  | { type: 'chat-removed'; chatId: string }
-  | { type: 'profile-updated'; userId: string }
-  | {
-      type: 'chat-updated';
-      chatId: string;
-      title?: string;
-      avatarUrl?: string | null;
-      avatarPositionX?: number;
-      avatarPositionY?: number;
-      avatarScale?: number;
-    }
-  | { type: 'presence-updated'; userId: string; status: PresenceStatus }
-  | {
-      type: 'retention-changed';
-      chatId: string;
-      retentionHours: 24 | 168 | 720 | null;
-    };
+export type { ChatRealtimeServerMessage, PresenceStatus } from '@freetalk/protocol';
 
 const MAX_BUFFERED_BYTES = 256 * 1024;
 
@@ -99,7 +60,15 @@ export class ChatRealtimeHub {
           socket.close(1013, 'Client is too slow');
           continue;
         }
-        socket.send(payload);
+        try {
+          socket.send(payload);
+        } catch {
+          try {
+            socket.close(1011, 'Realtime delivery failed');
+          } catch {
+            // The close event removes this socket; keep delivering to other members.
+          }
+        }
       }
     }
   }

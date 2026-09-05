@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://freetalk.191-44-38-60.sslip.io; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:* ws://localhost:* wss://freetalk.191-44-38-60.sslip.io https://freetalk.191-44-38-60.sslip.io https://challenges.cloudflare.com; font-src 'self'; object-src 'none'; frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'none'",
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://freetalk.191-44-38-60.sslip.io https://upload.wikimedia.org; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:* ws://localhost:* wss://freetalk.191-44-38-60.sslip.io https://freetalk.191-44-38-60.sslip.io https://challenges.cloudflare.com https://commons.wikimedia.org https://upload.wikimedia.org; font-src 'self'; object-src 'none'; frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'none'",
       "capabilities": ["default"]
     }
   },

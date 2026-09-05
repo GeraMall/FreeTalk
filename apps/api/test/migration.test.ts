@@ -124,4 +124,21 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('octet_length(thumbnail_data) <= 262144');
     expect(sql).toContain('message_images_thumbnail_pair_check');
   });
+
+  it('adds replies, pins and one persistent reaction per user and message', async () => {
+    const path = fileURLToPath(
+      new URL('../migrations/011_message_interactions.sql', import.meta.url),
+    );
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('add column reply_to_message_id');
+    expect(sql).toContain('references messages(id) on delete set null');
+    expect(sql).toContain('add column pinned_at');
+    expect(sql).toContain('add column pinned_by');
+    expect(sql).toContain('create table message_reactions');
+    expect(sql).toContain('primary key(message_id, user_id)');
+    expect(sql).toContain('create index message_reactions_user_idx on message_reactions(user_id)');
+    expect(sql).toContain('references messages(id) on delete cascade');
+    expect(sql).toContain('octet_length(emoji) <= 64');
+    expect(sql).not.toContain('char_length(emoji) between 1 and 16');
+  });
 });

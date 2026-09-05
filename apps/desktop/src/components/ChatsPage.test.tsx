@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ChatsPage, MessageList, type ChatItem, type MessageItem } from './ChatsPage';
 import { accountClient } from '../lib/api-client';
@@ -52,6 +52,7 @@ afterAll(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -687,5 +688,301 @@ describe('Resizable chat list', () => {
       ),
     );
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Message interactions', () => {
+  it('does not carry a draft into another chat', () => {
+    const chats: ChatItem[] = [
+      {
+        id: 'chat-a',
+        type: 'group',
+        title: 'Первый чат',
+        members: [{ id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' }],
+        currentUserRole: 'owner',
+      },
+      {
+        id: 'chat-b',
+        type: 'group',
+        title: 'Второй чат',
+        members: [{ id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' }],
+        currentUserRole: 'owner',
+      },
+    ];
+    const page = (activeChatId: string) => (
+      <ChatsPage
+        userId="self"
+        chats={chats}
+        friends={[]}
+        activeChatId={activeChatId}
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />
+    );
+    const view = render(page('chat-a'));
+    fireEvent.change(view.getByRole('textbox', { name: 'Сообщение' }), {
+      target: { value: 'Черновик только для первого чата' },
+    });
+
+    view.rerender(page('chat-b'));
+
+    expect((view.getByRole('textbox', { name: 'Сообщение' }) as HTMLTextAreaElement).value).toBe(
+      '',
+    );
+  });
+
+  it('opens the FreeTalk context menu and accepts a custom emoji reaction', async () => {
+    const onReact = vi.fn(async () => true);
+    const source = {
+      ...message('8', 'friend', 'Выберите реакцию'),
+      reactions: [{ emoji: '❤️', count: 2, userIds: ['friend'] }],
+    };
+    const { getByRole, getByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat
+        messages={[source]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+        onReact={onReact}
+      />,
+    );
+
+    fireEvent.contextMenu(getByText('Выберите реакцию').closest('article')!, {
+      clientX: 100,
+      clientY: 100,
+    });
+    expect(getByRole('menu', { name: 'Действия с сообщением' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Все реакции' }));
+    const input = getByRole('textbox', { name: 'Любой эмодзи' });
+    fireEvent.change(input, { target: { value: '🦄' } });
+    fireEvent.click(getByRole('button', { name: 'Поставить введённую реакцию' }));
+    await waitFor(() => expect(onReact).toHaveBeenCalledWith('8', '🦄'));
+  });
+
+  it('opens message actions with a touch long press', () => {
+    vi.useFakeTimers();
+    const source = message('8', 'friend', 'Долгое нажатие');
+    const { getByRole, getByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat
+        messages={[source]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    const pointerDown = new MouseEvent('pointerdown', {
+      bubbles: true,
+      button: 0,
+      clientX: 90,
+      clientY: 120,
+    });
+    Object.defineProperty(pointerDown, 'pointerType', { value: 'touch' });
+    fireEvent(getByText('Долгое нажатие').closest('article')!, pointerDown);
+    act(() => vi.advanceTimersByTime(480));
+    expect(getByRole('menu', { name: 'Действия с сообщением' })).toBeTruthy();
+  });
+
+  it('replies with the source id and renders forwarded, pinned and reacted states', async () => {
+    const onSendMessage = vi.fn(async () => true);
+    const source: MessageItem = {
+      ...message('9', 'friend', 'Исходное сообщение'),
+      pinned_at: '2026-08-26T10:09:30.000Z',
+      reply_to: {
+        id: '8',
+        kind: 'text',
+        body: 'Предыдущее сообщение',
+        sender_id: 'friend',
+        display_name: 'Алексей',
+      },
+      metadata: { forwardedFrom: { displayName: 'Команда FreeTalk' } },
+      reactions: [{ emoji: '🔥', count: 3, userIds: ['self', 'friend'] }],
+    };
+    const chat: ChatItem = {
+      id: 'chat-a',
+      type: 'group',
+      title: 'Команда',
+      members: [{ id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' }],
+      currentUserRole: 'owner',
+    };
+    const { container, getByRole, getByText } = render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-a"
+        messages={[source]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={onSendMessage}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    expect(getByText('Переслано от Команда FreeTalk')).toBeTruthy();
+    expect(getByText('Закреплённое сообщение')).toBeTruthy();
+    expect(container.querySelector('.message-reactions > button.mine')).not.toBeNull();
+    fireEvent.contextMenu(container.querySelector('.message-bubble-row')!, {
+      clientX: 120,
+      clientY: 120,
+    });
+    fireEvent.click(getByRole('menuitem', { name: 'Ответить' }));
+    expect(getByText('Ответ для Алексей')).toBeTruthy();
+    const composer = getByRole('textbox', { name: 'Сообщение' });
+    fireEvent.change(composer, { target: { value: 'Мой ответ' } });
+    fireEvent.click(getByRole('button', { name: 'Отправить сообщение' }));
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledWith('Мой ответ', '9'));
+  });
+
+  it('keeps an older pinned message visible and requests it when outside the loaded page', async () => {
+    const onReveal = vi.fn(async () => true);
+    const pinned = {
+      ...message('6', 'friend', 'Важное старое сообщение'),
+      pinned_at: '2026-08-25T10:00:00.000Z',
+    };
+    const { getByRole, getByText, queryByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat
+        messages={[message('7', 'friend', 'Последнее сообщение')]}
+        pinnedMessage={pinned}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+        onReveal={onReveal}
+      />,
+    );
+
+    expect(getByText('Закреплённое сообщение')).toBeTruthy();
+    expect(getByText('Важное старое сообщение')).toBeTruthy();
+    expect(queryByText('Важное старое сообщение', { selector: '.message-bubble p' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: /Закреплённое сообщение/ }));
+    await waitFor(() => expect(onReveal).toHaveBeenCalledWith('6'));
+  });
+
+  it('searches Wikimedia GIFs and sends the chosen result', async () => {
+    const onSendGif = vi.fn(async () => true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              query: {
+                pages: {
+                  '17': {
+                    pageid: 17,
+                    title: 'File:Happy reaction.gif',
+                    imageinfo: [
+                      {
+                        url: 'https://upload.wikimedia.org/happy-reaction.gif',
+                        thumburl: 'https://upload.wikimedia.org/happy-reaction-preview.gif',
+                        mime: 'image/gif',
+                        width: 320,
+                        height: 180,
+                        extmetadata: {
+                          Artist: { value: 'Free artist' },
+                          LicenseShortName: { value: 'CC BY-SA 4.0' },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const chat: ChatItem = {
+      id: 'chat-gif',
+      type: 'group',
+      title: 'GIF чат',
+      members: [{ id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' }],
+      currentUserRole: 'owner',
+    };
+    const { findByRole, getByRole } = render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-gif"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onSendGif={onSendGif}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Открыть поиск GIF' }));
+    const result = await findByRole('button', { name: 'Отправить GIF: Happy reaction' });
+    fireEvent.click(result);
+    await waitFor(() =>
+      expect(onSendGif).toHaveBeenCalledWith({
+        url: 'https://upload.wikimedia.org/happy-reaction.gif',
+        previewUrl: 'https://upload.wikimedia.org/happy-reaction-preview.gif',
+        width: 320,
+        height: 180,
+        alt: 'Happy reaction',
+        attribution: {
+          provider: 'Wikimedia Commons',
+          title: 'Happy reaction',
+          pageUrl: 'https://commons.wikimedia.org/?curid=17',
+          author: 'Free artist',
+          license: 'CC BY-SA 4.0',
+        },
+      }),
+    );
   });
 });

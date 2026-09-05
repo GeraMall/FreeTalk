@@ -98,6 +98,94 @@ describe('HomeView chat navigation', () => {
       initialWidth,
     );
   });
+
+  it('keeps history pagination anchored after revealing an older pinned message', async () => {
+    const user: AccountUser = {
+      id: 'self',
+      email: 'gera@example.com',
+      username: 'german',
+      displayName: 'Гера',
+      emailVerified: true,
+      avatarUrl: null,
+      registeredAt: '2026-08-26T00:00:00.000Z',
+    };
+    const initialOldest = {
+      id: 'page-start',
+      sender_id: 'self',
+      username: 'german',
+      display_name: 'Гера',
+      kind: 'text' as const,
+      body: 'Начало загруженной страницы',
+      created_at: '2026-08-26T10:00:00.000Z',
+      expires_at: null,
+    };
+    const pinned = {
+      ...initialOldest,
+      id: 'pinned-old',
+      body: 'Очень старое закреплённое',
+      created_at: '2026-08-20T10:00:00.000Z',
+      pinned_at: '2026-08-26T11:00:00.000Z',
+    };
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats') {
+        return {
+          chats: [
+            {
+              id: 'chat-1',
+              type: 'group',
+              title: 'Команда',
+              members: [{ id: 'self', username: 'german', displayName: 'Гера', role: 'owner' }],
+              currentUserRole: 'owner',
+            },
+          ],
+        };
+      }
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      if (path === '/v1/chats/chat-1/messages') {
+        return {
+          messages: [initialOldest],
+          pinnedMessage: pinned,
+          hasMore: true,
+        };
+      }
+      if (path === '/v1/chats/chat-1/messages/pinned-old') return { message: pinned };
+      if (path.startsWith('/v1/chats/chat-1/messages?before=')) {
+        return { messages: [], hasMore: false };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    const view = render(
+      <HomeView
+        user={user}
+        busy={false}
+        error=""
+        page="chats"
+        onCreateRoom={vi.fn()}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await view.findByRole('button', { name: 'Команда' }));
+    expect(await view.findByText('Начало загруженной страницы')).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: /Закреплённое сообщение/ }));
+    await waitFor(() =>
+      expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats/chat-1/messages/pinned-old'),
+    );
+
+    const scroller = view.container.querySelector<HTMLElement>('.message-scroll-container')!;
+    scroller.scrollTop = 0;
+    fireEvent.scroll(scroller);
+
+    await waitFor(() =>
+      expect(homeViewHarness.request).toHaveBeenCalledWith(
+        `/v1/chats/chat-1/messages?before=${encodeURIComponent(initialOldest.created_at)}`,
+      ),
+    );
+  });
 });
 
 describe('TransientNotice', () => {

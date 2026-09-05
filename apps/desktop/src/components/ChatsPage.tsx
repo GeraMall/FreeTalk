@@ -13,8 +13,12 @@ import {
   ArrowDown,
   ArrowLeft,
   Ban,
+  CheckCircle2,
+  ChevronDown,
   Clock3,
+  Copy,
   Crown,
+  Forward,
   ImagePlus,
   Link2,
   MessageCircle,
@@ -22,9 +26,12 @@ import {
   Pencil,
   PanelRightClose,
   PanelRightOpen,
+  Pin,
+  PinOff,
   Phone,
   Plus,
   RefreshCw,
+  Reply,
   Search,
   Send,
   Save,
@@ -40,7 +47,7 @@ import { loadChatImage } from '../lib/chat-image-cache';
 import { parseRoomDeepLink } from '../lib/deep-link';
 import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
 import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
-import type { PresenceStatus } from '@freetalk/protocol';
+import { chatReactionEmojiSchema, type PresenceStatus } from '@freetalk/protocol';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
 import { avatarImageStyle } from '../lib/avatar-image-style';
 import { CreateGroupDialog } from './CreateGroupDialog';
@@ -122,6 +129,54 @@ export interface MessageItem {
       displayName: string;
       avatarUrl?: string | null;
     }>;
+    replyTo?: MessageReference | null;
+    forwardedFrom?: MessageAuthorReference | null;
+    gif?: GifMessageData;
+    deleted?: boolean;
+  };
+  reply_to?: MessageReference | null;
+  forwarded_from?: MessageAuthorReference | null;
+  reactions?: MessageReaction[];
+  pinned_at?: string | null;
+  pinned_by?: string | null;
+  deleted_at?: string | null;
+}
+
+export interface MessageReference {
+  id: string;
+  kind: string;
+  body: string;
+  sender_id?: string | null;
+  display_name?: string | null;
+  username?: string | null;
+  deleted?: boolean;
+}
+
+export interface MessageAuthorReference {
+  display_name?: string;
+  displayName?: string;
+  username?: string | null;
+}
+
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  userIds?: string[];
+  reactedByMe?: boolean;
+}
+
+export interface GifMessageData {
+  url: string;
+  previewUrl?: string;
+  width?: number;
+  height?: number;
+  alt: string;
+  attribution: {
+    provider: 'Wikimedia Commons';
+    title: string;
+    pageUrl: string;
+    author?: string;
+    license?: string;
   };
 }
 
@@ -140,6 +195,7 @@ interface ChatsPageProps {
   friends: FriendOption[];
   activeChatId?: string;
   messages: MessageItem[];
+  pinnedMessage?: MessageItem;
   chatsLoading: boolean;
   messagesLoading: boolean;
   messagesError: string;
@@ -151,8 +207,19 @@ interface ChatsPageProps {
   onCloseChat?(): void;
   onRetryMessages(): void;
   onLoadOlder?(): Promise<void>;
-  onSendMessage(body: string): Promise<boolean>;
-  onSendImage?(dataUrl: string, caption: string, thumbnailDataUrl: string): Promise<boolean>;
+  onSendMessage(body: string, replyToMessageId?: string): Promise<boolean>;
+  onSendImage?(
+    dataUrl: string,
+    caption: string,
+    thumbnailDataUrl: string,
+    replyToMessageId?: string,
+  ): Promise<boolean>;
+  onSendGif?(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
+  onReactMessage?(messageId: string, emoji: string | null): Promise<boolean>;
+  onPinMessage?(messageId: string, pinned: boolean): Promise<boolean>;
+  onDeleteMessage?(messageId: string): Promise<boolean>;
+  onForwardMessage?(messageId: string, targetChatId: string): Promise<boolean>;
+  onRevealMessage?(messageId: string): Promise<boolean>;
   onCreateGroup(title: string, memberIds: string[]): Promise<boolean>;
   onJoinInvite(token: string): Promise<boolean>;
   onStartCall(): Promise<void>;
@@ -182,6 +249,7 @@ export function ChatsPage({
   friends,
   activeChatId,
   messages,
+  pinnedMessage,
   chatsLoading,
   messagesLoading,
   messagesError,
@@ -195,6 +263,12 @@ export function ChatsPage({
   onLoadOlder = async () => {},
   onSendMessage,
   onSendImage = async () => false,
+  onSendGif = async () => false,
+  onReactMessage = async () => false,
+  onPinMessage = async () => false,
+  onDeleteMessage = async () => false,
+  onForwardMessage = async () => false,
+  onRevealMessage = async () => false,
   onCreateGroup,
   onJoinInvite,
   onStartCall,
@@ -223,6 +297,7 @@ export function ChatsPage({
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showGroupAvatarEditor, setShowGroupAvatarEditor] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<MessageItem>();
   const [profileVisible, setProfileVisible] = useState(!mobile);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
@@ -336,6 +411,7 @@ export function ChatsPage({
     setShowChatMenu(false);
     setShowChatSettings(false);
     setShowGroupAvatarEditor(false);
+    setReplyTarget(undefined);
     setConfirmAction(undefined);
     setConfirmActionError('');
     setFullProfileOpen(false);
@@ -637,6 +713,7 @@ export function ChatsPage({
               userId={userId}
               groupChat={activeChat.type === 'group'}
               messages={messages}
+              pinnedMessage={pinnedMessage}
               loading={messagesLoading}
               error={messagesError}
               sentMessageVersion={sentMessageVersion}
@@ -645,11 +722,30 @@ export function ChatsPage({
               onLoadOlder={onLoadOlder}
               onJoinCall={onJoinCall}
               onJoinInvite={onJoinInvite}
+              chats={chats}
+              canModerateMessages={
+                activeChat.type === 'group' &&
+                ['owner', 'admin'].includes(activeChat.currentUserRole ?? '')
+              }
+              canPinMessages={
+                activeChat.type === 'direct' ||
+                ['owner', 'admin'].includes(activeChat.currentUserRole ?? '')
+              }
+              onReply={setReplyTarget}
+              onReact={onReactMessage}
+              onPin={onPinMessage}
+              onDelete={onDeleteMessage}
+              onForward={onForwardMessage}
+              onReveal={onRevealMessage}
             />
             <MessageComposer
+              key={activeChat.id}
               disabled={messagesLoading || slowModeRemainingSeconds > 0}
               onSend={onSendMessage}
               onSendImage={onSendImage}
+              onSendGif={onSendGif}
+              replyTarget={replyTarget}
+              onCancelReply={() => setReplyTarget(undefined)}
             />
           </>
         ) : (
@@ -1372,11 +1468,71 @@ function presenceLabel(status: PresenceStatus = 'offline') {
   return 'Не в сети';
 }
 
+const QUICK_MESSAGE_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
+const MESSAGE_REACTION_PALETTE = [
+  '❤️',
+  '🧡',
+  '💛',
+  '💚',
+  '💙',
+  '💜',
+  '🖤',
+  '🤍',
+  '👍',
+  '👎',
+  '👏',
+  '🙌',
+  '🤝',
+  '🙏',
+  '💪',
+  '👌',
+  '😂',
+  '🤣',
+  '😊',
+  '😍',
+  '🥰',
+  '😘',
+  '😎',
+  '🤩',
+  '😮',
+  '😱',
+  '🤯',
+  '😢',
+  '😭',
+  '😡',
+  '🤔',
+  '🫡',
+  '🔥',
+  '✨',
+  '🎉',
+  '💯',
+  '✅',
+  '❌',
+  '⚡',
+  '💥',
+  '🚀',
+  '👀',
+  '💀',
+  '🤡',
+  '🎯',
+  '🏆',
+  '⚽',
+  '🎮',
+];
+
+interface MessageContextState {
+  message: MessageItem;
+  x: number;
+  y: number;
+  expanded: boolean;
+}
+
 export function MessageList({
   chatId,
   userId,
   groupChat,
   messages,
+  pinnedMessage: loadedPinnedMessage,
   loading,
   error,
   sentMessageVersion,
@@ -1385,11 +1541,21 @@ export function MessageList({
   onLoadOlder = async () => {},
   onJoinCall,
   onJoinInvite = async () => false,
+  chats = [],
+  canModerateMessages = false,
+  canPinMessages = true,
+  onReply = () => {},
+  onReact = async () => false,
+  onPin = async () => false,
+  onDelete = async () => false,
+  onForward = async () => false,
+  onReveal = async () => false,
 }: {
   chatId: string;
   userId: string;
   groupChat: boolean;
   messages: MessageItem[];
+  pinnedMessage?: MessageItem;
   loading: boolean;
   error: string;
   sentMessageVersion: number;
@@ -1398,6 +1564,15 @@ export function MessageList({
   onLoadOlder?(): Promise<void>;
   onJoinCall(roomId: string): void;
   onJoinInvite?(token: string): Promise<boolean>;
+  chats?: ChatItem[];
+  canModerateMessages?: boolean;
+  canPinMessages?: boolean;
+  onReply?(message: MessageItem): void;
+  onReact?(messageId: string, emoji: string | null): Promise<boolean>;
+  onPin?(messageId: string, pinned: boolean): Promise<boolean>;
+  onDelete?(messageId: string): Promise<boolean>;
+  onForward?(messageId: string, targetChatId: string): Promise<boolean>;
+  onReveal?(messageId: string): Promise<boolean>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1412,6 +1587,114 @@ export function MessageList({
   const nearBottomRef = useRef(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [olderBusy, setOlderBusy] = useState(false);
+  const [contextMenu, setContextMenu] = useState<MessageContextState>();
+  const [forwardingMessage, setForwardingMessage] = useState<MessageItem>();
+  const [deletingMessage, setDeletingMessage] = useState<MessageItem>();
+  const [actionPending, setActionPending] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const menuRef = useRef<HTMLDivElement>(null);
+  const pinnedMessage =
+    loadedPinnedMessage ?? [...messages].reverse().find((message) => message.pinned_at);
+
+  useEffect(() => {
+    setContextMenu(undefined);
+    setForwardingMessage(undefined);
+    setDeletingMessage(undefined);
+    setSelectedIds(new Set());
+  }, [chatId]);
+
+  useEffect(() => {
+    setContextMenu((current) => {
+      if (!current) return current;
+      const latest = messages.find((message) => message.id === current.message.id);
+      return latest ? { ...current, message: latest } : undefined;
+    });
+    setSelectedIds((current) => {
+      if (!current.size) return current;
+      const available = new Set(messages.map((message) => message.id));
+      const next = new Set([...current].filter((messageId) => available.has(messageId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setContextMenu(undefined);
+    };
+    const closeOnKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(undefined);
+    };
+    const closeOnViewportChange = () => setContextMenu(undefined);
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', closeOnKey);
+    window.addEventListener('resize', closeOnViewportChange);
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', closeOnKey);
+      window.removeEventListener('resize', closeOnViewportChange);
+    };
+  }, [contextMenu]);
+
+  const contextMenuMessageId = contextMenu?.message.id;
+  useEffect(() => {
+    if (!contextMenuMessageId) return;
+    const frame = window.requestAnimationFrame(() =>
+      menuRef.current?.querySelector<HTMLElement>('button:not(:disabled), input')?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextMenuMessageId]);
+
+  const openMessageContext = (message: MessageItem, x: number, y: number) => {
+    const width = 286;
+    const height = 380;
+    setContextMenu({
+      message,
+      x: Math.max(10, Math.min(x, window.innerWidth - width - 10)),
+      y: Math.max(10, Math.min(y, window.innerHeight - height - 10)),
+      expanded: false,
+    });
+  };
+
+  const toggleSelected = (messageId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  };
+
+  const copyMessages = async (items: MessageItem[]) => {
+    const text = items
+      .filter((message) => !message.metadata?.deleted && !message.deleted_at)
+      .map((message) => message.body)
+      .filter(Boolean)
+      .join('\n');
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch {
+      // Older WKWebView builds may expose Clipboard API but reject custom-scheme pages.
+    }
+    const fallback = document.createElement('textarea');
+    fallback.value = text;
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.append(fallback);
+    fallback.select();
+    document.execCommand('copy');
+    fallback.remove();
+  };
+
+  const revealMessage = async (messageId: string) => {
+    if (scrollToReferencedMessage(messageId)) return;
+    if (!(await onReveal(messageId))) return;
+    window.requestAnimationFrame(() => scrollToReferencedMessage(messageId));
+  };
 
   const scrollToBottom = useCallback((smooth = false) => {
     const container = scrollRef.current;
@@ -1470,6 +1753,7 @@ export function MessageList({
   const onScroll = () => {
     const container = scrollRef.current;
     if (!container) return;
+    if (contextMenu) setContextMenu(undefined);
     nearBottomRef.current = isNearBottom(container);
     if (nearBottomRef.current && newMessageCount) setNewMessageCount(0);
     if (container.scrollTop < 80 && hasMore && !olderBusy) {
@@ -1491,6 +1775,31 @@ export function MessageList({
 
   return (
     <div className="message-scroll-shell">
+      {pinnedMessage ? (
+        <div className="message-pinned-banner">
+          <button
+            type="button"
+            className="message-pinned-jump"
+            onClick={() => void revealMessage(pinnedMessage.id)}
+          >
+            <Pin />
+            <span>
+              <strong>Закреплённое сообщение</strong>
+              <small>{pinnedMessage.body || mediaKindLabel(pinnedMessage.kind)}</small>
+            </span>
+          </button>
+          {canPinMessages ? (
+            <button
+              type="button"
+              className="message-pinned-remove"
+              aria-label="Открепить сообщение"
+              onClick={() => void onPin(pinnedMessage.id, false)}
+            >
+              <X />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div
         className="message-scroll-container"
         ref={scrollRef}
@@ -1514,7 +1823,11 @@ export function MessageList({
               const showDate = !previous || !isSameDay(previous.created_at, message.created_at);
               const grouped = isGroupedMessage(previous, message);
               return (
-                <div className="message-entry" key={message.id}>
+                <div
+                  className={`message-entry${selectedIds.has(message.id) ? ' selected' : ''}`}
+                  data-message-id={message.id}
+                  key={message.id}
+                >
                   {showDate && <DateSeparator date={message.created_at} />}
                   {message.kind === 'call' ? (
                     <SystemCallMessage message={message} onJoin={onJoinCall} />
@@ -1530,8 +1843,13 @@ export function MessageList({
                       own={message.sender_id === userId}
                       grouped={grouped}
                       showAuthor={groupChat && !grouped && message.sender_id !== userId}
+                      selected={selectedIds.has(message.id)}
                       onJoinCall={onJoinCall}
                       onJoinInvite={onJoinInvite}
+                      onContextMenu={openMessageContext}
+                      onToggleReaction={(emoji) => void onReact(message.id, emoji)}
+                      onToggleSelected={() => toggleSelected(message.id)}
+                      onRevealMessage={(messageId) => void revealMessage(messageId)}
                     />
                   )}
                 </div>
@@ -1547,6 +1865,137 @@ export function MessageList({
           {newMessageCount > 1 && <span>{newMessageCount}</span>}
         </button>
       )}
+      {contextMenu
+        ? createPortal(
+            <MessageContextMenu
+              menuRef={menuRef}
+              state={contextMenu}
+              accountId={userId}
+              own={contextMenu.message.sender_id === userId}
+              canDelete={contextMenu.message.sender_id === userId || canModerateMessages}
+              canPin={canPinMessages}
+              onExpand={() =>
+                setContextMenu((current) =>
+                  current ? { ...current, expanded: !current.expanded } : current,
+                )
+              }
+              onReact={(emoji) => {
+                const active = contextMenu.message.reactions?.find(
+                  (reaction) => reaction.emoji === emoji && reactionMine(reaction, userId),
+                );
+                void onReact(contextMenu.message.id, active ? null : emoji);
+                setContextMenu(undefined);
+              }}
+              onReply={() => {
+                onReply(contextMenu.message);
+                setContextMenu(undefined);
+              }}
+              onPin={() => {
+                void onPin(contextMenu.message.id, !contextMenu.message.pinned_at);
+                setContextMenu(undefined);
+              }}
+              onCopy={() => {
+                void copyMessages([contextMenu.message]);
+                setContextMenu(undefined);
+              }}
+              onForward={() => {
+                setForwardingMessage(contextMenu.message);
+                setContextMenu(undefined);
+              }}
+              onDelete={() => {
+                setDeletingMessage(contextMenu.message);
+                setContextMenu(undefined);
+              }}
+              onSelect={() => {
+                toggleSelected(contextMenu.message.id);
+                setContextMenu(undefined);
+              }}
+            />,
+            document.body,
+          )
+        : null}
+      {selectedIds.size > 0 ? (
+        <div className="message-selection-bar" role="toolbar" aria-label="Выбранные сообщения">
+          <strong>{selectedIds.size}</strong>
+          <span>выбрано</span>
+          <button
+            type="button"
+            title="Копировать"
+            aria-label="Копировать выбранные сообщения"
+            onClick={() =>
+              void copyMessages(messages.filter((message) => selectedIds.has(message.id)))
+            }
+          >
+            <Copy />
+          </button>
+          {selectedIds.size === 1 ? (
+            <button
+              type="button"
+              title="Переслать"
+              aria-label="Переслать выбранное сообщение"
+              onClick={() =>
+                setForwardingMessage(messages.find((message) => selectedIds.has(message.id)))
+              }
+            >
+              <Forward />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            title="Снять выделение"
+            aria-label="Снять выделение"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X />
+          </button>
+        </div>
+      ) : null}
+      {forwardingMessage ? (
+        <ForwardMessageDialog
+          message={forwardingMessage}
+          chats={chats}
+          userId={userId}
+          currentChatId={chatId}
+          busy={actionPending}
+          onClose={() => !actionPending && setForwardingMessage(undefined)}
+          onForward={(targetChatId) => {
+            setActionPending(true);
+            void onForward(forwardingMessage.id, targetChatId)
+              .then((sent) => {
+                if (sent) {
+                  setForwardingMessage(undefined);
+                  setSelectedIds(new Set());
+                }
+              })
+              .finally(() => setActionPending(false));
+          }}
+        />
+      ) : null}
+      {deletingMessage ? (
+        <ChatActionConfirmDialog
+          title="Удалить сообщение?"
+          description="Сообщение исчезнет у всех участников этого чата."
+          confirmLabel="Удалить"
+          busy={actionPending}
+          error=""
+          onCancel={() => !actionPending && setDeletingMessage(undefined)}
+          onConfirm={() => {
+            setActionPending(true);
+            void onDelete(deletingMessage.id)
+              .then((deleted) => {
+                if (deleted) {
+                  setDeletingMessage(undefined);
+                  setSelectedIds((current) => {
+                    const next = new Set(current);
+                    next.delete(deletingMessage.id);
+                    return next;
+                  });
+                }
+              })
+              .finally(() => setActionPending(false));
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1557,23 +2006,89 @@ function MessageBubble({
   own,
   grouped,
   showAuthor,
+  selected,
   onJoinCall,
   onJoinInvite,
+  onContextMenu,
+  onToggleReaction,
+  onToggleSelected,
+  onRevealMessage,
 }: {
   message: MessageItem;
   accountId: string;
   own: boolean;
   grouped: boolean;
   showAuthor: boolean;
+  selected: boolean;
   onJoinCall(roomId: string): void;
   onJoinInvite(token: string): Promise<boolean>;
+  onContextMenu(message: MessageItem, x: number, y: number): void;
+  onToggleReaction(emoji: string | null): void;
+  onToggleSelected(): void;
+  onRevealMessage(messageId: string): void;
 }) {
+  const longPressTimerRef = useRef<number | undefined>(undefined);
+  const longPressStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const longPressTriggeredRef = useRef(false);
   const inviteToken = extractChatInviteToken(message.body);
   const roomInviteId = parseRoomDeepLink(message.body.trim());
   const isInvite = Boolean(inviteToken || roomInviteId);
+  const replyTo = message.reply_to ?? message.metadata?.replyTo;
+  const forwardedFrom = message.forwarded_from ?? message.metadata?.forwardedFrom;
+  const forwardedName = forwardedFrom?.display_name ?? forwardedFrom?.displayName;
+  const gif = message.metadata?.gif;
+  const deleted = Boolean(message.deleted_at || message.metadata?.deleted);
+  const openContext = (x: number, y: number) => {
+    if (deleted) return;
+    onContextMenu(message, x, y);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current !== undefined) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = undefined;
+    longPressStartRef.current = undefined;
+  };
+  useEffect(() => cancelLongPress, []);
   return (
-    <article className={`message-bubble-row ${own ? 'own' : 'remote'} ${grouped ? 'grouped' : ''}`}>
-      {!grouped && (
+    <article
+      className={`message-bubble-row ${own ? 'own' : 'remote'} ${grouped ? 'grouped' : ''}${selected ? ' selected' : ''}`}
+      tabIndex={deleted ? undefined : 0}
+      aria-selected={selected || undefined}
+      onPointerDown={(event) => {
+        if (deleted || event.pointerType === 'mouse' || event.button !== 0) return;
+        cancelLongPress();
+        longPressTriggeredRef.current = false;
+        longPressStartRef.current = { x: event.clientX, y: event.clientY };
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTimerRef.current = undefined;
+          longPressTriggeredRef.current = true;
+          openContext(event.clientX, event.clientY);
+        }, 480);
+      }}
+      onPointerMove={(event) => {
+        const start = longPressStartRef.current;
+        if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 9) return;
+        cancelLongPress();
+      }}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onClickCapture={(event) => {
+        if (!longPressTriggeredRef.current) return;
+        longPressTriggeredRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openContext(event.clientX, event.clientY);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        openContext(rect.left + Math.min(rect.width, 150), rect.top + 24);
+      }}
+    >
+      {!own && !grouped && (
         <ChatAvatar
           name={message.display_name || message.username || 'Участник'}
           group={false}
@@ -1581,22 +2096,375 @@ function MessageBubble({
           compact
         />
       )}
-      <div
-        className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}`}
-      >
-        {showAuthor && <strong>{message.display_name || message.username || 'Участник'}</strong>}
-        {message.kind === 'image' ? (
-          <ChatImageMessage message={message} accountId={accountId} />
-        ) : inviteToken ? (
-          <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
-        ) : roomInviteId ? (
-          <RoomInviteMessageCard roomId={roomInviteId} onJoin={onJoinCall} />
-        ) : (
-          <p>{message.body}</p>
-        )}
-        <time>{formatMessageTime(message.created_at)}</time>
+      <div className="message-bubble-stack">
+        <div
+          className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
+        >
+          {showAuthor && !deleted ? (
+            <strong className="message-author">
+              {message.display_name || message.username || 'Участник'}
+            </strong>
+          ) : null}
+          {forwardedName && !deleted ? (
+            <span className="message-forwarded-label">
+              <Forward /> Переслано от {forwardedName}
+            </span>
+          ) : null}
+          {replyTo && !deleted ? (
+            <button
+              type="button"
+              className="message-reply-quote"
+              onClick={() => onRevealMessage(replyTo.id)}
+            >
+              <strong>{replyTo.display_name || replyTo.username || 'Сообщение'}</strong>
+              <span>
+                {replyTo.deleted
+                  ? 'Сообщение удалено'
+                  : replyTo.body || mediaKindLabel(replyTo.kind)}
+              </span>
+            </button>
+          ) : null}
+          {deleted ? (
+            <p className="deleted-message-copy">Сообщение удалено</p>
+          ) : gif ? (
+            <GifMessage gif={gif} />
+          ) : message.kind === 'image' ? (
+            <ChatImageMessage message={message} accountId={accountId} />
+          ) : inviteToken ? (
+            <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
+          ) : roomInviteId ? (
+            <RoomInviteMessageCard roomId={roomInviteId} onJoin={onJoinCall} />
+          ) : (
+            <p>{message.body}</p>
+          )}
+          <span className="message-meta">
+            {message.pinned_at ? <Pin aria-label="Закреплено" /> : null}
+            <time>{formatMessageTime(message.created_at)}</time>
+          </span>
+        </div>
+        {!deleted && message.reactions?.length ? (
+          <div className="message-reactions" aria-label="Реакции на сообщение">
+            {message.reactions.map((reaction) => (
+              <button
+                type="button"
+                className={reactionMine(reaction, accountId) ? 'mine' : ''}
+                aria-label={`${reaction.emoji}: ${reaction.count}`}
+                aria-pressed={reactionMine(reaction, accountId)}
+                onClick={() =>
+                  onToggleReaction(reactionMine(reaction, accountId) ? null : reaction.emoji)
+                }
+                key={reaction.emoji}
+              >
+                <span>{reaction.emoji}</span>
+                <b>{reaction.count}</b>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
+      {selected ? (
+        <button
+          type="button"
+          className="message-selection-check"
+          aria-label="Снять выделение сообщения"
+          onClick={onToggleSelected}
+        >
+          <CheckCircle2 />
+        </button>
+      ) : null}
     </article>
+  );
+}
+
+function mediaKindLabel(kind: string) {
+  if (kind === 'image') return 'Фотография';
+  if (kind === 'call') return 'Звонок';
+  return 'Сообщение';
+}
+
+function reactionMine(reaction: MessageReaction, userId: string) {
+  return reaction.reactedByMe === true || reaction.userIds?.includes(userId) === true;
+}
+
+function scrollToReferencedMessage(messageId: string) {
+  const target = [...document.querySelectorAll<HTMLElement>('[data-message-id]')].find(
+    (entry) => entry.dataset.messageId === messageId,
+  );
+  if (!target) return false;
+  if (typeof target.scrollIntoView === 'function')
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.remove('message-target-highlight');
+  window.requestAnimationFrame(() => target.classList.add('message-target-highlight'));
+  window.setTimeout(() => target.classList.remove('message-target-highlight'), 1_150);
+  return true;
+}
+
+function GifMessage({ gif }: { gif: GifMessageData }) {
+  const cachedUrl = useCachedMediaUrl(gif.url);
+  return (
+    <figure
+      className="chat-gif-message"
+      style={{ aspectRatio: gif.width && gif.height ? `${gif.width} / ${gif.height}` : undefined }}
+    >
+      {cachedUrl ? <img src={cachedUrl} alt={gif.alt || 'GIF'} draggable={false} /> : <span />}
+      <figcaption>
+        <span>GIF</span>
+        <a
+          href={gif.attribution.pageUrl}
+          target="_blank"
+          rel="noreferrer"
+          title={gif.attribution.license || 'Источник GIF'}
+        >
+          {gif.attribution.provider}
+        </a>
+      </figcaption>
+    </figure>
+  );
+}
+
+function MessageContextMenu({
+  menuRef,
+  state,
+  accountId,
+  own,
+  canDelete,
+  canPin,
+  onExpand,
+  onReact,
+  onReply,
+  onPin,
+  onCopy,
+  onForward,
+  onDelete,
+  onSelect,
+}: {
+  menuRef: { current: HTMLDivElement | null };
+  state: MessageContextState;
+  accountId: string;
+  own: boolean;
+  canDelete: boolean;
+  canPin: boolean;
+  onExpand(): void;
+  onReact(emoji: string): void;
+  onReply(): void;
+  onPin(): void;
+  onCopy(): void;
+  onForward(): void;
+  onDelete(): void;
+  onSelect(): void;
+}) {
+  const [customReaction, setCustomReaction] = useState('');
+  const customReactionValid = chatReactionEmojiSchema.safeParse(customReaction.trim()).success;
+  const reactionIsActive = (emoji: string) =>
+    state.message.reactions?.some(
+      (reaction) => reaction.emoji === emoji && reactionMine(reaction, accountId),
+    ) === true;
+  const submitCustomReaction = () => {
+    const emoji = customReaction.trim();
+    if (customReactionValid) onReact(emoji);
+  };
+  return (
+    <div
+      ref={menuRef}
+      className={`message-context-menu${state.expanded ? ' expanded' : ''}`}
+      style={{ left: state.x, top: state.y }}
+      role="menu"
+      aria-label="Действия с сообщением"
+      onKeyDown={(event) => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const controls = [
+          ...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input'),
+        ];
+        if (!controls.length) return;
+        event.preventDefault();
+        const currentIndex = controls.indexOf(document.activeElement as HTMLElement);
+        const nextIndex =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? controls.length - 1
+              : event.key === 'ArrowUp'
+                ? (currentIndex - 1 + controls.length) % controls.length
+                : (currentIndex + 1) % controls.length;
+        controls[nextIndex]?.focus();
+      }}
+    >
+      <div className="message-quick-reactions" aria-label="Быстрые реакции">
+        {QUICK_MESSAGE_REACTIONS.map((emoji) => (
+          <button
+            type="button"
+            aria-label={`Поставить реакцию ${emoji}`}
+            aria-pressed={reactionIsActive(emoji)}
+            onClick={() => onReact(emoji)}
+            key={emoji}
+          >
+            {emoji}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="reaction-expand-button"
+          aria-label="Все реакции"
+          aria-expanded={state.expanded}
+          onClick={onExpand}
+        >
+          <ChevronDown />
+        </button>
+      </div>
+      {state.expanded ? (
+        <div className="message-reaction-picker" aria-label="Выбор реакции">
+          <div className="message-reaction-palette">
+            {MESSAGE_REACTION_PALETTE.map((emoji) => (
+              <button
+                type="button"
+                aria-label={`Поставить реакцию ${emoji}`}
+                aria-pressed={reactionIsActive(emoji)}
+                onClick={() => onReact(emoji)}
+                key={emoji}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          <label className="message-custom-reaction">
+            <span className="sr-only">Любой эмодзи</span>
+            <input
+              value={customReaction}
+              maxLength={16}
+              placeholder="Вставьте любой эмодзи"
+              aria-label="Любой эмодзи"
+              onChange={(event) => setCustomReaction(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                submitCustomReaction();
+              }}
+            />
+            <button
+              type="button"
+              disabled={!customReactionValid}
+              aria-label="Поставить введённую реакцию"
+              onClick={submitCustomReaction}
+            >
+              <Send />
+            </button>
+          </label>
+        </div>
+      ) : null}
+      <div className="message-context-actions">
+        <button type="button" role="menuitem" onClick={onReply}>
+          <Reply /> Ответить
+        </button>
+        {canPin ? (
+          <button type="button" role="menuitem" onClick={onPin}>
+            {state.message.pinned_at ? <PinOff /> : <Pin />}
+            {state.message.pinned_at ? 'Открепить' : 'Закрепить'}
+          </button>
+        ) : null}
+        <button type="button" role="menuitem" onClick={onCopy}>
+          <Copy /> Копировать текст
+        </button>
+        <button type="button" role="menuitem" onClick={onForward}>
+          <Forward /> Переслать
+        </button>
+        {canDelete ? (
+          <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
+            <Trash2 /> Удалить{own ? '' : ' как администратор'}
+          </button>
+        ) : null}
+        <button type="button" role="menuitem" onClick={onSelect}>
+          <CheckCircle2 /> Выделить
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ForwardMessageDialog({
+  message,
+  chats,
+  userId,
+  currentChatId,
+  busy,
+  onClose,
+  onForward,
+}: {
+  message: MessageItem;
+  chats: ChatItem[];
+  userId: string;
+  currentChatId: string;
+  busy: boolean;
+  onClose(): void;
+  onForward(chatId: string): void;
+}) {
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLocaleLowerCase('ru-RU');
+  const targets = chats.filter(
+    (chat) =>
+      chat.id !== currentChatId &&
+      (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
+  );
+  return createPortal(
+    <div className="forward-message-backdrop" onPointerDown={onClose}>
+      <section
+        className="forward-message-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Переслать сообщение"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <strong>Переслать сообщение</strong>
+            <small>{message.body || mediaKindLabel(message.kind)}</small>
+          </div>
+          <button type="button" aria-label="Закрыть" disabled={busy} onClick={onClose}>
+            <X />
+          </button>
+        </header>
+        <label>
+          <Search />
+          <input
+            value={search}
+            autoFocus
+            placeholder="Найти чат"
+            aria-label="Найти чат для пересылки"
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <div className="forward-chat-list">
+          {targets.length ? (
+            targets.map((chat) => (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onForward(chat.id)}
+                key={chat.id}
+              >
+                <ChatAvatar
+                  name={chatName(chat, userId)}
+                  group={chat.type === 'group'}
+                  avatarUrl={
+                    chat.type === 'group'
+                      ? chat.avatarUrl
+                      : chat.members.find((member) => member.id !== userId)?.avatarUrl
+                  }
+                  compact
+                />
+                <span>
+                  <strong>{chatName(chat, userId)}</strong>
+                  <small>{chat.type === 'group' ? 'Группа' : 'Личный чат'}</small>
+                </span>
+                <Forward />
+              </button>
+            ))
+          ) : (
+            <p>Подходящих чатов нет</p>
+          )}
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -2064,10 +2932,21 @@ function MessageComposer({
   disabled,
   onSend,
   onSendImage,
+  onSendGif,
+  replyTarget,
+  onCancelReply,
 }: {
   disabled: boolean;
-  onSend(body: string): Promise<boolean>;
-  onSendImage(dataUrl: string, caption: string, thumbnailDataUrl: string): Promise<boolean>;
+  onSend(body: string, replyToMessageId?: string): Promise<boolean>;
+  onSendImage(
+    dataUrl: string,
+    caption: string,
+    thumbnailDataUrl: string,
+    replyToMessageId?: string,
+  ): Promise<boolean>;
+  onSendGif(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
+  replyTarget?: MessageItem;
+  onCancelReply(): void;
 }) {
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
@@ -2075,6 +2954,7 @@ function MessageComposer({
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
   const [imageError, setImageError] = useState('');
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const prepareSelectedImage = (file: File) => {
     if (processingImage) return;
@@ -2098,13 +2978,18 @@ function MessageComposer({
     setSending(true);
     try {
       const sent = imageDataUrl
-        ? await onSendImage(imageDataUrl, body, thumbnailDataUrl)
-        : await onSend(body);
+        ? replyTarget
+          ? await onSendImage(imageDataUrl, body, thumbnailDataUrl, replyTarget.id)
+          : await onSendImage(imageDataUrl, body, thumbnailDataUrl)
+        : replyTarget
+          ? await onSend(body, replyTarget.id)
+          : await onSend(body);
       if (sent) {
         setValue('');
         setImageDataUrl('');
         setThumbnailDataUrl('');
         setImageError('');
+        onCancelReply();
       }
     } finally {
       setSending(false);
@@ -2117,6 +3002,20 @@ function MessageComposer({
   };
   return (
     <div className="modern-message-composer">
+      {replyTarget ? (
+        <div className="composer-reply-preview">
+          <Reply />
+          <span>
+            <strong>
+              Ответ для {replyTarget.display_name || replyTarget.username || 'пользователя'}
+            </strong>
+            <small>{replyTarget.body || mediaKindLabel(replyTarget.kind)}</small>
+          </span>
+          <button type="button" aria-label="Отменить ответ" onClick={onCancelReply}>
+            <X />
+          </button>
+        </div>
+      ) : null}
       {imageDataUrl && (
         <div className="composer-image-preview">
           <img src={imageDataUrl} alt="Предпросмотр отправляемой фотографии" />
@@ -2157,6 +3056,18 @@ function MessageComposer({
       >
         <ImagePlus />
       </button>
+      <button
+        type="button"
+        className={`composer-gif-button${showGifPicker ? ' active' : ''}`}
+        title="Найти GIF"
+        aria-label="Открыть поиск GIF"
+        aria-expanded={showGifPicker}
+        disabled={disabled || sending || processingImage}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setShowGifPicker((visible) => !visible)}
+      >
+        GIF
+      </button>
       <textarea
         value={value}
         rows={1}
@@ -2184,8 +3095,219 @@ function MessageComposer({
       >
         <Send />
       </button>
+      {showGifPicker ? (
+        <GifPicker
+          busy={sending || disabled}
+          onClose={() => setShowGifPicker(false)}
+          onSelect={(gif) => {
+            if (sending || disabled) return;
+            setSending(true);
+            void (replyTarget ? onSendGif(gif, replyTarget.id) : onSendGif(gif))
+              .then((sent) => {
+                if (sent) {
+                  setShowGifPicker(false);
+                  onCancelReply();
+                }
+              })
+              .finally(() => setSending(false));
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+interface CommonsGifPage {
+  pageid: number;
+  title: string;
+  imageinfo?: Array<{
+    url: string;
+    thumburl?: string;
+    mime?: string;
+    width?: number;
+    height?: number;
+    extmetadata?: Record<string, { value?: string }>;
+  }>;
+}
+
+function GifPicker({
+  busy,
+  onClose,
+  onSelect,
+}: {
+  busy: boolean;
+  onClose(): void;
+  onSelect(gif: GifMessageData): void;
+}) {
+  const [query, setQuery] = useState('animated sticker');
+  const [results, setResults] = useState<GifMessageData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const closeOnPointer = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest?.('.composer-gif-button')) return;
+      if (!pickerRef.current?.contains(event.target as Node)) onClose();
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('pointerdown', closeOnPointer, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointer, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const search = query.trim() || 'animated sticker';
+    const timer = window.setTimeout(() => {
+      const parameters = new URLSearchParams({
+        action: 'query',
+        generator: 'search',
+        gsrsearch: `filemime:image/gif ${search}`,
+        gsrnamespace: '6',
+        gsrlimit: '24',
+        prop: 'imageinfo',
+        iiprop: 'url|mime|size|extmetadata',
+        iiurlwidth: '360',
+        format: 'json',
+        origin: '*',
+      });
+      setLoading(true);
+      setError('');
+      void fetch(`https://commons.wikimedia.org/w/api.php?${parameters}`, {
+        signal: controller.signal,
+        credentials: 'omit',
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`GIF search failed (${response.status})`);
+          return (await response.json()) as { query?: { pages?: Record<string, CommonsGifPage> } };
+        })
+        .then((payload) => {
+          const pages = Object.values(payload.query?.pages ?? {});
+          setResults(
+            pages.flatMap((page) => {
+              const image = page.imageinfo?.[0];
+              if (!image?.url || image.mime !== 'image/gif') return [];
+              const title = page.title
+                .replace(/^File:/i, '')
+                .replace(/\.gif$/i, '')
+                .trim()
+                .slice(0, 200);
+              const width = validGifDimension(image.width);
+              const height = validGifDimension(image.height);
+              return [
+                {
+                  url: image.url,
+                  previewUrl: image.thumburl ?? image.url,
+                  width,
+                  height,
+                  alt: title || 'GIF',
+                  attribution: {
+                    provider: 'Wikimedia Commons',
+                    title: title || 'GIF',
+                    pageUrl: `https://commons.wikimedia.org/?curid=${page.pageid}`,
+                    author: plainMetadataText(image.extmetadata?.Artist?.value, 200),
+                    license: plainMetadataText(image.extmetadata?.LicenseShortName?.value, 100),
+                  },
+                },
+              ];
+            }),
+          );
+        })
+        .catch((caught) => {
+          if ((caught as Error).name !== 'AbortError') {
+            setResults([]);
+            setError('Не удалось загрузить GIF. Проверьте соединение.');
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, 320);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  return createPortal(
+    <div
+      ref={pickerRef}
+      className="gif-picker"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Поиск GIF"
+    >
+      <header>
+        <div>
+          <strong>GIF</strong>
+          <small>Wikimedia Commons</small>
+        </div>
+        <button type="button" aria-label="Закрыть GIF" onClick={onClose}>
+          <X />
+        </button>
+      </header>
+      <label className="gif-search-field">
+        <Search />
+        <input
+          value={query}
+          autoFocus
+          placeholder="Поиск GIF"
+          aria-label="Поиск GIF"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      <div className="gif-results" aria-live="polite">
+        {loading ? (
+          Array.from({ length: 8 }, (_, index) => <i key={index} />)
+        ) : error ? (
+          <p>{error}</p>
+        ) : results.length ? (
+          results.map((gif) => (
+            <button
+              type="button"
+              disabled={busy}
+              title={gif.alt}
+              aria-label={`Отправить GIF: ${gif.alt}`}
+              onClick={() => onSelect(gif)}
+              key={gif.attribution.pageUrl}
+            >
+              <img
+                src={gif.previewUrl ?? gif.url}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+              <span>{gif.alt}</span>
+            </button>
+          ))
+        ) : (
+          <p>По этому запросу GIF не найдены</p>
+        )}
+      </div>
+      <footer>
+        <span>GIF из открытой медиатеки</span>
+        <b>Wikimedia Commons</b>
+      </footer>
+    </div>,
+    document.body,
+  );
+}
+
+function plainMetadataText(value?: string, limit = 200) {
+  if (!value) return undefined;
+  const container = document.createElement('span');
+  container.innerHTML = value;
+  return (container.textContent ?? '').trim().slice(0, limit) || undefined;
+}
+
+function validGifDimension(value?: number) {
+  return Number.isInteger(value) && value! >= 1 && value! <= 4_096 ? value : undefined;
 }
 
 function extractChatInviteToken(body: string) {

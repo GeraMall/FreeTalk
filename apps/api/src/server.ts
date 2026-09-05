@@ -25,6 +25,7 @@ import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
 import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
+import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
 import {
   displayNameSchema,
   emailSchema,
@@ -42,16 +43,6 @@ import {
 
 const TERMS_VERSION = '2026-08-25';
 const PRIVACY_VERSION = '2026-08-25';
-const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('authenticate'),
-    token: z.string().min(32).max(256),
-  }),
-  z.object({
-    type: z.literal('presence'),
-    status: z.enum(['online', 'away', 'dnd', 'offline']),
-  }),
-]);
 const app = Fastify({
   logger: {
     redact: {
@@ -70,7 +61,7 @@ await app.register(websocket, {
 const allowedOrigins = env.ALLOWED_ORIGIN.split(',').map((value) => value.trim());
 await app.register(cors, {
   origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {
@@ -218,11 +209,20 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
           socket.close(4401, 'Unauthorized');
           return;
         }
+        if (socket.readyState !== 1) return;
         authenticated = true;
         authenticatedUserId = user.id;
         clearTimeout(authenticationTimeout);
         removeFromHub = chatRealtimeHub.add(user.id, socket);
-        socket.send(JSON.stringify({ type: 'ready' }));
+        try {
+          socket.send(JSON.stringify({ type: 'ready' }));
+        } catch {
+          removeFromHub();
+          removeFromHub = undefined;
+          authenticated = false;
+          authenticatedUserId = undefined;
+          socket.close(1011, 'Ready message failed');
+        }
       } catch {
         socket.close(1008, 'Invalid authentication');
       }

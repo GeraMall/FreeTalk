@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { ChatRealtimeServerMessage } from './chat-realtime.js';
+import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import type { AuthenticatedUser } from './auth-service.js';
 import { db, transaction } from './db.js';
@@ -7,7 +7,17 @@ import { publicApiUrl } from './env.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { randomToken, tokenHash, usernameSchema } from './security.js';
 import { safeImageDimensions } from './image-dimensions.js';
-import { ChatSendPacer } from '@freetalk/protocol';
+import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
+import { verifyRemoteGif } from './remote-gif.js';
+import {
+  ChatSendPacer,
+  chatGifMetadataSchema,
+  chatReactionEmojiSchema,
+  type ChatMessageReactionSummary,
+  type ChatMessageReply,
+  type ChatRealtimeServerMessage,
+  type RealtimeChatMessage,
+} from '@freetalk/protocol';
 
 type RequireUser = (
   request: FastifyRequest,
@@ -33,11 +43,6 @@ function enforceChatSendPacing(reply: FastifyReply, chatId: string, userId: stri
   });
   return true;
 }
-type RealtimeChatMessage = Extract<
-  ChatRealtimeServerMessage,
-  { type: 'message-created' }
->['message'];
-
 interface ChatMessageRow {
   id: string;
   kind: 'text' | 'system' | 'call' | 'image';
@@ -46,6 +51,10 @@ interface ChatMessageRow {
   sender_id: string | null;
   created_at: Date;
   expires_at: Date | null;
+  reply_to?: ChatMessageReply | null;
+  reactions?: ChatMessageReactionSummary[];
+  pinned_at?: Date | null;
+  pinned_by?: string | null;
 }
 
 function realtimeMessage(
@@ -53,13 +62,143 @@ function realtimeMessage(
   sender?: { username: string; displayName: string; avatarUrl?: string | null },
 ): RealtimeChatMessage {
   return {
-    ...row,
+    id: row.id,
+    kind: row.kind,
+    body: row.body,
+    metadata: row.metadata,
+    sender_id: row.sender_id,
     username: sender?.username ?? null,
     display_name: sender?.displayName ?? null,
     avatar_url: sender?.avatarUrl ?? null,
     created_at: row.created_at.toISOString(),
     expires_at: row.expires_at?.toISOString() ?? null,
+    reply_to: row.reply_to ?? null,
+    reactions: row.reactions ?? [],
+    pinned_at: row.pinned_at?.toISOString() ?? null,
+    pinned_by: row.pinned_by ?? null,
   };
+}
+
+async function loadRealtimeMessage(messageId: string): Promise<RealtimeChatMessage | undefined> {
+  const result = await db.query<
+    ChatMessageRow & {
+      username: string | null;
+      display_name: string | null;
+      has_avatar: boolean;
+      sender_updated_at: Date | null;
+    }
+  >(
+    `SELECT message.id,message.kind,message.body,message.metadata,message.sender_id,
+            message.created_at,message.expires_at,message.pinned_at,message.pinned_by,
+            sender.username,sender.display_name,sender.avatar_data IS NOT NULL AS has_avatar,
+            sender.updated_at AS sender_updated_at,
+            CASE WHEN replied.id IS NULL THEN NULL ELSE jsonb_build_object(
+              'id',replied.id,'kind',replied.kind,'body',replied.body,
+              'metadata',replied.metadata,'sender_id',replied.sender_id,
+              'display_name',replied_sender.display_name
+            ) END AS reply_to,
+            COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                'emoji',summary.emoji,'count',summary.reaction_count,'userIds',summary.user_ids
+              ) ORDER BY summary.first_created_at)
+              FROM (
+                SELECT reaction.emoji,count(*)::int AS reaction_count,
+                       array_agg(reaction.user_id ORDER BY reaction.created_at) AS user_ids,
+                       min(reaction.created_at) AS first_created_at
+                FROM message_reactions reaction WHERE reaction.message_id=message.id
+                GROUP BY reaction.emoji
+              ) summary
+            ),'[]'::jsonb) AS reactions
+     FROM messages message
+     LEFT JOIN users sender ON sender.id=message.sender_id
+     LEFT JOIN messages replied ON replied.id=message.reply_to_message_id
+       AND (replied.expires_at IS NULL OR replied.expires_at>now())
+     LEFT JOIN users replied_sender ON replied_sender.id=replied.sender_id
+     WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+    [messageId],
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return realtimeMessage(
+    row,
+    row.sender_id
+      ? {
+          username: row.username ?? '',
+          displayName: row.display_name ?? '',
+          avatarUrl:
+            row.has_avatar && row.sender_updated_at
+              ? publicApiUrl(
+                  `/v1/users/${row.sender_id}/avatar?v=${row.sender_updated_at.getTime()}`,
+                )
+              : null,
+        }
+      : undefined,
+  );
+}
+
+async function loadLatestPinnedMessage(chatId: string): Promise<RealtimeChatMessage | null> {
+  const result = await db.query<{ id: string }>(
+    `SELECT id FROM messages
+     WHERE chat_id=$1 AND pinned_at IS NOT NULL
+       AND (expires_at IS NULL OR expires_at>now())
+     ORDER BY pinned_at DESC LIMIT 1`,
+    [chatId],
+  );
+  const messageId = result.rows[0]?.id;
+  return messageId ? ((await loadRealtimeMessage(messageId)) ?? null) : null;
+}
+
+async function reactionSummaries(messageId: string): Promise<ChatMessageReactionSummary[]> {
+  const result = await db.query<{ reactions: ChatMessageReactionSummary[] }>(
+    `SELECT COALESCE(jsonb_agg(jsonb_build_object(
+       'emoji',summary.emoji,'count',summary.reaction_count,'userIds',summary.user_ids
+     ) ORDER BY summary.first_created_at),'[]'::jsonb) AS reactions
+     FROM (
+       SELECT reaction.emoji,count(*)::int AS reaction_count,
+              array_agg(reaction.user_id ORDER BY reaction.created_at) AS user_ids,
+              min(reaction.created_at) AS first_created_at
+       FROM message_reactions reaction WHERE reaction.message_id=$1
+       GROUP BY reaction.emoji
+     ) summary`,
+    [messageId],
+  );
+  return result.rows[0]?.reactions ?? [];
+}
+
+async function insertMessage(
+  client: PoolClient,
+  input: {
+    chatId: string;
+    senderId: string;
+    kind?: 'text' | 'image';
+    body: string;
+    metadata?: Record<string, unknown>;
+    replyToMessageId?: string;
+  },
+) {
+  if (input.replyToMessageId) {
+    const target = await client.query(
+      `SELECT 1 FROM messages WHERE id=$1 AND chat_id=$2
+       AND (expires_at IS NULL OR expires_at>now()) FOR KEY SHARE`,
+      [input.replyToMessageId, input.chatId],
+    );
+    if (!target.rowCount) return undefined;
+  }
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,reply_to_message_id,expires_at)
+     SELECT $1,$2,$3,$4,$5,$6,CASE WHEN chat.retention_hours IS NULL THEN NULL
+       ELSE now()+make_interval(hours=>chat.retention_hours) END
+     FROM chats chat WHERE chat.id=$1 RETURNING id`,
+    [
+      input.chatId,
+      input.senderId,
+      input.kind ?? 'text',
+      input.body,
+      input.metadata ?? {},
+      input.replyToMessageId ?? null,
+    ],
+  );
+  return created.rows[0]?.id;
 }
 
 export async function publishChatEvent(chatId: string, event: ChatRealtimeServerMessage) {
@@ -805,16 +944,44 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
     if (!(await canInteractInChat(chatId, user.id)))
       return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
-    const messages = await db.query(
+    const messages = await db.query<
+      ChatMessageRow & {
+        username: string | null;
+        display_name: string | null;
+        has_avatar: boolean;
+        updated_at: Date | null;
+      }
+    >(
       `WITH recent AS (
-         SELECT m.id,m.kind,m.body,m.metadata,m.created_at,m.expires_at,m.sender_id
+         SELECT m.id,m.kind,m.body,m.metadata,m.created_at,m.expires_at,m.sender_id,
+                m.reply_to_message_id,m.pinned_at,m.pinned_by
          FROM messages m
          WHERE m.chat_id=$1 AND (m.expires_at IS NULL OR m.expires_at>now())
            AND ($2::timestamptz IS NULL OR m.created_at<$2)
          ORDER BY m.created_at DESC LIMIT 101
        )
-       SELECT recent.*,u.username,u.display_name,u.avatar_data IS NOT NULL AS has_avatar,u.updated_at
+       SELECT recent.*,u.username,u.display_name,u.avatar_data IS NOT NULL AS has_avatar,u.updated_at,
+              CASE WHEN replied.id IS NULL THEN NULL ELSE jsonb_build_object(
+                'id',replied.id,'kind',replied.kind,'body',replied.body,
+                'metadata',replied.metadata,'sender_id',replied.sender_id,
+                'display_name',replied_sender.display_name
+              ) END AS reply_to,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'emoji',summary.emoji,'count',summary.reaction_count,'userIds',summary.user_ids
+                ) ORDER BY summary.first_created_at)
+                FROM (
+                  SELECT reaction.emoji,count(*)::int AS reaction_count,
+                         array_agg(reaction.user_id ORDER BY reaction.created_at) AS user_ids,
+                         min(reaction.created_at) AS first_created_at
+                  FROM message_reactions reaction WHERE reaction.message_id=recent.id
+                  GROUP BY reaction.emoji
+                ) summary
+              ),'[]'::jsonb) AS reactions
        FROM recent LEFT JOIN users u ON u.id=recent.sender_id
+       LEFT JOIN messages replied ON replied.id=recent.reply_to_message_id
+         AND (replied.expires_at IS NULL OR replied.expires_at>now())
+       LEFT JOIN users replied_sender ON replied_sender.id=replied.sender_id
        ORDER BY recent.created_at ASC`,
       [chatId, before ?? null],
     );
@@ -822,17 +989,30 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       'SELECT retention_hours FROM chats WHERE id=$1',
       [chatId],
     );
+    const pinnedMessage = await loadLatestPinnedMessage(chatId);
     const hasMore = messages.rows.length > 100;
     const visibleMessages = hasMore ? messages.rows.slice(1) : messages.rows;
     return {
-      messages: visibleMessages.map((message) => ({
-        ...message,
-        avatar_url: message.has_avatar
-          ? publicApiUrl(`/v1/users/${message.sender_id}/avatar?v=${message.updated_at.getTime()}`)
-          : null,
-      })),
+      messages: visibleMessages.map((message) =>
+        realtimeMessage(
+          message,
+          message.sender_id
+            ? {
+                username: message.username ?? '',
+                displayName: message.display_name ?? '',
+                avatarUrl:
+                  message.has_avatar && message.updated_at
+                    ? publicApiUrl(
+                        `/v1/users/${message.sender_id}/avatar?v=${message.updated_at.getTime()}`,
+                      )
+                    : null,
+              }
+            : undefined,
+        ),
+      ),
       hasMore,
       retentionHours: retention.rows[0]?.retention_hours ?? null,
+      pinnedMessage,
     };
   });
 
@@ -843,31 +1023,311 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const user = await requireUser(request, reply);
       if (!user) return;
       const { chatId } = chatIdParams.parse(request.params);
-      const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(request.body);
+      const { body, replyToMessageId } = z
+        .object({ body: z.string().trim().min(1).max(4000), replyToMessageId: uuid.optional() })
+        .parse(request.body);
       if (!(await isChatMember(chatId, user.id)))
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
       if (!(await canInteractInChat(chatId, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
       if (enforceChatSendPacing(reply, chatId, user.id)) return;
-      const result = await db.query<ChatMessageRow>(
-        `INSERT INTO messages(chat_id,sender_id,body,expires_at)
-         SELECT $1,$2,$3,CASE WHEN c.retention_hours IS NULL THEN NULL
-           ELSE now()+make_interval(hours=>c.retention_hours) END
-         FROM chats c WHERE c.id=$1
-       RETURNING id,kind,body,metadata,sender_id,created_at,expires_at`,
-        [chatId, user.id, body],
+      const messageId = await transaction((client) =>
+        insertMessage(client, { chatId, senderId: user.id, body, replyToMessageId }),
       );
-      const message = realtimeMessage(result.rows[0]!, {
-        username: user.username,
-        displayName: user.display_name,
-        avatarUrl: user.avatar_data
-          ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
-          : null,
-      });
+      if (!messageId) return reply.code(404).send({ code: 'REPLY_MESSAGE_NOT_FOUND' });
+      const message = await loadRealtimeMessage(messageId);
+      if (!message) return reply.code(500).send({ code: 'MESSAGE_CREATE_FAILED' });
       await publishChatEvent(chatId, { type: 'message-created', chatId, message });
       return reply.code(201).send({ message });
     },
   );
+
+  app.post(
+    '/v1/chats/:chatId/gifs',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { chatId } = chatIdParams.parse(request.params);
+      const input = chatGifMetadataSchema
+        .extend({ replyToMessageId: uuid.optional() })
+        .parse(request.body);
+      if (!new URL(input.url).pathname.toLowerCase().endsWith('.gif'))
+        return reply.code(400).send({ code: 'INVALID_GIF_URL' });
+      if (!(await isChatMember(chatId, user.id)))
+        return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+      if (!(await canInteractInChat(chatId, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (enforceChatSendPacing(reply, chatId, user.id)) return;
+      if (!(await verifyRemoteGif(input.url)))
+        return reply.code(400).send({
+          code: 'GIF_UNAVAILABLE',
+          message: 'GIF недоступен, имеет неверный формат или превышает 20 МБ',
+        });
+      const { replyToMessageId, ...gif } = input;
+      const messageId = await transaction((client) =>
+        insertMessage(client, {
+          chatId,
+          senderId: user.id,
+          body: gif.alt,
+          metadata: { gif },
+          replyToMessageId,
+        }),
+      );
+      if (!messageId) return reply.code(404).send({ code: 'REPLY_MESSAGE_NOT_FOUND' });
+      const message = await loadRealtimeMessage(messageId);
+      if (!message) return reply.code(500).send({ code: 'MESSAGE_CREATE_FAILED' });
+      await publishChatEvent(chatId, { type: 'message-created', chatId, message });
+      return reply.code(201).send({ message });
+    },
+  );
+
+  app.get('/v1/chats/:chatId/messages/:messageId', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId, messageId } = z.object({ chatId: uuid, messageId: uuid }).parse(request.params);
+    const context = await db.query(
+      `SELECT 1 FROM messages message
+       JOIN chat_members member ON member.chat_id=message.chat_id
+         AND member.user_id=$2 AND member.left_at IS NULL
+       WHERE message.id=$1 AND message.chat_id=$3
+         AND (message.expires_at IS NULL OR message.expires_at>now())`,
+      [messageId, user.id, chatId],
+    );
+    if (!context.rowCount) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+    if (!(await canInteractInChat(chatId, user.id)))
+      return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+    const message = await loadRealtimeMessage(messageId);
+    if (!message) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+    return { message };
+  });
+
+  app.put(
+    '/v1/messages/:messageId/reaction',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+      const { emoji } = z.object({ emoji: chatReactionEmojiSchema.nullable() }).parse(request.body);
+      const context = await db.query<{ chat_id: string }>(
+        `SELECT message.chat_id FROM messages message
+         JOIN chat_members member ON member.chat_id=message.chat_id
+           AND member.user_id=$2 AND member.left_at IS NULL
+         WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+        [messageId, user.id],
+      );
+      const chatId = context.rows[0]?.chat_id;
+      if (!chatId) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+      if (!(await canInteractInChat(chatId, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (emoji === null)
+        await db.query('DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2', [
+          messageId,
+          user.id,
+        ]);
+      else
+        await db.query(
+          `INSERT INTO message_reactions(message_id,user_id,emoji) VALUES($1,$2,$3)
+           ON CONFLICT(message_id,user_id) DO UPDATE SET emoji=EXCLUDED.emoji,created_at=now()`,
+          [messageId, user.id, emoji],
+        );
+      const reactions = await reactionSummaries(messageId);
+      await publishChatEvent(chatId, {
+        type: 'message-reactions-updated',
+        chatId,
+        messageId,
+        reactions,
+      });
+      return { reactions };
+    },
+  );
+
+  app.put('/v1/messages/:messageId/pin', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+    const { pinned } = z.object({ pinned: z.boolean() }).parse(request.body);
+    const context = await db.query<{
+      chat_id: string;
+      type: 'direct' | 'group';
+      role: ChatMemberRole;
+    }>(
+      `SELECT message.chat_id,chat.type,member.role FROM messages message
+       JOIN chats chat ON chat.id=message.chat_id
+       JOIN chat_members member ON member.chat_id=message.chat_id
+         AND member.user_id=$2 AND member.left_at IS NULL
+       WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+      [messageId, user.id],
+    );
+    const message = context.rows[0];
+    if (!message) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+    if (!canPinChatMessage(message.type, message.role))
+      return reply.code(403).send({ code: 'CHAT_ADMIN_REQUIRED' });
+    if (!(await canInteractInChat(message.chat_id, user.id)))
+      return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+    const updated = await db.query<{ pinned_at: Date | null; pinned_by: string | null }>(
+      `UPDATE messages SET pinned_at=CASE WHEN $2 THEN now() ELSE NULL END,
+       pinned_by=CASE WHEN $2 THEN $3::uuid ELSE NULL END WHERE id=$1
+       RETURNING pinned_at,pinned_by`,
+      [messageId, pinned, user.id],
+    );
+    const pinnedAt = updated.rows[0]?.pinned_at?.toISOString() ?? null;
+    const pinnedBy = updated.rows[0]?.pinned_by ?? null;
+    const pinnedMessage = await loadLatestPinnedMessage(message.chat_id);
+    await publishChatEvent(message.chat_id, {
+      type: 'message-pin-updated',
+      chatId: message.chat_id,
+      messageId,
+      pinnedAt,
+      pinnedBy,
+      pinnedMessage,
+    });
+    return { pinnedAt, pinnedBy, pinnedMessage };
+  });
+
+  app.post(
+    '/v1/chats/:chatId/messages/forward',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { chatId } = chatIdParams.parse(request.params);
+      const { sourceMessageId } = z.object({ sourceMessageId: uuid }).parse(request.body);
+      if (!(await isChatMember(chatId, user.id)))
+        return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+      if (!(await canInteractInChat(chatId, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      const source = await db.query<{
+        id: string;
+        chat_id: string;
+        kind: 'text' | 'system' | 'call' | 'image';
+        body: string;
+        metadata: Record<string, unknown>;
+        username: string | null;
+        display_name: string | null;
+      }>(
+        `SELECT message.id,message.chat_id,message.kind,message.body,message.metadata,
+                sender.username,sender.display_name
+         FROM messages message
+         JOIN chat_members member ON member.chat_id=message.chat_id
+           AND member.user_id=$2 AND member.left_at IS NULL
+         LEFT JOIN users sender ON sender.id=message.sender_id
+         WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+        [sourceMessageId, user.id],
+      );
+      const original = source.rows[0];
+      if (!original) return reply.code(404).send({ code: 'SOURCE_MESSAGE_NOT_FOUND' });
+      if (!(await canInteractInChat(original.chat_id, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (!['text', 'image'].includes(original.kind))
+        return reply.code(400).send({ code: 'MESSAGE_NOT_FORWARDABLE' });
+      if (enforceChatSendPacing(reply, chatId, user.id)) return;
+      const forwardedCandidate = original.metadata?.forwardedFrom;
+      const existingForward =
+        forwardedCandidate &&
+        typeof forwardedCandidate === 'object' &&
+        !Array.isArray(forwardedCandidate) &&
+        'displayName' in forwardedCandidate &&
+        typeof forwardedCandidate.displayName === 'string'
+          ? forwardedCandidate
+          : undefined;
+      const metadata = {
+        ...original.metadata,
+        forwardedFrom: existingForward ?? {
+          displayName: original.display_name ?? 'FreeTalk',
+          username: original.username,
+        },
+      };
+      const messageId = await transaction(async (client) => {
+        const createdMessageId = await insertMessage(client, {
+          chatId,
+          senderId: user.id,
+          kind: original.kind as 'text' | 'image',
+          body: original.body,
+          metadata,
+        });
+        if (!createdMessageId) return undefined;
+        if (original.kind === 'image') {
+          const copied = await client.query(
+            `INSERT INTO message_images(
+               message_id,mime,data,width,height,thumbnail_mime,thumbnail_data
+             ) SELECT $1,mime,data,width,height,thumbnail_mime,thumbnail_data
+               FROM message_images WHERE message_id=$2`,
+            [createdMessageId, original.id],
+          );
+          if (!copied.rowCount) {
+            await client.query('DELETE FROM messages WHERE id=$1', [createdMessageId]);
+            return undefined;
+          }
+        }
+        return createdMessageId;
+      });
+      if (!messageId) return reply.code(404).send({ code: 'SOURCE_MESSAGE_NOT_FOUND' });
+      const message = await loadRealtimeMessage(messageId);
+      if (!message) return reply.code(500).send({ code: 'MESSAGE_CREATE_FAILED' });
+      await publishChatEvent(chatId, { type: 'message-created', chatId, message });
+      return reply.code(201).send({ message });
+    },
+  );
+
+  app.delete('/v1/messages/:messageId', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+    const context = await db.query<{
+      chat_id: string;
+      sender_id: string | null;
+      kind: string;
+      type: 'direct' | 'group';
+      role: ChatMemberRole;
+    }>(
+      `SELECT message.chat_id,message.sender_id,message.kind,chat.type,member.role
+       FROM messages message JOIN chats chat ON chat.id=message.chat_id
+       JOIN chat_members member ON member.chat_id=message.chat_id
+         AND member.user_id=$2 AND member.left_at IS NULL
+       WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+      [messageId, user.id],
+    );
+    const message = context.rows[0];
+    if (!message) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+    if (!(await canInteractInChat(message.chat_id, user.id)))
+      return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+    if (message.kind === 'system')
+      return reply.code(400).send({ code: 'SYSTEM_MESSAGE_IMMUTABLE' });
+    if (
+      !canDeleteChatMessage({
+        actorId: user.id,
+        senderId: message.sender_id,
+        kind: message.kind,
+        chatType: message.type,
+        role: message.role,
+      })
+    )
+      return reply.code(403).send({ code: 'MESSAGE_DELETE_FORBIDDEN' });
+    const removed = await db.query<{ chat_id: string }>(
+      'DELETE FROM messages WHERE id=$1 RETURNING chat_id',
+      [messageId],
+    );
+    if (!removed.rowCount) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+    const latest = await db.query<{ id: string }>(
+      `SELECT id FROM messages WHERE chat_id=$1 AND (expires_at IS NULL OR expires_at>now())
+       ORDER BY created_at DESC LIMIT 1`,
+      [message.chat_id],
+    );
+    const latestMessage = latest.rows[0]
+      ? ((await loadRealtimeMessage(latest.rows[0].id)) ?? null)
+      : null;
+    const pinnedMessage = await loadLatestPinnedMessage(message.chat_id);
+    await publishChatEvent(message.chat_id, {
+      type: 'message-deleted',
+      chatId: message.chat_id,
+      messageId,
+      latestMessage,
+      pinnedMessage,
+    });
+    return reply.code(204).send();
+  });
 
   app.get('/v1/messages/:messageId/image', async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -906,8 +1366,11 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const user = await requireUser(request, reply);
       if (!user) return;
       const { chatId } = chatIdParams.parse(request.params);
-      const { caption } = z
-        .object({ caption: z.string().trim().max(1000).optional() })
+      const { caption, replyToMessageId } = z
+        .object({
+          caption: z.string().trim().max(1000).optional(),
+          replyToMessageId: uuid.optional(),
+        })
         .parse(request.query);
       if (!(await isChatMember(chatId, user.id)))
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
@@ -958,21 +1421,22 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         dimensions.height > 8192
       )
         return reply.code(400).send({ code: 'INVALID_IMAGE', message: 'Некорректное изображение' });
-      const created = await transaction(async (client) => {
-        const message = await client.query<ChatMessageRow>(
-          `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,expires_at)
-           SELECT $1,$2,'image',$3,$4,CASE WHEN c.retention_hours IS NULL THEN NULL
-             ELSE now()+make_interval(hours=>c.retention_hours) END
-           FROM chats c WHERE c.id=$1
-           RETURNING id,kind,body,metadata,sender_id,created_at,expires_at`,
-          [chatId, user.id, caption ?? '', { width: dimensions.width, height: dimensions.height }],
-        );
+      const messageId = await transaction(async (client) => {
+        const createdMessageId = await insertMessage(client, {
+          chatId,
+          senderId: user.id,
+          kind: 'image',
+          body: caption ?? '',
+          metadata: { width: dimensions.width, height: dimensions.height },
+          replyToMessageId,
+        });
+        if (!createdMessageId) return undefined;
         await client.query(
           `INSERT INTO message_images(
              message_id,mime,data,width,height,thumbnail_mime,thumbnail_data
            ) VALUES($1,$2,$3,$4,$5,$6,$7)`,
           [
-            message.rows[0]!.id,
+            createdMessageId,
             imageFile.mime,
             bytes,
             dimensions.width,
@@ -981,14 +1445,11 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
             thumbnailFile?.bytes ?? null,
           ],
         );
-        return realtimeMessage(message.rows[0]!, {
-          username: user.username,
-          displayName: user.display_name,
-          avatarUrl: user.avatar_data
-            ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
-            : null,
-        });
+        return createdMessageId;
       });
+      if (!messageId) return reply.code(404).send({ code: 'REPLY_MESSAGE_NOT_FOUND' });
+      const created = await loadRealtimeMessage(messageId);
+      if (!created) return reply.code(500).send({ code: 'MESSAGE_CREATE_FAILED' });
       await publishChatEvent(chatId, { type: 'message-created', chatId, message: created });
       return reply.code(201).send({ message: created });
     },
