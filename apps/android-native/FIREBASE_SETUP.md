@@ -5,6 +5,7 @@ The checked-in google-services.json is Firebase client configuration, NOT a
 server service-account key. Do not put private keys in this module.
 
 Implemented:
+
 - Firebase Messaging SDK, token registration on login/resume and token refresh
   while the app process has an authenticated API instance.
 - Data-only high-priority notifications, account guard, expiry guard, persistent
@@ -15,6 +16,7 @@ Implemented:
   invalid tokens are removed, transient failures retry, queue lifetime is one hour.
 
 Deployment procedure (production completed 2026-09-04; see docs/ANDROID_PUSH_DEPLOY_2026-09-04.md):
+
 1. Apply API migration 010_android_push.sql via the existing migration command.
 2. Configure Firebase Admin credentials on the API server using workload identity
    or a dedicated service-account file outside the repository and container image.
