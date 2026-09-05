@@ -11717,6 +11717,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   place-items: center;
 }
 .account-sidebar-chat-avatar.group {
+  overflow: hidden;
   border-radius: 11px;
   background: linear-gradient(145deg, #17445a, #242e5a);
 }
