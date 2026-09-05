@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FreeTalk",
-  "version": "0.4.0-beta.99",
+  "version": "0.4.0-beta.100",
   "identifier": "io.freetalk.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -53,7 +53,7 @@
     },
     "android": {
       "minSdkVersion": 29,
-      "versionCode": 400078,
+      "versionCode": 400079,
       "debugApplicationIdSuffix": ".debug"
     }
   },
