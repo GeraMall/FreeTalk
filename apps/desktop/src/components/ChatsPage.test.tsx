@@ -216,6 +216,18 @@ describe('MessageList rendering', () => {
     );
   });
 
+  it('keeps the current user avatar on the right side of outgoing message groups', () => {
+    const ownMessage = {
+      ...message('1', 'self'),
+      avatar_url: 'https://api.example.test/self-avatar.webp',
+    };
+    const { container } = render(view('chat-a', [ownMessage]));
+    const row = container.querySelector('.message-bubble-row.own');
+
+    expect(row?.querySelector('.chat-avatar img')?.getAttribute('src')).toBe(ownMessage.avatar_url);
+    expect(row?.lastElementChild?.classList.contains('message-bubble-stack')).toBe(true);
+  });
+
   it('renders group avatar changes as compact system messages', () => {
     const systemMessage: MessageItem = {
       ...message('4', 'self', 'Гера обновил(а) фотографию группы'),

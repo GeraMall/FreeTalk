@@ -13327,12 +13327,16 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 }
 
 .message-bubble-row.own {
-  flex-direction: row;
-  justify-content: flex-end;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
 }
 
 .message-bubble-row.remote.grouped .message-bubble-stack {
   margin-left: 35px;
+}
+
+.message-bubble-row.own.grouped .message-bubble-stack {
+  margin-right: 35px;
 }
 
 .message-bubble-row:focus-visible .message-bubble {
@@ -13672,6 +13676,26 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border-color: rgba(78, 243, 242, 0.22);
   border-radius: 15px 15px 6px;
   background: rgba(7, 39, 60, 0.98);
+}
+
+.message-bubble.invite-message-bubble,
+.message-bubble-row.own .message-bubble.invite-message-bubble {
+  width: min(320px, 100%);
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.message-bubble.invite-message-bubble .chat-invite-card {
+  width: 100%;
+  max-width: 100%;
+}
+
+.message-bubble.invite-message-bubble > .message-meta {
+  width: 100%;
+  margin: 4px 0 0;
 }
 
 .message-bubble.image-message-bubble > .message-meta,
@@ -14582,6 +14606,10 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
   .message-bubble-row.remote.grouped .message-bubble-stack {
     margin-left: 33px;
+  }
+
+  .message-bubble-row.own.grouped .message-bubble-stack {
+    margin-right: 33px;
   }
 
   .message-bubble,

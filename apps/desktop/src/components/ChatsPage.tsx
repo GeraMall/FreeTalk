@@ -2088,7 +2088,7 @@ function MessageBubble({
         openContext(rect.left + Math.min(rect.width, 150), rect.top + 24);
       }}
     >
-      {!own && !grouped && (
+      {!grouped && (
         <ChatAvatar
           name={message.display_name || message.username || 'Участник'}
           group={false}
