@@ -22,7 +22,7 @@ import {
 } from '../lib/call-history';
 import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
-import { ChatsPage, type ChatItem, type GroupAvatarPreview, type MessageItem } from './ChatsPage';
+import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
 import { BrandLogo } from './BrandLogo';
 import { MobileNavigation } from './MobileNavigation';
@@ -99,7 +99,6 @@ export function HomeView({
   const [friendsLoading, setFriendsLoading] = useState(controlledPage === 'friends');
   const [friendsLoadError, setFriendsLoadError] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
-  const [groupAvatarPreview, setGroupAvatarPreview] = useState<GroupAvatarPreview>();
   const [activeChat, setActiveChat] = useState<string>();
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [chatsLoading, setChatsLoading] = useState(controlledPage === 'chats');
@@ -134,22 +133,6 @@ export function HomeView({
       })),
     [friends],
   );
-  const sidebarChats = useMemo(
-    () =>
-      chats.map((chat) =>
-        chat.id === groupAvatarPreview?.chatId
-          ? {
-              ...chat,
-              avatarUrl: groupAvatarPreview.avatarUrl,
-              avatarPositionX: groupAvatarPreview.positionX,
-              avatarPositionY: groupAvatarPreview.positionY,
-              avatarScale: groupAvatarPreview.scale,
-            }
-          : chat,
-      ),
-    [chats, groupAvatarPreview],
-  );
-
   useEffect(() => {
     activeChatRef.current = activeChat;
   }, [activeChat]);
@@ -580,13 +563,13 @@ export function HomeView({
 
   useEffect(() => {
     onSidebarStateChange?.({
-      chats: sidebarChats,
+      chats,
       friends: chatFriendOptions,
       chatsLoading,
       openChat,
       createGroup,
     });
-  }, [chatFriendOptions, chatsLoading, createGroup, onSidebarStateChange, openChat, sidebarChats]);
+  }, [chatFriendOptions, chats, chatsLoading, createGroup, onSidebarStateChange, openChat]);
 
   const createInvite = async () => {
     if (!activeChat) return;
@@ -782,7 +765,7 @@ export function HomeView({
           user={user}
           activePage={page}
           readingChatId={activeChat}
-          chats={sidebarChats}
+          chats={chats}
           friends={chatFriendOptions}
           chatsLoading={chatsLoading}
           updateStatus={updateStatus}
@@ -1001,7 +984,6 @@ export function HomeView({
             onStartCall={startChatCall}
             onCreateInvite={createInvite}
             onUpdateGroupAvatar={updateGroupAvatar}
-            onPreviewGroupAvatar={setGroupAvatarPreview}
             onUpdateRetention={updateChatRetention}
             onClearHistory={clearChatHistory}
             onBlockUser={blockChatUser}
