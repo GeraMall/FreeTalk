@@ -402,6 +402,10 @@ describe('AccountSidebar in an active room', () => {
         type: 'group',
         title: 'Команда',
         members: [{ id: user.id, username: user.username, displayName: user.displayName }],
+        avatarUrl: 'data:image/png;base64,group-avatar',
+        avatarPositionX: 35,
+        avatarPositionY: 20,
+        avatarScale: 150,
       },
     ];
     const { getByRole, queryByRole, queryByText } = render(
@@ -426,6 +430,12 @@ describe('AccountSidebar in an active room', () => {
     expect(
       getByRole('button', { name: 'Команда' }).querySelector('.avatar-presence-badge'),
     ).toBeNull();
+    expect(getByRole('button', { name: 'Команда' }).querySelector('img')?.style.cssText).toContain(
+      'object-position: 35% 20%',
+    );
+    expect(getByRole('button', { name: 'Команда' }).querySelector('img')?.style.transform).toBe(
+      'translate(-7.5%, -15%) scale(1.5)',
+    );
     expect(queryByRole('button', { name: 'Открыть полный профиль Анна' })).toBeNull();
     fireEvent.click(getByRole('button', { name: 'Анна' }));
     expect(onNavigate).toHaveBeenCalledWith('chats');

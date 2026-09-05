@@ -42,6 +42,7 @@ import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
 import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
 import type { PresenceStatus } from '@freetalk/protocol';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
+import { avatarImageStyle } from '../lib/avatar-image-style';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { CachedMediaImage } from './CachedMedia';
 import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
@@ -2259,17 +2260,6 @@ function ChatAvatar({
       {!group && presence ? <PresenceBadge status={presence} /> : null}
     </span>
   );
-}
-
-function avatarImageStyle(positionX: number, positionY: number, scale: number): CSSProperties {
-  const normalizedScale = Math.max(100, Math.min(250, scale));
-  const maxPan = (normalizedScale - 100) / 2;
-  const translateX = ((positionX - 50) / 50) * maxPan;
-  const translateY = ((positionY - 50) / 50) * maxPan;
-  return {
-    objectPosition: `${positionX}% ${positionY}%`,
-    transform: `translate(${translateX}%, ${translateY}%) scale(${normalizedScale / 100})`,
-  };
 }
 
 function chatName(chat: ChatItem, userId: string) {

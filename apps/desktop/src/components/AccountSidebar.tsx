@@ -37,6 +37,7 @@ import {
 } from '../lib/presence-preference';
 import { BrandLogo } from './BrandLogo';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
+import { avatarImageStyle } from '../lib/avatar-image-style';
 import { CachedMediaImage } from './CachedMedia';
 import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
 import { CreateGroupDialog } from './CreateGroupDialog';
@@ -384,6 +385,9 @@ export function AccountSidebar({
                         avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
                         group={chat.type === 'group'}
                         presence={chat.type === 'direct' ? other?.presence : undefined}
+                        positionX={chat.avatarPositionX}
+                        positionY={chat.avatarPositionY}
+                        scale={chat.avatarScale}
                       />
                       <span>
                         <strong>{name}</strong>
@@ -613,16 +617,28 @@ function SidebarAvatar({
   avatarUrl,
   group = false,
   presence,
+  positionX,
+  positionY,
+  scale,
 }: {
   name: string;
   avatarUrl?: string | null;
   group?: boolean;
   presence?: PresenceStatus;
+  positionX?: number;
+  positionY?: number;
+  scale?: number;
 }) {
   return (
     <span className={`account-sidebar-chat-avatar${group ? ' group' : ''}`} aria-hidden="true">
       {avatarUrl ? (
-        <CachedMediaImage src={avatarUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
+        <CachedMediaImage
+          src={avatarUrl}
+          alt=""
+          draggable={false}
+          referrerPolicy="no-referrer"
+          style={avatarImageStyle(positionX, positionY, scale)}
+        />
       ) : (
         name[0] || '?'
       )}
