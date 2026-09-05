@@ -77,13 +77,16 @@ function view(
     recordingBannerMessage?: string;
     onRecording?: () => void;
     onRecordingBannerClose?: () => void;
+    viewerId?: string;
+    participants?: Participant[];
   } = {},
 ) {
   return (
     <RoomView
+      viewerId={handlers.viewerId}
       roomId="ABCDEF123456"
       selfId={selfId}
-      participants={participants}
+      participants={handlers.participants ?? participants}
       peerState={{
         [peerId]: { connection: 'connected', speaking: remoteSpeaking, hasAudio: true },
       }}
@@ -136,6 +139,34 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it('opens a registered participant profile from an avatar, but not over active video', () => {
+    const registeredParticipants: Participant[] = [
+      participants[0]!,
+      {
+        ...participants[1]!,
+        accountId: '33333333-3333-4333-8333-333333333333',
+        avatar: 'https://example.com/friend.webp',
+      },
+    ];
+    const audio = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        viewerId: '44444444-4444-4444-8444-444444444444',
+        participants: registeredParticipants,
+      }),
+    );
+    fireEvent.click(audio.getByRole('button', { name: 'Открыть полный профиль Друг' }));
+    expect(audio.getByRole('dialog', { name: 'Профиль Друг' })).toBeTruthy();
+    audio.unmount();
+
+    const video = render(
+      view('none', { [peerId]: { camera: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        viewerId: '44444444-4444-4444-8444-444444444444',
+        participants: registeredParticipants,
+      }),
+    );
+    expect(video.queryByRole('button', { name: 'Открыть полный профиль Друг' })).toBeNull();
+  });
+
   it('uses compact audio cards without technical TURN copy', () => {
     const { container, queryByText } = render(view());
     expect(container.querySelector('.room-mode-audio')).not.toBeNull();

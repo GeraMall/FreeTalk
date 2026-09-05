@@ -42,6 +42,7 @@ export class RoomManager {
     name: string,
     connection: PeerConnection,
     avatar?: string,
+    accountId?: string,
   ) {
     if (this.rooms.has(roomId)) throw new RoomError('ROOM_EXISTS', 'Комната уже существует');
     this.rooms.set(roomId, {
@@ -51,7 +52,7 @@ export class RoomManager {
       createdAt: Date.now(),
       chatMessages: [],
     });
-    return this.join(roomId, clientId, sessionId, name, connection, avatar);
+    return this.join(roomId, clientId, sessionId, name, connection, avatar, accountId);
   }
 
   join(
@@ -61,6 +62,7 @@ export class RoomManager {
     name: string,
     connection: PeerConnection,
     avatar?: string,
+    accountId?: string,
   ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
@@ -75,6 +77,7 @@ export class RoomManager {
 
     const participant: Participant = existing?.participant ?? {
       id: clientId,
+      accountId,
       name,
       avatar,
       muted: false,
@@ -84,6 +87,7 @@ export class RoomManager {
     if (existing) existing.connection.close(4001, 'Соединение заменено после переподключения');
     participant.name = name;
     participant.avatar = avatar;
+    participant.accountId = accountId;
     participant.isOwner = clientId === room.ownerId;
     const peer: Peer = {
       participant,

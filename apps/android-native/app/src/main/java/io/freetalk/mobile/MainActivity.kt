@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -238,10 +239,17 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                     RoomEvent.Connected -> roomStatus = "Сигналинг подключён"
                     is RoomEvent.Created -> { roomId = event.roomId; roomStatus = "Комната создана" }
                     is RoomEvent.Error -> roomStatus = event.message
-                    RoomEvent.Disconnected -> roomStatus = "Соединение закрыто"
+                    RoomEvent.Disconnected -> {
+                        roomId = null
+                        roomStatus = ""
+                        error = "Связь с комнатой потеряна. Создайте новую комнату или войдите снова."
+                    }
                 }
             }
         }
+    }
+    androidx.compose.runtime.DisposableEffect(signaling) {
+        onDispose { signaling.dispose() }
     }
     LaunchedEffect(user.id) { load() }
     val notificationContext = LocalContext.current
@@ -288,7 +296,11 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
 
     if (roomId != null) {
-        RoomScreen(
+        NativeRoomScreen(
+            signaling = signaling,
+            api = api,
+            chats = data?.chats.orEmpty(),
+            friends = data?.friends.orEmpty(),
             user = user,
             roomId = roomId!!,
             status = roomStatus,
@@ -321,7 +333,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                                 contentDescription = title,
                             )
                         },
-                        label = { Text(title, maxLines = 1, fontWeight = if (page == index) FontWeight.Bold else FontWeight.Medium) },
+                        label = { Text(title, maxLines = 1, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
                         colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
                             selectedIconColor = colors.primary,
                             selectedTextColor = colors.primary,
@@ -359,75 +371,6 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     }
 }
 
-@Composable
-private fun RoomScreen(user: SignedInUser, roomId: String, status: String, onLeave: () -> Unit) {
-    var isMuted by remember { mutableStateOf(false) }
-    var cameraEnabled by remember { mutableStateOf(false) }
-    Scaffold(
-        modifier = Modifier.background(appBackground), containerColor = Color.Transparent,
-        topBar = {
-            Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 18.dp, vertical = 10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(painterResource(R.drawable.freetalk_mascot), null, modifier = Modifier.size(38.dp))
-                        Text("FreeTalk", fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 7.dp))
-                    }
-                    Text("Голосовая комната", color = muted, fontSize = 13.sp)
-                }
-                HorizontalDivider(color = Color(0xFF102537), modifier = Modifier.padding(top = 10.dp))
-            }
-        },
-        bottomBar = {
-            Row(
-                Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 18.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RoomControl(if (isMuted) Icons.Outlined.MicOff else Icons.Outlined.Mic, isMuted) { isMuted = !isMuted }
-                RoomControl(if (cameraEnabled) Icons.Outlined.Videocam else Icons.Outlined.VideocamOff, !cameraEnabled) { cameraEnabled = !cameraEnabled }
-                RoomControl(Icons.Outlined.MoreHoriz, false) {}
-                Box(
-                    Modifier.padding(start = 14.dp).size(58.dp).clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFFE83F5F)).clickable(onClick = onLeave),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Outlined.CallEnd, "Завершить звонок", tint = Color.White) }
-            }
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)) {
-            Text("Участники", fontSize = 28.sp, fontWeight = FontWeight.Black)
-            Text("Комната · $roomId", color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
-            Surface(
-                Modifier.fillMaxWidth().padding(top = 28.dp), color = Color(0xD9051424),
-                shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x443D8AA7)),
-            ) {
-                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        Modifier.size(92.dp).clip(CircleShape).background(Color(0xFF10354A))
-                            .border(2.dp, colors.primary, CircleShape), contentAlignment = Alignment.Center,
-                    ) {
-                        if (user.avatarUrl != null) AsyncImage(
-                            model = user.avatarUrl, contentDescription = user.displayName,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                        ) else Text(user.displayName.take(1).uppercase(), fontSize = 32.sp, fontWeight = FontWeight.Black)
-                    }
-                    Text(user.displayName, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp))
-                    Text("Создатель комнаты", color = colors.primary, fontSize = 12.sp)
-                    Text(if (isMuted) "Микрофон выключен" else "В звонке", color = if (isMuted) danger else good, fontSize = 13.sp, modifier = Modifier.padding(top = 9.dp))
-                }
-            }
-            Text(status, color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 18.dp))
-        }
-    }
-}
-
-@Composable
-private fun RoomControl(icon: androidx.compose.ui.graphics.vector.ImageVector, active: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.padding(horizontal = 4.dp).size(52.dp).clip(RoundedCornerShape(17.dp))
-            .background(if (active) Color(0xFF351522) else Color(0xFF092231)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, null, tint = if (active) danger else colors.primary) }
-}
 
 @Composable
 private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit) {
@@ -439,12 +382,12 @@ private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit
                     painter = painterResource(R.drawable.freetalk_mascot),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(49.dp),
+                    modifier = Modifier.size(36.dp),
                 )
-                Text("FreeTalk", fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 9.dp))
+                Text("FreeTalk", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(start = 9.dp))
             }
             Box(
-                Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF10354A))
+                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF10354A))
                     .border(1.dp, Color(0x664EF3F2), CircleShape).clickable { open = !open },
                 contentAlignment = Alignment.Center,
             ) {
@@ -491,7 +434,7 @@ private fun HomePage(
 ) {
     var roomCode by remember { mutableStateOf("") }
     val recentCalls = data?.calls.orEmpty().take(4)
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    LazyColumn(contentPadding = PaddingValues(top = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
@@ -506,31 +449,36 @@ private fun HomePage(
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
                     Text(
                         "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!", color = colors.primary,
-                        fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.8.sp,
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp,
                     )
                     Text(
-                        "Добрый вечер,\n${user.displayName}", fontSize = 35.sp, lineHeight = 37.sp,
-                        fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 24.dp),
+                        "Добрый вечер,\n${user.displayName}", fontSize = 34.sp, lineHeight = 35.4.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = (-1.53).sp, modifier = Modifier.padding(top = 24.dp),
                     )
                     Text(
                         "Создайте приватную комнату или войдите по приглашению.",
-                        color = Color(0xFFAEBCCE), fontSize = 16.sp, lineHeight = 23.sp,
-                        modifier = Modifier.fillMaxWidth(0.87f).padding(top = 18.dp, bottom = 24.dp),
+                        color = Color(0xFFAEBCCE), fontSize = 14.sp, lineHeight = 21.sp,
+                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 34.dp),
                     )
                     Box(
-                        Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(13.dp))
+                        Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(11.dp))
                             .background(cyanBlueGradient).clickable(onClick = onCreateRoom),
                         contentAlignment = Alignment.Center,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.MeetingRoom, null, tint = Color(0xFF031018), modifier = Modifier.size(27.dp))
-                            Text("Создать комнату", color = Color(0xFF031018), fontWeight = FontWeight.Black, fontSize = 19.sp, modifier = Modifier.padding(start = 10.dp))
+                            Text("Создать комнату", color = Color(0xFF031018), fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.padding(start = 10.dp))
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             roomCode, { roomCode = it }, placeholder = { Text("Код или ссылка комнаты", color = Color(0xFF61758D)) },
                             singleLine = true, modifier = Modifier.weight(1f).height(58.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = Color(0xFF193345), focusedBorderColor = colors.primary,
+                                unfocusedContainerColor = Color(0xFF030C18), focusedContainerColor = Color(0xFF030C18),
+                            ),
                         )
                         Box(
                             Modifier.padding(start = 8.dp).size(58.dp).clip(RoundedCornerShape(13.dp))
@@ -547,10 +495,10 @@ private fun HomePage(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column {
-                    Text("ВАШИ ЗВОНКИ", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.7.sp)
-                    Text("Недавние комнаты", fontSize = 28.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 5.dp))
+                    Text("ВАШИ ЗВОНКИ", color = colors.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    Text("Недавние комнаты", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp, modifier = Modifier.padding(top = 5.dp))
                 }
-                Text("Последние ${recentCalls.size}", color = muted, fontSize = 13.sp)
+                Text("Последние ${recentCalls.size}", color = muted, fontSize = 11.sp)
             }
         }
         if (recentCalls.isEmpty()) {
@@ -579,11 +527,13 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.width(if (visible.size > 1) 68.dp else 46.dp)) {
+                // Overlay full-size circles instead of squeezing children into a Row.
+                // Reserve the entire stack width so the title never covers an avatar.
+                Box(Modifier.width((34 + 22 * (visible.size - 1).coerceAtLeast(0)).dp).height(34.dp)) {
                     visible.forEachIndexed { index, participant ->
                         Box(
-                            Modifier.offset(x = (-index * 10).dp).size(46.dp).clip(CircleShape)
-                                .background(cyanBlueGradient).border(2.dp, Color(0xFF061322), CircleShape),
+                            Modifier.offset(x = (index * 22).dp).size(34.dp).clip(CircleShape)
+                                .background(Color(0xFF10354A)),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (participant.avatarUrl != null) {
@@ -596,16 +546,17 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
                     }
                 }
                 Column(Modifier.weight(1f).padding(start = 13.dp)) {
-                    Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 13.sp)
+                    Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 11.sp)
                 }
             }
             OutlinedButton(
-                onClick = onCreateAgain, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(46.dp),
+                onClick = onCreateAgain, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(36.dp),
+                shape = RoundedCornerShape(11.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x664EF3F2)),
             ) {
                 Icon(Icons.Outlined.Call, null, modifier = Modifier.size(19.dp))
-                Text("Создать снова", modifier = Modifier.padding(start = 8.dp))
+                Text("Создать снова", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = muted, modifier = Modifier.padding(start = 8.dp))
             }
         }
     }

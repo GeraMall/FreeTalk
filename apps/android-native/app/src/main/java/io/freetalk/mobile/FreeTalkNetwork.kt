@@ -144,6 +144,11 @@ class FreeTalkApi(private val sessions: SessionStore) {
         return parseMessage(json.getJSONObject("message"))
     }
 
+    suspend fun inviteFriend(friendId: String, link: String) {
+        val chat = authorizedJson("/v1/chats", "POST", JSONObject().put("type", "direct").put("memberIds", JSONArray().put(friendId))).getJSONObject("chat")
+        sendMessage(chat.getString("id"), link)
+    }
+
     suspend fun downloadChatImage(messageId: String, full: Boolean): ByteArray = withContext(Dispatchers.IO) {
         require(runCatching { UUID.fromString(messageId) }.isSuccess)
         val token = accessToken ?: throw ApiException("UNAUTHORIZED", "Требуется вход", 401)
@@ -279,35 +284,97 @@ sealed interface RoomEvent {
 }
 
 class RoomSignaling(private val onEvent: (RoomEvent) -> Unit) {
-    private val client = OkHttpClient.Builder().pingInterval(10, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS).build()
-    private var socket: WebSocket? = null
+    val room = NativeRoomState()
+    var onSignal: ((JSONObject) -> Unit)? = null
+    val pendingSignals = mutableListOf<JSONObject>()
+    fun send(message: JSONObject): Boolean = socket?.send(message.toString()) == true
+    // Signaling expects JSON ping messages, not WebSocket control-frame pings.
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).build()
+    @Volatile private var socket: WebSocket? = null
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val heartbeatExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "room-heartbeat").apply { isDaemon = true }
+    }
+    private var heartbeatTask: java.util.concurrent.ScheduledFuture<*>? = null
+    private var heartbeat: RoomHeartbeat? = null
+    private fun beginHeartbeat(webSocket: WebSocket) {
+        heartbeatTask?.cancel(false)
+        heartbeat?.stop()
+        val watch = RoomHeartbeat().also { it.start(android.os.SystemClock.elapsedRealtime()) }
+        heartbeat = watch
+        heartbeatTask = heartbeatExecutor.scheduleAtFixedRate({
+            if (socket !== webSocket) return@scheduleAtFixedRate
+            when (watch.tick(android.os.SystemClock.elapsedRealtime())) {
+                RoomHeartbeat.Tick.PING -> {
+                    val queued = webSocket.send(JSONObject().put("type", "ping").put("timestamp", System.currentTimeMillis()).toString())
+                    if (!queued) main.post { connectionLost(webSocket) }
+                }
+                RoomHeartbeat.Tick.EXPIRED -> main.post { connectionLost(webSocket) }
+                RoomHeartbeat.Tick.WAIT -> Unit
+            }
+        }, 0, 1, TimeUnit.SECONDS)
+    }
+    private fun connectionLost(webSocket: WebSocket) {
+        if (socket !== webSocket) return
+        socket = null
+        heartbeatTask?.cancel(false); heartbeatTask = null
+        heartbeat?.stop(); heartbeat = null
+        pendingSignals.clear()
+        webSocket.cancel()
+        onEvent(RoomEvent.Disconnected)
+    }
 
     fun create(roomId: String, user: SignedInUser, accessToken: String) = connect("create-room", roomId, user, accessToken)
     fun join(roomId: String, user: SignedInUser, accessToken: String) = connect("join-room", roomId, user, accessToken)
 
     private fun connect(action: String, roomId: String, user: SignedInUser, accessToken: String) {
         close()
+        room.reset()
+        pendingSignals.clear()
         val request = Request.Builder().url("wss://freetalk.191-44-38-60.sslip.io/ws?room=$roomId&cid=${UUID.randomUUID()}").build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                onEvent(RoomEvent.Connected)
+                main.post {
+                    if (socket !== webSocket) return@post
+                    onEvent(RoomEvent.Connected)
+                    beginHeartbeat(webSocket)
+                }
                 webSocket.send(
                     JSONObject().put("type", action).put("roomId", roomId)
                         .put("clientId", UUID.randomUUID().toString()).put("sessionId", UUID.randomUUID().toString())
-                        .put("authToken", accessToken).put("name", user.displayName).toString(),
+                        .put("authToken", accessToken).put("name", user.displayName).put("avatar", user.avatarUrl).toString(),
                 )
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val message = runCatching { JSONObject(text) }.getOrNull() ?: return
-                when (message.optString("type")) {
-                    "room-created", "joined-room" -> onEvent(RoomEvent.Created(roomId))
-                    "error" -> onEvent(RoomEvent.Error(message.optString("message", "Ошибка комнаты")))
+                main.post {
+                    if (socket !== webSocket) return@post
+                    if (message.optString("type") == "pong") {
+                        heartbeat?.acknowledge(android.os.SystemClock.elapsedRealtime())
+                        return@post
+                    }
+                    room.accept(message)
+                    if (onSignal != null) onSignal?.invoke(message)
+                    else if (message.optString("type") in listOf("ice-config", "offer", "answer", "ice-candidate")) {
+                        if (pendingSignals.size < 256) pendingSignals.add(message)
+                    }
+                    when (message.optString("type")) {
+                        "joined-room" -> onEvent(RoomEvent.Created(roomId))
+                        "error" -> onEvent(RoomEvent.Error(message.optString("message", "Ошибка комнаты")))
+                    }
                 }
             }
-            override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) = onEvent(RoomEvent.Error(error.message ?: "Сеть недоступна"))
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onEvent(RoomEvent.Disconnected)
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { main.post { connectionLost(webSocket) } }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { main.post { connectionLost(webSocket) } }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { main.post { connectionLost(webSocket) } }
         })
     }
 
-    fun close() { socket?.close(1000, "Выход"); socket = null }
+    fun close() {
+        val previous = socket; socket = null
+        heartbeatTask?.cancel(false); heartbeatTask = null
+        heartbeat?.stop(); heartbeat = null
+        previous?.close(1000, "Выход")
+    }
+    fun dispose() { close(); heartbeatExecutor.shutdownNow() }
 }

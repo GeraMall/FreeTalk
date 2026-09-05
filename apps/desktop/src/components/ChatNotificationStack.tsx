@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { CachedMediaImage } from './CachedMedia';
 
 export interface ChatNotificationPreview {
   sequence: number;
@@ -74,7 +75,7 @@ function ChatMessageNotification({
       >
         <span className="chat-message-notification-avatar">
           {preview.avatarUrl ? (
-            <img src={preview.avatarUrl} alt="" referrerPolicy="no-referrer" />
+            <CachedMediaImage src={preview.avatarUrl} alt="" referrerPolicy="no-referrer" />
           ) : (
             preview.senderName.slice(0, 1).toUpperCase()
           )}

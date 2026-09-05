@@ -42,6 +42,7 @@ import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
 import { BrandLogo } from './BrandLogo';
 import { RoomChatPanel } from './RoomChatPanel';
+import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
 import {
   createCameraEffectCapture,
@@ -50,6 +51,7 @@ import {
   type CameraEffectCapture,
 } from '../lib/camera-background';
 import { cameraConstraints } from '../lib/video-manager';
+import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 
 export type PeerUiState = Record<
   string,
@@ -65,6 +67,7 @@ interface ExpandedMedia {
 
 interface RoomViewProps {
   embedded?: boolean;
+  viewerId?: string;
   roomId: string;
   selfId: string;
   participants: Participant[];
@@ -114,6 +117,7 @@ interface RoomViewProps {
 
 export function RoomView({
   embedded = false,
+  viewerId,
   roomId,
   selfId,
   participants,
@@ -166,6 +170,7 @@ export function RoomView({
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
+  const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const roomShellRef = useRef<HTMLElement>(null);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
@@ -345,7 +350,21 @@ export function RoomView({
         </div>
 
         {!showCamera && (
-          <ParticipantAvatar participant={participant} speaking={Boolean(speaking)} />
+          <ParticipantAvatar
+            participant={participant}
+            speaking={Boolean(speaking)}
+            onOpenProfile={
+              viewerId && participant.avatar && participant.accountId
+                ? () =>
+                    setFullProfileTarget({
+                      id: participant.accountId!,
+                      displayName: participant.name,
+                      avatarUrl: participant.avatar,
+                      presence: 'online',
+                    })
+                : undefined
+            }
+          />
         )}
 
         <div
@@ -790,6 +809,13 @@ export function RoomView({
           onClose={() => setCameraPreviewOpen(false)}
         />
       )}
+      {viewerId ? (
+        <UserProfileDialog
+          viewerId={viewerId}
+          target={fullProfileTarget}
+          onClose={() => setFullProfileTarget(undefined)}
+        />
+      ) : null}
     </main>
   );
   return roomContent;
@@ -1495,19 +1521,37 @@ function CreatorBadge({ compact = false }: { compact?: boolean }) {
 function ParticipantAvatar({
   participant,
   speaking,
+  onOpenProfile,
 }: {
   participant: Participant;
   speaking: boolean;
+  onOpenProfile?(): void;
 }) {
   const variant = [...participant.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
-  return (
-    <div className={`participant-avatar ${speaking ? 'speaking' : ''}`} data-variant={variant}>
+  const content = (
+    <>
       {participant.avatar ? (
-        <img src={participant.avatar} alt={`Аватар ${participant.name}`} />
+        <CachedMediaImage src={participant.avatar} alt={`Аватар ${participant.name}`} />
       ) : (
         <span>{initials(participant.name)}</span>
       )}
       <i aria-label="В сети" />
+    </>
+  );
+  const className = `participant-avatar ${speaking ? 'speaking' : ''}${onOpenProfile ? ' profile-trigger' : ''}`;
+  return onOpenProfile ? (
+    <button
+      type="button"
+      className={className}
+      data-variant={variant}
+      aria-label={`Открыть полный профиль ${participant.name}`}
+      onClick={onOpenProfile}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className={className} data-variant={variant}>
+      {content}
     </div>
   );
 }

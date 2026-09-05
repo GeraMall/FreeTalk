@@ -258,5 +258,11 @@ describe('protocol validation', () => {
         metadata: { roomId: 'ROOM12345678', ended: true },
       }).success,
     ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'chat-removed',
+        chatId: base.clientId,
+      }).success,
+    ).toBe(true);
   });
 });

@@ -13,7 +13,6 @@ import {
   ArrowDown,
   ArrowLeft,
   Ban,
-  Check,
   Clock3,
   Crown,
   ImagePlus,
@@ -40,7 +39,18 @@ import { accountClient } from '../lib/api-client';
 import { loadChatImage } from '../lib/chat-image-cache';
 import { parseRoomDeepLink } from '../lib/deep-link';
 import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
+import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
 import type { PresenceStatus } from '@freetalk/protocol';
+import { useCachedMediaUrl } from '../lib/use-cached-media';
+import { CreateGroupDialog } from './CreateGroupDialog';
+import { CachedMediaImage } from './CachedMedia';
+import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
+import { PresenceBadge } from './PresenceBadge';
+import {
+  UserProfileDialog,
+  type UserProfileData,
+  type UserProfileTarget,
+} from './UserProfileDialog';
 
 const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
 const CHAT_SIDEBAR_MIN_WIDTH = 190;
@@ -70,18 +80,7 @@ export interface ChatMember {
   role?: 'owner' | 'admin' | 'member';
 }
 
-interface ChatProfile {
-  id: string;
-  username: string;
-  displayName: string;
-  bio: string | null;
-  avatarUrl: string | null;
-  coverUrl: string | null;
-  registeredAt: string;
-  mutualFriendsCount: number;
-  mutualFriends: Array<{ id: string; displayName: string; avatarUrl: string | null }>;
-  presence?: PresenceStatus;
-}
+type ChatProfile = UserProfileData;
 
 export interface ChatItem {
   id: string;
@@ -129,6 +128,7 @@ interface FriendOption {
   id: string;
   displayName: string;
   avatarUrl?: string | null;
+  presence?: PresenceStatus;
 }
 
 interface ChatsPageProps {
@@ -145,6 +145,7 @@ interface ChatsPageProps {
   sentMessageVersion: number;
   hasMoreMessages?: boolean;
   profileRevision?: number;
+  slowModeUntil?: number;
   onOpenChat(chatId: string): Promise<void>;
   onCloseChat?(): void;
   onRetryMessages(): void;
@@ -158,7 +159,8 @@ interface ChatsPageProps {
   onUpdateRetention(retentionHours: 24 | 168 | 720 | null): Promise<void>;
   onClearHistory(): Promise<void>;
   onBlockUser?(userId: string): Promise<void>;
-  onLeaveChat?(): Promise<void>;
+  onDeleteDirectChat?(): Promise<void>;
+  onLeaveGroup?(): Promise<void>;
   onUpdateGroupAvatar?(
     chatId: string,
     dataUrl: string | undefined,
@@ -184,6 +186,7 @@ export function ChatsPage({
   sentMessageVersion,
   hasMoreMessages = false,
   profileRevision = 0,
+  slowModeUntil = 0,
   onOpenChat,
   onCloseChat = () => {},
   onRetryMessages,
@@ -197,7 +200,8 @@ export function ChatsPage({
   onUpdateRetention,
   onClearHistory,
   onBlockUser = async () => {},
-  onLeaveChat = async () => {},
+  onDeleteDirectChat = async () => {},
+  onLeaveGroup = async () => {},
   onUpdateGroupAvatar = async () => false,
   onAddMember,
   onJoinCall,
@@ -206,18 +210,23 @@ export function ChatsPage({
   const [showGroup, setShowGroup] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showMember, setShowMember] = useState(false);
-  const [groupTitle, setGroupTitle] = useState('');
-  const [groupMembers, setGroupMembers] = useState<string[]>([]);
   const [inviteToken, setInviteToken] = useState('');
   const [memberUsername, setMemberUsername] = useState('');
   const [actionBusy, setActionBusy] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    'leave-group' | 'delete-direct' | 'block-direct'
+  >();
+  const [confirmActionError, setConfirmActionError] = useState('');
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showGroupAvatarEditor, setShowGroupAvatarEditor] = useState(false);
   const [profileVisible, setProfileVisible] = useState(!mobile);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
+  const [fullProfileOpen, setFullProfileOpen] = useState(false);
+  const [slowModeClock, setSlowModeClock] = useState(() => Date.now());
+  const [dismissedSlowModeUntil, setDismissedSlowModeUntil] = useState(0);
   const [chatSidebarWidth, setChatSidebarWidth] = useState<number | undefined>(
     storedChatSidebarWidth,
   );
@@ -232,6 +241,15 @@ export function ChatsPage({
     | undefined
   >(undefined);
   const chatSidebarWidthRef = useRef(chatSidebarWidth);
+
+  useEffect(() => {
+    setSlowModeClock(Date.now());
+    if (slowModeUntil <= Date.now()) return;
+    const timer = window.setInterval(() => setSlowModeClock(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [slowModeUntil]);
+
+  const slowModeRemainingSeconds = Math.max(0, Math.ceil((slowModeUntil - slowModeClock) / 1_000));
 
   const updateChatSidebarWidth = (width: number) => {
     const nextWidth = Math.min(defaultChatSidebarWidth(), Math.max(CHAT_SIDEBAR_MIN_WIDTH, width));
@@ -316,6 +334,9 @@ export function ChatsPage({
     setShowChatMenu(false);
     setShowChatSettings(false);
     setShowGroupAvatarEditor(false);
+    setConfirmAction(undefined);
+    setConfirmActionError('');
+    setFullProfileOpen(false);
   }, [activeChatId]);
   useEffect(() => {
     if (!profileTargetId) {
@@ -326,7 +347,8 @@ export function ChatsPage({
     setProfileLoading(true);
     void accountClient
       .request<{ profile: ChatProfile }>(`/v1/users/${profileTargetId}/profile`)
-      .then((result) => {
+      .then(async (result) => {
+        await warmAccountMediaCache(userId, collectAccountMediaUrls(result.profile), 4_000);
         if (!cancelled) setProfile(result.profile);
       })
       .catch(() => {
@@ -338,7 +360,7 @@ export function ChatsPage({
     return () => {
       cancelled = true;
     };
-  }, [profileRevision, profileTargetId]);
+  }, [profileRevision, profileTargetId, userId]);
   const visibleChats = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
     if (!query) return chats;
@@ -354,16 +376,6 @@ export function ChatsPage({
       return (await action()) !== false;
     } finally {
       setActionBusy('');
-    }
-  };
-
-  const createGroup = async () => {
-    if (!groupTitle.trim() || groupMembers.length === 0) return;
-    const completed = await runAction('group', () => onCreateGroup(groupTitle, groupMembers));
-    if (completed) {
-      setGroupTitle('');
-      setGroupMembers([]);
-      setShowGroup(false);
     }
   };
 
@@ -411,7 +423,7 @@ export function ChatsPage({
               title="Новый групповой чат"
               aria-label="Новый групповой чат"
               aria-expanded={showGroup}
-              onClick={() => setShowGroup((visible) => !visible)}
+              onClick={() => setShowGroup(true)}
             >
               <Plus />
             </button>
@@ -459,55 +471,6 @@ export function ChatsPage({
                 onClick={() => void joinInvite()}
               >
                 Войти
-              </button>
-            </div>
-          )}
-
-          {showGroup && (
-            <div className="compact-chat-form group-chat-form">
-              <div>
-                <strong>Новый групповой чат</strong>
-                <button aria-label="Закрыть" onClick={() => setShowGroup(false)}>
-                  <X />
-                </button>
-              </div>
-              <input
-                value={groupTitle}
-                maxLength={80}
-                placeholder="Название группы"
-                onChange={(event) => setGroupTitle(event.target.value)}
-              />
-              <div className="group-member-options">
-                {friends.map((friend) => (
-                  <label key={friend.id}>
-                    <input
-                      type="checkbox"
-                      checked={groupMembers.includes(friend.id)}
-                      onChange={(event) =>
-                        setGroupMembers((old) =>
-                          event.target.checked
-                            ? [...old, friend.id]
-                            : old.filter((id) => id !== friend.id),
-                        )
-                      }
-                    />
-                    <ChatAvatar
-                      name={friend.displayName}
-                      group={false}
-                      avatarUrl={friend.avatarUrl}
-                      compact
-                    />
-                    <span>{friend.displayName}</span>
-                    {groupMembers.includes(friend.id) && <Check />}
-                  </label>
-                ))}
-                {friends.length === 0 && <small>Сначала добавьте друзей</small>}
-              </div>
-              <button
-                disabled={!groupTitle.trim() || groupMembers.length === 0 || actionBusy === 'group'}
-                onClick={() => void createGroup()}
-              >
-                <Users /> Создать группу
               </button>
             </div>
           )}
@@ -574,6 +537,7 @@ export function ChatsPage({
               profileVisible={profileVisible}
               showMenu={showChatMenu}
               showAvatarEditor={showGroupAvatarEditor}
+              onOpenProfile={() => setFullProfileOpen(true)}
               onMemberUsername={setMemberUsername}
               onToggleMember={() => setShowMember((visible) => !visible)}
               onAddMember={() => void addMember()}
@@ -594,15 +558,29 @@ export function ChatsPage({
                 <button onClick={() => setShowChatSettings((visible) => !visible)}>
                   <Clock3 /> Настройки чата
                 </button>
-                {activeChat.type === 'direct' && profileTarget && (
-                  <button
-                    className="destructive"
-                    onClick={() => void runAction('block', () => onBlockUser(profileTarget.id))}
-                  >
-                    <Ban /> Заблокировать
-                  </button>
-                )}
-                {activeChat.currentUserRole === 'owner' && (
+                {activeChat.type === 'direct' && profileTarget ? (
+                  <>
+                    <button
+                      className="destructive"
+                      onClick={() => {
+                        setConfirmActionError('');
+                        setConfirmAction('block-direct');
+                      }}
+                    >
+                      <Ban /> Заблокировать
+                    </button>
+                    <button
+                      className="destructive"
+                      onClick={() => {
+                        setConfirmActionError('');
+                        setConfirmAction('delete-direct');
+                      }}
+                    >
+                      <Trash2 /> Удалить чат у обоих
+                    </button>
+                  </>
+                ) : null}
+                {activeChat.type === 'group' && activeChat.currentUserRole === 'owner' && (
                   <button
                     className={confirmClear ? 'destructive confirm-clear' : ''}
                     onClick={() => {
@@ -617,12 +595,17 @@ export function ChatsPage({
                     <Trash2 /> {confirmClear ? 'Подтвердить очистку' : 'Очистить чат'}
                   </button>
                 )}
-                <button
-                  className="destructive"
-                  onClick={() => void runAction('leave', onLeaveChat)}
-                >
-                  <X /> Покинуть чат
-                </button>
+                {activeChat.type === 'group' ? (
+                  <button
+                    className="destructive"
+                    onClick={() => {
+                      setConfirmActionError('');
+                      setConfirmAction('leave-group');
+                    }}
+                  >
+                    <X /> Покинуть группу
+                  </button>
+                ) : null}
                 {showChatSettings && (
                   <div className="chat-menu-settings">
                     <span>История: {retentionLabel(retentionHours)}</span>
@@ -662,7 +645,7 @@ export function ChatsPage({
               onJoinInvite={onJoinInvite}
             />
             <MessageComposer
-              disabled={messagesLoading}
+              disabled={messagesLoading || slowModeRemainingSeconds > 0}
               onSend={onSendMessage}
               onSendImage={onSendImage}
             />
@@ -679,9 +662,136 @@ export function ChatsPage({
           groupTitle={activeChat.type === 'group' ? chatName(activeChat, userId) : undefined}
           members={activeChat.members}
           onInvite={() => setShowMember(true)}
+          onFullProfile={() => setFullProfileOpen(true)}
         />
       )}
+      {activeChat && confirmAction ? (
+        <ChatActionConfirmDialog
+          title={
+            confirmAction === 'leave-group'
+              ? `Покинуть «${chatName(activeChat, userId)}»?`
+              : confirmAction === 'delete-direct'
+                ? 'Удалить личный чат у обоих?'
+                : `Заблокировать ${profileTarget?.displayName ?? 'пользователя'}?`
+          }
+          description={
+            confirmAction === 'leave-group'
+              ? 'Группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника.'
+              : confirmAction === 'delete-direct'
+                ? 'Вся переписка будет безвозвратно удалена у вас и у собеседника.'
+                : 'Пользователь не сможет писать вам. Он будет удалён из друзей, а личный чат исчезнет из списка.'
+          }
+          confirmLabel={
+            confirmAction === 'leave-group'
+              ? 'Покинуть группу'
+              : confirmAction === 'delete-direct'
+                ? 'Удалить у обоих'
+                : 'Заблокировать'
+          }
+          busy={Boolean(actionBusy)}
+          error={confirmActionError}
+          onCancel={() => !actionBusy && setConfirmAction(undefined)}
+          onConfirm={() => {
+            if (actionBusy) return;
+            const action = confirmAction;
+            const operation =
+              action === 'leave-group'
+                ? onLeaveGroup
+                : action === 'delete-direct'
+                  ? onDeleteDirectChat
+                  : () =>
+                      profileTarget ? onBlockUser(profileTarget.id) : Promise.resolve(undefined);
+            setConfirmActionError('');
+            void runAction(action, operation)
+              .then((completed) => {
+                if (!completed) return;
+                setConfirmAction(undefined);
+                setShowChatMenu(false);
+              })
+              .catch((caught) =>
+                setConfirmActionError(
+                  caught instanceof Error ? caught.message : 'Не удалось выполнить действие',
+                ),
+              );
+          }}
+        />
+      ) : null}
+      {slowModeRemainingSeconds > 0 && dismissedSlowModeUntil !== slowModeUntil ? (
+        <ChatSlowModeDialog
+          remainingSeconds={slowModeRemainingSeconds}
+          onClose={() => setDismissedSlowModeUntil(slowModeUntil)}
+        />
+      ) : null}
+      <CreateGroupDialog
+        open={showGroup}
+        friends={friends}
+        onClose={() => setShowGroup(false)}
+        onCreate={onCreateGroup}
+      />
+      <UserProfileDialog
+        viewerId={userId}
+        target={
+          fullProfileOpen && profileTarget
+            ? ({
+                id: profileTarget.id,
+                displayName: profileTarget.displayName,
+                username: profileTarget.username,
+                avatarUrl: profileTarget.avatarUrl,
+                presence: profileTarget.presence,
+              } satisfies UserProfileTarget)
+            : undefined
+        }
+        initialProfile={profile}
+        actions={{
+          onMessage: () => setFullProfileOpen(false),
+          onCall: async () => {
+            setFullProfileOpen(false);
+            await onStartCall();
+          },
+          onOpenChat: async (chatId) => {
+            setFullProfileOpen(false);
+            await onOpenChat(chatId);
+          },
+          onBlock: () => {
+            setFullProfileOpen(false);
+            setConfirmAction('block-direct');
+          },
+        }}
+        onClose={() => setFullProfileOpen(false)}
+      />
     </div>
+  );
+}
+
+function ChatSlowModeDialog({
+  remainingSeconds,
+  onClose,
+}: {
+  remainingSeconds: number;
+  onClose(): void;
+}) {
+  return createPortal(
+    <div className="chat-slow-mode-backdrop" onMouseDown={onClose}>
+      <section
+        className="chat-slow-mode-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="chat-slow-mode-title"
+        aria-describedby="chat-slow-mode-description"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button type="button" aria-label="Закрыть предупреждение" onClick={onClose}>
+          <X />
+        </button>
+        <h2 id="chat-slow-mode-title">ВОУ, ВОУ, ПОЛЕГЧЕ!</h2>
+        <p id="chat-slow-mode-description">Вы отправляете сообщения слишком быстро!</p>
+        <button type="button" className="chat-slow-mode-rest" onClick={onClose}>
+          Вход в зону отдыха
+          <span>{remainingSeconds} с</span>
+        </button>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -719,6 +829,7 @@ function ChatListItem({
         name={name}
         group={chat.type === 'group'}
         avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+        presence={chat.type === 'direct' ? other?.presence : undefined}
         positionX={chat.avatarPositionX}
         positionY={chat.avatarPositionY}
         scale={chat.avatarScale}
@@ -749,6 +860,7 @@ function ChatHeader({
   profileVisible,
   showMenu,
   showAvatarEditor,
+  onOpenProfile,
   onMemberUsername,
   onToggleMember,
   onAddMember,
@@ -769,6 +881,7 @@ function ChatHeader({
   profileVisible: boolean;
   showMenu: boolean;
   showAvatarEditor: boolean;
+  onOpenProfile(): void;
   onMemberUsername(value: string): void;
   onToggleMember(): void;
   onAddMember(): void;
@@ -792,7 +905,12 @@ function ChatHeader({
   return (
     <header className="active-chat-header">
       {onBack ? (
-        <button type="button" className="mobile-chat-back" aria-label="Назад к чатам" onClick={onBack}>
+        <button
+          type="button"
+          className="mobile-chat-back"
+          aria-label="Назад к чатам"
+          onClick={onBack}
+        >
           <ArrowLeft />
         </button>
       ) : null}
@@ -815,7 +933,19 @@ function ChatHeader({
           />
         </button>
       ) : (
-        <ChatAvatar name={name} group={false} avatarUrl={other?.avatarUrl} />
+        <button
+          type="button"
+          className="direct-profile-trigger"
+          aria-label={`Открыть полный профиль ${name}`}
+          onClick={onOpenProfile}
+        >
+          <ChatAvatar
+            name={name}
+            group={false}
+            avatarUrl={other?.avatarUrl}
+            presence={other?.presence}
+          />
+        </button>
       )}
       <div className="active-chat-identity">
         <strong>{name}</strong>
@@ -938,6 +1068,7 @@ function GroupAvatarEditor({
     { pointerId: number; x: number; y: number; positionX: number; positionY: number } | undefined
   >(undefined);
   const previewUrl = dataUrl ?? chat.avatarUrl ?? undefined;
+  const cachedPreviewUrl = useCachedMediaUrl(previewUrl);
 
   const closeSmoothly = useCallback(() => {
     if (closing) return;
@@ -1028,9 +1159,9 @@ function GroupAvatarEditor({
         onPointerUp={finishPreviewDrag}
         onPointerCancel={finishPreviewDrag}
       >
-        {previewUrl ? (
+        {cachedPreviewUrl ? (
           <img
-            src={previewUrl}
+            src={cachedPreviewUrl}
             alt="Предпросмотр аватара группы"
             draggable={false}
             style={avatarImageStyle(position.x, position.y, scale)}
@@ -1105,6 +1236,7 @@ function ProfilePanel({
   groupTitle,
   members,
   onInvite,
+  onFullProfile,
 }: {
   profile?: ChatProfile;
   loading: boolean;
@@ -1112,7 +1244,11 @@ function ProfilePanel({
   groupTitle?: string;
   members: ChatMember[];
   onInvite(): void;
+  onFullProfile(): void;
 }) {
+  const avatarUrl = profile?.avatarUrl ?? fallback?.avatarUrl;
+  const cachedAvatarUrl = useCachedMediaUrl(avatarUrl);
+  const cachedCoverUrl = useCachedMediaUrl(profile?.coverUrl);
   if (groupTitle)
     return (
       <aside className="chat-profile-panel group-members-panel" aria-label="Участники группы">
@@ -1131,6 +1267,7 @@ function ProfilePanel({
                   name={member.displayName}
                   group={false}
                   avatarUrl={member.avatarUrl}
+                  presence={member.presence}
                   compact
                 />
                 <span>
@@ -1157,15 +1294,16 @@ function ProfilePanel({
     <aside className="chat-profile-panel" aria-label="Профиль собеседника">
       <div
         className="chat-profile-cover"
-        style={profile?.coverUrl ? { backgroundImage: `url(${profile.coverUrl})` } : undefined}
+        style={cachedCoverUrl ? { backgroundImage: `url(${cachedCoverUrl})` } : undefined}
       />
-      <div className="chat-profile-avatar">
-        {profile?.avatarUrl || fallback?.avatarUrl ? (
-          <img src={profile?.avatarUrl ?? fallback?.avatarUrl ?? ''} alt="" />
-        ) : (
-          name.slice(0, 1).toUpperCase()
-        )}
-      </div>
+      <button
+        type="button"
+        className="chat-profile-avatar"
+        aria-label={`Открыть полный профиль ${name}`}
+        onClick={onFullProfile}
+      >
+        {cachedAvatarUrl ? <img src={cachedAvatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
+      </button>
       <section className="chat-profile-identity">
         <h2>{name}</h2>
         <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
@@ -1182,7 +1320,11 @@ function ProfilePanel({
         <div className="mutual-friend-avatars">
           {(profile?.mutualFriends ?? []).map((friend) => (
             <span title={friend.displayName} key={friend.id}>
-              {friend.avatarUrl ? <img src={friend.avatarUrl} alt="" /> : friend.displayName[0]}
+              {friend.avatarUrl ? (
+                <CachedMediaImage src={friend.avatarUrl} alt="" />
+              ) : (
+                friend.displayName[0]
+              )}
             </span>
           ))}
         </div>
@@ -1197,6 +1339,9 @@ function ProfilePanel({
           })}
         </footer>
       )}
+      <button type="button" className="chat-profile-full-button" onClick={onFullProfile}>
+        Полный профиль
+      </button>
     </aside>
   );
 }
@@ -1591,7 +1736,7 @@ function InviteMessageCard({
     <div className={`chat-invite-card${preview ? '' : ' loading'}`}>
       <span className="chat-invite-avatar">
         {preview?.avatarUrl ? (
-          <img
+          <CachedMediaImage
             src={preview.avatarUrl}
             alt=""
             style={avatarImageStyle(
@@ -1839,7 +1984,7 @@ function SystemCallMessage({
                     title={participant.displayName}
                   >
                     {participant.avatarUrl ? (
-                      <img src={participant.avatarUrl} alt="" />
+                      <CachedMediaImage src={participant.avatarUrl} alt="" />
                     ) : (
                       participant.displayName.trim().charAt(0).toLocaleUpperCase() || '?'
                     )}
@@ -2075,6 +2220,7 @@ function ChatAvatar({
   group,
   avatarUrl,
   compact = false,
+  presence,
   positionX = 50,
   positionY = 50,
   scale = 100,
@@ -2083,13 +2229,15 @@ function ChatAvatar({
   group: boolean;
   avatarUrl?: string | null;
   compact?: boolean;
+  presence?: PresenceStatus;
   positionX?: number;
   positionY?: number;
   scale?: number;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const cachedAvatarUrl = useCachedMediaUrl(avatarUrl);
   useEffect(() => setImageFailed(false), [avatarUrl]);
-  const showImage = Boolean(avatarUrl && !imageFailed);
+  const showImage = Boolean(cachedAvatarUrl && !imageFailed);
   return (
     <span
       className={`chat-avatar ${compact ? 'compact' : ''} ${showImage ? 'has-image' : ''}`}
@@ -2097,7 +2245,7 @@ function ChatAvatar({
     >
       {showImage ? (
         <img
-          src={avatarUrl ?? ''}
+          src={cachedAvatarUrl ?? ''}
           alt=""
           referrerPolicy="no-referrer"
           style={avatarImageStyle(positionX, positionY, scale)}
@@ -2108,6 +2256,7 @@ function ChatAvatar({
       ) : (
         name.slice(0, 1).toUpperCase()
       )}
+      {!group && presence ? <PresenceBadge status={presence} /> : null}
     </span>
   );
 }

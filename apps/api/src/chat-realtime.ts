@@ -24,6 +24,7 @@ export type ChatRealtimeServerMessage =
       metadata: Record<string, unknown>;
     }
   | { type: 'history-cleared'; chatId: string }
+  | { type: 'chat-removed'; chatId: string }
   | { type: 'profile-updated'; userId: string }
   | {
       type: 'chat-updated';

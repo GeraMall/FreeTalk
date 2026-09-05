@@ -17,6 +17,21 @@ const room = 'ABCDEFGH2345';
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 
 describe('RoomManager', () => {
+  it('keeps an idle creator alive with heartbeat touches and accepts a late friend', () => {
+    const manager = new RoomManager();
+    const creator = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'One', creator);
+    const start = Date.now();
+    for (let elapsed = 10_000; elapsed <= 180_000; elapsed += 10_000) {
+      manager.touch(room, id(1), start + elapsed);
+      manager.removeStale(45_000, start + elapsed);
+    }
+    expect(creator.closed).toBe(false);
+    const friend = new FakeConnection();
+    manager.join(room, id(2), 'session-223456789', 'Two', friend);
+    expect(manager.roomSize(room)).toBe(2);
+    expect(friend.messages.some((message) => message.type === 'joined-room')).toBe(true);
+  });
   it('creates, joins and relays without storing media', () => {
     const manager = new RoomManager();
     const first = new FakeConnection();
@@ -32,6 +47,22 @@ describe('RoomManager', () => {
       }),
     ).toBe(true);
     expect(second.messages.at(-1)?.type).toBe('offer');
+  });
+
+  it('shares registered account ids so call avatars can open profiles', () => {
+    const manager = new RoomManager();
+    const first = new FakeConnection();
+    const second = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'One', first, 'https://one.test/a', id(11));
+    manager.join(room, id(2), 'session-223456789', 'Two', second, 'https://two.test/a', id(12));
+
+    const joined = second.messages.find((message) => message.type === 'joined-room');
+    expect(joined?.type === 'joined-room' ? joined.participants : []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: id(1), accountId: id(11) }),
+        expect.objectContaining({ id: id(2), accountId: id(12) }),
+      ]),
+    );
   });
 
   it('enforces the eight participant limit', () => {

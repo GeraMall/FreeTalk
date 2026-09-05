@@ -42,8 +42,10 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly status: number,
+    public readonly details: Record<string, unknown> = {},
   ) {
     super(message);
+    this.name = 'ApiError';
   }
 }
 
@@ -77,6 +79,7 @@ async function decode<T>(response: Response): Promise<T> {
       typeof payload.code === 'string' ? payload.code : 'REQUEST_FAILED',
       typeof payload.message === 'string' ? payload.message : 'Ошибка сервера',
       response.status,
+      payload,
     );
   return payload as T;
 }

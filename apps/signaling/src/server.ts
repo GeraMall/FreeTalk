@@ -185,6 +185,7 @@ sockets.on('connection', (socket, request) => {
             authorizedName,
             connection,
             authorizedAvatar,
+            'userId' in authorization ? authorization.userId : undefined,
           );
         else
           manager.join(
@@ -194,6 +195,7 @@ sockets.on('connection', (socket, request) => {
             authorizedName,
             connection,
             authorizedAvatar,
+            'userId' in authorization ? authorization.userId : undefined,
           );
         meta.roomId = message.roomId;
         meta.clientId = message.clientId;

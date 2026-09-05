@@ -9,6 +9,7 @@ const friend: FriendItem = {
   username: 'alexey',
   display_name: 'Алексей',
   avatarUrl: null,
+  presence: 'online',
 };
 const pending: PendingItem = {
   id: 'request-1',
@@ -60,7 +61,7 @@ describe('FriendsPage', () => {
 
   it('keeps secondary friend actions inside the compact menu', () => {
     const handlers = callbacks();
-    const { getByText } = render(
+    const { getByText, container } = render(
       <FriendsPage
         userId="self"
         friends={[friend]}
@@ -78,6 +79,27 @@ describe('FriendsPage', () => {
     expect(menu.open).toBe(true);
     expect(getByText('Удалить из друзей')).not.toBeNull();
     expect(getByText('Заблокировать')).not.toBeNull();
+    expect(container.querySelector('.friend-avatar .avatar-presence-badge.online')).not.toBeNull();
+  });
+
+  it('opens a full profile from a friend avatar', () => {
+    const handlers = callbacks();
+    const { getByRole, queryByRole } = render(
+      <FriendsPage
+        userId="self"
+        friends={[friend]}
+        pending={[]}
+        blocked={[]}
+        loading={false}
+        loadError=""
+        {...handlers}
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Открыть полный профиль Алексей' }));
+    expect(getByRole('dialog', { name: 'Профиль Алексей' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Закрыть профиль' }));
+    expect(queryByRole('dialog', { name: 'Профиль Алексей' })).toBeNull();
   });
 
   it('shows and accepts incoming requests from the pending filter', async () => {
@@ -98,6 +120,25 @@ describe('FriendsPage', () => {
     expect(getByText('Входящий запрос')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Принять' }));
     await waitFor(() => expect(handlers.onAccept).toHaveBeenCalledWith('request-1'));
+  });
+
+  it('opens a full profile from a pending request avatar', () => {
+    const handlers = callbacks();
+    const { getByRole } = render(
+      <FriendsPage
+        userId="self"
+        friends={[]}
+        pending={[{ ...pending, profile_id: 'friend-2' }]}
+        blocked={[]}
+        loading={false}
+        loadError=""
+        {...handlers}
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: /Ожидают/ }));
+    fireEvent.click(getByRole('button', { name: 'Открыть полный профиль Дмитрий' }));
+    expect(getByRole('dialog', { name: 'Профиль Дмитрий' })).toBeTruthy();
   });
 
   it('renders loading, error and retry states', () => {

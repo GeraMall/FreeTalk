@@ -410,7 +410,7 @@ describe('AccountSidebar in an active room', () => {
         activePage="home"
         chats={chats}
         chatsLoading
-        friends={[{ id: 'friend-1', displayName: 'Анна' }]}
+        friends={[{ id: 'friend-1', displayName: 'Анна', presence: 'online' }]}
         onNavigate={onNavigate}
         onOpenChat={onOpenChat}
         onCreateGroup={onCreateGroup}
@@ -420,7 +420,16 @@ describe('AccountSidebar in an active room', () => {
     );
 
     expect(queryByRole('button', { name: 'Чаты' })).toBeNull();
-    expect(getByRole('button', { name: 'Анна' })).toBeTruthy();
+    expect(
+      getByRole('button', { name: 'Анна' }).querySelector('.avatar-presence-badge.online'),
+    ).not.toBeNull();
+    expect(
+      getByRole('button', { name: 'Команда' }).querySelector('.avatar-presence-badge'),
+    ).toBeNull();
+    expect(queryByRole('button', { name: 'Открыть полный профиль Анна' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Анна' }));
+    expect(onNavigate).toHaveBeenCalledWith('chats');
+    expect(onOpenChat).toHaveBeenCalledWith('chat-friend');
     expect(queryByText('Загружаем чаты…')).toBeNull();
     fireEvent.change(getByRole('textbox', { name: 'Поиск по чатам' }), {
       target: { value: 'ком' },
@@ -431,6 +440,8 @@ describe('AccountSidebar in an active room', () => {
     expect(onOpenChat).toHaveBeenCalledWith('chat-group');
 
     fireEvent.click(getByRole('button', { name: /Создать групповой чат/ }));
+    expect(getByRole('dialog', { name: 'Новый групповой чат' })).toBeTruthy();
+    expect(getByRole('textbox', { name: 'Поиск участников' })).toBeTruthy();
     fireEvent.change(getByRole('textbox', { name: 'Название группы' }), {
       target: { value: 'Проект' },
     });
@@ -439,6 +450,49 @@ describe('AccountSidebar in an active room', () => {
 
     await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Проект', ['friend-1']));
     expect(queryByRole('textbox', { name: 'Название группы' })).toBeNull();
+  });
+
+  it('confirms leaving a group from the hover action without offering it for direct chats', async () => {
+    const onLeaveGroup = vi.fn(async () => undefined);
+    const chats: ChatItem[] = [
+      {
+        id: 'chat-friend',
+        type: 'direct',
+        title: null,
+        members: [
+          { id: user.id, username: user.username, displayName: user.displayName },
+          { id: 'friend-1', username: 'anna', displayName: 'Анна' },
+        ],
+      },
+      {
+        id: 'chat-group',
+        type: 'group',
+        title: 'Команда',
+        members: [{ id: user.id, username: user.username, displayName: user.displayName }],
+      },
+    ];
+    const { getByRole, queryByRole } = render(
+      <AccountSidebar
+        user={user}
+        activePage="home"
+        chats={chats}
+        friends={[]}
+        onNavigate={vi.fn()}
+        onOpenChat={vi.fn()}
+        onCreateGroup={vi.fn(async () => true)}
+        onLeaveGroup={onLeaveGroup}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(queryByRole('button', { name: /Покинуть группу Анна/ })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Покинуть группу Команда' }));
+    expect(getByRole('alertdialog')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Покинуть группу' }));
+
+    await waitFor(() => expect(onLeaveGroup).toHaveBeenCalledWith('chat-group'));
+    await waitFor(() => expect(queryByRole('alertdialog')).toBeNull());
   });
 
   it('offers an available update directly below chat search', () => {

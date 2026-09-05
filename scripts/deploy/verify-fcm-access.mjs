@@ -6,12 +6,19 @@ const { getMessaging } = require('firebase-admin/messaging');
 const app = initializeApp({ credential: applicationDefault(), projectId: 'trlka-b5d34' });
 try {
   // validate_only: no topic subscription and no notification is delivered.
-  await getMessaging(app).send({
-    topic: 'trlka-access-check',
-    data: { check: 'server-permission-validation' },
-  }, true);
-  console.log('FCM_DRY_RUN_OK: credentials and messaging permission accepted; no delivery performed');
+  await getMessaging(app).send(
+    {
+      topic: 'trlka-access-check',
+      data: { check: 'server-permission-validation' },
+    },
+    true,
+  );
+  console.log(
+    'FCM_DRY_RUN_OK: credentials and messaging permission accepted; no delivery performed',
+  );
 } catch (error) {
   console.log(JSON.stringify({ ok: false, code: error.code ?? 'unknown', message: error.message }));
   process.exitCode = 1;
-} finally { await deleteApp(app); }
+} finally {
+  await deleteApp(app);
+}

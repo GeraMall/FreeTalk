@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RoomChatMessage } from '@freetalk/protocol';
 import { ArrowDown, MessageCircle, Send, X } from 'lucide-react';
 import { isNearBottom } from '../lib/chat-scroll';
+import { CachedMediaImage } from './CachedMedia';
 
 interface RoomChatPanelProps {
   messages: RoomChatMessage[];
@@ -99,7 +100,7 @@ export function RoomChatPanel({
               <article className={`room-chat-message ${own ? 'own' : ''}`} key={message.id}>
                 <span className="room-chat-avatar" aria-hidden="true">
                   {message.senderAvatar ? (
-                    <img src={message.senderAvatar} alt="" />
+                    <CachedMediaImage src={message.senderAvatar} alt="" />
                   ) : (
                     message.senderName.slice(0, 1).toUpperCase()
                   )}

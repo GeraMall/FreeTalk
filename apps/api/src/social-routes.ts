@@ -7,6 +7,7 @@ import { publicApiUrl } from './env.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { randomToken, tokenHash, usernameSchema } from './security.js';
 import { safeImageDimensions } from './image-dimensions.js';
+import { ChatSendPacer } from '@freetalk/protocol';
 
 type RequireUser = (
   request: FastifyRequest,
@@ -20,6 +21,18 @@ const avatarPositionSchema = z.object({
   positionY: z.coerce.number().int().min(0).max(100),
   scale: z.coerce.number().int().min(100).max(250),
 });
+const chatSendPacer = new ChatSendPacer();
+
+function enforceChatSendPacing(reply: FastifyReply, chatId: string, userId: string) {
+  const pacing = chatSendPacer.check(`${chatId}:${userId}`);
+  if (!pacing.limited) return false;
+  reply.header('retry-after', String(pacing.retryAfterSeconds)).code(429).send({
+    code: 'CHAT_SLOW_MODE',
+    message: 'Вы отправляете сообщения слишком быстро',
+    retryAfterSeconds: pacing.retryAfterSeconds,
+  });
+  return true;
+}
 type RealtimeChatMessage = Extract<
   ChatRealtimeServerMessage,
   { type: 'message-created' }
@@ -249,7 +262,14 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!user) return;
     const { userId } = z.object({ userId: uuid }).parse(request.params);
     if (userId === user.id) return reply.code(400).send({ code: 'SELF_BLOCK' });
-    await transaction(async (client) => {
+    const hiddenChats = await transaction(async (client) => {
+      const directChats = await client.query<{ id: string }>(
+        `SELECT chat.id FROM chats chat
+         JOIN chat_members mine ON mine.chat_id=chat.id AND mine.user_id=$1
+         JOIN chat_members theirs ON theirs.chat_id=chat.id AND theirs.user_id=$2
+         WHERE chat.type='direct'`,
+        [user.id, userId],
+      );
       await client.query(
         'INSERT INTO blocks(blocker_id,blocked_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
         [user.id, userId],
@@ -263,7 +283,10 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          WHERE status='pending' AND ((sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1))`,
         [user.id, userId],
       );
+      return directChats.rows;
     });
+    for (const chat of hiddenChats)
+      chatRealtimeHub.publish([user.id, userId], { type: 'chat-removed', chatId: chat.id });
     return reply.code(204).send();
   });
 
@@ -285,9 +308,20 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          WHERE user_low_id=LEAST($1::uuid,$2::uuid)
            AND user_high_id=GREATEST($1::uuid,$2::uuid)
        ) OR EXISTS (
-         SELECT 1 FROM chat_members mine JOIN chat_members theirs ON theirs.chat_id=mine.chat_id
+         SELECT 1 FROM friend_requests request
+         WHERE request.status='pending'
+           AND ((request.sender_id=$1 AND request.recipient_id=$2)
+             OR (request.sender_id=$2 AND request.recipient_id=$1))
+       ) OR EXISTS (
+       SELECT 1 FROM chat_members mine JOIN chat_members theirs ON theirs.chat_id=mine.chat_id
          WHERE mine.user_id=$1 AND theirs.user_id=$2
            AND mine.left_at IS NULL AND theirs.left_at IS NULL
+       ) OR EXISTS (
+         SELECT 1 FROM call_participants mine
+         JOIN call_participants theirs ON theirs.call_id=mine.call_id
+         JOIN call_sessions session ON session.id=mine.call_id
+         WHERE mine.user_id=$1 AND theirs.user_id=$2
+           AND mine.left_at IS NULL AND theirs.left_at IS NULL AND session.ended_at IS NULL
        )`,
       [user.id, userId],
     );
@@ -316,6 +350,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!profile.rows[0]) return reply.code(404).send({ code: 'PROFILE_NOT_FOUND' });
     const mutual = await db.query<{
       id: string;
+      username: string;
       display_name: string;
       has_avatar: boolean;
       updated_at: Date;
@@ -327,12 +362,106 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          SELECT CASE WHEN user_low_id=$2 THEN user_high_id ELSE user_low_id END AS id
          FROM friendships WHERE user_low_id=$2 OR user_high_id=$2
        )
-       SELECT u.id,u.display_name,u.avatar_data IS NOT NULL AS has_avatar,u.updated_at
+       SELECT u.id,u.username,u.display_name,u.avatar_data IS NOT NULL AS has_avatar,u.updated_at
        FROM my_friends m JOIN target_friends t USING(id) JOIN users u ON u.id=m.id
        WHERE u.deleted_at IS NULL ORDER BY lower(u.display_name)`,
       [user.id, userId],
     );
+    const [relationship, commonChats, sharedCalls] = await Promise.all([
+      db.query<{ relationship: 'self' | 'friend' | 'incoming' | 'outgoing' | 'none' }>(
+        `SELECT CASE
+           WHEN $1::uuid=$2::uuid THEN 'self'
+           WHEN EXISTS(SELECT 1 FROM friendships
+             WHERE user_low_id=LEAST($1::uuid,$2::uuid)
+               AND user_high_id=GREATEST($1::uuid,$2::uuid)) THEN 'friend'
+           WHEN EXISTS(SELECT 1 FROM friend_requests
+             WHERE sender_id=$1 AND recipient_id=$2 AND status='pending') THEN 'outgoing'
+           WHEN EXISTS(SELECT 1 FROM friend_requests
+             WHERE sender_id=$2 AND recipient_id=$1 AND status='pending') THEN 'incoming'
+           ELSE 'none' END AS relationship`,
+        [user.id, userId],
+      ),
+      db.query<{
+        id: string;
+        type: 'direct' | 'group';
+        title: string;
+        avatar_url: string | null;
+        last_interaction_at: Date | null;
+        common_chat_count: number;
+      }>(
+        `WITH candidates AS (
+           SELECT chat.id,chat.type,
+            CASE WHEN chat.type='direct' THEN
+              CASE WHEN $1::uuid=$2::uuid THEN direct_target.display_name ELSE target.display_name END
+              ELSE COALESCE(NULLIF(trim(chat.title),''),'Групповой чат') END AS title,
+            CASE
+              WHEN chat.type='group' AND chat.avatar_data IS NOT NULL THEN $3::text ||
+                '/v1/chats/' || chat.id || '/avatar?v=' ||
+                (extract(epoch FROM chat.avatar_updated_at)*1000)::bigint::text
+              WHEN chat.type='direct' AND $1::uuid=$2::uuid AND direct_target.has_avatar THEN
+                $3::text || '/v1/users/' || direct_target.id || '/avatar?v=' ||
+                (extract(epoch FROM direct_target.updated_at)*1000)::bigint::text
+              WHEN chat.type='direct' AND $1::uuid<>$2::uuid AND target.avatar_data IS NOT NULL THEN
+                $3::text || '/v1/users/' || target.id || '/avatar?v=' ||
+                (extract(epoch FROM target.updated_at)*1000)::bigint::text
+              ELSE NULL END AS avatar_url,
+            latest.created_at AS last_interaction_at,
+            COALESCE(latest.created_at,chat.created_at) AS sort_at,
+            CASE
+              WHEN $1::uuid=$2::uuid AND chat.type='direct' THEN
+                'direct:' || COALESCE(direct_target.id::text,chat.id::text)
+              ELSE 'chat:' || chat.id::text END AS conversation_key
+           FROM chats chat
+           JOIN chat_members mine ON mine.chat_id=chat.id AND mine.user_id=$1 AND mine.left_at IS NULL
+           JOIN chat_members theirs ON theirs.chat_id=chat.id AND theirs.user_id=$2 AND theirs.left_at IS NULL
+           JOIN users target ON target.id=$2 AND target.deleted_at IS NULL
+           LEFT JOIN LATERAL (
+             SELECT other_user.id,other_user.display_name,
+              other_user.avatar_data IS NOT NULL AS has_avatar,other_user.updated_at
+             FROM chat_members other_member
+             JOIN users other_user ON other_user.id=other_member.user_id AND other_user.deleted_at IS NULL
+             WHERE other_member.chat_id=chat.id AND other_member.user_id<>$1
+               AND other_member.left_at IS NULL
+             ORDER BY other_member.joined_at
+             LIMIT 1
+           ) direct_target ON chat.type='direct' AND $1::uuid=$2::uuid
+           LEFT JOIN LATERAL (
+             SELECT message.created_at FROM messages message
+             WHERE message.chat_id=chat.id AND (message.expires_at IS NULL OR message.expires_at>now())
+             ORDER BY message.created_at DESC LIMIT 1
+           ) latest ON true
+         ), ranked AS (
+           SELECT candidates.*,
+            row_number() OVER(PARTITION BY conversation_key ORDER BY sort_at DESC,id) AS duplicate_rank
+           FROM candidates
+         )
+         SELECT id,type,title,avatar_url,last_interaction_at,count(*) OVER()::int AS common_chat_count
+         FROM ranked WHERE duplicate_rank=1
+         ORDER BY sort_at DESC
+         LIMIT 12`,
+        [user.id, userId, publicApiUrl('').replace(/\/$/, '')],
+      ),
+      db.query<{
+        call_count: number;
+        last_started_at: Date | null;
+        last_duration_seconds: number | null;
+      }>(
+        `WITH shared_calls AS (
+           SELECT DISTINCT session.id,session.started_at,session.ended_at
+           FROM call_sessions session
+           JOIN call_participants mine ON mine.call_id=session.id AND mine.user_id=$1
+           JOIN call_participants theirs ON theirs.call_id=session.id AND theirs.user_id=$2
+           WHERE $1::uuid<>$2::uuid
+         )
+         SELECT count(*)::int AS call_count,max(started_at) AS last_started_at,
+           (SELECT EXTRACT(EPOCH FROM (COALESCE(ended_at,now())-started_at))::int
+            FROM shared_calls ORDER BY started_at DESC LIMIT 1) AS last_duration_seconds
+         FROM shared_calls`,
+        [user.id, userId],
+      ),
+    ]);
     const row = profile.rows[0];
+    const callSummary = sharedCalls.rows[0];
     return {
       profile: {
         id: row.id,
@@ -347,14 +476,30 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           : null,
         registeredAt: row.created_at.toISOString(),
         presence: chatRealtimeHub.presence(row.id),
+        relationship: relationship.rows[0]?.relationship ?? 'none',
         mutualFriendsCount: mutual.rowCount ?? 0,
-        mutualFriends: mutual.rows.slice(0, 4).map((friend) => ({
+        mutualFriends: mutual.rows.slice(0, 8).map((friend) => ({
           id: friend.id,
+          username: friend.username,
           displayName: friend.display_name,
           avatarUrl: friend.has_avatar
             ? publicApiUrl(`/v1/users/${friend.id}/avatar?v=${friend.updated_at.getTime()}`)
             : null,
+          presence: chatRealtimeHub.presence(friend.id),
         })),
+        commonChatsCount: commonChats.rows[0]?.common_chat_count ?? 0,
+        commonChats: commonChats.rows.slice(0, 6).map((chat) => ({
+          id: chat.id,
+          type: chat.type,
+          title: chat.title,
+          avatarUrl: chat.avatar_url,
+          lastInteractionAt: chat.last_interaction_at?.toISOString() ?? null,
+        })),
+        sharedCalls: {
+          count: callSummary?.call_count ?? 0,
+          lastStartedAt: callSummary?.last_started_at?.toISOString() ?? null,
+          lastDurationSeconds: callSummary?.last_duration_seconds ?? null,
+        },
       },
     };
   });
@@ -539,16 +684,6 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const memberIds = [...new Set([user.id, ...input.memberIds])];
     if (input.type === 'direct' && memberIds.length !== 2)
       return reply.code(400).send({ code: 'DIRECT_REQUIRES_TWO_MEMBERS' });
-    if (input.type === 'direct') {
-      const existing = await db.query<{ id: string }>(
-        `SELECT c.id FROM chats c JOIN chat_members a ON a.chat_id=c.id AND a.user_id=$1 AND a.left_at IS NULL
-         JOIN chat_members b ON b.chat_id=c.id AND b.user_id=$2 AND b.left_at IS NULL
-         WHERE c.type='direct' AND (SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id AND m.left_at IS NULL)=2
-         LIMIT 1`,
-        [memberIds[0], memberIds[1]],
-      );
-      if (existing.rows[0]) return reply.send({ chat: existing.rows[0], existing: true });
-    }
     const requestedFriendIds = memberIds.filter((memberId) => memberId !== user.id);
     const acceptedFriends = await db.query<{ id: string }>(
       `SELECT u.id FROM friendships f
@@ -564,7 +699,27 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       [memberIds],
     );
     if (blocked.rowCount) return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
-    const chat = await transaction(async (client) => {
+    const result = await transaction(async (client) => {
+      if (input.type === 'direct') {
+        const directPairKey = [...memberIds].sort().join(':');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [directPairKey]);
+        const existing = await client.query<{ id: string }>(
+          `SELECT c.id FROM chats c
+           JOIN chat_members a ON a.chat_id=c.id AND a.user_id=$1
+           JOIN chat_members b ON b.chat_id=c.id AND b.user_id=$2
+           WHERE c.type='direct'
+             AND (SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id)=2
+           ORDER BY c.created_at LIMIT 1`,
+          [memberIds[0], memberIds[1]],
+        );
+        if (existing.rows[0]) {
+          await client.query(
+            'UPDATE chat_members SET left_at=NULL,joined_at=now() WHERE chat_id=$1',
+            [existing.rows[0].id],
+          );
+          return { chat: existing.rows[0], existing: true };
+        }
+      }
       const created = await client.query<{ id: string }>(
         'INSERT INTO chats(type,title,created_by) VALUES($1,$2,$3) RETURNING id',
         [input.type, input.type === 'group' ? (input.title ?? null) : null, user.id],
@@ -574,9 +729,35 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           `INSERT INTO chat_members(chat_id,user_id,role,added_by) VALUES($1,$2,$3,$4)`,
           [created.rows[0]!.id, memberId, memberId === user.id ? 'owner' : 'member', user.id],
         );
-      return created.rows[0];
+      return { chat: created.rows[0]!, existing: false };
     });
-    return reply.code(201).send({ chat });
+    return reply.code(result.existing ? 200 : 201).send(result);
+  });
+
+  app.delete('/v1/chats/:chatId', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = chatIdParams.parse(request.params);
+    const removed = await transaction(async (client) => {
+      const members = await client.query<{ user_id: string; type: string }>(
+        `SELECT member.user_id,chat.type FROM chats chat
+         JOIN chat_members self ON self.chat_id=chat.id AND self.user_id=$2 AND self.left_at IS NULL
+         JOIN chat_members member ON member.chat_id=chat.id
+         WHERE chat.id=$1 FOR UPDATE OF chat`,
+        [chatId, user.id],
+      );
+      if (!members.rows[0]) return { status: 'missing' as const, memberIds: [] };
+      if (members.rows[0].type !== 'direct')
+        return { status: 'not-direct' as const, memberIds: [] };
+      const memberIds = members.rows.map((member) => member.user_id);
+      await client.query('DELETE FROM chats WHERE id=$1', [chatId]);
+      return { status: 'deleted' as const, memberIds };
+    });
+    if (removed.status === 'missing') return reply.code(404).send({ code: 'CHAT_NOT_FOUND' });
+    if (removed.status === 'not-direct')
+      return reply.code(400).send({ code: 'DIRECT_CHAT_REQUIRED' });
+    chatRealtimeHub.publish(removed.memberIds, { type: 'chat-removed', chatId });
+    return reply.code(204).send();
   });
 
   app.get('/v1/chats/:chatId/messages', async (request, reply) => {
@@ -633,6 +814,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
       if (!(await canInteractInChat(chatId, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (enforceChatSendPacing(reply, chatId, user.id)) return;
       const result = await db.query<ChatMessageRow>(
         `INSERT INTO messages(chat_id,sender_id,body,expires_at)
          SELECT $1,$2,$3,CASE WHEN c.retention_hours IS NULL THEN NULL
@@ -697,6 +879,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
       if (!(await canInteractInChat(chatId, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (enforceChatSendPacing(reply, chatId, user.id)) return;
       let imageFile: { mime: string; bytes: Buffer } | undefined;
       let thumbnailFile: { mime: string; bytes: Buffer } | undefined;
       for await (const part of request.parts()) {
@@ -844,6 +1027,10 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     );
     const row = membership.rows[0];
     if (!row) return reply.code(404).send({ code: 'CHAT_NOT_FOUND' });
+    if (row.type === 'direct')
+      return reply
+        .code(400)
+        .send({ code: 'DIRECT_CHAT_CANNOT_BE_LEFT', message: 'Личный чат нельзя покинуть' });
     if (row.role === 'owner' && row.type === 'group' && row.member_count > 1)
       return reply
         .code(409)

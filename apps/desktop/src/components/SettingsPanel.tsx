@@ -57,6 +57,8 @@ import {
   USERNAME_MIN_LENGTH,
 } from '../lib/username';
 import { getChatImageCacheStats } from '../lib/chat-image-cache';
+import { getAccountMediaCacheStats } from '../lib/account-media-cache';
+import { useCachedMediaUrl } from '../lib/use-cached-media';
 
 export type SettingsTab =
   'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
@@ -272,138 +274,142 @@ export function SettingsPanel({
         {(!mobileLayout || tab) && (
           <div className="settings-workspace">
             <header className="settings-header">
-            {mobileLayout && (
+              {mobileLayout && (
+                <button
+                  className="icon-button quiet mobile-settings-back"
+                  aria-label="Вернуться к разделам настроек"
+                  onClick={() => setTab(null)}
+                >
+                  <ArrowLeft size={21} />
+                </button>
+              )}
+              <div>
+                <p className="eyebrow">
+                  {tab === 'audio'
+                    ? 'АУДИО'
+                    : tab === 'profile'
+                      ? 'ПРОФИЛЬ'
+                      : tab === 'video'
+                        ? 'ВИДЕО И ЗВУКИ'
+                        : tab === 'devices'
+                          ? 'УСТРОЙСТВА'
+                          : tab === 'recording'
+                            ? 'ЗАПИСЬ'
+                            : tab === 'chats'
+                              ? 'ЧАТЫ'
+                              : 'FREETALK'}
+                </p>
+                <h2 id="settings-title">
+                  {tab === 'audio'
+                    ? 'Настройки звука'
+                    : tab === 'profile'
+                      ? 'Ваш профиль'
+                      : tab === 'video'
+                        ? 'Видео и звуки'
+                        : tab === 'devices'
+                          ? 'Аудиоустройства'
+                          : tab === 'recording'
+                            ? 'Локальная запись'
+                            : tab === 'chats'
+                              ? 'Оформление чатов'
+                              : 'О приложении'}
+                </h2>
+              </div>
               <button
-                className="icon-button quiet mobile-settings-back"
-                aria-label="Вернуться к разделам настроек"
-                onClick={() => setTab(null)}
+                className="icon-button quiet"
+                aria-label="Закрыть настройки"
+                onClick={onClose}
               >
-                <ArrowLeft size={21} />
+                <X size={21} />
               </button>
-            )}
-            <div>
-              <p className="eyebrow">
-                {tab === 'audio'
-                  ? 'АУДИО'
-                  : tab === 'profile'
-                    ? 'ПРОФИЛЬ'
-                    : tab === 'video'
-                      ? 'ВИДЕО И ЗВУКИ'
-                      : tab === 'devices'
-                        ? 'УСТРОЙСТВА'
-                        : tab === 'recording'
-                          ? 'ЗАПИСЬ'
-                          : tab === 'chats'
-                            ? 'ЧАТЫ'
-                            : 'FREETALK'}
-              </p>
-              <h2 id="settings-title">
-                {tab === 'audio'
-                  ? 'Настройки звука'
-                  : tab === 'profile'
-                    ? 'Ваш профиль'
-                    : tab === 'video'
-                      ? 'Видео и звуки'
-                      : tab === 'devices'
-                        ? 'Аудиоустройства'
-                        : tab === 'recording'
-                          ? 'Локальная запись'
-                          : tab === 'chats'
-                            ? 'Оформление чатов'
-                            : 'О приложении'}
-              </h2>
-            </div>
-            <button className="icon-button quiet" aria-label="Закрыть настройки" onClick={onClose}>
-              <X size={21} />
-            </button>
             </header>
 
-          <div className={`settings-content${tab === 'profile' ? ' profile-content' : ''}`}>
-            {tab === 'audio' && (
-              <AudioTab
-                settings={settings}
-                inputLevel={inputLevel}
-                capturing={capturing}
-                recording={recording}
-                recordingUrl={recordingUrl}
-                testError={testError}
-                onCapturing={setCapturing}
-                onKey={onKey}
-                onSetting={onSetting}
-                onRecord={() => void recordSample()}
-              />
-            )}
-            {tab === 'profile' && (
-              <ProfileTab
-                settings={settings}
-                accountUser={accountUser}
-                guestMode={guestMode}
-                onSaveProfile={onSaveProfile}
-                onAccountLogout={onAccountLogout}
-                onDeleteAccount={onDeleteAccount}
-                onChangePassword={onChangePassword}
-                onDone={onClose}
-              />
-            )}
-            {tab === 'video' && (
-              <VideoTab
-                settings={settings}
-                cameras={devices.cameras}
-                onCamera={onCamera}
-                onVideoSetting={onVideoSetting}
-                locked={guestMode}
-              />
-            )}
-            {tab === 'devices' && (
-              <DevicesTab
-                settings={settings}
-                devices={devices}
-                outputSupported={outputSupported}
-                onInput={onInput}
-                onOutput={onOutput}
-                onSetting={onSetting}
-              />
-            )}
-            {tab === 'chats' && (
-              <ChatsSettingsTab
-                settings={settings}
-                accountId={accountUser?.id}
-                onSetting={onSetting}
-                onClearCache={onClearChatCache}
-              />
-            )}
-            {tab === 'recording' && (
-              <RecordingSettingsTab settings={settings} onSetting={onSetting} />
-            )}
-            {tab === 'about' && (
-              <AboutTab
-                appVersion={appVersion}
-                updateStatus={updateStatus}
-                turnAvailable={turnAvailable}
-                onCheckUpdate={onCheckUpdate}
-                onInstallUpdate={onInstallUpdate}
-                diagnosticPath={diagnosticPath}
-                diagnosticError={diagnosticError}
-                onSaveDiagnostics={async () => {
-                  setDiagnosticError('');
-                  try {
-                    setDiagnosticPath(await onSaveDiagnostics());
-                  } catch {
-                    setDiagnosticPath('');
-                    setDiagnosticError('Не удалось сохранить журнал');
-                  }
-                }}
-              />
-            )}
-          </div>
+            <div className={`settings-content${tab === 'profile' ? ' profile-content' : ''}`}>
+              {tab === 'audio' && (
+                <AudioTab
+                  settings={settings}
+                  inputLevel={inputLevel}
+                  capturing={capturing}
+                  recording={recording}
+                  recordingUrl={recordingUrl}
+                  testError={testError}
+                  onCapturing={setCapturing}
+                  onKey={onKey}
+                  onSetting={onSetting}
+                  onRecord={() => void recordSample()}
+                />
+              )}
+              {tab === 'profile' && (
+                <ProfileTab
+                  settings={settings}
+                  accountUser={accountUser}
+                  guestMode={guestMode}
+                  onSaveProfile={onSaveProfile}
+                  onAccountLogout={onAccountLogout}
+                  onDeleteAccount={onDeleteAccount}
+                  onChangePassword={onChangePassword}
+                  onDone={onClose}
+                />
+              )}
+              {tab === 'video' && (
+                <VideoTab
+                  settings={settings}
+                  cameras={devices.cameras}
+                  onCamera={onCamera}
+                  onVideoSetting={onVideoSetting}
+                  locked={guestMode}
+                />
+              )}
+              {tab === 'devices' && (
+                <DevicesTab
+                  settings={settings}
+                  devices={devices}
+                  outputSupported={outputSupported}
+                  onInput={onInput}
+                  onOutput={onOutput}
+                  onSetting={onSetting}
+                />
+              )}
+              {tab === 'chats' && (
+                <ChatsSettingsTab
+                  settings={settings}
+                  accountId={accountUser?.id}
+                  onSetting={onSetting}
+                  onClearCache={onClearChatCache}
+                />
+              )}
+              {tab === 'recording' && (
+                <RecordingSettingsTab settings={settings} onSetting={onSetting} />
+              )}
+              {tab === 'about' && (
+                <AboutTab
+                  appVersion={appVersion}
+                  updateStatus={updateStatus}
+                  turnAvailable={turnAvailable}
+                  onCheckUpdate={onCheckUpdate}
+                  onInstallUpdate={onInstallUpdate}
+                  diagnosticPath={diagnosticPath}
+                  diagnosticError={diagnosticError}
+                  onSaveDiagnostics={async () => {
+                    setDiagnosticError('');
+                    try {
+                      setDiagnosticPath(await onSaveDiagnostics());
+                    } catch {
+                      setDiagnosticPath('');
+                      setDiagnosticError('Не удалось сохранить журнал');
+                    }
+                  }}
+                />
+              )}
+            </div>
 
-          {tab !== 'profile' && (
-            <footer className="settings-footer">
-              <button className="primary settings-done" onClick={onClose}>
-                Готово
-              </button>
-            </footer>
-          )}
+            {tab !== 'profile' && (
+              <footer className="settings-footer">
+                <button className="primary settings-done" onClick={onClose}>
+                  Готово
+                </button>
+              </footer>
+            )}
           </div>
         )}
       </section>
@@ -471,6 +477,8 @@ function ProfileTab({
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [draftUsername, setDraftUsername] = useState(accountUser?.username ?? '');
+  const cachedDraftAvatar = useCachedMediaUrl(draftAvatar);
+  const cachedDraftCover = useCachedMediaUrl(draftCover);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -590,8 +598,8 @@ function ProfileTab({
           </div>
           <div className="profile-editor">
             <div className="profile-avatar-preview">
-              {draftAvatar ? (
-                <img src={draftAvatar} alt="Предпросмотр аватара" />
+              {cachedDraftAvatar ? (
+                <img src={cachedDraftAvatar} alt="Предпросмотр аватара" />
               ) : (
                 <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
               )}
@@ -635,7 +643,7 @@ function ProfileTab({
           <div className="profile-cover-editor">
             <div
               className="profile-cover-preview"
-              style={draftCover ? { backgroundImage: `url(${draftCover})` } : undefined}
+              style={cachedDraftCover ? { backgroundImage: `url(${cachedDraftCover})` } : undefined}
             >
               {!draftCover && <span>FreeTalk cover</span>}
             </div>
@@ -1734,9 +1742,12 @@ function ChatsSettingsTab({
 
   useEffect(() => {
     if (!accountId) return;
-    void getChatImageCacheStats(accountId).then(({ bytes, entries }) => {
-      setCacheBytes(bytes);
-      setCacheEntries(entries);
+    void Promise.all([
+      getChatImageCacheStats(accountId),
+      getAccountMediaCacheStats(accountId),
+    ]).then((stats) => {
+      setCacheBytes(stats.reduce((total, value) => total + value.bytes, 0));
+      setCacheEntries(stats.reduce((total, value) => total + value.entries, 0));
     });
   }, [accountId]);
 

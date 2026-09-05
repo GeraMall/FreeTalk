@@ -1,4 +1,4 @@
-import mascot from '../assets/freetalk-mascot.png';
+import mascot from '../../src-tauri/icons/app-icon-source.png';
 
 function BrandEmblem() {
   return (

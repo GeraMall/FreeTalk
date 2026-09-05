@@ -462,6 +462,119 @@ describe('Chat retention controls', () => {
   });
 });
 
+describe('Direct chat actions', () => {
+  const directChat: ChatItem = {
+    id: 'chat-direct',
+    type: 'direct',
+    title: null,
+    members: [
+      { id: 'self', username: 'gera_1', displayName: 'Гера' },
+      { id: 'friend', username: 'alex_1', displayName: 'Алексей' },
+    ],
+    currentUserRole: 'owner',
+  };
+
+  it('never offers leaving a direct chat and confirms delete-for-both and block', async () => {
+    const onDeleteDirectChat = vi.fn(async () => undefined);
+    const onBlockUser = vi.fn(async () => undefined);
+    const { getAllByRole, getByRole, queryByRole } = render(
+      <ChatsPage
+        userId="self"
+        chats={[directChat]}
+        friends={[]}
+        activeChatId="chat-direct"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onDeleteDirectChat={onDeleteDirectChat}
+        onBlockUser={onBlockUser}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(getByRole('button', { name: 'Полный профиль' })).toBeTruthy());
+    fireEvent.click(getByRole('button', { name: 'Полный профиль' }));
+    expect(getByRole('dialog', { name: 'Профиль Алексей' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Закрыть профиль' }));
+
+    fireEvent.click(getByRole('button', { name: 'Действия с чатом' }));
+    expect(queryByRole('button', { name: /Покинуть/ })).toBeNull();
+    expect(queryByRole('button', { name: 'Очистить чат' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Удалить чат у обоих' }));
+    fireEvent.click(getByRole('button', { name: 'Удалить у обоих' }));
+    await waitFor(() => expect(onDeleteDirectChat).toHaveBeenCalledOnce());
+    await waitFor(() => expect(queryByRole('alertdialog')).toBeNull());
+
+    fireEvent.click(getByRole('button', { name: 'Действия с чатом' }));
+    fireEvent.click(getByRole('button', { name: 'Заблокировать' }));
+    fireEvent.click(getAllByRole('button', { name: 'Заблокировать' }).at(-1)!);
+    await waitFor(() => expect(onBlockUser).toHaveBeenCalledWith('friend'));
+  });
+});
+
+describe('Chat slow mode', () => {
+  it('shows the anti-spam warning and keeps the composer paused after dismissal', () => {
+    const chat: ChatItem = {
+      id: 'chat-slow',
+      type: 'direct',
+      title: null,
+      members: [
+        { id: 'self', username: 'gera_1', displayName: 'Гера' },
+        { id: 'friend', username: 'alex_1', displayName: 'Алексей' },
+      ],
+    };
+    const { getByRole, getByText, queryByRole } = render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-slow"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        slowModeUntil={Date.now() + 30_000}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    expect(getByRole('alertdialog', { name: 'ВОУ, ВОУ, ПОЛЕГЧЕ!' })).toBeTruthy();
+    expect(getByText('Вы отправляете сообщения слишком быстро!')).toBeTruthy();
+    expect((getByRole('textbox', { name: 'Сообщение' }) as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Закрыть предупреждение' }));
+    expect(queryByRole('alertdialog')).toBeNull();
+    expect((getByRole('textbox', { name: 'Сообщение' }) as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+  });
+});
+
 describe('Resizable chat list', () => {
   const chat: ChatItem = {
     id: 'chat-a',

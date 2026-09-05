@@ -4,6 +4,9 @@ import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { TransientNotice } from './HomeView';
 import mascot from '../assets/freetalk-mascot.png';
 import { useMobileLayout } from '../lib/mobile-layout';
+import { CreateGroupDialog } from './CreateGroupDialog';
+import { UserProfileDialog } from './UserProfileDialog';
+import { FriendsPage } from './FriendsPage';
 
 const self = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -22,7 +25,13 @@ const chats: ChatItem[] = [
     title: null,
     members: [
       { id: self.id, username: self.username, displayName: self.displayName },
-      { id: friendId, username: 'alexey_1', displayName: 'Алексей', avatarUrl: mascot },
+      {
+        id: friendId,
+        username: 'alexey_1',
+        displayName: 'Алексей',
+        avatarUrl: mascot,
+        presence: 'dnd',
+      },
     ],
     lastMessage: 'Отлично, увидимся вечером',
     lastMessageAt: '2026-08-26T12:20:00.000Z',
@@ -64,57 +73,185 @@ const messages: MessageItem[] = [
 ];
 
 export function ChatLayoutPreview() {
-  const showNotice = new URLSearchParams(window.location.search).has('notice');
+  const previewParams = new URLSearchParams(window.location.search);
+  const showNotice = previewParams.has('notice');
+  const previewHomeSidebar = previewParams.has('home-sidebar');
+  const previewSlowMode = previewParams.has('slow-mode');
+  const previewCreateGroup = previewParams.has('create-group');
+  const previewFullProfile = previewParams.has('full-profile');
+  const previewOwnProfile = previewParams.get('full-profile') === 'self';
+  const previewFriends = previewParams.has('friends');
   const mobile = useMobileLayout();
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
-    new URLSearchParams(window.location.search).has('list') ? undefined : chats[0]!.id,
+    previewParams.has('list') ? undefined : chats[0]!.id,
   );
   return (
     <main
-      className={`account-shell account-shell-with-chat-sidebar${mobile ? ' mobile-account-shell mobile-chat-open' : ''}`}
+      className={`account-shell account-shell-with-chat-sidebar${previewHomeSidebar ? ' account-home-shell' : ''}${mobile ? ' mobile-account-shell mobile-chat-open' : ''}`}
     >
       {showNotice && <TransientNotice message="Комната не найдена" onDismiss={() => {}} />}
-      {!mobile ? <AccountSidebar
-        user={self}
-        activePage="chats"
-        readingChatId={chats[0]!.id}
-        chats={chats}
-        updateStatus={{ kind: 'available', version: '0.4.0-beta.76' }}
-        friends={[{ id: friendId, displayName: 'Алексей', avatarUrl: mascot }]}
-        onNavigate={() => {}}
-        onOpenChat={async () => {}}
-        onCreateGroup={async () => true}
-        onInstallUpdate={() => {}}
-        onSettings={() => {}}
-        onLogout={() => {}}
-      /> : null}
-      <section className="account-content account-content-chat">
-        <ChatsPage
-          externalSidebar={!mobile}
-          mobile={mobile}
-          userId={self.id}
+      {!mobile ? (
+        <AccountSidebar
+          user={self}
+          activePage={previewHomeSidebar ? 'home' : previewFriends ? 'friends' : 'chats'}
+          readingChatId={chats[0]!.id}
           chats={chats}
-          friends={[]}
-          activeChatId={activeChatId}
-          messages={messages}
-          chatsLoading={false}
-          messagesLoading={false}
-          messagesError=""
-          sentMessageVersion={0}
-          onOpenChat={async (chatId) => setActiveChatId(chatId)}
-          onCloseChat={() => setActiveChatId(undefined)}
-          onRetryMessages={() => {}}
-          onSendMessage={async () => true}
+          updateStatus={{ kind: 'available', version: '0.4.0-beta.76' }}
+          friends={[{ id: friendId, displayName: 'Алексей', avatarUrl: mascot, presence: 'dnd' }]}
+          onNavigate={() => {}}
+          onOpenChat={async () => {}}
           onCreateGroup={async () => true}
-          onJoinInvite={async () => true}
-          onStartCall={async () => {}}
-          onCreateInvite={async () => {}}
-          onUpdateRetention={async () => {}}
-          onClearHistory={async () => {}}
-          onAddMember={async () => true}
-          onJoinCall={() => {}}
+          onLeaveGroup={async () => {}}
+          onInstallUpdate={() => {}}
+          onSettings={() => {}}
+          onLogout={() => {}}
         />
+      ) : null}
+      <section className="account-content account-content-chat">
+        {previewFriends ? (
+          <FriendsPage
+            userId={self.id}
+            friends={[
+              {
+                id: friendId,
+                username: 'alexey_1',
+                display_name: 'Алексей',
+                avatarUrl: mascot,
+                presence: 'online',
+              },
+              {
+                id: '77777777-7777-4777-8777-777777777777',
+                username: 'marina',
+                display_name: 'Марина',
+                presence: 'away',
+              },
+            ]}
+            pending={[]}
+            blocked={[]}
+            loading={false}
+            loadError=""
+            onRetry={() => {}}
+            onAdd={async () => {}}
+            onAccept={async () => {}}
+            onDecline={async () => {}}
+            onMessage={async () => {}}
+            onRemove={async () => {}}
+            onBlock={async () => {}}
+            onUnblock={async () => {}}
+          />
+        ) : (
+          <ChatsPage
+            externalSidebar={!mobile}
+            mobile={mobile}
+            userId={self.id}
+            chats={chats}
+            friends={[]}
+            activeChatId={activeChatId}
+            messages={messages}
+            chatsLoading={false}
+            messagesLoading={false}
+            messagesError=""
+            sentMessageVersion={0}
+            slowModeUntil={previewSlowMode ? Date.now() + 30_000 : undefined}
+            onOpenChat={async (chatId) => setActiveChatId(chatId)}
+            onCloseChat={() => setActiveChatId(undefined)}
+            onRetryMessages={() => {}}
+            onSendMessage={async () => true}
+            onCreateGroup={async () => true}
+            onJoinInvite={async () => true}
+            onStartCall={async () => {}}
+            onCreateInvite={async () => {}}
+            onUpdateRetention={async () => {}}
+            onClearHistory={async () => {}}
+            onAddMember={async () => true}
+            onJoinCall={() => {}}
+          />
+        )}
       </section>
+      <CreateGroupDialog
+        open={previewCreateGroup}
+        friends={[
+          { id: friendId, displayName: 'Алексей', avatarUrl: mascot, presence: 'online' },
+          { id: '77777777-7777-4777-8777-777777777777', displayName: 'Марина', presence: 'away' },
+          {
+            id: '88888888-8888-4888-8888-888888888888',
+            displayName: 'Дмитрий',
+            presence: 'offline',
+          },
+        ]}
+        onClose={() => {}}
+        onCreate={async () => true}
+      />
+      {previewFullProfile ? (
+        <UserProfileDialog
+          viewerId={self.id}
+          target={{
+            id: previewOwnProfile ? self.id : friendId,
+            displayName: previewOwnProfile ? self.displayName : 'Алексей',
+            username: previewOwnProfile ? self.username : 'alexey_1',
+            avatarUrl: mascot,
+            presence: 'online',
+          }}
+          initialProfile={{
+            id: previewOwnProfile ? self.id : friendId,
+            displayName: previewOwnProfile ? self.displayName : 'Алексей',
+            username: previewOwnProfile ? self.username : 'alexey_1',
+            bio: 'Люблю живые разговоры, музыку и хорошие командные проекты.',
+            avatarUrl: mascot,
+            coverUrl: mascot,
+            registeredAt: '2026-03-12T00:00:00.000Z',
+            relationship: previewOwnProfile ? 'self' : 'friend',
+            mutualFriendsCount: 2,
+            mutualFriends: [
+              {
+                id: '77777777-7777-4777-8777-777777777777',
+                username: 'marina',
+                displayName: 'Марина',
+                avatarUrl: mascot,
+                presence: 'online',
+              },
+              {
+                id: '88888888-8888-4888-8888-888888888888',
+                username: 'dmitry',
+                displayName: 'Дмитрий',
+                avatarUrl: mascot,
+                presence: 'away',
+              },
+            ],
+            commonChatsCount: 2,
+            commonChats: [
+              {
+                id: chats[0]!.id,
+                type: 'direct',
+                title: 'Алексей',
+                avatarUrl: mascot,
+                lastInteractionAt: new Date().toISOString(),
+              },
+              {
+                id: chats[1]!.id,
+                type: 'group',
+                title: 'Команда FreeTalk',
+                avatarUrl: null,
+                lastInteractionAt: '2026-09-04T18:42:00.000Z',
+              },
+            ],
+            sharedCalls: {
+              count: 8,
+              lastStartedAt: new Date().toISOString(),
+              lastDurationSeconds: 2520,
+            },
+            presence: 'online',
+          }}
+          actions={{
+            onMessage: () => {},
+            onCall: () => {},
+            onOpenChat: () => {},
+            onRemoveFriend: () => {},
+            onBlock: () => {},
+          }}
+          onClose={() => {}}
+        />
+      ) : null}
     </main>
   );
 }

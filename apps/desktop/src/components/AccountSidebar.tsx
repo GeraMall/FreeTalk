@@ -36,8 +36,14 @@ import {
   type PresenceMode,
 } from '../lib/presence-preference';
 import { BrandLogo } from './BrandLogo';
+import { useCachedMediaUrl } from '../lib/use-cached-media';
+import { CachedMediaImage } from './CachedMedia';
+import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
+import { CreateGroupDialog } from './CreateGroupDialog';
+import { PresenceBadge } from './PresenceBadge';
 import type { ChatNotificationPreview } from './ChatNotificationStack';
 import type { ChatItem } from './ChatsPage';
+import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
 export type AccountDestination = AccountPage | 'room';
@@ -54,6 +60,7 @@ export function AccountSidebar({
   onNavigate,
   onOpenChat,
   onCreateGroup,
+  onLeaveGroup,
   onInstallUpdate,
   onSettings,
   onLogout,
@@ -63,12 +70,18 @@ export function AccountSidebar({
   roomActive?: boolean;
   readingChatId?: string;
   chats?: ChatItem[];
-  friends?: Array<{ id: string; displayName: string; avatarUrl?: string | null }>;
+  friends?: Array<{
+    id: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    presence?: PresenceStatus;
+  }>;
   chatsLoading?: boolean;
   updateStatus?: UpdateStatus;
   onNavigate(page: AccountDestination): void;
   onOpenChat?(chatId: string): Promise<void> | void;
   onCreateGroup?(title: string, memberIds: string[]): Promise<boolean>;
+  onLeaveGroup?(chatId: string): Promise<void>;
   onInstallUpdate?(): void;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
@@ -80,14 +93,16 @@ export function AccountSidebar({
   const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});
   const [chatSearch, setChatSearch] = useState('');
   const [groupFormOpen, setGroupFormOpen] = useState(false);
-  const [groupTitle, setGroupTitle] = useState('');
-  const [groupMembers, setGroupMembers] = useState<string[]>([]);
-  const [groupBusy, setGroupBusy] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<ChatItem>();
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
+  const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const statusPickerRef = useRef<HTMLDivElement>(null);
   const activePageRef = useRef(activePage);
   const readingChatIdRef = useRef(readingChatId);
   const previewSequence = useRef(0);
+  const cachedCoverUrl = useCachedMediaUrl(user.coverUrl);
 
   useEffect(() => {
     activePageRef.current = activePage;
@@ -231,20 +246,6 @@ export function AccountSidebar({
       ? updateStatus.version
       : undefined;
 
-  const createGroup = async () => {
-    if (!onCreateGroup || groupBusy || !groupTitle.trim() || groupMembers.length === 0) return;
-    setGroupBusy(true);
-    try {
-      if (!(await onCreateGroup(groupTitle, groupMembers))) return;
-      setGroupTitle('');
-      setGroupMembers([]);
-      setGroupFormOpen(false);
-      onNavigate('chats');
-    } finally {
-      setGroupBusy(false);
-    }
-  };
-
   return (
     <aside
       className={`account-sidebar${chatNavigationEnabled ? ' account-sidebar-with-chats' : ''}${menuOpen ? ' account-sidebar-profile-open' : ''}`}
@@ -350,63 +351,11 @@ export function AccountSidebar({
               className="account-sidebar-chat-add"
               aria-label="Создать групповой чат"
               aria-expanded={groupFormOpen}
-              onClick={() => setGroupFormOpen((open) => !open)}
+              onClick={() => setGroupFormOpen(true)}
             >
               <Plus aria-hidden="true" />
             </button>
           </header>
-          {groupFormOpen ? (
-            <div className="account-group-form">
-              <div>
-                <strong>Новый групповой чат</strong>
-                <button
-                  type="button"
-                  aria-label="Закрыть создание группы"
-                  onClick={() => setGroupFormOpen(false)}
-                >
-                  <X />
-                </button>
-              </div>
-              <input
-                value={groupTitle}
-                maxLength={80}
-                aria-label="Название группы"
-                placeholder="Название группы"
-                onChange={(event) => setGroupTitle(event.target.value)}
-              />
-              <div className="account-group-friends">
-                {friends.map((friend) => {
-                  const selected = groupMembers.includes(friend.id);
-                  return (
-                    <label key={friend.id}>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(event) =>
-                          setGroupMembers((current) =>
-                            event.target.checked
-                              ? [...current, friend.id]
-                              : current.filter((id) => id !== friend.id),
-                          )
-                        }
-                      />
-                      <SidebarAvatar name={friend.displayName} avatarUrl={friend.avatarUrl} />
-                      <span>{friend.displayName}</span>
-                      {selected ? <Check aria-hidden="true" /> : null}
-                    </label>
-                  );
-                })}
-                {friends.length === 0 ? <small>Сначала добавьте друзей</small> : null}
-              </div>
-              <button
-                type="button"
-                disabled={!groupTitle.trim() || groupMembers.length === 0 || groupBusy}
-                onClick={() => void createGroup()}
-              >
-                Создать группу
-              </button>
-            </div>
-          ) : null}
           <div className="account-sidebar-chat-list">
             {chatsLoading && (chats?.length ?? 0) === 0 ? (
               <div className="account-sidebar-chat-state">Загружаем чаты…</div>
@@ -416,35 +365,53 @@ export function AccountSidebar({
                 const other = chat.members.find((member) => member.id !== user.id);
                 const unread = Math.max(chat.unreadCount ?? 0, unreadByChat[chat.id] ?? 0);
                 return (
-                  <button
-                    type="button"
-                    className={chat.id === readingChatId ? 'active' : ''}
-                    aria-current={chat.id === readingChatId ? 'true' : undefined}
-                    aria-label={unread > 0 ? `${name}, непрочитанных сообщений: ${unread}` : name}
+                  <div
+                    className={`account-sidebar-chat-row${chat.type === 'group' && onLeaveGroup ? ' has-leave-action' : ''}`}
                     key={chat.id}
-                    onClick={() => {
-                      onNavigate('chats');
-                      void onOpenChat?.(chat.id);
-                    }}
                   >
-                    <SidebarAvatar
-                      name={name}
-                      avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
-                      group={chat.type === 'group'}
-                    />
-                    <span>
-                      <strong>{name}</strong>
-                      <small>
-                        {chat.lastMessage ||
-                          (chat.type === 'group'
-                            ? `${chat.members.length} участников`
-                            : other?.presence === 'online'
-                              ? 'В сети'
-                              : 'Личный чат')}
-                      </small>
-                    </span>
-                    {unread > 0 ? <b>{unread > 99 ? '99+' : unread}</b> : null}
-                  </button>
+                    <button
+                      type="button"
+                      className={`account-sidebar-chat-open${chat.id === readingChatId ? ' active' : ''}`}
+                      aria-current={chat.id === readingChatId ? 'true' : undefined}
+                      aria-label={unread > 0 ? `${name}, непрочитанных сообщений: ${unread}` : name}
+                      onClick={() => {
+                        onNavigate('chats');
+                        void onOpenChat?.(chat.id);
+                      }}
+                    >
+                      <SidebarAvatar
+                        name={name}
+                        avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+                        group={chat.type === 'group'}
+                        presence={chat.type === 'direct' ? other?.presence : undefined}
+                      />
+                      <span>
+                        <strong>{name}</strong>
+                        <small>
+                          {chat.lastMessage ||
+                            (chat.type === 'group'
+                              ? `${chat.members.length} участников`
+                              : other?.presence === 'online'
+                                ? 'В сети'
+                                : 'Личный чат')}
+                        </small>
+                      </span>
+                      {unread > 0 ? <b>{unread > 99 ? '99+' : unread}</b> : null}
+                    </button>
+                    {chat.type === 'group' && onLeaveGroup ? (
+                      <button
+                        type="button"
+                        className="account-sidebar-chat-leave"
+                        aria-label={`Покинуть группу ${name}`}
+                        onClick={() => {
+                          setLeaveError('');
+                          setLeaveTarget(chat);
+                        }}
+                      >
+                        <X aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })
             ) : (
@@ -459,10 +426,25 @@ export function AccountSidebar({
         {menuOpen && (
           <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
             <div
-              className={`profile-popover-cover${user.coverUrl ? ' has-cover' : ''}`}
-              style={user.coverUrl ? { backgroundImage: `url(${user.coverUrl})` } : undefined}
+              className={`profile-popover-cover${cachedCoverUrl ? ' has-cover' : ''}`}
+              style={cachedCoverUrl ? { backgroundImage: `url(${cachedCoverUrl})` } : undefined}
             >
-              <ProfileAvatar user={user} large />
+              <button
+                type="button"
+                className="profile-popover-avatar-trigger"
+                aria-label="Открыть полный профиль"
+                onClick={() =>
+                  setFullProfileTarget({
+                    id: user.id,
+                    displayName: user.displayName,
+                    username: user.username,
+                    avatarUrl: user.avatarUrl,
+                    presence,
+                  })
+                }
+              >
+                <ProfileAvatar user={user} large />
+              </button>
             </div>
             <div className="profile-popover-identity">
               <span>
@@ -580,6 +562,43 @@ export function AccountSidebar({
           </button>
         </div>
       </div>
+      {leaveTarget ? (
+        <ChatActionConfirmDialog
+          title={`Покинуть «${sidebarChatName(leaveTarget, user.id)}»?`}
+          description="После выхода группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника."
+          confirmLabel="Покинуть группу"
+          busy={leaveBusy}
+          error={leaveError}
+          onCancel={() => !leaveBusy && setLeaveTarget(undefined)}
+          onConfirm={() => {
+            if (!onLeaveGroup || leaveBusy) return;
+            setLeaveBusy(true);
+            setLeaveError('');
+            void onLeaveGroup(leaveTarget.id)
+              .then(() => setLeaveTarget(undefined))
+              .catch((caught) =>
+                setLeaveError(
+                  caught instanceof Error ? caught.message : 'Не удалось выйти из группы',
+                ),
+              )
+              .finally(() => setLeaveBusy(false));
+          }}
+        />
+      ) : null}
+      {onCreateGroup ? (
+        <CreateGroupDialog
+          open={groupFormOpen}
+          friends={friends}
+          onClose={() => setGroupFormOpen(false)}
+          onCreate={onCreateGroup}
+          onCreated={() => onNavigate('chats')}
+        />
+      ) : null}
+      <UserProfileDialog
+        viewerId={user.id}
+        target={fullProfileTarget}
+        onClose={() => setFullProfileTarget(undefined)}
+      />
     </aside>
   );
 }
@@ -593,18 +612,21 @@ function SidebarAvatar({
   name,
   avatarUrl,
   group = false,
+  presence,
 }: {
   name: string;
   avatarUrl?: string | null;
   group?: boolean;
+  presence?: PresenceStatus;
 }) {
   return (
     <span className={`account-sidebar-chat-avatar${group ? ' group' : ''}`} aria-hidden="true">
       {avatarUrl ? (
-        <img src={avatarUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
+        <CachedMediaImage src={avatarUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
       ) : (
         name[0] || '?'
       )}
+      {!group && presence ? <PresenceBadge status={presence} /> : null}
     </span>
   );
 }
@@ -644,7 +666,7 @@ function ProfileAvatar({ user, large = false }: { user: AccountUser; large?: boo
   return (
     <span className={`profile-avatar-small${large ? ' large' : ''}`}>
       {user.avatarUrl ? (
-        <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
+        <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
       ) : (
         user.displayName.slice(0, 1).toUpperCase()
       )}

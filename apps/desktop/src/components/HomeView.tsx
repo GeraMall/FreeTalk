@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import { accountClient, type AccountUser } from '../lib/api-client';
+import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
+import { ChatSendPacer } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
 import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
+import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
 import { dataUrlToBlob } from '../lib/profile';
 import {
   ACCOUNT_SIDEBAR_MAX_WIDTH,
@@ -24,7 +26,9 @@ import { ChatsPage, type ChatItem, type MessageItem } from './ChatsPage';
 import { FriendsPage, type BlockedItem, type FriendItem, type PendingItem } from './FriendsPage';
 import { BrandLogo } from './BrandLogo';
 import { MobileNavigation } from './MobileNavigation';
+import { CachedMediaImage } from './CachedMedia';
 import { useMobileLayout } from '../lib/mobile-layout';
+import type { PresenceStatus } from '@freetalk/protocol';
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
 const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
@@ -42,7 +46,12 @@ export interface CallItem {
 
 export interface HomeSidebarState {
   chats: ChatItem[];
-  friends: Array<{ id: string; displayName: string; avatarUrl?: string | null }>;
+  friends: Array<{
+    id: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    presence?: PresenceStatus;
+  }>;
   chatsLoading: boolean;
   openChat(chatId: string): Promise<void>;
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
@@ -101,6 +110,8 @@ export function HomeView({
   const [history, setHistory] = useState<CallItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [localError, setLocalError] = useState('');
+  const [chatSlowMode, setChatSlowMode] = useState<{ chatId: string; until: number }>();
+  const chatSendPacerRef = useRef(new ChatSendPacer());
   const mobileLayout = useMobileLayout();
   const {
     width: accountSidebarWidth,
@@ -118,6 +129,7 @@ export function HomeView({
         id: friend.id,
         displayName: friend.displayName ?? friend.display_name,
         avatarUrl: friend.avatarUrl,
+        presence: friend.presence,
       })),
     [friends],
   );
@@ -182,6 +194,13 @@ export function HomeView({
               : chat,
           ),
         );
+      } else if (event.type === 'chat-removed') {
+        void clearChatImageCache(user.id);
+        setChats((current) => current.filter((chat) => chat.id !== event.chatId));
+        if (activeChatRef.current === event.chatId) {
+          setActiveChat(undefined);
+          setMessages([]);
+        }
       } else if (event.type === 'retention-changed') {
         setChats((current) =>
           current.map((chat) =>
@@ -194,7 +213,8 @@ export function HomeView({
           .request<{
             profile: { displayName: string; username: string; avatarUrl: string | null };
           }>(`/v1/users/${event.userId}/profile`)
-          .then(({ profile }) => {
+          .then(async ({ profile }) => {
+            await warmAccountMediaCache(user.id, collectAccountMediaUrls(profile), 4_000);
             setMessages((current) =>
               current.map((message) =>
                 message.sender_id === event.userId
@@ -416,6 +436,11 @@ export function HomeView({
 
   const sendMessage = async (body: string) => {
     if (!activeChat || !body.trim()) return false;
+    const pacing = chatSendPacerRef.current.check(activeChat);
+    if (pacing.limited) {
+      setChatSlowMode({ chatId: activeChat, until: pacing.blockedUntil });
+      return false;
+    }
     try {
       const result = await accountClient.request<{ message: MessageItem }>(
         `/v1/chats/${activeChat}/messages`,
@@ -429,6 +454,14 @@ export function HomeView({
       setSentMessageVersion((version) => version + 1);
       return true;
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
+        const retryAfter = Number(caught.details.retryAfterSeconds);
+        setChatSlowMode({
+          chatId: activeChat,
+          until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
+        });
+        return false;
+      }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить сообщение');
       return false;
     }
@@ -436,6 +469,11 @@ export function HomeView({
 
   const sendImage = async (dataUrl: string, caption: string, thumbnailDataUrl: string) => {
     if (!activeChat) return false;
+    const pacing = chatSendPacerRef.current.check(activeChat);
+    if (pacing.limited) {
+      setChatSlowMode({ chatId: activeChat, until: pacing.blockedUntil });
+      return false;
+    }
     try {
       const result = await accountClient.uploadChatImage<MessageItem>(
         activeChat,
@@ -462,6 +500,14 @@ export function HomeView({
       setSentMessageVersion((version) => version + 1);
       return true;
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
+        const retryAfter = Number(caught.details.retryAfterSeconds);
+        setChatSlowMode({
+          chatId: activeChat,
+          until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
+        });
+        return false;
+      }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить фотографию');
       return false;
     }
@@ -478,6 +524,23 @@ export function HomeView({
       await openChat(result.chat.id);
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать чат');
+    }
+  };
+
+  const startDirectCall = async (friendId: string) => {
+    try {
+      const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'direct', memberIds: [friendId] }),
+      });
+      const roomId = generateRoomCode();
+      await accountClient.request(`/v1/chats/${result.chat.id}/calls`, {
+        method: 'POST',
+        body: JSON.stringify({ roomId }),
+      });
+      onCreateRoom(roomId);
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
     }
   };
 
@@ -538,6 +601,7 @@ export function HomeView({
         positionY,
         scale,
       );
+      await warmAccountMediaCache(user.id, collectAccountMediaUrls(result), 4_000);
       setChats((current) =>
         current.map((chat) =>
           chat.id === chatId
@@ -659,14 +723,31 @@ export function HomeView({
     setLocalError('Пользователь заблокирован');
   };
 
-  const leaveChat = async () => {
-    if (!activeChat) return;
-    await accountClient.request(`/v1/chats/${activeChat}/members/me`, { method: 'DELETE' });
-    await clearChatImageCache(user.id);
+  const removeChatLocally = (chatId: string) => {
+    setChats((current) => current.filter((chat) => chat.id !== chatId));
+    if (activeChatRef.current !== chatId) return;
     setActiveChat(undefined);
     setMessages([]);
-    await loadPage('chats');
-    setLocalError('Вы покинули чат');
+  };
+
+  const leaveGroup = async (chatId = activeChat) => {
+    if (!chatId) return;
+    const chat = chats.find((item) => item.id === chatId);
+    if (chat?.type !== 'group') throw new Error('Личный чат нельзя покинуть');
+    await accountClient.request(`/v1/chats/${chatId}/members/me`, { method: 'DELETE' });
+    await clearChatImageCache(user.id);
+    removeChatLocally(chatId);
+    setLocalError('Вы покинули группу');
+  };
+
+  const deleteDirectChat = async () => {
+    if (!activeChat) return;
+    const chat = chats.find((item) => item.id === activeChat);
+    if (chat?.type !== 'direct') return;
+    await accountClient.request(`/v1/chats/${activeChat}`, { method: 'DELETE' });
+    await clearChatImageCache(user.id);
+    removeChatLocally(activeChat);
+    setLocalError('Личный чат удалён у обоих');
   };
 
   return (
@@ -692,6 +773,7 @@ export function HomeView({
           onNavigate={(next) => next !== 'room' && navigatePage(next)}
           onOpenChat={openChat}
           onCreateGroup={createGroup}
+          onLeaveGroup={leaveGroup}
           onInstallUpdate={onInstallUpdate}
           onSettings={onSettings}
           onLogout={onLogout}
@@ -721,7 +803,7 @@ export function HomeView({
           <BrandLogo variant="compact" />
           <button type="button" aria-label="Открыть профиль" onClick={() => onSettings('profile')}>
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
+              <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
             ) : (
               user.displayName.slice(0, 1).toUpperCase()
             )}
@@ -832,6 +914,11 @@ export function HomeView({
               }
             }}
             onMessage={startDirectChat}
+            onCall={startDirectCall}
+            onOpenChat={async (chatId) => {
+              navigatePage('chats');
+              await openChat(chatId);
+            }}
             onRemove={async (friendId) => {
               try {
                 await accountClient.request(`/v1/friends/${friendId}`, { method: 'DELETE' });
@@ -881,6 +968,9 @@ export function HomeView({
             sentMessageVersion={sentMessageVersion}
             hasMoreMessages={hasMoreMessages}
             profileRevision={profileRevision}
+            slowModeUntil={
+              chatSlowMode && chatSlowMode.chatId === activeChat ? chatSlowMode.until : undefined
+            }
             onOpenChat={openChat}
             onCloseChat={() => {
               setActiveChat(undefined);
@@ -898,7 +988,8 @@ export function HomeView({
             onUpdateRetention={updateChatRetention}
             onClearHistory={clearChatHistory}
             onBlockUser={blockChatUser}
-            onLeaveChat={leaveChat}
+            onDeleteDirectChat={deleteDirectChat}
+            onLeaveGroup={() => leaveGroup()}
             onAddMember={addChatMember}
             onJoinCall={onJoinRoom}
           />
@@ -949,7 +1040,7 @@ function HistoryCallCard({ call, onCallAgain }: { call: CallItem; onCallAgain():
         {visibleParticipants.map((participant, index) => (
           <span key={participant.userId ?? `${participant.displayName}-${index}`}>
             {participant.avatarUrl ? (
-              <img src={participant.avatarUrl} alt="" referrerPolicy="no-referrer" />
+              <CachedMediaImage src={participant.avatarUrl} alt="" referrerPolicy="no-referrer" />
             ) : (
               participant.displayName.slice(0, 1).toUpperCase()
             )}
@@ -1031,7 +1122,11 @@ export function RecentRooms({
                         key={participant.userId ?? `${participant.displayName}-${participantIndex}`}
                       >
                         {participant.avatarUrl ? (
-                          <img src={participant.avatarUrl} alt="" referrerPolicy="no-referrer" />
+                          <CachedMediaImage
+                            src={participant.avatarUrl}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                          />
                         ) : (
                           participant.displayName.slice(0, 1).toUpperCase()
                         )}

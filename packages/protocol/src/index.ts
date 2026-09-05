@@ -1,6 +1,14 @@
 import { DISPLAY_NAME_PATTERN, ROOM_CODE_PATTERN } from '@freetalk/config';
 import { z } from 'zod';
 
+export {
+  CHAT_SLOW_MODE_MS,
+  CHAT_SPAM_MAX_ATTEMPTS,
+  CHAT_SPAM_WINDOW_MS,
+  ChatSendPacer,
+  type ChatSendPacingResult,
+} from './chat-send-pacer.js';
+
 const inlineAvatarSchema = z
   .string()
   .max(18_000)
@@ -13,6 +21,7 @@ const avatarSchema = z.union([inlineAvatarSchema, hostedAvatarSchema]);
 
 export const participantSchema = z.object({
   id: z.string().uuid(),
+  accountId: z.string().uuid().optional(),
   name: z.string().regex(DISPLAY_NAME_PATTERN),
   avatar: avatarSchema.optional(),
   muted: z.boolean(),
@@ -281,6 +290,7 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     metadata: z.record(z.string(), z.unknown()),
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
+  z.object({ type: z.literal('chat-removed'), chatId: z.string().uuid() }),
   z.object({ type: z.literal('profile-updated'), userId: z.string().uuid() }),
   z.object({
     type: z.literal('chat-updated'),

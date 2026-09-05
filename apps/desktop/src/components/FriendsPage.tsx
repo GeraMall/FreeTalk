@@ -14,6 +14,9 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { CachedMediaImage } from './CachedMedia';
+import { PresenceBadge } from './PresenceBadge';
+import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 
 export interface FriendItem {
   id: string;
@@ -45,6 +48,8 @@ interface FriendsPageProps {
   onAccept(requestId: string): Promise<void>;
   onDecline(requestId: string): Promise<void>;
   onMessage(friendId: string): Promise<void>;
+  onCall?(friendId: string): Promise<void>;
+  onOpenChat?(chatId: string): Promise<void>;
   onRemove(friendId: string): Promise<void>;
   onBlock(friendId: string): Promise<void>;
   onUnblock(friendId: string): Promise<void>;
@@ -62,6 +67,8 @@ export function FriendsPage({
   onAccept,
   onDecline,
   onMessage,
+  onCall,
+  onOpenChat,
   onRemove,
   onBlock,
   onUnblock,
@@ -69,6 +76,7 @@ export function FriendsPage({
   const [filter, setFilter] = useState<FriendsFilter>('all');
   const [search, setSearch] = useState('');
   const [busyAction, setBusyAction] = useState('');
+  const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const searchRef = useRef<HTMLInputElement>(null);
   const query = search.trim().replace(/^@/, '').toLocaleLowerCase('ru-RU');
   const visibleFriends = query
@@ -190,6 +198,16 @@ export function FriendsPage({
                       }
                       onRemove={() => runAction(`remove:${friend.id}`, () => onRemove(friend.id))}
                       onBlock={() => runAction(`block:${friend.id}`, () => onBlock(friend.id))}
+                      onOpenProfile={() =>
+                        setFullProfileTarget({
+                          id: friend.id,
+                          displayName: friend.displayName ?? friend.display_name,
+                          username: friend.username,
+                          avatarUrl: friend.avatarUrl,
+                          presence: friend.presence,
+                          relationship: 'friend',
+                        })
+                      }
                     />
                   ))}
                 </div>
@@ -215,13 +233,27 @@ export function FriendsPage({
             <div className="friends-stack" aria-label="Ожидающие запросы">
               {pending.map((item, index) => {
                 const incoming = item.recipient_id === userId;
+                const profileId =
+                  item.profile_id ?? (incoming ? item.sender_id : item.recipient_id);
                 return (
                   <article
                     className="friend-card pending-friend-card"
                     style={{ '--friend-index': index } as CSSProperties}
                     key={item.id}
                   >
-                    <FriendAvatar friend={item} />
+                    <FriendAvatar
+                      friend={item}
+                      onOpenProfile={() =>
+                        setFullProfileTarget({
+                          id: profileId,
+                          displayName: item.displayName ?? item.display_name,
+                          username: item.username,
+                          avatarUrl: item.avatarUrl,
+                          presence: item.presence,
+                          relationship: incoming ? 'incoming' : 'outgoing',
+                        })
+                      }
+                    />
                     <div className="friend-identity">
                       <strong>{item.displayName ?? item.display_name}</strong>
                       <small>@{item.username}</small>
@@ -301,6 +333,24 @@ export function FriendsPage({
           )}
         </div>
       )}
+      <UserProfileDialog
+        viewerId={userId}
+        target={fullProfileTarget}
+        actions={{
+          onMessage,
+          onCall,
+          onOpenChat,
+          onRemoveFriend: async (friendId) => {
+            await onRemove(friendId);
+            setFullProfileTarget(undefined);
+          },
+          onBlock: async (friendId) => {
+            await onBlock(friendId);
+            setFullProfileTarget(undefined);
+          },
+        }}
+        onClose={() => setFullProfileTarget(undefined)}
+      />
     </div>
   );
 }
@@ -335,6 +385,7 @@ function FriendCard({
   onMessage,
   onRemove,
   onBlock,
+  onOpenProfile,
 }: {
   friend: FriendItem;
   index: number;
@@ -342,11 +393,12 @@ function FriendCard({
   onMessage(): Promise<void>;
   onRemove(): Promise<void>;
   onBlock(): Promise<void>;
+  onOpenProfile(): void;
 }) {
   const name = friend.displayName ?? friend.display_name;
   return (
     <article className="friend-card" style={{ '--friend-index': index } as CSSProperties}>
-      <FriendAvatar friend={friend} />
+      <FriendAvatar friend={friend} onOpenProfile={onOpenProfile} />
       <div className="friend-identity">
         <strong>{name}</strong>
         <small>@{friend.username}</small>
@@ -391,11 +443,38 @@ function presenceLabel(status: PresenceStatus = 'offline') {
   return 'Не в сети';
 }
 
-function FriendAvatar({ friend }: { friend: FriendItem }) {
+function FriendAvatar({
+  friend,
+  onOpenProfile,
+}: {
+  friend: FriendItem;
+  onOpenProfile?: () => void;
+}) {
   const name = friend.displayName ?? friend.display_name;
+  const content = (
+    <>
+      {friend.avatarUrl ? (
+        <CachedMediaImage src={friend.avatarUrl} alt="" />
+      ) : (
+        name.slice(0, 1).toUpperCase()
+      )}
+      {friend.presence ? <PresenceBadge status={friend.presence} /> : null}
+    </>
+  );
+  if (onOpenProfile)
+    return (
+      <button
+        type="button"
+        className="friend-avatar friend-profile-trigger"
+        aria-label={`Открыть полный профиль ${name}`}
+        onClick={onOpenProfile}
+      >
+        {content}
+      </button>
+    );
   return (
     <span className="friend-avatar" aria-hidden="true">
-      {friend.avatarUrl ? <img src={friend.avatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
+      {content}
     </span>
   );
 }

@@ -40,6 +40,12 @@ import {
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 import { clearChatImageCache } from './lib/chat-image-cache';
 import {
+  clearAccountMediaCache,
+  collectAccountMediaUrls,
+  setActiveAccountMediaScope,
+  warmAccountMediaCache,
+} from './lib/account-media-cache';
+import {
   ACCOUNT_SIDEBAR_MAX_WIDTH,
   ACCOUNT_SIDEBAR_MIN_WIDTH,
   useAccountSidebarWidth,
@@ -114,6 +120,19 @@ function playRecordingStartNotification(settings: LocalSettings) {
       .then(playSound)
       .catch(playSound);
   return playSound();
+}
+
+async function warmInitialAccountMedia(user: AccountUser) {
+  setActiveAccountMediaScope(user.id);
+  const results = await Promise.allSettled([
+    accountClient.request('/v1/chats'),
+    accountClient.request('/v1/friends'),
+    accountClient.request('/v1/history'),
+  ]);
+  const payloads = results.flatMap((result) =>
+    result.status === 'fulfilled' ? [result.value] : [],
+  );
+  await warmAccountMediaCache(user.id, collectAccountMediaUrls(user, ...payloads));
 }
 
 export function App() {
@@ -235,8 +254,9 @@ export function App() {
   }, [settings.chatMessageStyle, settings.chatTextScale, settings.chatWallpaperDataUrl]);
 
   useEffect(() => {
-    void accountClient.restore().then((user) => {
+    void accountClient.restore().then(async (user) => {
       if (user) {
+        await warmInitialAccountMedia(user);
         setAccountUser(user);
         setName(user.displayName);
         updateSettings({
@@ -244,6 +264,7 @@ export function App() {
           avatarDataUrl: user.avatarUrl ?? '',
         });
       }
+      if (!user) setActiveAccountMediaScope(undefined);
       setAccountReady(true);
     });
   }, [updateSettings]);
@@ -941,6 +962,7 @@ export function App() {
     setError('');
     try {
       const user = await accountClient.login(login, password, captchaToken);
+      await warmInitialAccountMedia(user);
       setAccountUser(user);
       setName(user.displayName);
       updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
@@ -992,6 +1014,7 @@ export function App() {
     setError('');
     try {
       const user = await accountClient.verifyEmail(email, code);
+      await warmInitialAccountMedia(user);
       setAccountUser(user);
       setName(user.displayName);
       updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
@@ -1033,6 +1056,7 @@ export function App() {
     cleanup();
     if (accountUser) await clearChatImageCache(accountUser.id);
     await accountClient.logout();
+    setActiveAccountMediaScope(undefined);
     setAccountUser(undefined);
     setGuestMode(false);
     setNotice('Вы вышли из аккаунта');
@@ -1204,6 +1228,11 @@ export function App() {
         mediaChanged = true;
       }
       savedAccountUser = mediaChanged ? await accountClient.getMe() : updated;
+      await warmAccountMediaCache(
+        savedAccountUser.id,
+        collectAccountMediaUrls(savedAccountUser),
+        4_000,
+      );
       setAccountUser(savedAccountUser);
     }
     const savedAvatar = savedAccountUser?.avatarUrl ?? avatarDataUrl;
@@ -1288,7 +1317,12 @@ export function App() {
       onAccountLogout={() => void logoutAccount()}
       onDeleteAccount={async (password) => {
         await accountClient.deleteAccount(password);
-        if (accountUser) await clearChatImageCache(accountUser.id);
+        if (accountUser)
+          await Promise.all([
+            clearChatImageCache(accountUser.id),
+            clearAccountMediaCache(accountUser.id),
+          ]);
+        setActiveAccountMediaScope(undefined);
         cleanup();
         setAccountUser(undefined);
         setSettingsOpen(false);
@@ -1299,7 +1333,11 @@ export function App() {
         setNotice('Пароль изменён, остальные сессии завершены');
       }}
       onClearChatCache={async () => {
-        if (accountUser) await clearChatImageCache(accountUser.id);
+        if (accountUser)
+          await Promise.all([
+            clearChatImageCache(accountUser.id),
+            clearAccountMediaCache(accountUser.id),
+          ]);
         setNotice('Кэш изображений очищен');
       }}
     />
@@ -1371,6 +1409,7 @@ export function App() {
   const roomView = (
     <RoomView
       embedded={Boolean(accountUser)}
+      viewerId={accountUser?.id}
       roomId={roomId}
       participants={participants}
       selfId={selfId.current}
