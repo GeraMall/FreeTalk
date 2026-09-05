@@ -576,8 +576,29 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!(await isGroupChat(chatId))) return reply.code(400).send({ code: 'GROUP_CHAT_REQUIRED' });
     if (!(await isChatAdmin(chatId, user.id)))
       return reply.code(403).send({ code: 'CHAT_ADMIN_REQUIRED' });
-    await db.query('UPDATE chats SET title=$1 WHERE id=$2', [title, chatId]);
+    const systemMessage = await transaction(async (client) => {
+      const updated = await client.query(
+        'UPDATE chats SET title=$1 WHERE id=$2 AND title IS DISTINCT FROM $1 RETURNING id',
+        [title, chatId],
+      );
+      if (!updated.rowCount) return undefined;
+      const created = await client.query<ChatMessageRow>(
+        `INSERT INTO messages(chat_id,kind,body,metadata,expires_at)
+         SELECT $1,'system',$2,$3,CASE WHEN c.retention_hours IS NULL THEN NULL
+           ELSE now()+make_interval(hours=>c.retention_hours) END
+         FROM chats c WHERE c.id=$1
+         RETURNING id,kind,body,metadata,sender_id,created_at,expires_at`,
+        [
+          chatId,
+          `${user.display_name} изменил(а) название группы на «${title}»`,
+          { changedBy: user.id, event: 'group-title-updated', title },
+        ],
+      );
+      return realtimeMessage(created.rows[0]!);
+    });
+    if (!systemMessage) return { title };
     await publishChatEvent(chatId, { type: 'chat-updated', chatId, title });
+    await publishChatEvent(chatId, { type: 'message-created', chatId, message: systemMessage });
     return { title };
   });
 
