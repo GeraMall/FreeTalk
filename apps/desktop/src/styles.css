@@ -11703,7 +11703,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .account-sidebar-chat-avatar {
   display: grid;
   width: 36px;
+  min-width: 36px;
   height: 36px;
+  min-height: 36px;
   position: relative;
   overflow: visible;
   border: 1px solid rgba(89, 190, 249, 0.17);
@@ -11719,8 +11721,13 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   background: linear-gradient(145deg, #17445a, #242e5a);
 }
 .account-sidebar-chat-avatar img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
+  max-width: 100%;
   height: 100%;
+  max-height: 100%;
   object-fit: cover;
   border-radius: inherit;
 }
@@ -12198,7 +12205,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   }
   .account-sidebar-chat-avatar {
     width: 39px;
+    min-width: 39px;
     height: 39px;
+    min-height: 39px;
     border-color: rgba(111, 182, 222, 0.24);
     box-shadow:
       0 0 0 2px rgba(4, 15, 26, 0.8),
