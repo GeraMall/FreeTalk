@@ -20,6 +20,7 @@ import {
 } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
+import { playMicrophoneToggleSound } from './lib/microphone-sounds';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
 import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
 import { nextProfileChangeHistory } from './lib/profile';
@@ -876,6 +877,7 @@ export function App() {
     setMuted(next);
     audio.current?.setMuted(next);
     signaling.current?.send({ type: 'mute-changed', muted: next });
+    void playMicrophoneToggleSound(next, settings);
   };
 
   const sendRoomChatMessage = (text: string) => {
