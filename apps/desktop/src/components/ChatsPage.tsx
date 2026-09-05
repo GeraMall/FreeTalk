@@ -100,6 +100,14 @@ export interface ChatItem {
   avatarScale?: number;
 }
 
+export interface GroupAvatarPreview {
+  chatId: string;
+  avatarUrl?: string | null;
+  positionX: number;
+  positionY: number;
+  scale: number;
+}
+
 export interface MessageItem {
   id: string;
   body: string;
@@ -169,6 +177,7 @@ interface ChatsPageProps {
     positionY: number,
     scale: number,
   ): Promise<boolean>;
+  onPreviewGroupAvatar?(preview?: GroupAvatarPreview): void;
   onAddMember(username: string): Promise<boolean>;
   onJoinCall(roomId: string): void;
 }
@@ -204,6 +213,7 @@ export function ChatsPage({
   onDeleteDirectChat = async () => {},
   onLeaveGroup = async () => {},
   onUpdateGroupAvatar = async () => false,
+  onPreviewGroupAvatar = () => {},
   onAddMember,
   onJoinCall,
 }: ChatsPageProps) {
@@ -548,6 +558,7 @@ export function ChatsPage({
               onToggleMenu={() => setShowChatMenu((visible) => !visible)}
               onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
               onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
+              onPreviewAvatar={onPreviewGroupAvatar}
               onSaveAvatar={(dataUrl, positionX, positionY, scale) =>
                 runAction('group-avatar', () =>
                   onUpdateGroupAvatar(activeChat.id, dataUrl, positionX, positionY, scale),
@@ -871,6 +882,7 @@ function ChatHeader({
   onToggleMenu,
   onToggleAvatarEditor,
   onCloseAvatarEditor,
+  onPreviewAvatar,
   onSaveAvatar,
 }: {
   chat: ChatItem;
@@ -892,6 +904,7 @@ function ChatHeader({
   onToggleMenu(): void;
   onToggleAvatarEditor(): void;
   onCloseAvatarEditor(): void;
+  onPreviewAvatar(preview?: GroupAvatarPreview): void;
   onSaveAvatar(
     dataUrl: string | undefined,
     positionX: number,
@@ -1031,6 +1044,7 @@ function ChatHeader({
           chat={chat}
           busy={actionBusy === 'group-avatar'}
           onClose={onCloseAvatarEditor}
+          onPreview={onPreviewAvatar}
           onSave={onSaveAvatar}
         />
       )}
@@ -1042,11 +1056,13 @@ function GroupAvatarEditor({
   chat,
   busy,
   onClose,
+  onPreview,
   onSave,
 }: {
   chat: ChatItem;
   busy: boolean;
   onClose(): void;
+  onPreview(preview?: GroupAvatarPreview): void;
   onSave(
     dataUrl: string | undefined,
     positionX: number,
@@ -1070,6 +1086,18 @@ function GroupAvatarEditor({
   >(undefined);
   const previewUrl = dataUrl ?? chat.avatarUrl ?? undefined;
   const cachedPreviewUrl = useCachedMediaUrl(previewUrl);
+
+  useEffect(() => {
+    onPreview({
+      chatId: chat.id,
+      avatarUrl: previewUrl,
+      positionX: position.x,
+      positionY: position.y,
+      scale,
+    });
+  }, [chat.id, onPreview, position.x, position.y, previewUrl, scale]);
+
+  useEffect(() => () => onPreview(undefined), [onPreview]);
 
   const closeSmoothly = useCallback(() => {
     if (closing) return;

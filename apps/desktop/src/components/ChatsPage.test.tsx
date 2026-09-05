@@ -399,6 +399,7 @@ describe('Chat retention controls', () => {
 
   it('opens the group avatar editor and shows the member list in the right panel', async () => {
     const onUpdateGroupAvatar = vi.fn(async () => true);
+    const onPreviewGroupAvatar = vi.fn();
     const chat: ChatItem = {
       ...ownerChat,
       avatarUrl: 'https://api.example.test/group.webp',
@@ -432,6 +433,7 @@ describe('Chat retention controls', () => {
         onClearHistory={vi.fn(async () => undefined)}
         onAddMember={vi.fn(async () => true)}
         onUpdateGroupAvatar={onUpdateGroupAvatar}
+        onPreviewGroupAvatar={onPreviewGroupAvatar}
         onJoinCall={vi.fn()}
       />,
     );
@@ -440,17 +442,24 @@ describe('Chat retention controls', () => {
     expect(getByText('Участники — 2')).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     expect(getByRole('dialog', { name: 'Аватар группы' })).toBeTruthy();
+    expect(onPreviewGroupAvatar).toHaveBeenLastCalledWith(
+      expect.objectContaining({ chatId: 'chat-a', positionX: 42, positionY: 61, scale: 135 }),
+    );
     const preview = getByAltText('Предпросмотр аватара группы') as HTMLImageElement;
     expect(preview.style.transform).toContain('translate(');
     fireEvent.change(getByRole('slider', { name: 'Размер аватара' }), {
       target: { value: '150' },
     });
     expect(preview.style.transform).toContain('scale(1.5)');
+    expect(onPreviewGroupAvatar).toHaveBeenLastCalledWith(
+      expect.objectContaining({ chatId: 'chat-a', positionX: 42, positionY: 61, scale: 150 }),
+    );
     fireEvent.click(getByRole('button', { name: /Сохранить/ }));
     await waitFor(() =>
       expect(onUpdateGroupAvatar).toHaveBeenCalledWith('chat-a', undefined, 42, 61, 150),
     );
     await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+    expect(onPreviewGroupAvatar).toHaveBeenLastCalledWith(undefined);
 
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     fireEvent.click(getByRole('button', { name: 'Закрыть' }));
