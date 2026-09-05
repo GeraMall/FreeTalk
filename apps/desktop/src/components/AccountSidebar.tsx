@@ -45,6 +45,8 @@ import { PresenceBadge } from './PresenceBadge';
 import type { ChatNotificationPreview } from './ChatNotificationStack';
 import type { ChatItem } from './ChatsPage';
 import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
+import { playNotificationSound } from '../lib/notification-sounds';
+import { loadSettings } from '../lib/settings';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
 export type AccountDestination = AccountPage | 'room';
@@ -142,6 +144,7 @@ export function AccountSidebar({
         avatarUrl: event.message.avatar_url,
         body: previewBody,
       };
+      void playNotificationSound(loadSettings());
       if (!appIsInForeground()) void showChatNotificationOverlay(preview);
     }, setPresence);
     realtime.start();

@@ -41,7 +41,7 @@ import {
   type CameraEffectCapture,
 } from '../lib/camera-background';
 import { cameraConstraints } from '../lib/video-manager';
-import recordingStartSoundUrl from '../assets/recording-start.mp3';
+import { NOTIFICATION_SOUND_URL } from '../lib/notification-sounds';
 import {
   chooseRecordingDirectory,
   defaultRecordingDirectory,
@@ -908,21 +908,19 @@ function VideoTab({
             label="Участник подключился"
             checked={settings.participantJoinedSound}
             onChange={(value) => onVideoSetting({ participantJoinedSound: value })}
-            onPreview={() => void playSettingsSound('/sounds/participant-joined.mp3', settings)}
+            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
           />
           <SoundSetting
             label="Участник отключился"
             checked={settings.participantDisconnectedSound}
             onChange={(value) => onVideoSetting({ participantDisconnectedSound: value })}
-            onPreview={() =>
-              void playSettingsSound('/sounds/participant-disconnected.mp3', settings)
-            }
+            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
           />
           <SoundSetting
             label="Начало записи"
             checked={settings.recordingStartSound}
             onChange={(value) => onVideoSetting({ recordingStartSound: value })}
-            onPreview={() => void playSettingsSound(recordingStartSoundUrl, settings)}
+            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
           />
         </div>
       </section>

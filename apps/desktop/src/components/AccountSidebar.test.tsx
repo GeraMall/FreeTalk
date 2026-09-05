@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountUser } from '../lib/api-client';
 import { AccountSidebar } from './AccountSidebar';
 import type { ChatItem } from './ChatsPage';
@@ -51,8 +51,16 @@ const user: AccountUser = {
   registeredAt: '2026-08-26T00:00:00.000Z',
 };
 
+beforeAll(() => {
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    configurable: true,
+    value: vi.fn().mockResolvedValue(undefined),
+  });
+});
+
 beforeEach(() => {
   localStorage.clear();
+  vi.mocked(HTMLMediaElement.prototype.play).mockClear();
   realtimeHarness.onEvent = undefined;
   realtimeHarness.onPresence = undefined;
   overlayHarness.foreground = true;
@@ -275,6 +283,7 @@ describe('AccountSidebar in an active room', () => {
     expect(getByRole('button', { name: 'Чаты, непрочитанных сообщений: 1' })).toBeTruthy();
     expect(queryByText('Ты уже заходишь?')).toBeNull();
     expect(document.querySelector('.chat-notification-stack')).toBeNull();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
   });
 
   it('shows the external overlay in the background even for the currently open chat', () => {

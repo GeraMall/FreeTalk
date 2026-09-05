@@ -1,12 +1,31 @@
 export type NotificationSound = 'joined' | 'disconnected';
 
+export const NOTIFICATION_SOUND_URL = '/sounds/notification.mp3';
+
 const SOUND_URLS: Record<NotificationSound, string> = {
-  joined: '/sounds/participant-joined.mp3',
-  disconnected: '/sounds/participant-disconnected.mp3',
+  joined: NOTIFICATION_SOUND_URL,
+  disconnected: NOTIFICATION_SOUND_URL,
 };
 
 const NOTIFICATION_VOLUME = 0.72;
 const ACTIVE_SAMPLE_FLOOR = 0.001;
+
+export async function playNotificationSound(
+  settings: { outputDeviceId?: string; outputVolume?: number } = {},
+) {
+  const audio = new Audio(NOTIFICATION_SOUND_URL);
+  audio.preload = 'auto';
+  audio.volume = Math.min(1, Math.max(0, settings.outputVolume ?? NOTIFICATION_VOLUME));
+  if (settings.outputDeviceId && 'setSinkId' in audio)
+    await (audio as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
+      .setSinkId(settings.outputDeviceId)
+      .catch(() => undefined);
+  try {
+    await audio.play();
+  } catch {
+    // Browsers may reject autoplay until the user has interacted with the app.
+  }
+}
 
 export function activeRms(channels: readonly Float32Array[]) {
   let sum = 0;
