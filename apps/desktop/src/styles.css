@@ -9612,9 +9612,10 @@ html.notification-overlay-document #root {
   min-height: 0;
 }
 .message-scroll-container {
+  --message-inline-padding: clamp(14px, 3vw, 34px);
   width: 100%;
   height: 100%;
-  padding: 16px clamp(14px, 3vw, 34px) 22px;
+  padding: 16px var(--message-inline-padding) 22px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -10810,10 +10811,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .chat-actions-popover {
   position: absolute;
-  top: 60px;
-  right: 12px;
+  top: 74px;
+  right: 14px;
   z-index: 40;
-  width: 230px;
+  width: min(240px, calc(100% - 28px));
+  max-height: calc(100% - 88px);
   display: grid;
   gap: 3px;
   padding: 7px;
@@ -10821,6 +10823,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border-radius: 12px;
   background: rgba(3, 12, 23, 0.99);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform-origin: top right;
   animation: chat-popover-in 170ms var(--ft-ease);
 }
 .chat-actions-popover > button {
@@ -13295,8 +13300,9 @@ textarea::placeholder {
 
 .message-entry {
   position: relative;
-  margin-inline: -16px;
-  padding-inline: 16px;
+  width: auto;
+  margin-inline: calc(-1 * var(--message-inline-padding));
+  padding-inline: var(--message-inline-padding);
   transition: background 160ms var(--ft-ease);
 }
 
@@ -13332,11 +13338,17 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 }
 
 .message-bubble-row.remote.grouped .message-bubble-stack {
-  margin-left: 35px;
+  margin-left: 41px;
 }
 
 .message-bubble-row.own.grouped .message-bubble-stack {
-  margin-right: 35px;
+  margin-right: 41px;
+}
+
+.message-bubble-row .chat-avatar.compact {
+  width: 34px;
+  height: 34px;
+  font-size: 11px;
 }
 
 .message-bubble-row:focus-visible .message-bubble {
@@ -14595,9 +14607,13 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 
 @media (max-width: 760px) {
+  .message-scroll-container {
+    --message-inline-padding: 10px;
+  }
+
   .message-entry {
-    margin-inline: -10px;
-    padding-inline: 10px;
+    margin-inline: calc(-1 * var(--message-inline-padding));
+    padding-inline: var(--message-inline-padding);
   }
 
   .message-bubble-stack {
@@ -14605,11 +14621,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   }
 
   .message-bubble-row.remote.grouped .message-bubble-stack {
-    margin-left: 33px;
+    margin-left: 41px;
   }
 
   .message-bubble-row.own.grouped .message-bubble-stack {
-    margin-right: 33px;
+    margin-right: 41px;
   }
 
   .message-bubble,

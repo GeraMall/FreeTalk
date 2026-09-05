@@ -308,6 +308,7 @@ export function ChatsPage({
     storedChatSidebarWidth,
   );
   const conversationSidebarRef = useRef<HTMLElement>(null);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
   const resizeStateRef = useRef<
     | {
         pointerId: number;
@@ -400,7 +401,12 @@ export function ChatsPage({
     window.addEventListener('popstate', handleBack);
     return () => window.removeEventListener('popstate', handleBack);
   }, [activeChatId, mobile, onCloseChat]);
-  const retentionHours = activeChat?.retentionHours === undefined ? 720 : activeChat.retentionHours;
+  const retentionHours =
+    activeChat?.type === 'direct'
+      ? null
+      : activeChat?.retentionHours === undefined
+        ? 720
+        : activeChat.retentionHours;
   const profileTarget =
     activeChat?.type === 'direct'
       ? activeChat.members.find((member) => member.id !== userId)
@@ -416,6 +422,28 @@ export function ChatsPage({
     setConfirmActionError('');
     setFullProfileOpen(false);
   }, [activeChatId]);
+  useEffect(() => {
+    if (!showChatMenu) return;
+    const closeOnPointerDown = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (chatMenuRef.current?.contains(target) || target.closest('[data-chat-menu-trigger]'))
+        return;
+      setShowChatMenu(false);
+      setShowChatSettings(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setShowChatMenu(false);
+      setShowChatSettings(false);
+    };
+    document.addEventListener('pointerdown', closeOnPointerDown);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showChatMenu]);
   useEffect(() => {
     if (!profileTargetId) {
       setProfile(undefined);
@@ -632,7 +660,7 @@ export function ChatsPage({
               }
             />
             {showChatMenu && (
-              <div className="chat-actions-popover" role="menu">
+              <div ref={chatMenuRef} className="chat-actions-popover" role="menu">
                 <button onClick={() => setShowChatSettings((visible) => !visible)}>
                   <Clock3 /> Настройки чата
                 </button>
@@ -687,7 +715,7 @@ export function ChatsPage({
                 {showChatSettings && (
                   <div className="chat-menu-settings">
                     <span>История: {retentionLabel(retentionHours)}</span>
-                    {activeChat.currentUserRole === 'owner' ? (
+                    {activeChat.type === 'group' && activeChat.currentUserRole === 'owner' ? (
                       <select
                         aria-label="Срок хранения сообщений"
                         value={retentionHours === null ? 'forever' : String(retentionHours)}
@@ -1099,6 +1127,7 @@ function ChatHeader({
           </button>
         )}
         <button
+          data-chat-menu-trigger
           title="Действия с чатом"
           aria-label="Действия с чатом"
           aria-expanded={showMenu}
@@ -3413,7 +3442,7 @@ function chatName(chat: ChatItem, userId: string) {
 }
 
 function retentionLabel(hours: ChatItem['retentionHours']) {
-  if (hours === null) return 'без ограничения';
+  if (hours === null) return 'бессрочно';
   if (hours === 24) return '24 часа';
   if (hours === 168) return '7 дней';
   return '30 дней';

@@ -141,4 +141,14 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('octet_length(emoji) <= 64');
     expect(sql).not.toContain('char_length(emoji) between 1 and 16');
   });
+
+  it('makes existing direct chats and their live messages permanent', async () => {
+    const path = fileURLToPath(
+      new URL('../migrations/012_direct_chat_permanent_retention.sql', import.meta.url),
+    );
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain("chat.type = 'direct'");
+    expect(sql).toContain('set expires_at = null');
+    expect(sql).toContain('set retention_hours = null');
+  });
 });

@@ -500,7 +500,7 @@ describe('Direct chat actions', () => {
   it('never offers leaving a direct chat and confirms delete-for-both and block', async () => {
     const onDeleteDirectChat = vi.fn(async () => undefined);
     const onBlockUser = vi.fn(async () => undefined);
-    const { getAllByRole, getByRole, queryByRole } = render(
+    const { getAllByRole, getByRole, getByText, queryByRole } = render(
       <ChatsPage
         userId="self"
         chats={[directChat]}
@@ -535,6 +535,13 @@ describe('Direct chat actions', () => {
     fireEvent.click(getByRole('button', { name: 'Действия с чатом' }));
     expect(queryByRole('button', { name: /Покинуть/ })).toBeNull();
     expect(queryByRole('button', { name: 'Очистить чат' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Настройки чата' }));
+    expect(getByText('История: бессрочно')).toBeTruthy();
+    expect(queryByRole('combobox', { name: 'Срок хранения сообщений' })).toBeNull();
+    fireEvent.pointerDown(document.body);
+    expect(queryByRole('menu')).toBeNull();
+
+    fireEvent.click(getByRole('button', { name: 'Действия с чатом' }));
     fireEvent.click(getByRole('button', { name: 'Удалить чат у обоих' }));
     fireEvent.click(getByRole('button', { name: 'Удалить у обоих' }));
     await waitFor(() => expect(onDeleteDirectChat).toHaveBeenCalledOnce());

@@ -255,6 +255,11 @@ async function isGroupChat(chatId: string) {
   return Boolean(result.rowCount);
 }
 
+async function isDirectChat(chatId: string) {
+  const result = await db.query("SELECT 1 FROM chats WHERE id=$1 AND type='direct'", [chatId]);
+  return Boolean(result.rowCount);
+}
+
 export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireUser) {
   app.get('/v1/users/search', async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -894,7 +899,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         }
       }
       const created = await client.query<{ id: string }>(
-        'INSERT INTO chats(type,title,created_by) VALUES($1,$2,$3) RETURNING id',
+        `INSERT INTO chats(type,title,created_by,retention_hours)
+         VALUES($1,$2,$3,CASE WHEN $1='direct' THEN NULL ELSE 720 END) RETURNING id`,
         [input.type, input.type === 'group' ? (input.title ?? null) : null, user.id],
       );
       for (const memberId of memberIds)
@@ -1699,6 +1705,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       .parse(request.body);
     if (!(await isChatOwner(chatId, user.id)))
       return reply.code(403).send({ code: 'NOT_CHAT_OWNER' });
+    if (await isDirectChat(chatId))
+      return reply.code(400).send({ code: 'DIRECT_CHAT_RETENTION_IS_PERMANENT' });
 
     await transaction(async (client) => {
       await client.query('UPDATE chats SET retention_hours=$2 WHERE id=$1', [
