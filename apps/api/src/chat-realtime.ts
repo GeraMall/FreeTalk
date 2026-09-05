@@ -29,10 +29,11 @@ export type ChatRealtimeServerMessage =
   | {
       type: 'chat-updated';
       chatId: string;
-      avatarUrl: string | null;
-      avatarPositionX: number;
-      avatarPositionY: number;
-      avatarScale: number;
+      title?: string;
+      avatarUrl?: string | null;
+      avatarPositionX?: number;
+      avatarPositionY?: number;
+      avatarScale?: number;
     }
   | { type: 'presence-updated'; userId: string; status: PresenceStatus }
   | {

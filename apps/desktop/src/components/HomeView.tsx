@@ -272,10 +272,15 @@ export function HomeView({
             chat.id === event.chatId
               ? {
                   ...chat,
-                  avatarUrl: event.avatarUrl,
-                  avatarPositionX: event.avatarPositionX,
-                  avatarPositionY: event.avatarPositionY,
-                  avatarScale: event.avatarScale,
+                  ...(event.title !== undefined ? { title: event.title } : {}),
+                  ...(event.avatarUrl !== undefined ? { avatarUrl: event.avatarUrl } : {}),
+                  ...(event.avatarPositionX !== undefined
+                    ? { avatarPositionX: event.avatarPositionX }
+                    : {}),
+                  ...(event.avatarPositionY !== undefined
+                    ? { avatarPositionY: event.avatarPositionY }
+                    : {}),
+                  ...(event.avatarScale !== undefined ? { avatarScale: event.avatarScale } : {}),
                 }
               : chat,
           ),
@@ -587,39 +592,44 @@ export function HomeView({
 
   const updateGroupAvatar = async (
     chatId: string,
+    title: string,
     dataUrl: string | undefined,
     positionX: number,
     positionY: number,
     scale: number,
   ) => {
     try {
-      const result = await accountClient.updateGroupAvatar(
-        chatId,
-        dataUrl,
-        positionX,
-        positionY,
-        scale,
-      );
-      await warmAccountMediaCache(user.id, collectAccountMediaUrls(result), 4_000);
+      const currentChat = chats.find((chat) => chat.id === chatId);
+      const trimmedTitle = title.trim();
+      const titleChanged = trimmedTitle !== (currentChat?.title ?? '').trim();
+      const avatarChanged = Boolean(dataUrl || currentChat?.avatarUrl);
+      if (titleChanged) await accountClient.updateGroupTitle(chatId, trimmedTitle);
+      const result = avatarChanged
+        ? await accountClient.updateGroupAvatar(chatId, dataUrl, positionX, positionY, scale)
+        : undefined;
+      if (result) await warmAccountMediaCache(user.id, collectAccountMediaUrls(result), 4_000);
       setChats((current) =>
         current.map((chat) =>
           chat.id === chatId
             ? {
                 ...chat,
-                avatarUrl: result.avatarUrl,
-                avatarPositionX: result.avatarPositionX,
-                avatarPositionY: result.avatarPositionY,
-                avatarScale: result.avatarScale,
+                title: trimmedTitle,
+                ...(result
+                  ? {
+                      avatarUrl: result.avatarUrl,
+                      avatarPositionX: result.avatarPositionX,
+                      avatarPositionY: result.avatarPositionY,
+                      avatarScale: result.avatarScale,
+                    }
+                  : {}),
               }
             : chat,
         ),
       );
-      setLocalError('Аватар группы сохранён');
+      setLocalError('Группа сохранена');
       return true;
     } catch (caught) {
-      setLocalError(
-        caught instanceof Error ? caught.message : 'Не удалось сохранить аватар группы',
-      );
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось сохранить группу');
       return false;
     }
   };
@@ -814,7 +824,7 @@ export function HomeView({
       >
         <TransientNotice
           message={error || localError}
-          tone={!error && localError === 'Аватар группы сохранён' ? 'success' : 'error'}
+          tone={!error && localError === 'Группа сохранена' ? 'success' : 'error'}
           onDismiss={() => {
             setLocalError('');
             onClearError?.();

@@ -439,7 +439,10 @@ describe('Chat retention controls', () => {
     expect(getByRole('complementary', { name: 'Участники группы' })).toBeTruthy();
     expect(getByText('Участники — 2')).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
-    expect(getByRole('dialog', { name: 'Аватар группы' })).toBeTruthy();
+    expect(getByRole('dialog', { name: 'Редактировать группу' })).toBeTruthy();
+    const titleInput = getByRole('textbox', { name: 'Название группы' }) as HTMLInputElement;
+    expect(titleInput.value).toBe('Команда');
+    fireEvent.change(titleInput, { target: { value: 'Новая команда' } });
     const preview = getByAltText('Предпросмотр аватара группы') as HTMLImageElement;
     expect(preview.style.transform).toContain('translate(');
     fireEvent.change(getByRole('slider', { name: 'Размер аватара' }), {
@@ -448,17 +451,24 @@ describe('Chat retention controls', () => {
     expect(preview.style.transform).toContain('scale(1.5)');
     fireEvent.click(getByRole('button', { name: /Сохранить/ }));
     await waitFor(() =>
-      expect(onUpdateGroupAvatar).toHaveBeenCalledWith('chat-a', undefined, 42, 61, 150),
+      expect(onUpdateGroupAvatar).toHaveBeenCalledWith(
+        'chat-a',
+        'Новая команда',
+        undefined,
+        42,
+        61,
+        150,
+      ),
     );
-    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Редактировать группу' })).toBeNull());
 
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     fireEvent.click(getByRole('button', { name: 'Закрыть' }));
-    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Редактировать группу' })).toBeNull());
 
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(queryByRole('dialog', { name: 'Аватар группы' })).toBeNull());
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Редактировать группу' })).toBeNull());
   });
 });
 

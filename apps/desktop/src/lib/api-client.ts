@@ -261,6 +261,13 @@ export class AccountClient {
     });
   }
 
+  async updateGroupTitle(chatId: string, title: string) {
+    return this.request<{ title: string }>(`/v1/chats/${chatId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
+
   async uploadChatImage<T>(
     chatId: string,
     dataUrl: string,

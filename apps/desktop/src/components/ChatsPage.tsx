@@ -164,6 +164,7 @@ interface ChatsPageProps {
   onLeaveGroup?(): Promise<void>;
   onUpdateGroupAvatar?(
     chatId: string,
+    title: string,
     dataUrl: string | undefined,
     positionX: number,
     positionY: number,
@@ -548,9 +549,9 @@ export function ChatsPage({
               onToggleMenu={() => setShowChatMenu((visible) => !visible)}
               onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
               onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
-              onSaveAvatar={(dataUrl, positionX, positionY, scale) =>
+              onSaveAvatar={(title, dataUrl, positionX, positionY, scale) =>
                 runAction('group-avatar', () =>
-                  onUpdateGroupAvatar(activeChat.id, dataUrl, positionX, positionY, scale),
+                  onUpdateGroupAvatar(activeChat.id, title, dataUrl, positionX, positionY, scale),
                 )
               }
             />
@@ -893,6 +894,7 @@ function ChatHeader({
   onToggleAvatarEditor(): void;
   onCloseAvatarEditor(): void;
   onSaveAvatar(
+    title: string,
     dataUrl: string | undefined,
     positionX: number,
     positionY: number,
@@ -1048,6 +1050,7 @@ function GroupAvatarEditor({
   busy: boolean;
   onClose(): void;
   onSave(
+    title: string,
     dataUrl: string | undefined,
     positionX: number,
     positionY: number,
@@ -1055,6 +1058,7 @@ function GroupAvatarEditor({
   ): Promise<boolean>;
 }) {
   const [dataUrl, setDataUrl] = useState<string>();
+  const [title, setTitle] = useState(chat.title?.trim() ?? '');
   const [position, setPosition] = useState({
     x: chat.avatarPositionX ?? 50,
     y: chat.avatarPositionY ?? 50,
@@ -1121,112 +1125,126 @@ function GroupAvatarEditor({
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
-  return (
-    <div
-      ref={editorRef}
-      className={`group-avatar-editor${closing ? ' closing' : ''}`}
-      role="dialog"
-      aria-label="Аватар группы"
-    >
-      <div className="group-avatar-editor-heading">
-        <div>
-          <strong>Аватар группы</strong>
-          <small>Перетащите фото внутри круга</small>
-        </div>
-        <button
-          type="button"
-          aria-label="Закрыть"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={closeSmoothly}
-        >
-          <X />
-        </button>
-      </div>
+  return createPortal(
+    <div className={`group-editor-backdrop${closing ? ' closing' : ''}`}>
       <div
-        className={`group-avatar-crop ${previewUrl ? 'has-image' : ''}`}
-        onPointerDown={(event) => {
-          if (!previewUrl) return;
-          if (scale <= 100) setScale(110);
-          dragRef.current = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            positionX: position.x,
-            positionY: position.y,
-          };
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-        }}
-        onPointerMove={movePreview}
-        onPointerUp={finishPreviewDrag}
-        onPointerCancel={finishPreviewDrag}
+        ref={editorRef}
+        className={`group-avatar-editor${closing ? ' closing' : ''}`}
+        role="dialog"
+        aria-label="Редактировать группу"
+        aria-modal="true"
       >
-        {cachedPreviewUrl ? (
-          <img
-            src={cachedPreviewUrl}
-            alt="Предпросмотр аватара группы"
-            draggable={false}
-            style={avatarImageStyle(position.x, position.y, scale)}
-          />
-        ) : (
-          <Users />
-        )}
-        <button
-          className="group-avatar-pencil"
-          type="button"
-          aria-label="Выбрать изображение"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            fileRef.current?.click();
+        <div className="group-avatar-editor-heading">
+          <div>
+            <strong>Редактировать группу</strong>
+            <small>Настройте название и фотографию</small>
+          </div>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={closeSmoothly}
+          >
+            <X />
+          </button>
+        </div>
+        <div
+          className={`group-avatar-crop ${previewUrl ? 'has-image' : ''}`}
+          onPointerDown={(event) => {
+            if (!previewUrl) return;
+            if (scale <= 100) setScale(110);
+            dragRef.current = {
+              pointerId: event.pointerId,
+              x: event.clientX,
+              y: event.clientY,
+              positionX: position.x,
+              positionY: position.y,
+            };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
           }}
+          onPointerMove={movePreview}
+          onPointerUp={finishPreviewDrag}
+          onPointerCancel={finishPreviewDrag}
         >
-          <Pencil />
-        </button>
-      </div>
-      <input
-        ref={fileRef}
-        className="sr-only"
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        onChange={(event) => void chooseFile(event.target.files?.[0])}
-      />
-      {error && (
-        <p className="group-avatar-error" role="alert">
-          {error}
-        </p>
-      )}
-      {previewUrl && (
-        <label className="group-avatar-scale">
-          <span>Размер</span>
+          {cachedPreviewUrl ? (
+            <img
+              src={cachedPreviewUrl}
+              alt="Предпросмотр аватара группы"
+              draggable={false}
+              style={avatarImageStyle(position.x, position.y, scale)}
+            />
+          ) : (
+            <Users />
+          )}
+          <button
+            className="group-avatar-pencil"
+            type="button"
+            aria-label="Выбрать изображение"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              fileRef.current?.click();
+            }}
+          >
+            <Pencil />
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          className="sr-only"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => void chooseFile(event.target.files?.[0])}
+        />
+        <label className="group-title-field">
+          <span>Название группы</span>
           <input
-            type="range"
-            min="100"
-            max="250"
-            step="5"
-            value={scale}
-            aria-label="Размер аватара"
-            onChange={(event) => setScale(Number(event.target.value))}
+            value={title}
+            maxLength={80}
+            placeholder="Название группы"
+            aria-label="Название группы"
+            onChange={(event) => setTitle(event.target.value)}
           />
-          <output>{scale}%</output>
         </label>
-      )}
-      <div className="group-avatar-editor-actions">
-        <span>
-          {position.x}% · {position.y}%
-        </span>
-        <button
-          type="button"
-          disabled={busy || !previewUrl}
-          onClick={() =>
-            void onSave(dataUrl, position.x, position.y, scale).then((saved) => {
-              if (saved) closeSmoothly();
-            })
-          }
-        >
-          <Save /> {busy ? 'Сохранение…' : 'Сохранить'}
-        </button>
+        {error && (
+          <p className="group-avatar-error" role="alert">
+            {error}
+          </p>
+        )}
+        {previewUrl && (
+          <label className="group-avatar-scale">
+            <span>Размер</span>
+            <input
+              type="range"
+              min="100"
+              max="250"
+              step="5"
+              value={scale}
+              aria-label="Размер аватара"
+              onChange={(event) => setScale(Number(event.target.value))}
+            />
+            <output>{scale}%</output>
+          </label>
+        )}
+        <div className="group-avatar-editor-actions">
+          <button type="button" className="secondary" disabled={busy} onClick={closeSmoothly}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            disabled={busy || !title.trim()}
+            onClick={() =>
+              void onSave(title.trim(), dataUrl, position.x, position.y, scale).then((saved) => {
+                if (saved) closeSmoothly();
+              })
+            }
+          >
+            <Save /> {busy ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -295,10 +295,11 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('chat-updated'),
     chatId: z.string().uuid(),
-    avatarUrl: z.string().url().nullable(),
-    avatarPositionX: z.number().int().min(0).max(100),
-    avatarPositionY: z.number().int().min(0).max(100),
-    avatarScale: z.number().int().min(100).max(250),
+    title: z.string().min(1).max(80).optional(),
+    avatarUrl: z.string().url().nullable().optional(),
+    avatarPositionX: z.number().int().min(0).max(100).optional(),
+    avatarPositionY: z.number().int().min(0).max(100).optional(),
+    avatarScale: z.number().int().min(100).max(250).optional(),
   }),
   z.object({
     type: z.literal('presence-updated'),

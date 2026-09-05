@@ -568,6 +568,19 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       .send(avatar.avatar_data);
   });
 
+  app.patch('/v1/chats/:chatId', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = chatIdParams.parse(request.params);
+    const { title } = z.object({ title: z.string().trim().min(1).max(80) }).parse(request.body);
+    if (!(await isGroupChat(chatId))) return reply.code(400).send({ code: 'GROUP_CHAT_REQUIRED' });
+    if (!(await isChatAdmin(chatId, user.id)))
+      return reply.code(403).send({ code: 'CHAT_ADMIN_REQUIRED' });
+    await db.query('UPDATE chats SET title=$1 WHERE id=$2', [title, chatId]);
+    await publishChatEvent(chatId, { type: 'chat-updated', chatId, title });
+    return { title };
+  });
+
   app.post('/v1/chats/:chatId/avatar', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
