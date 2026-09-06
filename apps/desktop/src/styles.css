@@ -1143,6 +1143,10 @@ input[type='range']:hover::-webkit-slider-thumb {
     radial-gradient(circle at 8% 4%, rgba(78, 243, 242, 0.13), transparent 31%),
     radial-gradient(circle at 94% 10%, rgba(61, 123, 255, 0.09), transparent 34%), var(--bg);
 }
+.room-shell.has-presentation {
+  padding-bottom: 0;
+  overflow: hidden;
+}
 .room-shell::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -1286,12 +1290,19 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .room-main.room-mode-presentation {
   --room-stage-max-width: 1440px;
-  padding-top: 16px;
+  display: grid;
+  height: calc(100dvh - 66px);
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  box-sizing: border-box;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 .room-mode-presentation .participants-heading {
   width: min(100%, var(--room-stage-max-width));
   margin-right: auto;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   margin-left: auto;
 }
 .room-shell-embedded .room-mode-presentation .participants-heading {
@@ -1825,15 +1836,20 @@ input[type='range']:hover::-webkit-slider-thumb {
 .presentation-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   align-items: start;
   gap: 10px;
-  height: auto;
+  height: 100%;
+  min-height: 0;
   animation: media-tile-in 0.2s ease-out;
 }
 .screen-stage-shell {
   order: 2;
   display: grid;
   min-width: 0;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
   border: 1px solid rgba(75, 166, 174, 0.48);
@@ -1845,8 +1861,10 @@ input[type='range']:hover::-webkit-slider-thumb {
   position: relative;
   width: 100%;
   min-width: 0;
-  aspect-ratio: var(--screen-aspect-ratio, 16 / 9);
-  max-height: max(280px, calc(100dvh - 250px));
+  min-height: 0;
+  height: 100%;
+  aspect-ratio: auto;
+  max-height: none;
   overflow: hidden;
   border: 0;
   border-radius: 0;
@@ -1971,16 +1989,13 @@ input[type='range']:hover::-webkit-slider-thumb {
   font-size: 11px;
   font-weight: 700;
 }
-.presentation-session-meta {
-  justify-items: end;
-}
 .participant-strip {
   display: grid;
-  grid-auto-columns: minmax(178px, 220px);
+  grid-auto-columns: minmax(240px, 280px);
   grid-auto-flow: column;
-  grid-auto-rows: 104px;
+  grid-auto-rows: 132px;
   gap: 10px;
-  height: 104px;
+  height: 132px;
   min-height: 0;
   padding: 0 2px;
   overflow-x: auto;
@@ -2000,7 +2015,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participant-card.compact-tile {
   width: 100%;
-  min-height: 104px;
+  min-height: 132px;
   aspect-ratio: auto;
 }
 .compact-tile.audio-tile {
@@ -2023,9 +2038,9 @@ input[type='range']:hover::-webkit-slider-thumb {
   font-size: 8px;
 }
 .compact-tile .participant-avatar {
-  width: 48px;
-  height: 48px;
-  margin: 29px 9px 0 0;
+  width: 58px;
+  height: 58px;
+  margin: 39px 11px 0 0;
 }
 .compact-tile .participant-avatar span {
   font-size: 18px;
@@ -2140,7 +2155,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   grid-column: auto;
   justify-self: stretch;
   min-width: 0;
-  min-height: 108px;
+  min-height: 132px;
   justify-content: center;
 }
 .participant-strip .invite-empty .invite-copy small,
@@ -2158,7 +2173,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   }
   .room-main.room-mode-presentation {
     --room-stage-max-width: 100%;
-    padding-top: 14px;
+    padding-top: 12px;
   }
   .participants-heading {
     margin-bottom: 24px;
@@ -2202,23 +2217,23 @@ input[type='range']:hover::-webkit-slider-thumb {
     font-size: 10px;
   }
   .participant-strip {
-    height: 118px;
-    grid-auto-columns: minmax(210px, 250px);
-    grid-auto-rows: 118px;
+    height: 148px;
+    grid-auto-columns: minmax(260px, 310px);
+    grid-auto-rows: 148px;
     gap: 12px;
   }
   .participant-card.compact-tile,
   .participant-strip .invite-empty {
-    min-height: 118px;
+    min-height: 148px;
   }
   .compact-tile .creator-badge {
     max-width: 118px;
     font-size: 9px;
   }
   .compact-tile .participant-avatar {
-    width: 54px;
-    height: 54px;
-    margin: 36px 12px 0 0;
+    width: 64px;
+    height: 64px;
+    margin: 45px 14px 0 0;
   }
   .compact-tile .participant-avatar span {
     font-size: 21px;
@@ -6323,8 +6338,8 @@ input[type='range']:hover::-webkit-slider-thumb {
   }
   .presentation-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(300px, 52vh);
-    height: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
   }
   .screen-stage {
     height: 100%;
@@ -6338,7 +6353,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   .participant-strip {
     grid-auto-columns: minmax(140px, 42vw);
     grid-auto-flow: column;
-    grid-auto-rows: 108px;
+    grid-auto-rows: 132px;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-inline: contain;

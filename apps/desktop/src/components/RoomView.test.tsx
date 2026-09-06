@@ -443,8 +443,9 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.presentation-participants.collapsed')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Показать участников' }));
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
-    expect(container.querySelector('.presentation-session-meta .room-security')).not.toBeNull();
-    expect(container.querySelector('.presentation-session-meta .call-timer')).not.toBeNull();
+    expect(container.querySelector('.participants-heading .room-security')).not.toBeNull();
+    expect(container.querySelector('.participants-heading .call-timer')).not.toBeNull();
+    expect(container.querySelector('.room-shell.has-presentation')).not.toBeNull();
     expect(onScreenFocusChange).not.toHaveBeenCalled();
   });
 

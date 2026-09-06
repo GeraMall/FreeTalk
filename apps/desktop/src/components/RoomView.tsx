@@ -449,7 +449,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${fullscreenChromeVisible ? 'fullscreen-chrome-visible' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${fullscreenChromeVisible ? 'fullscreen-chrome-visible' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
@@ -541,21 +541,19 @@ export function RoomView({
                 </p>
               </div>
             )}
-            {!screenPresenter && (
-              <span className="room-session-meta">
-                <span
-                  className="room-security"
-                  title={
-                    turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
-                  }
-                >
-                  <ShieldCheck size={14} /> Приватное соединение
-                </span>
-                <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-                  <i /> {elapsed}
-                </span>
+            <span className="room-session-meta">
+              <span
+                className="room-security"
+                title={
+                  turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
+                }
+              >
+                <ShieldCheck size={14} /> Приватное соединение
               </span>
-            )}
+              <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+                <i /> {elapsed}
+              </span>
+            </span>
           </div>
 
           {screenPresenter ? (
@@ -633,21 +631,6 @@ export function RoomView({
                       <ChevronDown size={15} />
                     )}
                   </button>
-                  <span className="room-session-meta presentation-session-meta">
-                    <span
-                      className="room-security"
-                      title={
-                        turnAvailable
-                          ? 'WebRTC с резервным TURN-маршрутом'
-                          : 'Прямое WebRTC-соединение'
-                      }
-                    >
-                      <ShieldCheck size={14} /> Приватное соединение
-                    </span>
-                    <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-                      <i /> {elapsed}
-                    </span>
-                  </span>
                 </div>
                 <div className="participant-strip" role="list" aria-label="Участники комнаты">
                   {ordered.map((participant) => renderParticipant(participant, true))}
