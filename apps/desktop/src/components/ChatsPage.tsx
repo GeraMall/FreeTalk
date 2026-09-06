@@ -319,6 +319,8 @@ export function ChatsPage({
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showGroupAvatarEditor, setShowGroupAvatarEditor] = useState(false);
   const [replyTarget, setReplyTarget] = useState<MessageItem>();
+  const [messageSearch, setMessageSearch] = useState('');
+  const [messageSearchIndex, setMessageSearchIndex] = useState(0);
   const [profileVisible, setProfileVisible] = useState(!mobile);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
@@ -401,6 +403,23 @@ export function ChatsPage({
   };
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const messageSearchMatches = useMemo(() => {
+    const query = messageSearch.trim().toLocaleLowerCase('ru-RU');
+    if (!query) return [];
+    return messages.filter((message) => message.body.toLocaleLowerCase('ru-RU').includes(query));
+  }, [messageSearch, messages]);
+  const activeMessageSearchIndex = Math.min(
+    messageSearchIndex,
+    Math.max(0, messageSearchMatches.length - 1),
+  );
+  const focusedMessageId = messageSearchMatches[activeMessageSearchIndex]?.id;
+  const cycleMessageSearch = (direction: 1 | -1) => {
+    if (!messageSearchMatches.length) return;
+    setMessageSearchIndex((current) => {
+      const safeCurrent = Math.min(current, messageSearchMatches.length - 1);
+      return (safeCurrent + direction + messageSearchMatches.length) % messageSearchMatches.length;
+    });
+  };
   const closeMobileChat = useCallback(() => {
     if (window.history.state?.[MOBILE_CHAT_HISTORY_KEY] === activeChatId) {
       window.history.back();
@@ -408,6 +427,13 @@ export function ChatsPage({
       onCloseChat();
     }
   }, [activeChatId, onCloseChat]);
+  useEffect(() => {
+    setMessageSearch('');
+    setMessageSearchIndex(0);
+  }, [activeChatId]);
+  useEffect(() => {
+    setMessageSearchIndex(Math.max(0, messageSearchMatches.length - 1));
+  }, [messageSearch, messageSearchMatches.length]);
   useEffect(() => {
     if (!mobile || !activeChatId) return;
     if (window.history.state?.[MOBILE_CHAT_HISTORY_KEY] !== activeChatId) {
@@ -526,7 +552,7 @@ export function ChatsPage({
 
   return (
     <div
-      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}${mobile ? ' mobile-messenger' : ''}${mobile && activeChat ? ' has-active-chat' : ''}`}
+      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}${mobile ? ' mobile-messenger' : ''}${mobile && activeChat ? ' has-active-chat' : ''}${activeChat ? ` chat-${activeChat.type}` : ''}`}
       style={
         chatSidebarWidth
           ? ({ '--conversation-sidebar-width': `${chatSidebarWidth}px` } as CSSProperties)
@@ -651,35 +677,43 @@ export function ChatsPage({
         />
       ) : null}
 
+      {activeChat ? (
+        <ChatHeader
+          chat={activeChat}
+          onBack={mobile ? closeMobileChat : undefined}
+          userId={userId}
+          showMember={showMember}
+          memberUsername={memberUsername}
+          actionBusy={actionBusy}
+          profileVisible={profileVisible}
+          showMenu={showChatMenu}
+          showAvatarEditor={showGroupAvatarEditor}
+          messageSearch={messageSearch}
+          messageSearchCount={messageSearchMatches.length}
+          messageSearchIndex={activeMessageSearchIndex}
+          onOpenProfile={() => setFullProfileOpen(true)}
+          onMemberUsername={setMemberUsername}
+          onToggleMember={() => setShowMember((visible) => !visible)}
+          onAddMember={() => void addMember()}
+          onStartCall={() => void runAction('call', onStartCall)}
+          onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
+          onToggleProfile={() => setProfileVisible((visible) => !visible)}
+          onToggleMenu={() => setShowChatMenu((visible) => !visible)}
+          onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
+          onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
+          onMessageSearch={(value) => setMessageSearch(value)}
+          onMessageSearchNext={(direction) => cycleMessageSearch(direction)}
+          onSaveAvatar={(title, dataUrl, positionX, positionY, scale) =>
+            runAction('group-avatar', () =>
+              onUpdateGroupAvatar(activeChat.id, title, dataUrl, positionX, positionY, scale),
+            )
+          }
+        />
+      ) : null}
+
       <section className="active-conversation" aria-label="Активный чат">
         {activeChat ? (
           <>
-            <ChatHeader
-              chat={activeChat}
-              onBack={mobile ? closeMobileChat : undefined}
-              userId={userId}
-              showMember={showMember}
-              memberUsername={memberUsername}
-              actionBusy={actionBusy}
-              profileVisible={profileVisible}
-              showMenu={showChatMenu}
-              showAvatarEditor={showGroupAvatarEditor}
-              onOpenProfile={() => setFullProfileOpen(true)}
-              onMemberUsername={setMemberUsername}
-              onToggleMember={() => setShowMember((visible) => !visible)}
-              onAddMember={() => void addMember()}
-              onStartCall={() => void runAction('call', onStartCall)}
-              onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
-              onToggleProfile={() => setProfileVisible((visible) => !visible)}
-              onToggleMenu={() => setShowChatMenu((visible) => !visible)}
-              onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
-              onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
-              onSaveAvatar={(title, dataUrl, positionX, positionY, scale) =>
-                runAction('group-avatar', () =>
-                  onUpdateGroupAvatar(activeChat.id, title, dataUrl, positionX, positionY, scale),
-                )
-              }
-            />
             {showChatMenu && (
               <div ref={chatMenuRef} className="chat-actions-popover" role="menu">
                 <button onClick={() => setShowChatSettings((visible) => !visible)}>
@@ -787,6 +821,8 @@ export function ChatsPage({
               onDelete={onDeleteMessage}
               onForward={onForwardMessage}
               onReveal={onRevealMessage}
+              searchQuery={messageSearch}
+              focusedMessageId={focusedMessageId}
             />
             <MessageComposer
               key={activeChat.id}
@@ -1008,6 +1044,9 @@ function ChatHeader({
   profileVisible,
   showMenu,
   showAvatarEditor,
+  messageSearch,
+  messageSearchCount,
+  messageSearchIndex,
   onOpenProfile,
   onMemberUsername,
   onToggleMember,
@@ -1018,6 +1057,8 @@ function ChatHeader({
   onToggleMenu,
   onToggleAvatarEditor,
   onCloseAvatarEditor,
+  onMessageSearch,
+  onMessageSearchNext,
   onSaveAvatar,
 }: {
   chat: ChatItem;
@@ -1029,6 +1070,9 @@ function ChatHeader({
   profileVisible: boolean;
   showMenu: boolean;
   showAvatarEditor: boolean;
+  messageSearch: string;
+  messageSearchCount: number;
+  messageSearchIndex: number;
   onOpenProfile(): void;
   onMemberUsername(value: string): void;
   onToggleMember(): void;
@@ -1039,6 +1083,8 @@ function ChatHeader({
   onToggleMenu(): void;
   onToggleAvatarEditor(): void;
   onCloseAvatarEditor(): void;
+  onMessageSearch(value: string): void;
+  onMessageSearchNext(direction: 1 | -1): void;
   onSaveAvatar(
     title: string,
     dataUrl: string | undefined,
@@ -1100,16 +1146,11 @@ function ChatHeader({
         <strong>{name}</strong>
         <small>
           {chat.type === 'group'
-            ? `${chat.members.length} участников`
+            ? memberCountLabel(chat.members.length)
             : other
               ? `@${other.username}`
               : 'Личный чат'}
         </small>
-        {chat.type === 'direct' && other && (
-          <span className={`chat-presence ${other.presence ?? 'offline'}`}>
-            <i /> {presenceLabel(other.presence)}
-          </span>
-        )}
       </div>
       <div className="active-chat-actions">
         <button
@@ -1130,14 +1171,6 @@ function ChatHeader({
             <Link2 />
           </button>
         )}
-        <button
-          title={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
-          aria-label={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
-          aria-pressed={profileVisible}
-          onClick={onToggleProfile}
-        >
-          {profileVisible ? <PanelRightClose /> : <PanelRightOpen />}
-        </button>
         {chat.type === 'group' && (
           <button
             title="Добавить участника"
@@ -1157,6 +1190,43 @@ function ChatHeader({
         >
           <MoreHorizontal />
         </button>
+        <button
+          title={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
+          aria-label={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
+          aria-pressed={profileVisible}
+          onClick={onToggleProfile}
+        >
+          {profileVisible ? <PanelRightClose /> : <PanelRightOpen />}
+        </button>
+        <label className="active-chat-search">
+          <Search />
+          <input
+            value={messageSearch}
+            aria-label={`Искать в ${name}`}
+            placeholder={`Искать в «${name}»`}
+            onChange={(event) => onMessageSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              onMessageSearchNext(event.shiftKey ? -1 : 1);
+            }}
+          />
+          {messageSearch ? (
+            <>
+              <span>
+                {messageSearchCount ? `${messageSearchIndex + 1}/${messageSearchCount}` : '0'}
+              </span>
+              <button
+                type="button"
+                title="Очистить поиск"
+                aria-label="Очистить поиск по сообщениям"
+                onClick={() => onMessageSearch('')}
+              >
+                <X />
+              </button>
+            </>
+          ) : null}
+        </label>
       </div>
       {showMember && chat.type === 'group' && (
         <div className="chat-member-popover">
@@ -1420,7 +1490,6 @@ function ProfilePanel({
       <aside className="chat-profile-panel group-members-panel" aria-label="Участники группы">
         <section className="group-members-heading">
           <p>Участники — {members.length}</p>
-          <h2>{groupTitle}</h2>
         </section>
         <div className="group-members-list">
           {[...members]
@@ -1452,62 +1521,66 @@ function ProfilePanel({
   if (loading)
     return (
       <aside className="chat-profile-panel" aria-label="Профиль собеседника" aria-busy="true">
-        <div className="profile-panel-skeleton" />
+        <div className="chat-profile-island">
+          <div className="profile-panel-skeleton" />
+        </div>
       </aside>
     );
   const name = profile?.displayName ?? fallback?.displayName ?? groupTitle ?? 'Профиль';
   return (
     <aside className="chat-profile-panel" aria-label="Профиль собеседника">
-      <div
-        className="chat-profile-cover"
-        style={cachedCoverUrl ? { backgroundImage: `url(${cachedCoverUrl})` } : undefined}
-      />
-      <button
-        type="button"
-        className="chat-profile-avatar"
-        aria-label={`Открыть полный профиль ${name}`}
-        onClick={onFullProfile}
-      >
-        {cachedAvatarUrl ? <img src={cachedAvatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
-      </button>
-      <section className="chat-profile-identity">
-        <h2>{name}</h2>
-        <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
-        <span className={`chat-presence ${profile?.presence ?? fallback?.presence ?? 'offline'}`}>
-          <i /> {presenceLabel(profile?.presence ?? fallback?.presence)}
-        </span>
-      </section>
-      <section className="chat-profile-block">
-        <h3>О СЕБЕ</h3>
-        <p>{profile?.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>
-      </section>
-      <section className="chat-profile-block mutual-friends-block">
-        <h3>ОБЩИЕ ДРУЗЬЯ</h3>
-        <div className="mutual-friend-avatars">
-          {(profile?.mutualFriends ?? []).map((friend) => (
-            <span title={friend.displayName} key={friend.id}>
-              {friend.avatarUrl ? (
-                <CachedMediaImage src={friend.avatarUrl} alt="" />
-              ) : (
-                friend.displayName[0]
-              )}
-            </span>
-          ))}
-        </div>
-        <p>{profile?.mutualFriendsCount ?? 0} общих друзей</p>
-      </section>
-      {profile?.registeredAt && (
-        <footer>
-          В FreeTalk с{' '}
-          {new Date(profile.registeredAt).toLocaleDateString('ru-RU', {
-            month: 'long',
-            year: 'numeric',
-          })}
-        </footer>
-      )}
-      <button type="button" className="chat-profile-full-button" onClick={onFullProfile}>
-        Полный профиль
-      </button>
+      <div className="chat-profile-island">
+        <div
+          className="chat-profile-cover"
+          style={cachedCoverUrl ? { backgroundImage: `url(${cachedCoverUrl})` } : undefined}
+        />
+        <button
+          type="button"
+          className="chat-profile-avatar"
+          aria-label={`Открыть полный профиль ${name}`}
+          onClick={onFullProfile}
+        >
+          {cachedAvatarUrl ? <img src={cachedAvatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
+        </button>
+        <section className="chat-profile-identity">
+          <h2>{name}</h2>
+          <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
+          <span className={`chat-presence ${profile?.presence ?? fallback?.presence ?? 'offline'}`}>
+            <i /> {presenceLabel(profile?.presence ?? fallback?.presence)}
+          </span>
+        </section>
+        <section className="chat-profile-block">
+          <h3>О СЕБЕ</h3>
+          <p>{profile?.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>
+        </section>
+        <section className="chat-profile-block mutual-friends-block">
+          <h3>ОБЩИЕ ДРУЗЬЯ</h3>
+          <div className="mutual-friend-avatars">
+            {(profile?.mutualFriends ?? []).map((friend) => (
+              <span title={friend.displayName} key={friend.id}>
+                {friend.avatarUrl ? (
+                  <CachedMediaImage src={friend.avatarUrl} alt="" />
+                ) : (
+                  friend.displayName[0]
+                )}
+              </span>
+            ))}
+          </div>
+          <p>{profile?.mutualFriendsCount ?? 0} общих друзей</p>
+        </section>
+        {profile?.registeredAt && (
+          <footer>
+            В FreeTalk с{' '}
+            {new Date(profile.registeredAt).toLocaleDateString('ru-RU', {
+              month: 'long',
+              year: 'numeric',
+            })}
+          </footer>
+        )}
+        <button type="button" className="chat-profile-full-button" onClick={onFullProfile}>
+          Полный профиль
+        </button>
+      </div>
     </aside>
   );
 }
@@ -1517,6 +1590,20 @@ function presenceLabel(status: PresenceStatus = 'offline') {
   if (status === 'away') return 'Нет на месте';
   if (status === 'dnd') return 'Не беспокоить';
   return 'Не в сети';
+}
+
+function memberCountLabel(count: number) {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const noun =
+    mod100 >= 11 && mod100 <= 14
+      ? 'участников'
+      : mod10 === 1
+        ? 'участник'
+        : mod10 >= 2 && mod10 <= 4
+          ? 'участника'
+          : 'участников';
+  return `${count} ${noun}`;
 }
 
 const QUICK_MESSAGE_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
@@ -1603,6 +1690,8 @@ export function MessageList({
   onDelete = async () => false,
   onForward = async () => false,
   onReveal = async () => false,
+  searchQuery = '',
+  focusedMessageId,
 }: {
   chatId: string;
   userId: string;
@@ -1627,6 +1716,8 @@ export function MessageList({
   onDelete?(messageId: string): Promise<boolean>;
   onForward?(messageId: string, targetChatId: string): Promise<boolean>;
   onReveal?(messageId: string): Promise<boolean>;
+  searchQuery?: string;
+  focusedMessageId?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1661,6 +1752,14 @@ export function MessageList({
     setEditingMessage(undefined);
     setSelectedIds(new Set());
   }, [chatId]);
+
+  useEffect(() => {
+    if (!focusedMessageId) return;
+    const target = Array.from(
+      contentRef.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [],
+    ).find((entry) => entry.dataset.messageId === focusedMessageId);
+    target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [focusedMessageId]);
 
   useEffect(() => {
     setContextMenu((current) => {
@@ -1902,9 +2001,15 @@ export function MessageList({
               const previous = messages[index - 1];
               const showDate = !previous || !isSameDay(previous.created_at, message.created_at);
               const grouped = isGroupedMessage(previous, message);
+              const searchMatch = Boolean(
+                searchQuery.trim() &&
+                message.body
+                  .toLocaleLowerCase('ru-RU')
+                  .includes(searchQuery.trim().toLocaleLowerCase('ru-RU')),
+              );
               return (
                 <div
-                  className={`message-entry${selectedIds.has(message.id) ? ' selected' : ''}`}
+                  className={`message-entry${selectedIds.has(message.id) ? ' selected' : ''}${searchMatch ? ' search-match' : ''}${message.id === focusedMessageId ? ' search-current' : ''}`}
                   data-message-id={message.id}
                   key={message.id}
                 >

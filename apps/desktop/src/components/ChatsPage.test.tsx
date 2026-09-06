@@ -364,6 +364,34 @@ describe('MessageList rendering', () => {
     expect((placeholder as HTMLElement).style.aspectRatio).toBe('1200 / 800');
     expect(queryByText('Загружаем фотографию…')).toBeNull();
   });
+
+  it('marks loaded message search results and the current result', () => {
+    const { getByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat={false}
+        messages={[
+          message('1', 'friend', 'Первое сообщение'),
+          message('2', 'self', 'Нужный текст'),
+        ]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        searchQuery="нужный"
+        focusedMessageId="2"
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    const result = getByText('Нужный текст').closest('.message-entry');
+    expect(result?.classList.contains('search-match')).toBe(true);
+    expect(result?.classList.contains('search-current')).toBe(true);
+    expect(
+      getByText('Первое сообщение').closest('.message-entry')?.classList.contains('search-match'),
+    ).toBe(false);
+  });
 });
 
 describe('Chat retention controls', () => {
@@ -463,6 +491,17 @@ describe('Chat retention controls', () => {
 
     expect(getByRole('complementary', { name: 'Участники группы' })).toBeTruthy();
     expect(getByText('Участники — 2')).toBeTruthy();
+    const groupSearch = getByRole('textbox', { name: 'Искать в Команда' });
+    expect(groupSearch.getAttribute('placeholder')).toBe('Искать в «Команда»');
+    expect(
+      groupSearch.closest('header')?.parentElement?.classList.contains('messenger-layout'),
+    ).toBe(true);
+    expect(groupSearch.closest('label')?.previousElementSibling?.getAttribute('aria-label')).toBe(
+      'Скрыть профиль',
+    );
+    expect(groupSearch.closest('label')).toBe(
+      groupSearch.closest('.active-chat-actions')?.lastElementChild,
+    );
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     expect(getByRole('dialog', { name: 'Редактировать группу' })).toBeTruthy();
     const titleInput = getByRole('textbox', { name: 'Название группы' }) as HTMLInputElement;
@@ -654,6 +693,13 @@ describe('Resizable chat list', () => {
         onJoinCall={vi.fn()}
       />,
     );
+
+  it('renders the direct profile as a separate island', () => {
+    const { getByRole } = renderPage();
+    const panel = getByRole('complementary', { name: 'Профиль собеседника' });
+
+    expect(panel.firstElementChild?.classList.contains('chat-profile-island')).toBe(true);
+  });
 
   it('shrinks only to the left and restores the saved width', () => {
     const first = renderPage();

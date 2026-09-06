@@ -87,9 +87,10 @@ export function ChatLayoutPreview() {
   const previewFriends = previewParams.has('friends');
   const previewCallFriends = previewParams.has('call-friends');
   const previewIncomingCall = previewParams.has('incoming-call');
+  const previewGroupChat = previewParams.has('group-chat');
   const mobile = useMobileLayout();
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
-    previewParams.has('list') ? undefined : chats[0]!.id,
+    previewParams.has('list') ? undefined : chats[previewGroupChat ? 1 : 0]!.id,
   );
   if (previewParams.has('room-preview')) return <RoomLayoutPreview />;
   return (
