@@ -8,16 +8,19 @@ $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $stagingRoot = Join-Path $outputDirectory "staging-$timestamp"
 $apiStaging = Join-Path $stagingRoot 'api'
 $protocolStaging = Join-Path $apiStaging 'vendor\protocol'
+$configStaging = Join-Path $apiStaging 'vendor\config'
 $apiArtifact = Join-Path $outputDirectory "freetalk-api-$apiVersion-$timestamp.tar.gz"
 $signalingArtifact = Join-Path $outputDirectory "freetalk-signaling-$signalingVersion-$timestamp.mjs"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 New-Item -ItemType Directory -Force -Path $protocolStaging | Out-Null
+New-Item -ItemType Directory -Force -Path $configStaging | Out-Null
 Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\dist') -Destination $apiStaging -Recurse
 Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\migrations') -Destination $apiStaging -Recurse
 
 $apiPackage = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot 'apps\api\package.json') | ConvertFrom-Json
 $apiPackage.dependencies.'@freetalk/protocol' = 'file:./vendor/protocol'
+$apiPackage.dependencies.'@freetalk/config' = 'file:./vendor/config'
 $apiPackageJson = $apiPackage | ConvertTo-Json -Depth 20
 [System.IO.File]::WriteAllText((Join-Path $apiStaging 'package.json'), $apiPackageJson, $utf8NoBom)
 
@@ -32,10 +35,25 @@ $protocolPackage = [ordered]@{
 $protocolPackageJson = $protocolPackage | ConvertTo-Json -Depth 10
 [System.IO.File]::WriteAllText((Join-Path $protocolStaging 'package.json'), $protocolPackageJson, $utf8NoBom)
 
+$configPackage = [ordered]@{
+  name = '@freetalk/config'
+  version = '0.1.0'
+  private = $true
+  type = 'module'
+  exports = './index.js'
+}
+$configPackageJson = $configPackage | ConvertTo-Json -Depth 10
+[System.IO.File]::WriteAllText((Join-Path $configStaging 'package.json'), $configPackageJson, $utf8NoBom)
+
 $protocolEntry = Join-Path $workspaceRoot 'packages\protocol\src\index.ts'
 $protocolOutput = Join-Path $protocolStaging 'index.js'
 & pnpm --filter '@freetalk/signaling' exec esbuild $protocolEntry --bundle --platform=node --format=esm --external:zod "--outfile=$protocolOutput"
 if ($LASTEXITCODE -ne 0) { throw 'Protocol deployment bundle failed' }
+
+$configEntry = Join-Path $workspaceRoot 'packages\config\src\index.ts'
+$configOutput = Join-Path $configStaging 'index.js'
+& pnpm --filter '@freetalk/signaling' exec esbuild $configEntry --bundle --platform=node --format=esm "--outfile=$configOutput"
+if ($LASTEXITCODE -ne 0) { throw 'Config deployment bundle failed' }
 
 & node --check (Join-Path $apiStaging 'dist\server.js')
 if ($LASTEXITCODE -ne 0) { throw 'API server syntax check failed' }

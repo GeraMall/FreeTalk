@@ -19,6 +19,8 @@ test ! -e "$rollback"
 mkdir -p "$stage"
 tar -xzf "$artifact" -C "$stage"
 cp -a "$current/node_modules" "$stage/node_modules"
+mkdir -p "$stage/node_modules/@freetalk"
+ln -sfn ../../vendor/config "$stage/node_modules/@freetalk/config"
 chown -R freetalk:freetalk "$stage"
 /opt/node-v22/bin/node --check "$stage/dist/server.js"
 

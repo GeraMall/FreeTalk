@@ -25,6 +25,7 @@ import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
 import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
+import { API_VERSION } from './app-version.js';
 import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
 import {
   displayNameSchema,
@@ -241,7 +242,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
 
 app.get('/health', async () => {
   await db.query('SELECT 1');
-  return { ok: true, service: 'freetalk-api', version: '0.4.0-beta.22' };
+  return { ok: true, service: 'freetalk-api', version: API_VERSION };
 });
 
 app.post(
