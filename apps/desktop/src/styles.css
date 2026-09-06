@@ -10037,9 +10037,9 @@ html.notification-overlay-document #root {
   overscroll-behavior: contain;
   scrollbar-width: none;
   scroll-behavior: smooth;
-  background-color: #030a15;
+  background-color: #091722;
   background-image:
-    linear-gradient(rgba(3, 10, 21, 0.72), rgba(3, 10, 21, 0.72)), var(--ft-chat-wallpaper, none);
+    linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
   background-position: center;
   background-size: cover;
   background-attachment: local;
@@ -13734,6 +13734,8 @@ textarea::placeholder {
 
 .message-bubble-row,
 html[data-chat-message-style='compact'] .message-bubble-row {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
   align-items: flex-end;
   justify-content: flex-start;
@@ -13742,6 +13744,22 @@ html[data-chat-message-style='compact'] .message-bubble-row {
   padding-inline: 0;
   outline: none;
   animation: freetalk-message-arrive 190ms var(--ft-ease) both;
+}
+
+.message-bubble-row::before {
+  position: absolute;
+  z-index: -1;
+  inset: -4px calc(-1 * var(--message-inline-padding));
+  border-radius: 7px;
+  background: rgba(126, 151, 171, 0.09);
+  content: '';
+  opacity: 0;
+  transition: opacity 115ms var(--ft-ease);
+}
+
+.message-bubble-row:hover::before,
+.message-bubble-row:focus-within::before {
+  opacity: 1;
 }
 
 .message-bubble-row.grouped,
@@ -13777,7 +13795,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 }
 
 .message-bubble-stack {
-  position: relative;
+  position: static;
   min-width: 0;
   max-width: min(74%, 680px);
   display: flex;
@@ -13788,8 +13806,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 .message-hover-actions {
   position: absolute;
   z-index: 24;
-  top: -31px;
-  left: 0;
+  top: -10px;
+  right: 4px;
+  left: auto;
   min-height: 31px;
   display: flex;
   align-items: center;
@@ -13802,16 +13821,16 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
   opacity: 0;
   pointer-events: none;
   transform: translateY(5px) scale(0.97);
-  transform-origin: bottom left;
+  transform-origin: bottom right;
   transition:
     opacity 115ms var(--ft-ease),
     transform 150ms var(--ft-ease);
 }
 
 .message-bubble-row.own .message-hover-actions {
-  right: 0;
-  left: auto;
-  transform-origin: bottom right;
+  right: auto;
+  left: 4px;
+  transform-origin: bottom left;
 }
 
 .message-bubble-row:hover .message-hover-actions,
