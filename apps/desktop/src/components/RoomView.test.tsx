@@ -432,7 +432,7 @@ describe('RoomView media layouts', () => {
 
   it('opens the shared screen in the full-screen viewer', () => {
     const onScreenFocusChange = vi.fn();
-    const { getByRole } = render(
+    const { container, getByRole } = render(
       view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
         onScreenFocusChange,
       }),
@@ -441,6 +441,12 @@ describe('RoomView media layouts', () => {
     expect(getByRole('dialog', { name: 'Демонстрация экрана Друг' })).toBeTruthy();
     expect(getByRole('button', { name: 'Открыть в полноэкранном режиме' })).toBeTruthy();
     expect(onScreenFocusChange).not.toHaveBeenCalled();
+    const room = container.querySelector('.room-shell');
+    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(false);
+    fireEvent(window, new MouseEvent('pointermove', { clientY: window.innerHeight - 1 }));
+    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(true);
+    fireEvent(window, new MouseEvent('pointermove', { clientY: 0 }));
+    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(false);
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

@@ -175,6 +175,7 @@ export function RoomView({
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
+  const [screenViewerControlsVisible, setScreenViewerControlsVisible] = useState(false);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
@@ -227,6 +228,18 @@ export function RoomView({
   useEffect(() => {
     if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
   }, [expandedMedia, expandedParticipant, expandedStream]);
+
+  useEffect(() => {
+    if (expandedMedia?.type !== 'screen') return;
+    const revealDockNearBottom = (event: PointerEvent) => {
+      const overDock =
+        event.target instanceof Element && Boolean(event.target.closest('.voice-dock'));
+      const visible = overDock || event.clientY >= window.innerHeight - 140;
+      setScreenViewerControlsVisible((current) => (current === visible ? current : visible));
+    };
+    window.addEventListener('pointermove', revealDockNearBottom);
+    return () => window.removeEventListener('pointermove', revealDockNearBottom);
+  }, [expandedMedia]);
 
   useEffect(() => {
     chatOpenRef.current = chatOpen;
@@ -424,7 +437,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${expandedMedia?.type === 'screen' ? 'screen-viewer-open' : ''} ${screenViewerControlsVisible ? 'screen-viewer-controls-visible' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
@@ -551,9 +564,10 @@ export function RoomView({
                       className="screen-stage-expand"
                       aria-label={`Раскрыть демонстрацию экрана ${screenPresenter.name}`}
                       title="Развернуть демонстрацию"
-                      onClick={() =>
-                        setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
-                      }
+                      onClick={() => {
+                        setScreenViewerControlsVisible(false);
+                        setExpandedMedia({ type: 'screen', participantId: screenPresenter.id });
+                      }}
                     >
                       <Maximize2 size={16} />
                     </button>
@@ -655,7 +669,10 @@ export function RoomView({
               ? localSpeaking
               : Boolean(peerState[expandedParticipant.id]?.speaking)
           }
-          onClose={() => setExpandedMedia(undefined)}
+          onClose={() => {
+            setScreenViewerControlsVisible(false);
+            setExpandedMedia(undefined);
+          }}
         />
       )}
 
