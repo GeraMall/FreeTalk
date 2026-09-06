@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowLeft,
   AudioLines,
@@ -426,8 +426,8 @@ function deviceCountWord(count: number) {
   return 'устройств';
 }
 
-function sessionDeviceName(userAgent: string) {
-  const platform = /Windows/i.test(userAgent)
+function sessionDevicePlatform(userAgent: string) {
+  return /Windows/i.test(userAgent)
     ? 'Windows'
     : /Macintosh|Mac OS/i.test(userAgent)
       ? 'macOS'
@@ -438,8 +438,32 @@ function sessionDeviceName(userAgent: string) {
           : /Linux/i.test(userAgent)
             ? 'Linux'
             : 'Неизвестное устройство';
-  const client = /FreeTalk/i.test(userAgent) ? 'FreeTalk' : 'FreeTalk Web';
-  return `${client} · ${platform}`;
+}
+
+function sessionDeviceName(userAgent: string, current = false) {
+  const nativeCurrent = current && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  const client = /FreeTalk/i.test(userAgent) || nativeCurrent ? 'FreeTalk' : 'FreeTalk Web';
+  return `${client} · ${sessionDevicePlatform(userAgent)}`;
+}
+
+function uniqueDeviceSessions(sessions: AccountSession[]) {
+  const devices = new Map<string, AccountSession>();
+  for (const session of sessions) {
+    const key = sessionDevicePlatform(session.userAgent).toLocaleLowerCase('ru-RU');
+    const current = devices.get(key);
+    if (
+      !current ||
+      session.current ||
+      (!current.current &&
+        new Date(session.lastActiveAt).getTime() > new Date(current.lastActiveAt).getTime())
+    ) {
+      devices.set(key, session);
+    }
+  }
+  return [...devices.values()].sort((first, second) => {
+    if (first.current !== second.current) return first.current ? -1 : 1;
+    return new Date(second.lastActiveAt).getTime() - new Date(first.lastActiveAt).getTime();
+  });
 }
 
 function ProfileTab({
@@ -486,6 +510,7 @@ function ProfileTab({
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState(false);
+  const connectedDevices = useMemo(() => uniqueDeviceSessions(sessions), [sessions]);
   const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
   const usernameValid = isValidUsername(draftUsername);
   const changed =
@@ -742,23 +767,23 @@ function ProfileTab({
                     ? 'Проверяем активные сеансы…'
                     : sessionsError
                       ? 'Не удалось получить список'
-                      : `${sessions.length} ${deviceCountWord(sessions.length)}`}
+                      : `${connectedDevices.length} ${deviceCountWord(connectedDevices.length)}`}
                 </small>
               </span>
-              {!sessionsLoading && !sessionsError && <b>{sessions.length}</b>}
+              {!sessionsLoading && !sessionsError && <b>{connectedDevices.length}</b>}
               <ChevronDown className="connected-devices-chevron" />
             </summary>
             <div className="connected-device-list">
               {sessionsError ? (
                 <p>Не удалось загрузить информацию об устройствах.</p>
-              ) : sessions.length === 0 && !sessionsLoading ? (
+              ) : connectedDevices.length === 0 && !sessionsLoading ? (
                 <p>Активных устройств нет.</p>
               ) : (
-                sessions.map((session) => (
+                connectedDevices.map((session) => (
                   <article key={session.id}>
                     <Laptop />
                     <span>
-                      <strong>{sessionDeviceName(session.userAgent)}</strong>
+                      <strong>{sessionDeviceName(session.userAgent, session.current)}</strong>
                       <small>
                         Активность: {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
                       </small>
