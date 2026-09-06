@@ -2067,6 +2067,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   grid-auto-columns: minmax(240px, 280px);
   grid-auto-flow: column;
   grid-auto-rows: 132px;
+  justify-content: safe center;
   gap: 10px;
   height: 132px;
   min-height: 0;
@@ -6357,6 +6358,7 @@ input[type='range']:hover::-webkit-slider-thumb {
     grid-auto-columns: minmax(140px, 42vw);
     grid-auto-flow: column;
     grid-auto-rows: 132px;
+    justify-content: start;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-inline: contain;
