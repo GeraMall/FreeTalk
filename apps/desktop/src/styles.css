@@ -13758,7 +13758,8 @@ html[data-chat-message-style='compact'] .message-bubble-row {
 }
 
 .message-bubble-row:hover::before,
-.message-bubble-row:focus-within::before {
+.message-bubble-row:focus-visible::before,
+.message-bubble-row:has(.message-hover-actions button:focus-visible)::before {
   opacity: 1;
 }
 
@@ -13834,7 +13835,8 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 }
 
 .message-bubble-row:hover .message-hover-actions,
-.message-bubble-row:focus-within .message-hover-actions {
+.message-bubble-row:focus-visible .message-hover-actions,
+.message-bubble-row:has(.message-hover-actions button:focus-visible) .message-hover-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
