@@ -428,7 +428,12 @@ export function RoomView({
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
-          <span aria-hidden="true" />
+          <div className="room-header-participants">
+            <strong>Участники</strong>
+            <small>
+              {participants.length} из {ROOM_MAX_PARTICIPANTS}
+            </small>
+          </div>
         ) : (
           <div className="room-wordmark">
             <BrandLogo variant="compact" />
@@ -503,12 +508,14 @@ export function RoomView({
       <div className="room-body-layout">
         <section className={`room-main room-mode-${roomMode}`}>
           <div className="participants-heading">
-            <div>
-              <h1>Участники</h1>
-              <p>
-                {participants.length} из {ROOM_MAX_PARTICIPANTS}
-              </p>
-            </div>
+            {!embedded && (
+              <div>
+                <h1>Участники</h1>
+                <p>
+                  {participants.length} из {ROOM_MAX_PARTICIPANTS}
+                </p>
+              </div>
+            )}
             <span className="room-session-meta">
               <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
                 <i /> {elapsed}
@@ -526,23 +533,11 @@ export function RoomView({
 
           {screenPresenter ? (
             <div className="presentation-layout">
-              <article
-                className="screen-stage media-surface"
+              <div
+                className="screen-stage-shell"
                 style={{ '--screen-aspect-ratio': screenAspectRatio } as CSSProperties}
               >
-                <ParticipantVideo
-                  stream={participantMedia(screenPresenter).screen!}
-                  source="screen"
-                  name={screenPresenter.name}
-                  muted
-                  volume={0}
-                  outputDeviceId={settings.outputDeviceId}
-                  onAspectRatioChange={updateScreenAspectRatio}
-                  onExpand={() =>
-                    setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
-                  }
-                />
-                <div className="screen-stage-top">
+                <div className="screen-stage-toolbar">
                   <span className="screen-stage-title">
                     <MonitorUp size={15} />
                     <span>
@@ -550,29 +545,56 @@ export function RoomView({
                       <small>Демонстрация экрана</small>
                     </span>
                   </span>
-                  {screenPresenter.isOwner && <CreatorBadge compact />}
-                </div>
-                {screenPresenter.id !== selfId && (
-                  <label className="screen-stage-volume">
-                    <Volume2 size={15} aria-hidden="true" />
-                    <span>Звук демонстрации</span>
-                    <input
-                      aria-label={`Громкость демонстрации ${screenPresenter.name}`}
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={settings.screenVolumes[screenPresenter.id] ?? 1}
-                      onChange={(event) =>
-                        onScreenVolume(screenPresenter.id, Number(event.target.value))
+                  <span className="screen-stage-toolbar-actions">
+                    {screenPresenter.isOwner && <CreatorBadge compact />}
+                    <button
+                      className="screen-stage-expand"
+                      aria-label={`Раскрыть демонстрацию экрана ${screenPresenter.name}`}
+                      title="Развернуть демонстрацию"
+                      onClick={() =>
+                        setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
                       }
-                    />
-                    <output>
-                      {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
-                    </output>
-                  </label>
-                )}
-              </article>
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </span>
+                </div>
+                <article className="screen-stage media-surface">
+                  <ParticipantVideo
+                    stream={participantMedia(screenPresenter).screen!}
+                    source="screen"
+                    name={screenPresenter.name}
+                    muted
+                    volume={0}
+                    outputDeviceId={settings.outputDeviceId}
+                    showExpand={false}
+                    onAspectRatioChange={updateScreenAspectRatio}
+                    onExpand={() =>
+                      setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
+                    }
+                  />
+                  {screenPresenter.id !== selfId && (
+                    <label className="screen-stage-volume">
+                      <Volume2 size={15} aria-hidden="true" />
+                      <span>Звук демонстрации</span>
+                      <input
+                        aria-label={`Громкость демонстрации ${screenPresenter.name}`}
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={settings.screenVolumes[screenPresenter.id] ?? 1}
+                        onChange={(event) =>
+                          onScreenVolume(screenPresenter.id, Number(event.target.value))
+                        }
+                      />
+                      <output>
+                        {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
+                      </output>
+                    </label>
+                  )}
+                </article>
+              </div>
               <div className="participant-strip" role="list" aria-label="Участники комнаты">
                 {ordered.map((participant) => renderParticipant(participant, true))}
                 {openSlots > 0 && (
@@ -1245,6 +1267,7 @@ function ParticipantVideo({
   volume,
   outputDeviceId,
   expanded = false,
+  showExpand = true,
   onAspectRatioChange,
   onExpand,
 }: {
@@ -1256,6 +1279,7 @@ function ParticipantVideo({
   volume: number;
   outputDeviceId: string;
   expanded?: boolean;
+  showExpand?: boolean;
   onAspectRatioChange?(aspectRatio: number): void;
   onExpand(): void;
 }) {
@@ -1298,21 +1322,23 @@ function ParticipantVideo({
             onAspectRatioChange?.(video.videoWidth / video.videoHeight);
         }}
       />
-      <button
-        className="video-fullscreen"
-        aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
-        aria-pressed={expanded}
-        title={
-          source === 'screen'
-            ? expanded
-              ? 'Вернуть обычный вид'
-              : 'Развернуть демонстрацию'
-            : 'Развернуть камеру'
-        }
-        onClick={onExpand}
-      >
-        {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </button>
+      {showExpand && (
+        <button
+          className="video-fullscreen"
+          aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
+          aria-pressed={expanded}
+          title={
+            source === 'screen'
+              ? expanded
+                ? 'Вернуть обычный вид'
+                : 'Развернуть демонстрацию'
+              : 'Развернуть камеру'
+          }
+          onClick={onExpand}
+        >
+          {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
+      )}
     </div>
   );
 }
