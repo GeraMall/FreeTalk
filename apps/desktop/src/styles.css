@@ -10814,7 +10814,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   justify-content: flex-end;
   gap: 12px;
   padding: 24px;
-  background: #010811;
+  background-color: #091722;
+  background-image:
+    linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
+  background-position: center;
+  background-size: cover;
 }
 .message-skeleton i {
   --bubble-width: 50%;
@@ -11437,7 +11441,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   scrollbar-color: rgba(148, 157, 172, 0.68) transparent;
   scrollbar-width: thin;
   border-left: 1px solid rgba(89, 190, 249, 0.11);
-  background: #010811;
+  background: #091722;
 }
 .chat-profile-panel::-webkit-scrollbar {
   display: block;
