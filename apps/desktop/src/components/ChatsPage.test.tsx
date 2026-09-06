@@ -115,6 +115,17 @@ describe('MessageList scrolling', () => {
     expect(getByRole('status').textContent).toContain('Вы просматриваете старые сообщения');
   });
 
+  it('waits until the reader is farther from the end before showing the old-message notice', () => {
+    const { container, queryByRole } = render(
+      view('chat-a', [message('1', 'friend'), message('2', 'self')]),
+    );
+    const scroller = container.querySelector<HTMLElement>('.message-scroll-container')!;
+    scroller.scrollTop = 260;
+    fireEvent.scroll(scroller);
+
+    expect(queryByRole('status')).toBeNull();
+  });
+
   it('scrolls down after sending a local message even when the user was above the end', () => {
     const initial = [message('1', 'friend')];
     const { container, rerender } = render(view('chat-a', initial));
@@ -516,6 +527,10 @@ describe('Chat retention controls', () => {
     expect(groupSearch.closest('label')).toBe(
       groupSearch.closest('.active-chat-actions')?.lastElementChild,
     );
+    fireEvent.click(getByRole('button', { name: 'Открыть профиль Алексей' }));
+    expect(getByRole('dialog', { name: 'Профиль Алексей' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Закрыть профиль' }));
+
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     expect(getByRole('dialog', { name: 'Редактировать группу' })).toBeTruthy();
     const titleInput = getByRole('textbox', { name: 'Название группы' }) as HTMLInputElement;

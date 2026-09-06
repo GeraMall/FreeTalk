@@ -68,6 +68,7 @@ const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
 const CHAT_SIDEBAR_MIN_WIDTH = 190;
 const MOBILE_CHAT_HISTORY_KEY = 'freetalkMobileChatId';
 const RECENT_MESSAGE_REACTIONS_KEY = 'freetalkRecentMessageReactions';
+const OLD_MESSAGES_NOTICE_THRESHOLD = 260;
 
 function defaultChatSidebarWidth() {
   if (typeof window === 'undefined') return 330;
@@ -328,6 +329,7 @@ export function ChatsPage({
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
+  const [groupProfileTarget, setGroupProfileTarget] = useState<ChatMember>();
   const [slowModeClock, setSlowModeClock] = useState(() => Date.now());
   const [dismissedSlowModeUntil, setDismissedSlowModeUntil] = useState(0);
   const [chatSidebarWidth, setChatSidebarWidth] = useState<number | undefined>(
@@ -461,6 +463,7 @@ export function ChatsPage({
     activeChat?.type === 'direct'
       ? activeChat.members.find((member) => member.id !== userId)
       : undefined;
+  const fullProfileTarget = groupProfileTarget ?? profileTarget;
   const profileTargetId = profileTarget?.id;
   useEffect(() => {
     setConfirmClear(false);
@@ -468,6 +471,7 @@ export function ChatsPage({
     setShowChatSettings(false);
     setShowGroupAvatarEditor(false);
     setReplyTarget(undefined);
+    setGroupProfileTarget(undefined);
     setConfirmAction(undefined);
     setConfirmActionError('');
     setFullProfileOpen(false);
@@ -850,6 +854,10 @@ export function ChatsPage({
           members={activeChat.members}
           onInvite={() => setShowMember(true)}
           onFullProfile={() => setFullProfileOpen(true)}
+          onMemberProfile={(member) => {
+            setGroupProfileTarget(member);
+            setFullProfileOpen(true);
+          }}
         />
       )}
       {activeChat && confirmAction ? (
@@ -918,33 +926,44 @@ export function ChatsPage({
       <UserProfileDialog
         viewerId={userId}
         target={
-          fullProfileOpen && profileTarget
+          fullProfileOpen && fullProfileTarget
             ? ({
-                id: profileTarget.id,
-                displayName: profileTarget.displayName,
-                username: profileTarget.username,
-                avatarUrl: profileTarget.avatarUrl,
-                presence: profileTarget.presence,
+                id: fullProfileTarget.id,
+                displayName: fullProfileTarget.displayName,
+                username: fullProfileTarget.username,
+                avatarUrl: fullProfileTarget.avatarUrl,
+                presence: fullProfileTarget.presence,
               } satisfies UserProfileTarget)
             : undefined
         }
-        initialProfile={profile}
+        initialProfile={groupProfileTarget ? undefined : profile}
         actions={{
-          onMessage: () => setFullProfileOpen(false),
-          onCall: async () => {
+          onMessage: () => {
             setFullProfileOpen(false);
-            await onStartCall();
+            setGroupProfileTarget(undefined);
           },
+          onCall: groupProfileTarget
+            ? undefined
+            : async () => {
+                setFullProfileOpen(false);
+                await onStartCall();
+              },
           onOpenChat: async (chatId) => {
             setFullProfileOpen(false);
+            setGroupProfileTarget(undefined);
             await onOpenChat(chatId);
           },
-          onBlock: () => {
-            setFullProfileOpen(false);
-            setConfirmAction('block-direct');
-          },
+          onBlock: groupProfileTarget
+            ? undefined
+            : () => {
+                setFullProfileOpen(false);
+                setConfirmAction('block-direct');
+              },
         }}
-        onClose={() => setFullProfileOpen(false)}
+        onClose={() => {
+          setFullProfileOpen(false);
+          setGroupProfileTarget(undefined);
+        }}
       />
     </div>
   );
@@ -1476,6 +1495,7 @@ function ProfilePanel({
   members,
   onInvite,
   onFullProfile,
+  onMemberProfile,
 }: {
   profile?: ChatProfile;
   loading: boolean;
@@ -1484,6 +1504,7 @@ function ProfilePanel({
   members: ChatMember[];
   onInvite(): void;
   onFullProfile(): void;
+  onMemberProfile(member: ChatMember): void;
 }) {
   const avatarUrl = profile?.avatarUrl ?? fallback?.avatarUrl;
   const cachedAvatarUrl = useCachedMediaUrl(avatarUrl);
@@ -1501,13 +1522,20 @@ function ProfilePanel({
             )
             .map((member) => (
               <div className="group-member-row" key={member.id}>
-                <ChatAvatar
-                  name={member.displayName}
-                  group={false}
-                  avatarUrl={member.avatarUrl}
-                  presence={member.presence}
-                  compact
-                />
+                <button
+                  type="button"
+                  className="group-member-profile"
+                  aria-label={`Открыть профиль ${member.displayName}`}
+                  onClick={() => onMemberProfile(member)}
+                >
+                  <ChatAvatar
+                    name={member.displayName}
+                    group={false}
+                    avatarUrl={member.avatarUrl}
+                    presence={member.presence}
+                    compact
+                  />
+                </button>
                 <span>
                   <strong>{member.displayName}</strong>
                   <small>{presenceLabel(member.presence)}</small>
@@ -1934,7 +1962,7 @@ export function MessageList({
     const container = scrollRef.current;
     if (!container) return;
     if (contextMenu) setContextMenu(undefined);
-    const nearBottom = isNearBottom(container);
+    const nearBottom = isNearBottom(container, OLD_MESSAGES_NOTICE_THRESHOLD);
     nearBottomRef.current = nearBottom;
     setViewingOlderMessages(!nearBottom && messages.length > 0);
     if (nearBottom && newMessageCount) setNewMessageCount(0);
