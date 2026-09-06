@@ -35,6 +35,7 @@ import {
   ImagePlus,
   SlidersHorizontal,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
@@ -175,11 +176,13 @@ export function RoomView({
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
-  const [screenViewerControlsVisible, setScreenViewerControlsVisible] = useState(false);
+  const [fullscreenChromeVisible, setFullscreenChromeVisible] = useState(true);
+  const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
   const roomShellRef = useRef<HTMLElement>(null);
+  const fullscreenChromeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
   const chatOpenRef = useRef(chatOpen);
@@ -230,16 +233,25 @@ export function RoomView({
   }, [expandedMedia, expandedParticipant, expandedStream]);
 
   useEffect(() => {
-    if (expandedMedia?.type !== 'screen') return;
-    const revealDockNearBottom = (event: PointerEvent) => {
-      const overDock =
-        event.target instanceof Element && Boolean(event.target.closest('.voice-dock'));
-      const visible = overDock || event.clientY >= window.innerHeight - 140;
-      setScreenViewerControlsVisible((current) => (current === visible ? current : visible));
+    if (!callFullscreen) {
+      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
+      setFullscreenChromeVisible(true);
+      return;
+    }
+
+    const revealChrome = () => {
+      setFullscreenChromeVisible(true);
+      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
+      fullscreenChromeTimer.current = setTimeout(() => setFullscreenChromeVisible(false), 2200);
     };
-    window.addEventListener('pointermove', revealDockNearBottom);
-    return () => window.removeEventListener('pointermove', revealDockNearBottom);
-  }, [expandedMedia]);
+
+    revealChrome();
+    window.addEventListener('pointermove', revealChrome, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', revealChrome);
+      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
+    };
+  }, [callFullscreen]);
 
   useEffect(() => {
     chatOpenRef.current = chatOpen;
@@ -437,7 +449,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${expandedMedia?.type === 'screen' ? 'screen-viewer-open' : ''} ${screenViewerControlsVisible ? 'screen-viewer-controls-visible' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${fullscreenChromeVisible ? 'fullscreen-chrome-visible' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
@@ -529,19 +541,21 @@ export function RoomView({
                 </p>
               </div>
             )}
-            <span className="room-session-meta">
-              <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-                <i /> {elapsed}
+            {!screenPresenter && (
+              <span className="room-session-meta">
+                <span
+                  className="room-security"
+                  title={
+                    turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
+                  }
+                >
+                  <ShieldCheck size={14} /> Приватное соединение
+                </span>
+                <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+                  <i /> {elapsed}
+                </span>
               </span>
-              <span
-                className="room-security"
-                title={
-                  turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
-                }
-              >
-                <ShieldCheck size={14} /> Приватное соединение
-              </span>
-            </span>
+            )}
           </div>
 
           {screenPresenter ? (
@@ -561,17 +575,7 @@ export function RoomView({
                   <span className="screen-stage-creator">
                     {screenPresenter.isOwner && <CreatorBadge compact />}
                   </span>
-                  <button
-                    className="screen-stage-expand"
-                    aria-label={`Раскрыть демонстрацию экрана ${screenPresenter.name}`}
-                    title="Развернуть демонстрацию"
-                    onClick={() => {
-                      setScreenViewerControlsVisible(false);
-                      setExpandedMedia({ type: 'screen', participantId: screenPresenter.id });
-                    }}
-                  >
-                    <Maximize2 size={16} />
-                  </button>
+                  <span aria-hidden="true" />
                 </div>
                 <article className="screen-stage media-surface">
                   <ParticipantVideo
@@ -583,9 +587,6 @@ export function RoomView({
                     outputDeviceId={settings.outputDeviceId}
                     showExpand={false}
                     onAspectRatioChange={updateScreenAspectRatio}
-                    onExpand={() =>
-                      setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
-                    }
                   />
                   {screenPresenter.id !== selfId && (
                     <label className="screen-stage-volume">
@@ -609,15 +610,55 @@ export function RoomView({
                   )}
                 </article>
               </div>
-              <div className="participant-strip" role="list" aria-label="Участники комнаты">
-                {ordered.map((participant) => renderParticipant(participant, true))}
-                {openSlots > 0 && (
-                  <InviteCallout
-                    compact
-                    openSlots={openSlots}
-                    onOpen={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
-                  />
-                )}
+              <div
+                className={`presentation-participants ${presentationParticipantsVisible ? 'visible' : 'collapsed'}`}
+              >
+                <div className="presentation-participants-bar">
+                  <button
+                    className="presentation-participants-toggle"
+                    aria-expanded={presentationParticipantsVisible}
+                    aria-label={
+                      presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
+                    }
+                    title={
+                      presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
+                    }
+                    onClick={() => setPresentationParticipantsVisible((visible) => !visible)}
+                  >
+                    <Users size={16} />
+                    <span>Участники · {participants.length}</span>
+                    {presentationParticipantsVisible ? (
+                      <ChevronUp size={15} />
+                    ) : (
+                      <ChevronDown size={15} />
+                    )}
+                  </button>
+                  <span className="room-session-meta presentation-session-meta">
+                    <span
+                      className="room-security"
+                      title={
+                        turnAvailable
+                          ? 'WebRTC с резервным TURN-маршрутом'
+                          : 'Прямое WebRTC-соединение'
+                      }
+                    >
+                      <ShieldCheck size={14} /> Приватное соединение
+                    </span>
+                    <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+                      <i /> {elapsed}
+                    </span>
+                  </span>
+                </div>
+                <div className="participant-strip" role="list" aria-label="Участники комнаты">
+                  {ordered.map((participant) => renderParticipant(participant, true))}
+                  {openSlots > 0 && (
+                    <InviteCallout
+                      compact
+                      openSlots={openSlots}
+                      onOpen={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -670,7 +711,6 @@ export function RoomView({
               : Boolean(peerState[expandedParticipant.id]?.speaking)
           }
           onClose={() => {
-            setScreenViewerControlsVisible(false);
             setExpandedMedia(undefined);
           }}
         />
@@ -1298,7 +1338,7 @@ function ParticipantVideo({
   expanded?: boolean;
   showExpand?: boolean;
   onAspectRatioChange?(aspectRatio: number): void;
-  onExpand(): void;
+  onExpand?(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
@@ -1339,7 +1379,7 @@ function ParticipantVideo({
             onAspectRatioChange?.(video.videoWidth / video.videoHeight);
         }}
       />
-      {showExpand && (
+      {showExpand && onExpand && (
         <button
           className="video-fullscreen"
           aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}

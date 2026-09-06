@@ -430,23 +430,22 @@ describe('RoomView media layouts', () => {
     expect(queryByText('1')).toBeNull();
   });
 
-  it('opens the shared screen in the full-screen viewer', () => {
+  it('keeps screen sharing on the stage and lets the participant strip collapse', () => {
     const onScreenFocusChange = vi.fn();
-    const { container, getByRole } = render(
+    const { container, getByRole, queryByRole } = render(
       view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
         onScreenFocusChange,
       }),
     );
-    fireEvent.click(getByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' }));
-    expect(getByRole('dialog', { name: 'Демонстрация экрана Друг' })).toBeTruthy();
-    expect(getByRole('button', { name: 'Открыть в полноэкранном режиме' })).toBeTruthy();
+    expect(queryByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' })).toBeNull();
+    expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Скрыть участников' }));
+    expect(container.querySelector('.presentation-participants.collapsed')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Показать участников' }));
+    expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
+    expect(container.querySelector('.presentation-session-meta .room-security')).not.toBeNull();
+    expect(container.querySelector('.presentation-session-meta .call-timer')).not.toBeNull();
     expect(onScreenFocusChange).not.toHaveBeenCalled();
-    const room = container.querySelector('.room-shell');
-    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(false);
-    fireEvent(window, new MouseEvent('pointermove', { clientY: window.innerHeight - 1 }));
-    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(true);
-    fireEvent(window, new MouseEvent('pointermove', { clientY: 0 }));
-    expect(room?.classList.contains('screen-viewer-controls-visible')).toBe(false);
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {
