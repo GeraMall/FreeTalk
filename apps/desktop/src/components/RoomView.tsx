@@ -40,7 +40,7 @@ import {
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
-import { leaveWindowFullscreen, toggleMediaFullscreen } from '../lib/fullscreen';
+import { toggleMediaFullscreen } from '../lib/fullscreen';
 import { BrandLogo } from './BrandLogo';
 import { RoomChatPanel } from './RoomChatPanel';
 import { CachedMediaImage } from './CachedMedia';
@@ -61,11 +61,6 @@ export type PeerUiState = Record<
 >;
 
 export type RemoteVideoUiState = Record<string, { camera?: MediaStream; screen?: MediaStream }>;
-
-interface ExpandedMedia {
-  type: VideoMediaSource;
-  participantId: string;
-}
 
 const SCREEN_STAGE_BOTTOM_GAP = 10;
 
@@ -168,7 +163,6 @@ export function RoomView({
   onModerationMute,
 }: RoomViewProps) {
   const [menuFor, setMenuFor] = useState<string>();
-  const [expandedMedia, setExpandedMedia] = useState<ExpandedMedia>();
   const [presentedScreenId, setPresentedScreenId] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -178,6 +172,7 @@ export function RoomView({
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [screenStageFullscreen, setScreenStageFullscreen] = useState(false);
+  const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
   const [callControlsVisible, setCallControlsVisible] = useState(false);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
@@ -226,14 +221,6 @@ export function RoomView({
   );
   const hasCamera = ordered.some((participant) => Boolean(participantMedia(participant).camera));
   const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
-  const expandedParticipant = expandedMedia
-    ? participants.find((participant) => participant.id === expandedMedia.participantId)
-    : undefined;
-  const expandedStream =
-    expandedParticipant && expandedMedia
-      ? participantMedia(expandedParticipant)[expandedMedia.type]
-      : undefined;
-
   const revealCallControls = useCallback(() => {
     setCallControlsVisible(true);
     if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
@@ -246,10 +233,6 @@ export function RoomView({
     },
     [],
   );
-
-  useEffect(() => {
-    if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
-  }, [expandedMedia, expandedParticipant, expandedStream]);
 
   useEffect(() => {
     chatOpenRef.current = chatOpen;
@@ -324,8 +307,14 @@ export function RoomView({
 
   useEffect(() => {
     const sync = () => {
-      setCallFullscreen(document.fullscreenElement === roomShellRef.current);
-      setScreenStageFullscreen(document.fullscreenElement === screenStageRef.current);
+      const fullscreenElement = document.fullscreenElement;
+      setCallFullscreen(fullscreenElement === roomShellRef.current);
+      setScreenStageFullscreen(fullscreenElement === screenStageRef.current);
+      setFullscreenCameraId(
+        fullscreenElement instanceof HTMLElement
+          ? fullscreenElement.dataset.cameraParticipantId
+          : undefined,
+      );
     };
     document.addEventListener('fullscreenchange', sync);
     return () => document.removeEventListener('fullscreenchange', sync);
@@ -362,6 +351,11 @@ export function RoomView({
     if (!screenStageRef.current) return;
     const mode = await toggleMediaFullscreen(screenStageRef.current).catch(() => 'none' as const);
     setScreenStageFullscreen(mode !== 'none');
+  };
+
+  const toggleCameraFullscreen = async (participantId: string, element: HTMLElement) => {
+    const mode = await toggleMediaFullscreen(element).catch(() => 'none' as const);
+    setFullscreenCameraId(mode === 'none' ? undefined : participantId);
   };
 
   const toggleCallPopout = async () => {
@@ -401,9 +395,16 @@ export function RoomView({
 
     return (
       <article
-        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? 'camera-tile media-surface' : 'audio-tile'} ${!isSelf || canModerate ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? `camera-tile media-surface ${fullscreenCameraId === participant.id ? 'camera-tile-window-fullscreen' : ''}` : 'audio-tile'} ${!showCamera && (!isSelf || canModerate) ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        data-camera-participant-id={showCamera ? participant.id : undefined}
         role="listitem"
         key={participant.id}
+        onClick={(event) => {
+          if (!showCamera) return;
+          const target = event.target;
+          if (target instanceof Element && target.closest('button, input, label')) return;
+          void toggleCameraFullscreen(participant.id, event.currentTarget);
+        }}
       >
         {showCamera && (
           <ParticipantVideo
@@ -414,7 +415,7 @@ export function RoomView({
             muted
             volume={0}
             outputDeviceId={settings.outputDeviceId}
-            onExpand={() => setExpandedMedia({ type: 'camera', participantId: participant.id })}
+            showExpand={false}
           />
         )}
         {compact && media.screen && participant.id !== screenPresenter?.id && (
@@ -429,19 +430,21 @@ export function RoomView({
 
         <div className="participant-card-top media-overlay-top">
           {participant.isOwner ? <CreatorBadge compact={showCamera || compact} /> : <span />}
-          <ParticipantActions
-            participant={participant}
-            isSelf={isSelf}
-            canModerate={canModerate}
-            locallyMuted={locallyMuted}
-            open={menuFor === participant.id}
-            onToggle={() =>
-              setMenuFor((old) => (old === participant.id ? undefined : participant.id))
-            }
-            onClose={() => setMenuFor(undefined)}
-            onPeerMute={onPeerMute}
-            onModerationMute={onModerationMute}
-          />
+          {!showCamera && (
+            <ParticipantActions
+              participant={participant}
+              isSelf={isSelf}
+              canModerate={canModerate}
+              locallyMuted={locallyMuted}
+              open={menuFor === participant.id}
+              onToggle={() =>
+                setMenuFor((old) => (old === participant.id ? undefined : participant.id))
+              }
+              onClose={() => setMenuFor(undefined)}
+              onPeerMute={onPeerMute}
+              onModerationMute={onModerationMute}
+            />
+          )}
         </div>
 
         {!showCamera && (
@@ -750,23 +753,6 @@ export function RoomView({
           />
         )}
       </div>
-
-      {expandedMedia && expandedParticipant && expandedStream && (
-        <ExpandedMediaView
-          type={expandedMedia.type}
-          stream={expandedStream}
-          participantName={expandedParticipant.name}
-          mirrored={expandedMedia.type === 'camera'}
-          speaking={
-            expandedParticipant.id === selfId
-              ? localSpeaking
-              : Boolean(peerState[expandedParticipant.id]?.speaking)
-          }
-          onClose={() => {
-            setExpandedMedia(undefined);
-          }}
-        />
-      )}
 
       <div className="reaction-burst-layer" aria-live="polite">
         {reactions.map((item) => {
@@ -1449,126 +1435,6 @@ function ParticipantVideo({
         </button>
       )}
     </div>
-  );
-}
-
-function ExpandedMediaView({
-  type,
-  stream,
-  participantName,
-  mirrored,
-  speaking,
-  onClose,
-}: {
-  type: VideoMediaSource;
-  stream: MediaStream;
-  participantName: string;
-  mirrored: boolean;
-  speaking: boolean;
-  onClose(): void;
-}) {
-  const surface = useRef<HTMLDivElement>(null);
-  const nativeFullscreen = useRef(false);
-  const [closing, setClosing] = useState(false);
-  const [windowFullscreen, setWindowFullscreen] = useState(false);
-  const close = useCallback(() => {
-    void leaveWindowFullscreen(nativeFullscreen.current);
-    nativeFullscreen.current = false;
-    setWindowFullscreen(false);
-    setClosing(true);
-  }, []);
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !document.fullscreenElement) close();
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => {
-      window.removeEventListener('keydown', closeOnEscape);
-      void leaveWindowFullscreen(nativeFullscreen.current);
-    };
-  }, [close]);
-
-  return (
-    <div
-      className={`expanded-media-backdrop ${windowFullscreen ? 'native-fullscreen' : ''} ${closing ? 'closing' : ''}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${type === 'screen' ? 'Демонстрация экрана' : 'Камера'} ${participantName}`}
-      onAnimationEnd={(event) => {
-        if (closing && event.currentTarget === event.target) onClose();
-      }}
-    >
-      <div className={`expanded-media-view ${type}`} ref={surface}>
-        <ParticipantVideoSurface
-          stream={stream}
-          source={type}
-          name={participantName}
-          mirrored={mirrored}
-        />
-        <div className="expanded-media-header">
-          <span>
-            {type === 'screen' ? <MonitorUp size={17} /> : <Camera size={17} />}
-            <span>
-              <strong>{participantName}</strong>
-              <small>
-                {speaking ? 'Говорит' : type === 'screen' ? 'Демонстрация экрана' : 'Камера'}
-              </small>
-            </span>
-          </span>
-          <div>
-            <button
-              aria-label="Открыть в полноэкранном режиме"
-              onClick={() => {
-                if (!surface.current) return;
-                void toggleMediaFullscreen(surface.current)
-                  .then((mode) => {
-                    nativeFullscreen.current = mode === 'window';
-                    setWindowFullscreen(mode === 'window');
-                  })
-                  .catch(() => undefined);
-              }}
-            >
-              <Maximize2 size={17} />
-            </button>
-            <button aria-label="Закрыть раскрытое видео" onClick={close}>
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ParticipantVideoSurface({
-  stream,
-  source,
-  name,
-  mirrored,
-}: {
-  stream: MediaStream;
-  source: VideoMediaSource;
-  name: string;
-  mirrored: boolean;
-}) {
-  const [element, setElement] = useState<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    if (!element) return;
-    element.srcObject = stream;
-    void element.play().catch(() => undefined);
-    return () => {
-      if (element.srcObject === stream) element.srcObject = null;
-    };
-  }, [element, stream]);
-  return (
-    <video
-      ref={setElement}
-      className={`expanded-media-video ${mirrored ? 'mirrored' : ''}`}
-      aria-label={`${source === 'screen' ? 'Экран' : 'Камера'} ${name}`}
-      autoPlay
-      muted
-      playsInline
-    />
   );
 }
 

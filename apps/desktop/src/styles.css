@@ -1460,7 +1460,28 @@ input[type='range']:hover::-webkit-slider-thumb {
   overflow: hidden;
   aspect-ratio: 16 / 10;
   background: #030912;
+  cursor: zoom-in;
   animation: media-tile-in 0.2s ease-out;
+}
+.participant-card.camera-tile:fullscreen,
+.participant-card.camera-tile.camera-tile-window-fullscreen {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  aspect-ratio: auto;
+  background: #02070d;
+  cursor: zoom-out;
+}
+.participant-card.camera-tile:fullscreen .participant-video,
+.participant-card.camera-tile.camera-tile-window-fullscreen .participant-video {
+  width: 100vw;
+  height: 100vh;
 }
 @keyframes media-tile-in {
   from {

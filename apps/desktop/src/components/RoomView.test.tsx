@@ -513,28 +513,31 @@ describe('RoomView media layouts', () => {
     expect(stageShell?.querySelector('.screen-stage-creator .creator-badge')).not.toBeNull();
   });
 
-  it('keeps camera expand and participant menu controls separate beside a shared screen', () => {
-    const { container, getByRole } = render(view('screen', { [peerId]: { camera: stream } }));
+  it('opens and closes a camera by clicking its tile without overlay buttons', async () => {
+    toggleMediaFullscreenMock.mockResolvedValueOnce('element').mockResolvedValueOnce('none');
+    const { container, getByLabelText } = render(
+      view('screen', { [peerId]: { camera: stream } }),
+    );
     const compactCamera = container.querySelector('.participant-strip .compact-tile.camera-tile');
     expect(compactCamera).not.toBeNull();
-    expect(
-      compactCamera?.querySelector('button[aria-label="Раскрыть камеру Друг"]'),
-    ).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
-    expect(compactCamera?.querySelector('.participant-menu')).not.toBeNull();
+    expect(compactCamera?.querySelector('.video-fullscreen')).toBeNull();
+    expect(compactCamera?.querySelector('.participant-menu-button')).toBeNull();
+
+    fireEvent.click(getByLabelText('Камера Друг'));
+    await waitFor(() =>
+      expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(true),
+    );
+    expect(toggleMediaFullscreenMock).toHaveBeenLastCalledWith(compactCamera);
+
+    fireEvent.click(getByLabelText('Камера Друг'));
+    await waitFor(() =>
+      expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(false),
+    );
   });
 
-  it('mirrors camera video in tiles and expanded view', () => {
-    const { container, getByRole } = render(view('camera'));
-    const camera = getByRole('button', { name: /Раскрыть камеру Гера/ });
-    fireEvent.click(camera);
-    const dialog = getByRole('dialog');
-    expect(dialog).not.toBeNull();
-    expect(container.querySelectorAll('video.mirrored')).toHaveLength(2);
-    fireEvent.click(getByRole('button', { name: 'Закрыть раскрытое видео' }));
-    expect(dialog.classList.contains('closing')).toBe(true);
-    fireEvent.animationEnd(dialog);
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  it('mirrors camera video in tiles', () => {
+    const { container } = render(view('camera'));
+    expect(container.querySelectorAll('video.mirrored')).toHaveLength(1);
   });
 
   it('mirrors a remote participant camera too', () => {
