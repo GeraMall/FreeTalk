@@ -1297,7 +1297,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
   padding-top: 4px;
-  padding-bottom: 96px;
+  padding-bottom: 0;
 }
 .room-mode-presentation .participants-heading {
   position: absolute;
@@ -3321,7 +3321,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .room-shell.call-fullscreen .room-main.room-mode-presentation,
 .room-shell:fullscreen .room-main.room-mode-presentation {
-  padding-bottom: 96px;
+  padding-bottom: 0;
 }
 .call-popout-placeholder {
   display: grid;

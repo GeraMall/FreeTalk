@@ -265,18 +265,18 @@ describe('RoomView media layouts', () => {
     expect(getByRole('button', { name: 'Открыть звонок в отдельном окне' })).not.toBeNull();
   });
 
-  it('smoothly hides idle call controls and reveals them on pointer movement', () => {
+  it('starts with call controls hidden and reveals them on pointer movement', () => {
     vi.useFakeTimers();
     try {
       const { container } = render(view());
       const room = container.querySelector<HTMLElement>('.room-shell');
-      expect(room?.classList.contains('call-controls-visible')).toBe(true);
-
-      act(() => vi.advanceTimersByTime(2500));
       expect(room?.classList.contains('call-controls-visible')).toBe(false);
 
       fireEvent.pointerMove(room!);
       expect(room?.classList.contains('call-controls-visible')).toBe(true);
+
+      act(() => vi.advanceTimersByTime(2500));
+      expect(room?.classList.contains('call-controls-visible')).toBe(false);
     } finally {
       vi.useRealTimers();
     }

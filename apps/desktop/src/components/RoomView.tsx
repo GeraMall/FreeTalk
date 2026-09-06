@@ -177,7 +177,7 @@ export function RoomView({
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [screenStageFullscreen, setScreenStageFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
-  const [callControlsVisible, setCallControlsVisible] = useState(true);
+  const [callControlsVisible, setCallControlsVisible] = useState(false);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
@@ -236,12 +236,12 @@ export function RoomView({
     callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 2400);
   }, []);
 
-  useEffect(() => {
-    revealCallControls();
-    return () => {
+  useEffect(
+    () => () => {
       if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
-    };
-  }, [revealCallControls]);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
@@ -582,7 +582,7 @@ export function RoomView({
                 <article
                   ref={screenStageRef}
                   className={`screen-stage media-surface ${screenStageFullscreen ? 'screen-stage-window-fullscreen' : ''}`}
-                  title="Нажмите, чтобы открыть демонстрацию на весь экран"
+                  aria-label="Демонстрация экрана. Нажмите для полноэкранного режима"
                   onClick={(event) => {
                     const target = event.target;
                     if (target instanceof Element && target.closest('.screen-stage-volume')) return;
