@@ -1640,6 +1640,7 @@ export function MessageList({
   });
   const nearBottomRef = useRef(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [viewingOlderMessages, setViewingOlderMessages] = useState(false);
   const [recentReactions, setRecentReactions] = useState(storedRecentMessageReactions);
   const [olderBusy, setOlderBusy] = useState(false);
   const [contextMenu, setContextMenu] = useState<MessageContextState>();
@@ -1783,6 +1784,7 @@ export function MessageList({
     }
     nearBottomRef.current = true;
     setNewMessageCount(0);
+    setViewingOlderMessages(false);
   }, []);
 
   useLayoutEffect(() => {
@@ -1830,8 +1832,10 @@ export function MessageList({
     const container = scrollRef.current;
     if (!container) return;
     if (contextMenu) setContextMenu(undefined);
-    nearBottomRef.current = isNearBottom(container);
-    if (nearBottomRef.current && newMessageCount) setNewMessageCount(0);
+    const nearBottom = isNearBottom(container);
+    nearBottomRef.current = nearBottom;
+    setViewingOlderMessages(!nearBottom && messages.length > 0);
+    if (nearBottom && newMessageCount) setNewMessageCount(0);
     if (container.scrollTop < 80 && hasMore && !olderBusy) {
       setOlderBusy(true);
       void onLoadOlder().finally(() => setOlderBusy(false));
@@ -1941,12 +1945,16 @@ export function MessageList({
           <div className="message-bottom-anchor" ref={bottomAnchorRef} aria-hidden="true" />
         </div>
       </div>
-      {newMessageCount > 0 && (
-        <button className="new-messages-indicator" onClick={() => scrollToBottom(true)}>
-          <ArrowDown /> Новые сообщения
-          {newMessageCount > 1 && <span>{newMessageCount}</span>}
-        </button>
-      )}
+      {viewingOlderMessages ? (
+        <div className="message-history-position" role="status">
+          <span>Вы просматриваете старые сообщения</span>
+          <button type="button" onClick={() => scrollToBottom(true)}>
+            Вернуться к последним сообщениям
+            {newMessageCount > 0 ? <b>{newMessageCount}</b> : null}
+            <ArrowDown />
+          </button>
+        </div>
+      ) : null}
       {contextMenu
         ? createPortal(
             <MessageContextMenu

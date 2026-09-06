@@ -90,7 +90,7 @@ describe('MessageList scrolling', () => {
     expect(scroller.scrollTop).toBe(scroller.scrollHeight);
   });
 
-  it('does not interrupt reading old messages and shows the new-message button', () => {
+  it('does not interrupt reading old messages and offers an immediate return to the end', () => {
     const initial = [message('1', 'friend'), message('2', 'self')];
     const { container, rerender, getByRole } = render(view('chat-a', initial));
     const scroller = container.querySelector<HTMLElement>('.message-scroll-container')!;
@@ -99,8 +99,20 @@ describe('MessageList scrolling', () => {
 
     rerender(view('chat-a', [...initial, message('3', 'friend')]));
     expect(scroller.scrollTop).toBe(200);
-    fireEvent.click(getByRole('button', { name: /Новые сообщения/ }));
+    expect(getByRole('status').textContent).toContain('Вы просматриваете старые сообщения');
+    fireEvent.click(getByRole('button', { name: /Вернуться к последним сообщениям/ }));
     expect(scroller.scrollTop).toBe(scroller.scrollHeight);
+  });
+
+  it('shows the old-message notice before any new message arrives', () => {
+    const { container, getByRole } = render(
+      view('chat-a', [message('1', 'friend'), message('2', 'self')]),
+    );
+    const scroller = container.querySelector<HTMLElement>('.message-scroll-container')!;
+    scroller.scrollTop = 100;
+    fireEvent.scroll(scroller);
+
+    expect(getByRole('status').textContent).toContain('Вы просматриваете старые сообщения');
   });
 
   it('scrolls down after sending a local message even when the user was above the end', () => {

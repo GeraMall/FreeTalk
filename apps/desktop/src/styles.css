@@ -10036,7 +10036,6 @@ html.notification-overlay-document #root {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-  scroll-behavior: smooth;
   background-color: #091722;
   background-image:
     linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
@@ -10569,29 +10568,62 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   color: #ff728b;
   background: rgba(255, 79, 104, 0.09);
 }
-.new-messages-indicator {
+.message-history-position {
   position: absolute;
   right: 50%;
-  bottom: 12px;
+  bottom: 10px;
   z-index: 10;
-  min-height: 34px;
+  max-width: calc(100% - 20px);
+  min-height: 42px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  border: 1px solid rgba(78, 243, 242, 0.3);
-  border-radius: 999px;
-  color: var(--ft-text);
-  background: rgba(5, 30, 48, 0.96);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.36);
+  gap: 12px;
+  padding: 5px 6px 5px 14px;
+  border: 1px solid rgba(89, 190, 249, 0.25);
+  border-radius: 13px;
+  color: #b8cad8;
+  background: rgba(7, 24, 37, 0.97);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(16px) saturate(1.12);
   transform: translateX(50%);
   animation: new-messages-in 190ms var(--ft-ease);
   font-size: 10px;
+  white-space: nowrap;
 }
-.new-messages-indicator svg {
-  width: 14px;
+
+.message-history-position > span {
+  font-weight: 620;
 }
-.new-messages-indicator span {
+
+.message-history-position > button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid rgba(78, 243, 242, 0.28);
+  border-radius: 9px;
+  color: #e7fbfd;
+  background: linear-gradient(135deg, rgba(30, 134, 151, 0.78), rgba(45, 102, 174, 0.82));
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 720;
+  transform: none;
+}
+
+.message-history-position > button:hover {
+  border-color: rgba(78, 243, 242, 0.5);
+  background: linear-gradient(135deg, rgba(35, 151, 166, 0.9), rgba(53, 117, 194, 0.92));
+  box-shadow: none;
+  transform: none;
+}
+
+.message-history-position svg {
+  width: 13px;
+  height: 13px;
+}
+
+.message-history-position b {
   min-width: 18px;
   padding: 2px 5px;
   border-radius: 999px;
@@ -10906,7 +10938,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 @media (prefers-reduced-motion: reduce) {
   .message-bubble-row,
-  .new-messages-indicator,
+  .message-history-position,
   .compact-chat-form,
   .chat-list-skeleton > div > i,
   .chat-list-skeleton span i,
