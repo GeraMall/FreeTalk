@@ -14769,8 +14769,8 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   grid-template-columns: 42px 42px minmax(0, 1fr) 42px;
   gap: 7px;
   padding: 10px 12px;
-  background: rgba(3, 10, 21, 0.94);
-  backdrop-filter: blur(15px);
+  background: #091722;
+  backdrop-filter: none;
 }
 
 .composer-reply-preview,
