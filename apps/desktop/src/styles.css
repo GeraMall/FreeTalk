@@ -2580,11 +2580,11 @@ input[type='range']:hover::-webkit-slider-thumb {
   padding: 5px;
   border: 1px solid rgba(91, 113, 142, 0.24);
   border-radius: 16px;
-  background: rgba(3, 10, 21, 0.5);
+  background: #030a15;
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.42),
     inset 0 1px rgba(255, 255, 255, 0.035);
-  backdrop-filter: blur(20px);
+  backdrop-filter: none;
 }
 .dock-split-control {
   position: relative;
