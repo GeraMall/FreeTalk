@@ -2175,8 +2175,8 @@ input[type='range']:hover::-webkit-slider-thumb {
     font-size: 13px;
   }
   .presentation-layout {
-    grid-template-columns: minmax(0, 1fr) clamp(260px, 15vw, 320px);
-    gap: 18px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
   .screen-stage {
     border-radius: 0;
@@ -2202,21 +2202,23 @@ input[type='range']:hover::-webkit-slider-thumb {
     font-size: 10px;
   }
   .participant-strip {
-    grid-auto-rows: minmax(154px, 180px);
-    gap: 14px;
+    height: 118px;
+    grid-auto-columns: minmax(210px, 250px);
+    grid-auto-rows: 118px;
+    gap: 12px;
   }
   .participant-card.compact-tile,
   .participant-strip .invite-empty {
-    min-height: 154px;
+    min-height: 118px;
   }
   .compact-tile .creator-badge {
     max-width: 118px;
     font-size: 9px;
   }
   .compact-tile .participant-avatar {
-    width: 64px;
-    height: 64px;
-    margin: 42px 14px 0 0;
+    width: 54px;
+    height: 54px;
+    margin: 36px 12px 0 0;
   }
   .compact-tile .participant-avatar span {
     font-size: 21px;
@@ -3243,6 +3245,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .room-shell.call-fullscreen .presentation-layout,
 .room-shell:fullscreen .presentation-layout {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 .room-shell.call-fullscreen .screen-stage-shell,
@@ -6320,7 +6323,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   }
   .presentation-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(300px, 52vh) auto;
+    grid-template-rows: auto minmax(300px, 52vh);
     height: auto;
   }
   .screen-stage {
