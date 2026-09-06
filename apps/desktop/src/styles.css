@@ -1997,6 +1997,18 @@ input[type='range']:hover::-webkit-slider-thumb {
   background: rgba(3, 12, 20, 0.8);
   box-shadow: 0 9px 28px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.screen-stage:hover .screen-stage-volume,
+.screen-stage:focus-within .screen-stage-volume {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 .screen-stage-volume > svg {
   flex: 0 0 auto;
