@@ -1870,6 +1870,29 @@ input[type='range']:hover::-webkit-slider-thumb {
   border-radius: 0;
   background: #02070d;
   box-shadow: none;
+  cursor: zoom-in;
+}
+.screen-stage:fullscreen,
+.screen-stage.screen-stage-window-fullscreen {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: #02070d;
+  cursor: zoom-out;
+}
+.screen-stage:fullscreen .participant-video,
+.screen-stage.screen-stage-window-fullscreen .participant-video {
+  width: 100vw;
+  height: 100vh;
+}
+.screen-stage:fullscreen .screen-stage-volume,
+.screen-stage.screen-stage-window-fullscreen .screen-stage-volume {
+  z-index: 102;
 }
 .screen-stage-toolbar {
   display: grid;
@@ -3228,109 +3251,18 @@ input[type='range']:hover::-webkit-slider-thumb {
   min-height: 100vh;
   margin: 0;
   padding-bottom: 0;
-  overflow: hidden;
+  overflow: auto;
   background:
     radial-gradient(circle at 8% 4%, rgba(78, 243, 242, 0.13), transparent 31%),
     radial-gradient(circle at 94% 10%, rgba(61, 123, 255, 0.09), transparent 34%), var(--bg);
 }
 .room-shell.call-fullscreen .room-main,
 .room-shell:fullscreen .room-main {
-  width: calc(100% - 20px);
-  height: 100dvh;
-  padding: 10px 0;
+  padding-bottom: 0;
 }
 .room-shell.call-fullscreen .screen-stage,
 .room-shell:fullscreen .screen-stage {
-  height: 100%;
   max-height: none;
-  aspect-ratio: auto;
-}
-.room-shell.call-fullscreen .room-body-layout,
-.room-shell:fullscreen .room-body-layout,
-.room-shell.call-fullscreen .room-mode-presentation,
-.room-shell:fullscreen .room-mode-presentation,
-.room-shell.call-fullscreen .presentation-layout,
-.room-shell:fullscreen .presentation-layout {
-  height: 100%;
-  min-height: 0;
-}
-.room-shell.call-fullscreen .room-mode-presentation .participants-heading,
-.room-shell:fullscreen .room-mode-presentation .participants-heading {
-  display: none;
-}
-.room-shell.call-fullscreen .presentation-layout,
-.room-shell:fullscreen .presentation-layout {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.room-shell.call-fullscreen .screen-stage-shell,
-.room-shell:fullscreen .screen-stage-shell {
-  height: 100%;
-  min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.room-shell.call-fullscreen .room-header,
-.room-shell:fullscreen .room-header {
-  position: fixed;
-  z-index: 50;
-  top: 0;
-  right: 0;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(calc(-100% - 10px));
-  transition:
-    opacity 0.28s ease,
-    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.room-shell.call-fullscreen.fullscreen-chrome-visible .room-header,
-.room-shell:fullscreen.fullscreen-chrome-visible .room-header {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-.room-shell.call-fullscreen .voice-dock,
-.room-shell:fullscreen .voice-dock {
-  z-index: 50;
-  right: 50%;
-  bottom: 18px;
-  left: auto;
-  width: min(980px, calc(100% - 48px));
-  opacity: 0;
-  filter: blur(6px);
-  pointer-events: none;
-  transform: translate(50%, calc(100% + 42px));
-  transition:
-    opacity 0.24s ease,
-    filter 0.28s ease,
-    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.room-shell.call-fullscreen.fullscreen-chrome-visible .voice-dock,
-.room-shell:fullscreen.fullscreen-chrome-visible .voice-dock,
-.room-shell.call-fullscreen .voice-dock:focus-within,
-.room-shell:fullscreen .voice-dock:focus-within {
-  opacity: 1;
-  filter: blur(0);
-  pointer-events: auto;
-  transform: translate(50%, 0);
-}
-.room-shell.call-fullscreen .call-view-controls,
-.room-shell:fullscreen .call-view-controls {
-  z-index: 51;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(calc(100% + 38px));
-  transition:
-    opacity 0.24s ease,
-    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.room-shell.call-fullscreen.fullscreen-chrome-visible .call-view-controls,
-.room-shell:fullscreen.fullscreen-chrome-visible .call-view-controls,
-.room-shell.call-fullscreen .call-view-controls:focus-within,
-.room-shell:fullscreen .call-view-controls:focus-within {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
 }
 .call-popout-placeholder {
   display: grid;

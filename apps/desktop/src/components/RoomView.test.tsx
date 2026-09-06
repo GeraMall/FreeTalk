@@ -13,13 +13,21 @@ const participants: Participant[] = [
   { id: peerId, name: 'Друг', muted: false, isOwner: false, connectedAt: 2 },
 ];
 const stream = {} as MediaStream;
-const { invokeMock, listenMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  listenMock: vi.fn(),
-}));
+const { invokeMock, listenMock, toggleMediaFullscreenMock, leaveWindowFullscreenMock } = vi.hoisted(
+  () => ({
+    invokeMock: vi.fn(),
+    listenMock: vi.fn(),
+    toggleMediaFullscreenMock: vi.fn(),
+    leaveWindowFullscreenMock: vi.fn(),
+  }),
+);
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
+vi.mock('../lib/fullscreen', () => ({
+  toggleMediaFullscreen: toggleMediaFullscreenMock,
+  leaveWindowFullscreen: leaveWindowFullscreenMock,
+}));
 
 beforeAll(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'play', {
@@ -35,6 +43,8 @@ afterEach(() => {
 beforeEach(() => {
   invokeMock.mockReset().mockResolvedValue(undefined);
   listenMock.mockReset().mockResolvedValue(vi.fn());
+  toggleMediaFullscreenMock.mockReset().mockResolvedValue('none');
+  leaveWindowFullscreenMock.mockReset().mockResolvedValue(undefined);
   const previewTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -447,6 +457,24 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.participants-heading .call-timer')).not.toBeNull();
     expect(container.querySelector('.room-shell.has-presentation')).not.toBeNull();
     expect(onScreenFocusChange).not.toHaveBeenCalled();
+  });
+
+  it('toggles the shared screen fullscreen by clicking the stage', async () => {
+    toggleMediaFullscreenMock.mockResolvedValueOnce('element').mockResolvedValueOnce('none');
+    const { getByLabelText } = render(view('none', { [peerId]: { screen: stream } }));
+    const screen = getByLabelText('Экран Друг');
+    const stage = screen.closest('.screen-stage');
+
+    fireEvent.click(screen);
+    await waitFor(() =>
+      expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),
+    );
+    expect(toggleMediaFullscreenMock).toHaveBeenLastCalledWith(stage);
+
+    fireEvent.click(screen);
+    await waitFor(() =>
+      expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false),
+    );
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

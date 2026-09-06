@@ -175,14 +175,14 @@ export function RoomView({
   const [deviceMenu, setDeviceMenu] = useState<'audio' | 'camera'>();
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
+  const [screenStageFullscreen, setScreenStageFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
-  const [fullscreenChromeVisible, setFullscreenChromeVisible] = useState(true);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
   const roomShellRef = useRef<HTMLElement>(null);
-  const fullscreenChromeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const screenStageRef = useRef<HTMLElement>(null);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
   const chatOpenRef = useRef(chatOpen);
@@ -233,27 +233,6 @@ export function RoomView({
   }, [expandedMedia, expandedParticipant, expandedStream]);
 
   useEffect(() => {
-    if (!callFullscreen) {
-      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
-      setFullscreenChromeVisible(true);
-      return;
-    }
-
-    const revealChrome = () => {
-      setFullscreenChromeVisible(true);
-      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
-      fullscreenChromeTimer.current = setTimeout(() => setFullscreenChromeVisible(false), 2200);
-    };
-
-    revealChrome();
-    window.addEventListener('pointermove', revealChrome, { passive: true });
-    return () => {
-      window.removeEventListener('pointermove', revealChrome);
-      if (fullscreenChromeTimer.current) clearTimeout(fullscreenChromeTimer.current);
-    };
-  }, [callFullscreen]);
-
-  useEffect(() => {
     chatOpenRef.current = chatOpen;
     if (chatOpen) setUnreadChatCount(0);
   }, [chatOpen]);
@@ -285,7 +264,10 @@ export function RoomView({
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
 
   useEffect(() => {
-    const sync = () => setCallFullscreen(Boolean(document.fullscreenElement));
+    const sync = () => {
+      setCallFullscreen(document.fullscreenElement === roomShellRef.current);
+      setScreenStageFullscreen(document.fullscreenElement === screenStageRef.current);
+    };
     document.addEventListener('fullscreenchange', sync);
     return () => document.removeEventListener('fullscreenchange', sync);
   }, []);
@@ -315,6 +297,12 @@ export function RoomView({
     if (!roomShellRef.current) return;
     const mode = await toggleMediaFullscreen(roomShellRef.current).catch(() => 'none' as const);
     setCallFullscreen(mode !== 'none');
+  };
+
+  const toggleScreenStageFullscreen = async () => {
+    if (!screenStageRef.current) return;
+    const mode = await toggleMediaFullscreen(screenStageRef.current).catch(() => 'none' as const);
+    setScreenStageFullscreen(mode !== 'none');
   };
 
   const toggleCallPopout = async () => {
@@ -449,7 +437,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${fullscreenChromeVisible ? 'fullscreen-chrome-visible' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
@@ -575,7 +563,16 @@ export function RoomView({
                   </span>
                   <span aria-hidden="true" />
                 </div>
-                <article className="screen-stage media-surface">
+                <article
+                  ref={screenStageRef}
+                  className={`screen-stage media-surface ${screenStageFullscreen ? 'screen-stage-window-fullscreen' : ''}`}
+                  title="Нажмите, чтобы открыть демонстрацию на весь экран"
+                  onClick={(event) => {
+                    const target = event.target;
+                    if (target instanceof Element && target.closest('.screen-stage-volume')) return;
+                    void toggleScreenStageFullscreen();
+                  }}
+                >
                   <ParticipantVideo
                     stream={participantMedia(screenPresenter).screen!}
                     source="screen"
