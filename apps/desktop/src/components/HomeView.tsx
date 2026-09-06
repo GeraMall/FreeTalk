@@ -54,6 +54,7 @@ export interface HomeSidebarState {
   chats: ChatItem[];
   friends: Array<{
     id: string;
+    username: string;
     displayName: string;
     avatarUrl?: string | null;
     presence?: PresenceStatus;
@@ -136,6 +137,7 @@ export function HomeView({
     () =>
       friends.map((friend) => ({
         id: friend.id,
+        username: friend.username,
         displayName: friend.displayName ?? friend.display_name,
         avatarUrl: friend.avatarUrl,
         presence: friend.presence,

@@ -55,6 +55,7 @@ import { chatReactionEmojiSchema, type PresenceStatus } from '@freetalk/protocol
 import { useCachedMediaUrl } from '../lib/use-cached-media';
 import { avatarImageStyle } from '../lib/avatar-image-style';
 import { CreateGroupDialog } from './CreateGroupDialog';
+import { GroupInviteFriendsDialog } from './GroupInviteFriendsDialog';
 import { CachedMediaImage } from './CachedMedia';
 import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
 import { PresenceBadge } from './PresenceBadge';
@@ -205,6 +206,7 @@ export interface GifMessageData {
 
 interface FriendOption {
   id: string;
+  username: string;
   displayName: string;
   avatarUrl?: string | null;
   presence?: PresenceStatus;
@@ -312,7 +314,6 @@ export function ChatsPage({
   const [showInvite, setShowInvite] = useState(false);
   const [showMember, setShowMember] = useState(false);
   const [inviteToken, setInviteToken] = useState('');
-  const [memberUsername, setMemberUsername] = useState('');
   const [actionBusy, setActionBusy] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
@@ -469,6 +470,7 @@ export function ChatsPage({
     setConfirmClear(false);
     setShowChatMenu(false);
     setShowChatSettings(false);
+    setShowMember(false);
     setShowGroupAvatarEditor(false);
     setReplyTarget(undefined);
     setGroupProfileTarget(undefined);
@@ -548,13 +550,11 @@ export function ChatsPage({
     }
   };
 
-  const addMember = async () => {
-    if (!memberUsername.trim()) return;
-    const completed = await runAction('member', () => onAddMember(memberUsername));
-    if (completed) {
-      setMemberUsername('');
-      setShowMember(false);
+  const addMembers = async (usernames: string[]) => {
+    for (const username of usernames) {
+      if (!(await onAddMember(username))) return false;
     }
+    return true;
   };
 
   return (
@@ -690,7 +690,6 @@ export function ChatsPage({
           onBack={mobile ? closeMobileChat : undefined}
           userId={userId}
           showMember={showMember}
-          memberUsername={memberUsername}
           actionBusy={actionBusy}
           profileVisible={profileVisible}
           showMenu={showChatMenu}
@@ -699,9 +698,7 @@ export function ChatsPage({
           messageSearchCount={messageSearchMatches.length}
           messageSearchIndex={activeMessageSearchIndex}
           onOpenProfile={() => setFullProfileOpen(true)}
-          onMemberUsername={setMemberUsername}
           onToggleMember={() => setShowMember((visible) => !visible)}
-          onAddMember={() => void addMember()}
           onStartCall={() => void runAction('call', onStartCall)}
           onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
           onToggleProfile={() => setProfileVisible((visible) => !visible)}
@@ -923,6 +920,14 @@ export function ChatsPage({
         onClose={() => setShowGroup(false)}
         onCreate={onCreateGroup}
       />
+      <GroupInviteFriendsDialog
+        open={showMember && activeChat?.type === 'group'}
+        groupTitle={activeChat ? chatName(activeChat, userId) : ''}
+        friends={friends}
+        memberIds={activeChat?.members.map((member) => member.id) ?? []}
+        onClose={() => setShowMember(false)}
+        onInvite={addMembers}
+      />
       <UserProfileDialog
         viewerId={userId}
         target={
@@ -1061,7 +1066,6 @@ function ChatHeader({
   onBack,
   userId,
   showMember,
-  memberUsername,
   actionBusy,
   profileVisible,
   showMenu,
@@ -1070,9 +1074,7 @@ function ChatHeader({
   messageSearchCount,
   messageSearchIndex,
   onOpenProfile,
-  onMemberUsername,
   onToggleMember,
-  onAddMember,
   onStartCall,
   onCreateInvite,
   onToggleProfile,
@@ -1087,7 +1089,6 @@ function ChatHeader({
   onBack?(): void;
   userId: string;
   showMember: boolean;
-  memberUsername: string;
   actionBusy: string;
   profileVisible: boolean;
   showMenu: boolean;
@@ -1096,9 +1097,7 @@ function ChatHeader({
   messageSearchCount: number;
   messageSearchIndex: number;
   onOpenProfile(): void;
-  onMemberUsername(value: string): void;
   onToggleMember(): void;
-  onAddMember(): void;
   onStartCall(): void;
   onCreateInvite(): void;
   onToggleProfile(): void;
@@ -1250,22 +1249,6 @@ function ChatHeader({
           ) : null}
         </label>
       </div>
-      {showMember && chat.type === 'group' && (
-        <div className="chat-member-popover">
-          <input
-            value={memberUsername}
-            placeholder="@username друга"
-            onChange={(event) => onMemberUsername(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && onAddMember()}
-          />
-          <button
-            disabled={!memberUsername.trim() || actionBusy === 'member'}
-            onClick={onAddMember}
-          >
-            Добавить
-          </button>
-        </div>
-      )}
       {showAvatarEditor && canEditAvatar && (
         <GroupAvatarEditor
           key={`${chat.id}-${chat.avatarUrl ?? 'empty'}`}

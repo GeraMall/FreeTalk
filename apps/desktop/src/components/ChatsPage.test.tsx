@@ -477,6 +477,7 @@ describe('Chat retention controls', () => {
 
   it('opens the group avatar editor and shows the member list in the right panel', async () => {
     const onUpdateGroupAvatar = vi.fn(async () => true);
+    const onAddMember = vi.fn(async () => true);
     const chat: ChatItem = {
       ...ownerChat,
       avatarUrl: 'https://api.example.test/group.webp',
@@ -492,7 +493,20 @@ describe('Chat retention controls', () => {
       <ChatsPage
         userId="self"
         chats={[chat]}
-        friends={[]}
+        friends={[
+          {
+            id: 'friend',
+            username: 'alex_1',
+            displayName: 'Алексей',
+            presence: 'online',
+          },
+          {
+            id: 'marina',
+            username: 'marina_1',
+            displayName: 'Марина',
+            presence: 'away',
+          },
+        ]}
         activeChatId="chat-a"
         messages={[]}
         chatsLoading={false}
@@ -508,7 +522,7 @@ describe('Chat retention controls', () => {
         onCreateInvite={vi.fn(async () => undefined)}
         onUpdateRetention={vi.fn(async () => undefined)}
         onClearHistory={vi.fn(async () => undefined)}
-        onAddMember={vi.fn(async () => true)}
+        onAddMember={onAddMember}
         onUpdateGroupAvatar={onUpdateGroupAvatar}
         onJoinCall={vi.fn()}
       />,
@@ -530,6 +544,16 @@ describe('Chat retention controls', () => {
     fireEvent.click(getByRole('button', { name: 'Открыть профиль Алексей' }));
     expect(getByRole('dialog', { name: 'Профиль Алексей' })).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Закрыть профиль' }));
+
+    fireEvent.click(getByRole('button', { name: 'Пригласить в группу' }));
+    expect(getByRole('dialog', { name: 'Пригласить в группу' })).toBeTruthy();
+    expect(
+      (getByRole('checkbox', { name: 'Алексей уже в группе' }) as HTMLInputElement).disabled,
+    ).toBe(true);
+    fireEvent.click(getByRole('checkbox', { name: 'Пригласить Марина' }));
+    fireEvent.click(getByRole('button', { name: 'Пригласить' }));
+    await waitFor(() => expect(onAddMember).toHaveBeenCalledWith('marina_1'));
+    await waitFor(() => expect(queryByRole('dialog', { name: 'Пригласить в группу' })).toBeNull());
 
     fireEvent.click(getByRole('button', { name: 'Изменить аватар группы' }));
     expect(getByRole('dialog', { name: 'Редактировать группу' })).toBeTruthy();
