@@ -1623,6 +1623,9 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .camera-tile .video-fullscreen {
   top: 11px;
+  right: 11px;
+}
+.camera-tile.has-participant-menu .video-fullscreen {
   right: 54px;
 }
 .participant-name {
@@ -1788,9 +1791,9 @@ input[type='range']:hover::-webkit-slider-thumb {
 /* Screen-share presentation mode */
 .presentation-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
+  grid-template-columns: minmax(0, 1fr) 220px;
   gap: 14px;
-  height: min(690px, max(340px, calc(100dvh - 340px)));
+  height: min(850px, max(420px, calc(100dvh - 250px)));
   animation: media-tile-in 0.2s ease-out;
 }
 .screen-stage {
@@ -2050,9 +2053,9 @@ input[type='range']:hover::-webkit-slider-thumb {
     font-size: 13px;
   }
   .presentation-layout {
-    grid-template-columns: minmax(0, 1fr) clamp(220px, 12vw, 260px);
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 15vw, 320px);
     gap: 18px;
-    height: min(900px, max(560px, calc(100dvh - 300px)));
+    height: min(1080px, max(620px, calc(100dvh - 250px)));
   }
   .screen-stage {
     border-radius: 20px;
@@ -2075,21 +2078,21 @@ input[type='range']:hover::-webkit-slider-thumb {
     font-size: 10px;
   }
   .participant-strip {
-    grid-auto-rows: minmax(132px, 150px);
+    grid-auto-rows: minmax(154px, 180px);
     gap: 14px;
   }
   .participant-card.compact-tile,
   .participant-strip .invite-empty {
-    min-height: 132px;
+    min-height: 154px;
   }
   .compact-tile .creator-badge {
     max-width: 118px;
     font-size: 9px;
   }
   .compact-tile .participant-avatar {
-    width: 58px;
-    height: 58px;
-    margin: 36px 12px 0 0;
+    width: 64px;
+    height: 64px;
+    margin: 42px 14px 0 0;
   }
   .compact-tile .participant-avatar span {
     font-size: 21px;

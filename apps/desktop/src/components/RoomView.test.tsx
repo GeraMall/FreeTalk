@@ -430,27 +430,17 @@ describe('RoomView media layouts', () => {
     expect(queryByText('1')).toBeNull();
   });
 
-  it('enters screen focus mode through the existing screen video without an overlay', () => {
+  it('opens the shared screen in the full-screen viewer', () => {
     const onScreenFocusChange = vi.fn();
-    const { container, getByLabelText, getByRole, queryByRole, rerender } = render(
+    const { getByRole } = render(
       view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
         onScreenFocusChange,
       }),
     );
-    const screenVideo = getByLabelText('Экран Друг');
     fireEvent.click(getByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' }));
-    expect(onScreenFocusChange).toHaveBeenCalledWith(true);
-    expect(queryByRole('dialog')).toBeNull();
-    rerender(
-      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
-        onScreenFocusChange,
-        screenFocusMode: true,
-      }),
-    );
-    expect(container.querySelector('.screen-focus-mode')).not.toBeNull();
-    expect(getByLabelText('Экран Друг')).toBe(screenVideo);
-    fireEvent.click(getByRole('button', { name: 'Свернуть демонстрацию экрана Друг' }));
-    expect(onScreenFocusChange).toHaveBeenLastCalledWith(false);
+    expect(getByRole('dialog', { name: 'Демонстрация экрана Друг' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Открыть в полноэкранном режиме' })).toBeTruthy();
+    expect(onScreenFocusChange).not.toHaveBeenCalled();
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

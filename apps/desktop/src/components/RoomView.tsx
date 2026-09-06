@@ -517,8 +517,9 @@ export function RoomView({
                   muted
                   volume={0}
                   outputDeviceId={settings.outputDeviceId}
-                  expanded={screenFocusMode}
-                  onExpand={() => onScreenFocusChange(!screenFocusMode)}
+                  onExpand={() =>
+                    setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
+                  }
                 />
                 <div className="screen-stage-top">
                   <span className="screen-stage-title">
