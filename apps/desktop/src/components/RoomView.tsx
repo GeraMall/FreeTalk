@@ -67,6 +67,8 @@ interface ExpandedMedia {
   participantId: string;
 }
 
+const SCREEN_STAGE_BOTTOM_GAP = 10;
+
 interface RoomViewProps {
   embedded?: boolean;
   viewerId?: string;
@@ -289,8 +291,17 @@ export function RoomView({
 
     const resize = () => {
       const bounds = slot.getBoundingClientRect();
+      const roomBounds = roomShellRef.current?.getBoundingClientRect();
+      const viewportHeight = Math.min(
+        window.innerHeight,
+        document.documentElement.clientHeight || window.innerHeight,
+      );
+      const visibleBottom = Math.min(viewportHeight, roomBounds?.bottom ?? viewportHeight);
       const availableWidth = Math.max(0, bounds.width);
-      const availableHeight = Math.max(0, bounds.height - 8);
+      const availableHeight = Math.max(
+        0,
+        Math.min(bounds.height, visibleBottom - bounds.top) - SCREEN_STAGE_BOTTOM_GAP,
+      );
       const width = Math.min(availableWidth, availableHeight * screenAspectRatio);
       const height = width / screenAspectRatio;
       setScreenStageSize((current) =>
@@ -302,8 +313,13 @@ export function RoomView({
 
     const observer = new ResizeObserver(resize);
     observer.observe(slot);
+    if (roomShellRef.current) observer.observe(roomShellRef.current);
+    window.addEventListener('resize', resize);
     resize();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resize);
+    };
   }, [screenAspectRatio, screenPresenter]);
 
   useEffect(() => {
