@@ -5796,6 +5796,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   line-height: 1.45;
 }
 .chat-settings-preview {
+  position: relative;
   min-height: 156px;
   display: flex;
   flex-direction: column;
@@ -5811,6 +5812,18 @@ input[type='range']:hover::-webkit-slider-thumb {
   background-size:
     100% 100%,
     cover;
+}
+.preview-composer {
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  margin: 4px -8px -8px;
+  padding: 0 10px;
+  border: 1px solid rgba(89, 190, 249, 0.16);
+  border-radius: 9px;
+  color: var(--ft-text-disabled);
+  background: rgba(3, 10, 21, 0.56);
+  font-size: 8px;
 }
 .preview-message {
   width: fit-content;
@@ -10039,15 +10052,7 @@ html.notification-overlay-document #root {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-  background-color: #091722;
-  background-image:
-    linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
-  background-position: center, center;
-  background-repeat: no-repeat, no-repeat;
-  background-size:
-    100% 100%,
-    var(--ft-chat-wallpaper-size, cover);
-  background-attachment: local;
+  background: transparent;
 }
 .message-scroll-container:focus-visible {
   outline-offset: -3px;
@@ -10820,14 +10825,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   justify-content: flex-end;
   gap: 12px;
   padding: 24px;
-  background-color: #091722;
-  background-image:
-    linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
-  background-position: center, center;
-  background-repeat: no-repeat, no-repeat;
-  background-size:
-    100% 100%,
-    var(--ft-chat-wallpaper-size, cover);
+  background: transparent;
 }
 .message-skeleton i {
   --bubble-width: 50%;
@@ -11288,7 +11286,14 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .active-conversation {
   grid-template-rows: minmax(0, 1fr) auto;
   border-radius: 0;
-  background: #010811;
+  background-color: #091722;
+  background-image:
+    linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    100% 100%,
+    var(--ft-chat-wallpaper-size, cover);
 }
 .active-chat-header {
   min-height: 56px;
@@ -15044,8 +15049,8 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   grid-template-columns: 42px 42px minmax(0, 1fr) 42px;
   gap: 7px;
   padding: 10px 12px;
-  background: #091722;
-  backdrop-filter: none;
+  background: rgba(9, 23, 34, 0.58);
+  backdrop-filter: blur(5px);
 }
 
 .modern-message-composer.send-button-hidden {

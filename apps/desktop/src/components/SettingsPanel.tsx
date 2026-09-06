@@ -1787,30 +1787,6 @@ function ChatsSettingsTab({
 
   return (
     <section className="settings-section chat-settings-section">
-      <div className="chat-settings-preview-card">
-        <div
-          className={`chat-settings-preview ${settings.chatMessageStyle}`}
-          style={
-            {
-              '--preview-text-scale': settings.chatTextScale,
-              backgroundImage: settings.chatWallpaperDataUrl
-                ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
-                : undefined,
-              backgroundSize: settings.chatWallpaperDataUrl
-                ? `100% 100%, ${settings.chatWallpaperFit}`
-                : undefined,
-            } as CSSProperties
-          }
-        >
-          <div className="preview-message remote">Привет! Как тебе оформление?</div>
-          <div className="preview-message own">Отлично, так намного удобнее.</div>
-        </div>
-        <div>
-          <strong>Предпросмотр</strong>
-          <small>Изменения сразу применяются ко всем чатам только на этом устройстве.</small>
-        </div>
-      </div>
-
       <label className="slider-setting chat-text-size-setting">
         <span>
           <strong>Размер текста сообщений</strong>
@@ -1892,8 +1868,8 @@ function ChatsSettingsTab({
 
       {settings.chatWallpaperDataUrl && (
         <div className="chat-style-setting chat-wallpaper-fit-setting">
-          <strong>Как показывать обои</strong>
-          <div role="radiogroup" aria-label="Как показывать обои">
+          <strong>Размер обоев</strong>
+          <div role="radiogroup" aria-label="Размер обоев">
             <button
               type="button"
               role="radio"
@@ -1915,6 +1891,32 @@ function ChatsSettingsTab({
           </div>
         </div>
       )}
+
+      <div className="chat-settings-preview-card">
+        <div
+          className={`chat-settings-preview ${settings.chatMessageStyle}`}
+          aria-label="Предпросмотр оформления чата"
+          style={
+            {
+              '--preview-text-scale': settings.chatTextScale,
+              backgroundImage: settings.chatWallpaperDataUrl
+                ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
+                : undefined,
+              backgroundSize: settings.chatWallpaperDataUrl
+                ? `100% 100%, ${settings.chatWallpaperFit}`
+                : undefined,
+            } as CSSProperties
+          }
+        >
+          <div className="preview-message remote">Привет! Как тебе оформление?</div>
+          <div className="preview-message own">Отлично, так намного удобнее.</div>
+          <div className="preview-composer">Написать сообщение…</div>
+        </div>
+        <div>
+          <strong>Предпросмотр</strong>
+          <small>Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.</small>
+        </div>
+      </div>
 
       <div className="chat-wallpaper-setting">
         <div>
