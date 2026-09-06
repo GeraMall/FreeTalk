@@ -182,7 +182,9 @@ export function RoomView({
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
+  const [screenStageSize, setScreenStageSize] = useState<{ width: number; height: number }>();
   const roomShellRef = useRef<HTMLElement>(null);
+  const screenStageSlotRef = useRef<HTMLDivElement>(null);
   const screenStageRef = useRef<HTMLElement>(null);
   const callControlsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
@@ -277,6 +279,32 @@ export function RoomView({
   useEffect(() => {
     if (!screenPresenter && screenFocusMode) onScreenFocusChange(false);
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
+
+  useEffect(() => {
+    const slot = screenStageSlotRef.current;
+    if (!screenPresenter || !slot || typeof ResizeObserver === 'undefined') {
+      setScreenStageSize(undefined);
+      return;
+    }
+
+    const resize = () => {
+      const bounds = slot.getBoundingClientRect();
+      const availableWidth = Math.max(0, bounds.width);
+      const availableHeight = Math.max(0, bounds.height - 8);
+      const width = Math.min(availableWidth, availableHeight * screenAspectRatio);
+      const height = width / screenAspectRatio;
+      setScreenStageSize((current) =>
+        current && Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+          ? current
+          : { width, height },
+      );
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(slot);
+    resize();
+    return () => observer.disconnect();
+  }, [screenAspectRatio, screenPresenter]);
 
   useEffect(() => {
     const sync = () => {
@@ -562,10 +590,21 @@ export function RoomView({
 
           {screenPresenter ? (
             <div className="presentation-layout">
-              <div
-                className="screen-stage-shell"
-                style={{ '--screen-aspect-ratio': screenAspectRatio } as CSSProperties}
-              >
+              <div className="presentation-stage-slot" ref={screenStageSlotRef}>
+                <div
+                  className="screen-stage-shell"
+                  style={
+                    {
+                      '--screen-aspect-ratio': screenAspectRatio,
+                      ...(screenStageSize
+                        ? {
+                            width: `${screenStageSize.width}px`,
+                            height: `${screenStageSize.height}px`,
+                          }
+                        : {}),
+                    } as CSSProperties
+                  }
+                >
                 <div className="screen-stage-toolbar">
                   <span className="screen-stage-title">
                     <MonitorUp size={15} />
@@ -579,16 +618,16 @@ export function RoomView({
                   </span>
                   <span aria-hidden="true" />
                 </div>
-                <article
-                  ref={screenStageRef}
-                  className={`screen-stage media-surface ${screenStageFullscreen ? 'screen-stage-window-fullscreen' : ''}`}
-                  aria-label="Демонстрация экрана. Нажмите для полноэкранного режима"
-                  onClick={(event) => {
-                    const target = event.target;
-                    if (target instanceof Element && target.closest('.screen-stage-volume')) return;
-                    void toggleScreenStageFullscreen();
-                  }}
-                >
+                  <article
+                    ref={screenStageRef}
+                    className={`screen-stage media-surface ${screenStageFullscreen ? 'screen-stage-window-fullscreen' : ''}`}
+                    aria-label="Демонстрация экрана. Нажмите для полноэкранного режима"
+                    onClick={(event) => {
+                      const target = event.target;
+                      if (target instanceof Element && target.closest('.screen-stage-volume')) return;
+                      void toggleScreenStageFullscreen();
+                    }}
+                  >
                   <ParticipantVideo
                     stream={participantMedia(screenPresenter).screen!}
                     source="screen"
@@ -619,7 +658,8 @@ export function RoomView({
                       </output>
                     </label>
                   )}
-                </article>
+                  </article>
+                </div>
               </div>
               <div
                 className={`presentation-participants ${presentationParticipantsVisible ? 'visible' : 'collapsed'}`}
