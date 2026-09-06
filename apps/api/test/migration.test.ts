@@ -161,4 +161,11 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('call_invitations_pending_room_invitee_idx');
     expect(sql).toContain("where status='pending'");
   });
+
+  it('records when a message was edited', async () => {
+    const path = fileURLToPath(new URL('../migrations/014_message_editing.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('alter table messages');
+    expect(sql).toContain('add column edited_at timestamptz');
+  });
 });

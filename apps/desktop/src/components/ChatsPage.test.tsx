@@ -826,6 +826,61 @@ describe('Message interactions', () => {
     expect(getByRole('menu', { name: 'Действия с сообщением' })).toBeTruthy();
   });
 
+  it('edits an own message from the quick toolbar and marks edited messages', async () => {
+    const onEdit = vi.fn(async () => true);
+    const source = {
+      ...message('8', 'self', 'Первоначальный текст'),
+      edited_at: '2026-09-06T12:00:00.000Z',
+    };
+    const { getByRole, getByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat={false}
+        messages={[source]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+        onEdit={onEdit}
+      />,
+    );
+
+    expect(getByText('изменено')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Изменить сообщение' }));
+    const input = getByRole('textbox', { name: 'Текст сообщения' });
+    fireEvent.change(input, { target: { value: 'Новый текст' } });
+    fireEvent.click(getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(onEdit).toHaveBeenCalledWith('8', 'Новый текст'));
+  });
+
+  it('places edit directly below reply in the full menu for an own text message', () => {
+    const { getAllByRole, getByText } = render(
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        groupChat={false}
+        messages={[message('8', 'self', 'Моё сообщение')]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(getByText('Моё сообщение').closest('article')!, {
+      clientX: 100,
+      clientY: 100,
+    });
+    expect(
+      getAllByRole('menuitem')
+        .slice(0, 2)
+        .map((item) => item.textContent?.trim()),
+    ).toEqual(['Ответить', 'Изменить']);
+  });
+
   it('replies with the source id and renders forwarded, pinned and reacted states', async () => {
     const onSendMessage = vi.fn(async () => true);
     const source: MessageItem = {

@@ -10037,8 +10037,9 @@ html.notification-overlay-document #root {
   overscroll-behavior: contain;
   scrollbar-width: none;
   scroll-behavior: smooth;
+  background-color: #030a15;
   background-image:
-    linear-gradient(rgba(2, 12, 23, 0.72), rgba(2, 12, 23, 0.72)), var(--ft-chat-wallpaper, none);
+    linear-gradient(rgba(3, 10, 21, 0.72), rgba(3, 10, 21, 0.72)), var(--ft-chat-wallpaper, none);
   background-position: center;
   background-size: cover;
   background-attachment: local;
@@ -13776,11 +13777,83 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 }
 
 .message-bubble-stack {
+  position: relative;
   min-width: 0;
   max-width: min(74%, 680px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+}
+
+.message-hover-actions {
+  position: absolute;
+  z-index: 24;
+  top: -31px;
+  left: 0;
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 4px;
+  border: 1px solid rgba(105, 177, 220, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(155deg, rgba(9, 25, 40, 0.98), rgba(4, 13, 24, 0.99));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px) scale(0.97);
+  transform-origin: bottom left;
+  transition:
+    opacity 115ms var(--ft-ease),
+    transform 150ms var(--ft-ease);
+}
+
+.message-bubble-row.own .message-hover-actions {
+  right: 0;
+  left: auto;
+  transform-origin: bottom right;
+}
+
+.message-bubble-row:hover .message-hover-actions,
+.message-bubble-row:focus-within .message-hover-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.message-hover-actions button {
+  width: 26px;
+  min-width: 26px;
+  height: 25px;
+  min-height: 25px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: #a8bbcb;
+  background: transparent;
+  box-shadow: none;
+  font-size: 15px;
+  line-height: 1;
+  transform: none;
+}
+
+.message-hover-actions button:hover,
+.message-hover-actions button:focus-visible {
+  color: var(--ft-cyan);
+  background: rgba(78, 243, 242, 0.1);
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.message-hover-actions button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.message-hover-actions .message-hover-reaction {
+  font-size: 16px;
 }
 
 .message-bubble-row.own .message-bubble-stack {
@@ -13853,6 +13926,13 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   color: inherit;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.message-meta small {
+  color: #71889c;
+  font-size: 9px;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -14412,6 +14492,93 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     0 32px 90px rgba(0, 0, 0, 0.58),
     inset 0 1px rgba(255, 255, 255, 0.035);
   animation: forward-message-dialog-in 190ms var(--ft-ease) both;
+}
+
+.edit-message-dialog {
+  width: min(520px, calc(100vw - 40px));
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(89, 190, 249, 0.24);
+  border-radius: 18px;
+  color: var(--ft-text);
+  background: radial-gradient(circle at 100% 0, rgba(61, 123, 255, 0.1), transparent 35%), #030a15;
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.58);
+  animation: forward-message-dialog-in 190ms var(--ft-ease) both;
+}
+
+.edit-message-dialog > header,
+.edit-message-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edit-message-dialog > header strong {
+  font-size: 15px;
+}
+
+.edit-message-dialog > header button {
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
+  min-height: 31px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: var(--ft-text-secondary);
+  background: rgba(89, 190, 249, 0.06);
+  box-shadow: none;
+}
+
+.edit-message-dialog > header svg {
+  width: 15px;
+}
+
+.edit-message-dialog textarea {
+  width: 100%;
+  min-height: 118px;
+  max-height: 45vh;
+  resize: vertical;
+  padding: 12px 13px;
+  border: 1px solid rgba(89, 190, 249, 0.2);
+  border-radius: 12px;
+  color: #edf5fc;
+  background: rgba(5, 18, 32, 0.96);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: 0;
+}
+
+.edit-message-dialog textarea:focus {
+  border-color: rgba(78, 243, 242, 0.5);
+  box-shadow: 0 0 0 3px rgba(78, 243, 242, 0.07);
+}
+
+.edit-message-dialog > footer small {
+  color: var(--ft-text-muted);
+  font-size: 9px;
+}
+
+.edit-message-dialog > footer button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #031018;
+  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  font-weight: 750;
+}
+
+.edit-message-dialog > footer button svg {
+  width: 14px;
 }
 
 .forward-message-dialog > header {

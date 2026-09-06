@@ -286,6 +286,15 @@ describe('protocol validation', () => {
     ).toBe(true);
     expect(
       chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-updated',
+        chatId: base.clientId,
+        messageId: '386d39ef-61af-4aca-84b8-47f78b0f554c',
+        body: 'Исправленный текст',
+        editedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
         type: 'chat-removed',
         chatId: base.clientId,
       }).success,

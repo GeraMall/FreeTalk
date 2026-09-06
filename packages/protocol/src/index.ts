@@ -359,6 +359,7 @@ export const realtimeChatMessageSchema = z.object({
   display_name: z.string().nullable().optional(),
   avatar_url: z.string().url().nullable().optional(),
   created_at: z.string(),
+  edited_at: z.string().datetime({ offset: true }).nullable().optional(),
   expires_at: z.string().nullable(),
   reply_to: chatMessageReplySchema.nullable().optional(),
   reactions: z.array(chatMessageReactionSummarySchema).optional(),
@@ -397,7 +398,9 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('message-updated'),
     chatId: z.string().uuid(),
     messageId: z.string().uuid(),
-    metadata: z.record(z.string(), z.unknown()),
+    body: z.string().max(4000).optional(),
+    editedAt: z.string().datetime({ offset: true }).nullable().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
   z.object({

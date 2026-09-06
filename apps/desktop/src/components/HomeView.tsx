@@ -191,7 +191,14 @@ export function HomeView({
           setMessages((current) =>
             current.map((message) =>
               message.id === event.messageId
-                ? { ...message, metadata: { ...message.metadata, ...event.metadata } }
+                ? {
+                    ...message,
+                    ...(event.body === undefined ? {} : { body: event.body }),
+                    ...(event.editedAt === undefined ? {} : { edited_at: event.editedAt }),
+                    ...(event.metadata === undefined
+                      ? {}
+                      : { metadata: { ...message.metadata, ...event.metadata } }),
+                  }
                 : message,
             ),
           );
@@ -698,6 +705,29 @@ export function HomeView({
       return true;
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось удалить сообщение');
+      return false;
+    }
+  };
+
+  const editMessage = async (messageId: string, body: string) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    try {
+      const result = await accountClient.request<{ body: string; editedAt: string }>(
+        `/v1/messages/${messageId}`,
+        { method: 'PATCH', body: JSON.stringify({ body }) },
+      );
+      if (activeChatRef.current === chatId)
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId
+              ? { ...message, body: result.body, edited_at: result.editedAt }
+              : message,
+          ),
+        );
+      return true;
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось изменить сообщение');
       return false;
     }
   };
@@ -1229,6 +1259,7 @@ export function HomeView({
             onSendGif={sendGif}
             onReactMessage={reactToMessage}
             onPinMessage={pinMessage}
+            onEditMessage={editMessage}
             onDeleteMessage={deleteMessage}
             onForwardMessage={forwardMessage}
             onRevealMessage={revealMessage}

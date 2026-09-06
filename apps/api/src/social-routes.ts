@@ -56,6 +56,7 @@ interface ChatMessageRow {
   metadata: Record<string, unknown>;
   sender_id: string | null;
   created_at: Date;
+  edited_at?: Date | null;
   expires_at: Date | null;
   reply_to?: ChatMessageReply | null;
   reactions?: ChatMessageReactionSummary[];
@@ -77,6 +78,7 @@ function realtimeMessage(
     display_name: sender?.displayName ?? null,
     avatar_url: sender?.avatarUrl ?? null,
     created_at: row.created_at.toISOString(),
+    edited_at: row.edited_at?.toISOString() ?? null,
     expires_at: row.expires_at?.toISOString() ?? null,
     reply_to: row.reply_to ?? null,
     reactions: row.reactions ?? [],
@@ -95,7 +97,7 @@ async function loadRealtimeMessage(messageId: string): Promise<RealtimeChatMessa
     }
   >(
     `SELECT message.id,message.kind,message.body,message.metadata,message.sender_id,
-            message.created_at,message.expires_at,message.pinned_at,message.pinned_by,
+            message.created_at,message.edited_at,message.expires_at,message.pinned_at,message.pinned_by,
             sender.username,sender.display_name,sender.avatar_data IS NOT NULL AS has_avatar,
             sender.updated_at AS sender_updated_at,
             CASE WHEN replied.id IS NULL THEN NULL ELSE jsonb_build_object(
@@ -1054,7 +1056,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       }
     >(
       `WITH recent AS (
-         SELECT m.id,m.kind,m.body,m.metadata,m.created_at,m.expires_at,m.sender_id,
+         SELECT m.id,m.kind,m.body,m.metadata,m.created_at,m.edited_at,m.expires_at,m.sender_id,
                 m.reply_to_message_id,m.pinned_at,m.pinned_by
          FROM messages m
          WHERE m.chat_id=$1 AND (m.expires_at IS NULL OR m.expires_at>now())
@@ -1202,6 +1204,53 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!message) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
     return { message };
   });
+
+  app.patch(
+    '/v1/messages/:messageId',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+      const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(request.body);
+      const context = await db.query<{
+        chat_id: string;
+        sender_id: string | null;
+        kind: string;
+        metadata: Record<string, unknown>;
+      }>(
+        `SELECT message.chat_id,message.sender_id,message.kind,message.metadata
+         FROM messages message
+         JOIN chat_members member ON member.chat_id=message.chat_id
+           AND member.user_id=$2 AND member.left_at IS NULL
+         WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
+        [messageId, user.id],
+      );
+      const message = context.rows[0];
+      if (!message) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+      if (!(await canInteractInChat(message.chat_id, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (message.sender_id !== user.id)
+        return reply.code(403).send({ code: 'MESSAGE_EDIT_FORBIDDEN' });
+      if (message.kind !== 'text' || message.metadata?.gif)
+        return reply.code(400).send({ code: 'MESSAGE_NOT_EDITABLE' });
+      const updated = await db.query<{ body: string; edited_at: Date }>(
+        `UPDATE messages SET body=$2,edited_at=now() WHERE id=$1 RETURNING body,edited_at`,
+        [messageId, body],
+      );
+      const edited = updated.rows[0];
+      if (!edited) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+      const editedAt = edited.edited_at.toISOString();
+      await publishChatEvent(message.chat_id, {
+        type: 'message-updated',
+        chatId: message.chat_id,
+        messageId,
+        body: edited.body,
+        editedAt,
+      });
+      return { body: edited.body, editedAt };
+    },
+  );
 
   app.put(
     '/v1/messages/:messageId/reaction',

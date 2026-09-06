@@ -35,6 +35,7 @@ import {
   Search,
   Send,
   Save,
+  Smile,
   Trash2,
   UserPlus,
   Users,
@@ -63,6 +64,7 @@ import {
 const CHAT_SIDEBAR_WIDTH_KEY = 'freetalkChatSidebarWidth';
 const CHAT_SIDEBAR_MIN_WIDTH = 190;
 const MOBILE_CHAT_HISTORY_KEY = 'freetalkMobileChatId';
+const RECENT_MESSAGE_REACTIONS_KEY = 'freetalkRecentMessageReactions';
 
 function defaultChatSidebarWidth() {
   if (typeof window === 'undefined') return 330;
@@ -77,6 +79,22 @@ function storedChatSidebarWidth() {
   const stored = Number(raw);
   if (!Number.isFinite(stored)) return undefined;
   return Math.min(defaultChatSidebarWidth(), Math.max(CHAT_SIDEBAR_MIN_WIDTH, stored));
+}
+
+function storedRecentMessageReactions() {
+  if (typeof window === 'undefined') return QUICK_MESSAGE_REACTIONS.slice(0, 3);
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(RECENT_MESSAGE_REACTIONS_KEY) ?? '[]');
+    if (!Array.isArray(stored)) return QUICK_MESSAGE_REACTIONS.slice(0, 3);
+    const valid = stored.filter(
+      (emoji): emoji is string => chatReactionEmojiSchema.safeParse(emoji).success,
+    );
+    return [...valid, ...QUICK_MESSAGE_REACTIONS]
+      .filter((emoji, index, all) => all.indexOf(emoji) === index)
+      .slice(0, 3);
+  } catch {
+    return QUICK_MESSAGE_REACTIONS.slice(0, 3);
+  }
 }
 
 export interface ChatMember {
@@ -116,6 +134,7 @@ export interface MessageItem {
   display_name?: string | null;
   avatar_url?: string | null;
   created_at: string;
+  edited_at?: string | null;
   expires_at: string | null;
   metadata?: {
     roomId?: string;
@@ -217,6 +236,7 @@ interface ChatsPageProps {
   onSendGif?(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
   onReactMessage?(messageId: string, emoji: string | null): Promise<boolean>;
   onPinMessage?(messageId: string, pinned: boolean): Promise<boolean>;
+  onEditMessage?(messageId: string, body: string): Promise<boolean>;
   onDeleteMessage?(messageId: string): Promise<boolean>;
   onForwardMessage?(messageId: string, targetChatId: string): Promise<boolean>;
   onRevealMessage?(messageId: string): Promise<boolean>;
@@ -266,6 +286,7 @@ export function ChatsPage({
   onSendGif = async () => false,
   onReactMessage = async () => false,
   onPinMessage = async () => false,
+  onEditMessage = async () => false,
   onDeleteMessage = async () => false,
   onForwardMessage = async () => false,
   onRevealMessage = async () => false,
@@ -762,6 +783,7 @@ export function ChatsPage({
               onReply={setReplyTarget}
               onReact={onReactMessage}
               onPin={onPinMessage}
+              onEdit={onEditMessage}
               onDelete={onDeleteMessage}
               onForward={onForwardMessage}
               onReveal={onRevealMessage}
@@ -1554,6 +1576,7 @@ interface MessageContextState {
   x: number;
   y: number;
   expanded: boolean;
+  pickerOnly?: boolean;
 }
 
 export function MessageList({
@@ -1576,6 +1599,7 @@ export function MessageList({
   onReply = () => {},
   onReact = async () => false,
   onPin = async () => false,
+  onEdit = async () => false,
   onDelete = async () => false,
   onForward = async () => false,
   onReveal = async () => false,
@@ -1599,6 +1623,7 @@ export function MessageList({
   onReply?(message: MessageItem): void;
   onReact?(messageId: string, emoji: string | null): Promise<boolean>;
   onPin?(messageId: string, pinned: boolean): Promise<boolean>;
+  onEdit?(messageId: string, body: string): Promise<boolean>;
   onDelete?(messageId: string): Promise<boolean>;
   onForward?(messageId: string, targetChatId: string): Promise<boolean>;
   onReveal?(messageId: string): Promise<boolean>;
@@ -1615,10 +1640,13 @@ export function MessageList({
   });
   const nearBottomRef = useRef(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [recentReactions, setRecentReactions] = useState(storedRecentMessageReactions);
   const [olderBusy, setOlderBusy] = useState(false);
   const [contextMenu, setContextMenu] = useState<MessageContextState>();
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem>();
   const [deletingMessage, setDeletingMessage] = useState<MessageItem>();
+  const [editingMessage, setEditingMessage] = useState<MessageItem>();
+  const [editingPending, setEditingPending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1629,6 +1657,7 @@ export function MessageList({
     setContextMenu(undefined);
     setForwardingMessage(undefined);
     setDeletingMessage(undefined);
+    setEditingMessage(undefined);
     setSelectedIds(new Set());
   }, [chatId]);
 
@@ -1674,14 +1703,20 @@ export function MessageList({
     return () => window.cancelAnimationFrame(frame);
   }, [contextMenuMessageId]);
 
-  const openMessageContext = (message: MessageItem, x: number, y: number) => {
+  const openMessageContext = (
+    message: MessageItem,
+    x: number,
+    y: number,
+    options: { expanded?: boolean; pickerOnly?: boolean } = {},
+  ) => {
     const width = 286;
     const height = 380;
     setContextMenu({
       message,
       x: Math.max(10, Math.min(x, window.innerWidth - width - 10)),
       y: Math.max(10, Math.min(y, window.innerHeight - height - 10)),
-      expanded: false,
+      expanded: options.expanded ?? false,
+      pickerOnly: options.pickerOnly,
     });
   };
 
@@ -1690,6 +1725,18 @@ export function MessageList({
       const next = new Set(current);
       if (next.has(messageId)) next.delete(messageId);
       else next.add(messageId);
+      return next;
+    });
+  };
+
+  const rememberReaction = (emoji: string) => {
+    setRecentReactions((current) => {
+      const next = [emoji, ...current.filter((candidate) => candidate !== emoji)].slice(0, 3);
+      try {
+        window.localStorage.setItem(RECENT_MESSAGE_REACTIONS_KEY, JSON.stringify(next));
+      } catch {
+        // Keep the in-memory history when storage is unavailable.
+      }
       return next;
     });
   };
@@ -1876,7 +1923,13 @@ export function MessageList({
                       onJoinCall={onJoinCall}
                       onJoinInvite={onJoinInvite}
                       onContextMenu={openMessageContext}
-                      onToggleReaction={(emoji) => void onReact(message.id, emoji)}
+                      quickReactions={recentReactions}
+                      onToggleReaction={(emoji) => {
+                        if (emoji) rememberReaction(emoji);
+                        void onReact(message.id, emoji);
+                      }}
+                      onEdit={() => setEditingMessage(message)}
+                      onForward={() => setForwardingMessage(message)}
                       onToggleSelected={() => toggleSelected(message.id)}
                       onRevealMessage={(messageId) => void revealMessage(messageId)}
                     />
@@ -1912,11 +1965,16 @@ export function MessageList({
                 const active = contextMenu.message.reactions?.find(
                   (reaction) => reaction.emoji === emoji && reactionMine(reaction, userId),
                 );
+                if (!active) rememberReaction(emoji);
                 void onReact(contextMenu.message.id, active ? null : emoji);
                 setContextMenu(undefined);
               }}
               onReply={() => {
                 onReply(contextMenu.message);
+                setContextMenu(undefined);
+              }}
+              onEdit={() => {
+                setEditingMessage(contextMenu.message);
                 setContextMenu(undefined);
               }}
               onPin={() => {
@@ -2000,6 +2058,19 @@ export function MessageList({
           }}
         />
       ) : null}
+      {editingMessage ? (
+        <EditMessageDialog
+          message={editingMessage}
+          busy={editingPending}
+          onClose={() => !editingPending && setEditingMessage(undefined)}
+          onSave={(body) => {
+            setEditingPending(true);
+            void onEdit(editingMessage.id, body)
+              .then((saved) => saved && setEditingMessage(undefined))
+              .finally(() => setEditingPending(false));
+          }}
+        />
+      ) : null}
       {deletingMessage ? (
         <ChatActionConfirmDialog
           title="Удалить сообщение?"
@@ -2039,7 +2110,10 @@ function MessageBubble({
   onJoinCall,
   onJoinInvite,
   onContextMenu,
+  quickReactions,
   onToggleReaction,
+  onEdit,
+  onForward,
   onToggleSelected,
   onRevealMessage,
 }: {
@@ -2051,8 +2125,16 @@ function MessageBubble({
   selected: boolean;
   onJoinCall(roomId: string): void;
   onJoinInvite(token: string): Promise<boolean>;
-  onContextMenu(message: MessageItem, x: number, y: number): void;
+  onContextMenu(
+    message: MessageItem,
+    x: number,
+    y: number,
+    options?: { expanded?: boolean; pickerOnly?: boolean },
+  ): void;
+  quickReactions: string[];
   onToggleReaction(emoji: string | null): void;
+  onEdit(): void;
+  onForward(): void;
   onToggleSelected(): void;
   onRevealMessage(messageId: string): void;
 }) {
@@ -2067,6 +2149,7 @@ function MessageBubble({
   const forwardedName = forwardedFrom?.display_name ?? forwardedFrom?.displayName;
   const gif = message.metadata?.gif;
   const deleted = Boolean(message.deleted_at || message.metadata?.deleted);
+  const canEdit = own && message.kind === 'text' && !gif && !deleted;
   const openContext = (x: number, y: number) => {
     if (deleted) return;
     onContextMenu(message, x, y);
@@ -2126,6 +2209,57 @@ function MessageBubble({
         />
       )}
       <div className="message-bubble-stack">
+        {!deleted ? (
+          <div className="message-hover-actions" role="toolbar" aria-label="Быстрые действия">
+            {quickReactions.map((emoji) => (
+              <button
+                type="button"
+                className="message-hover-reaction"
+                aria-label={`Поставить реакцию ${emoji}`}
+                onClick={() => {
+                  const active = message.reactions?.some(
+                    (reaction) => reaction.emoji === emoji && reactionMine(reaction, accountId),
+                  );
+                  onToggleReaction(active ? null : emoji);
+                }}
+                key={emoji}
+              >
+                {emoji}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-label="Выбрать другую реакцию"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                onContextMenu(message, rect.right - 286, rect.bottom + 6, {
+                  expanded: true,
+                  pickerOnly: true,
+                });
+              }}
+            >
+              <Smile />
+            </button>
+            {canEdit ? (
+              <button type="button" aria-label="Изменить сообщение" onClick={onEdit}>
+                <Pencil />
+              </button>
+            ) : null}
+            <button type="button" aria-label="Переслать сообщение" onClick={onForward}>
+              <Forward />
+            </button>
+            <button
+              type="button"
+              aria-label="Другие действия"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                onContextMenu(message, rect.right - 286, rect.bottom + 6);
+              }}
+            >
+              <MoreHorizontal />
+            </button>
+          </div>
+        ) : null}
         <div
           className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
         >
@@ -2167,6 +2301,7 @@ function MessageBubble({
             <p>{message.body}</p>
           )}
           <span className="message-meta">
+            {message.edited_at ? <small>изменено</small> : null}
             {message.pinned_at ? <Pin aria-label="Закреплено" /> : null}
             <time>{formatMessageTime(message.created_at)}</time>
           </span>
@@ -2261,6 +2396,7 @@ function MessageContextMenu({
   onExpand,
   onReact,
   onReply,
+  onEdit,
   onPin,
   onCopy,
   onForward,
@@ -2276,6 +2412,7 @@ function MessageContextMenu({
   onExpand(): void;
   onReact(emoji: string): void;
   onReply(): void;
+  onEdit(): void;
   onPin(): void;
   onCopy(): void;
   onForward(): void;
@@ -2318,29 +2455,31 @@ function MessageContextMenu({
         controls[nextIndex]?.focus();
       }}
     >
-      <div className="message-quick-reactions" aria-label="Быстрые реакции">
-        {QUICK_MESSAGE_REACTIONS.map((emoji) => (
+      {!state.pickerOnly ? (
+        <div className="message-quick-reactions" aria-label="Быстрые реакции">
+          {QUICK_MESSAGE_REACTIONS.map((emoji) => (
+            <button
+              type="button"
+              aria-label={`Поставить реакцию ${emoji}`}
+              aria-pressed={reactionIsActive(emoji)}
+              onClick={() => onReact(emoji)}
+              key={emoji}
+            >
+              {emoji}
+            </button>
+          ))}
           <button
             type="button"
-            aria-label={`Поставить реакцию ${emoji}`}
-            aria-pressed={reactionIsActive(emoji)}
-            onClick={() => onReact(emoji)}
-            key={emoji}
+            className="reaction-expand-button"
+            aria-label="Все реакции"
+            aria-expanded={state.expanded}
+            onClick={onExpand}
           >
-            {emoji}
+            <ChevronDown />
           </button>
-        ))}
-        <button
-          type="button"
-          className="reaction-expand-button"
-          aria-label="Все реакции"
-          aria-expanded={state.expanded}
-          onClick={onExpand}
-        >
-          <ChevronDown />
-        </button>
-      </div>
-      {state.expanded ? (
+        </div>
+      ) : null}
+      {state.expanded || state.pickerOnly ? (
         <div className="message-reaction-picker" aria-label="Выбор реакции">
           <div className="message-reaction-palette">
             {MESSAGE_REACTION_PALETTE.map((emoji) => (
@@ -2380,32 +2519,93 @@ function MessageContextMenu({
           </label>
         </div>
       ) : null}
-      <div className="message-context-actions">
-        <button type="button" role="menuitem" onClick={onReply}>
-          <Reply /> Ответить
-        </button>
-        {canPin ? (
-          <button type="button" role="menuitem" onClick={onPin}>
-            {state.message.pinned_at ? <PinOff /> : <Pin />}
-            {state.message.pinned_at ? 'Открепить' : 'Закрепить'}
+      {!state.pickerOnly ? (
+        <div className="message-context-actions">
+          <button type="button" role="menuitem" onClick={onReply}>
+            <Reply /> Ответить
           </button>
-        ) : null}
-        <button type="button" role="menuitem" onClick={onCopy}>
-          <Copy /> Копировать текст
-        </button>
-        <button type="button" role="menuitem" onClick={onForward}>
-          <Forward /> Переслать
-        </button>
-        {canDelete ? (
-          <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
-            <Trash2 /> Удалить{own ? '' : ' как администратор'}
+          {own && state.message.kind === 'text' && !state.message.metadata?.gif ? (
+            <button type="button" role="menuitem" onClick={onEdit}>
+              <Pencil /> Изменить
+            </button>
+          ) : null}
+          {canPin ? (
+            <button type="button" role="menuitem" onClick={onPin}>
+              {state.message.pinned_at ? <PinOff /> : <Pin />}
+              {state.message.pinned_at ? 'Открепить' : 'Закрепить'}
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" onClick={onCopy}>
+            <Copy /> Копировать текст
           </button>
-        ) : null}
-        <button type="button" role="menuitem" onClick={onSelect}>
-          <CheckCircle2 /> Выделить
-        </button>
-      </div>
+          <button type="button" role="menuitem" onClick={onForward}>
+            <Forward /> Переслать
+          </button>
+          {canDelete ? (
+            <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
+              <Trash2 /> Удалить{own ? '' : ' как администратор'}
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" onClick={onSelect}>
+            <CheckCircle2 /> Выделить
+          </button>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function EditMessageDialog({
+  message,
+  busy,
+  onClose,
+  onSave,
+}: {
+  message: MessageItem;
+  busy: boolean;
+  onClose(): void;
+  onSave(body: string): void;
+}) {
+  const [body, setBody] = useState(message.body);
+  const trimmed = body.trim();
+  const canSave = Boolean(trimmed) && trimmed !== message.body && !busy;
+  return createPortal(
+    <div className="forward-message-backdrop" onPointerDown={onClose}>
+      <section
+        className="edit-message-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Изменить сообщение"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <strong>Изменить сообщение</strong>
+          <button type="button" aria-label="Закрыть" disabled={busy} onClick={onClose}>
+            <X />
+          </button>
+        </header>
+        <textarea
+          autoFocus
+          value={body}
+          maxLength={4000}
+          aria-label="Текст сообщения"
+          onChange={(event) => setBody(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') onClose();
+            if (event.key !== 'Enter' || event.shiftKey) return;
+            event.preventDefault();
+            if (canSave) onSave(trimmed);
+          }}
+        />
+        <footer>
+          <small>Enter — сохранить, Shift + Enter — новая строка</small>
+          <button type="button" disabled={!canSave} onClick={() => onSave(trimmed)}>
+            <Save /> {busy ? 'Сохраняем…' : 'Сохранить'}
+          </button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
