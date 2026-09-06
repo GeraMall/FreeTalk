@@ -1871,7 +1871,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   min-width: 0;
   min-height: 0;
   padding-bottom: 8px;
-  place-items: end center;
+  place-items: start center;
   box-sizing: border-box;
   overflow: hidden;
 }
