@@ -445,9 +445,17 @@ describe('RoomView media layouts', () => {
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {
     const { container } = render(view('both'));
-    expect(container.querySelector('.screen-stage')).not.toBeNull();
+    const stage = container.querySelector<HTMLElement>('.screen-stage');
+    const screenVideo = stage?.querySelector('video');
+    expect(stage).not.toBeNull();
     expect(container.querySelector('.participant-strip .camera-tile')).not.toBeNull();
     expect(container.querySelectorAll('video')).toHaveLength(2);
+    Object.defineProperties(screenVideo!, {
+      videoWidth: { configurable: true, value: 1600 },
+      videoHeight: { configurable: true, value: 1000 },
+    });
+    fireEvent.loadedMetadata(screenVideo!);
+    expect(stage?.style.getPropertyValue('--screen-aspect-ratio')).toBe('1.6');
   });
 
   it('keeps camera expand and participant menu controls separate beside a shared screen', () => {

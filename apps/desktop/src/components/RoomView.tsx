@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
@@ -177,6 +177,7 @@ export function RoomView({
   const [callDetached, setCallDetached] = useState(false);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
+  const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
   const roomShellRef = useRef<HTMLElement>(null);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
@@ -197,6 +198,22 @@ export function RoomView({
   const screenPresenter =
     screenPresenters.find((participant) => participant.id === presentedScreenId) ??
     screenPresenters[0];
+  const screenAspectRatio =
+    screenGeometry.participantId === screenPresenter?.id ? screenGeometry.aspectRatio : 16 / 9;
+  const updateScreenAspectRatio = useCallback(
+    (aspectRatio: number) => {
+      if (!screenPresenter || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return;
+      setScreenGeometry((current) => {
+        if (
+          current.participantId === screenPresenter.id &&
+          Math.abs(current.aspectRatio - aspectRatio) < 0.001
+        )
+          return current;
+        return { participantId: screenPresenter.id, aspectRatio };
+      });
+    },
+    [screenPresenter],
+  );
   const hasCamera = ordered.some((participant) => Boolean(participantMedia(participant).camera));
   const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
   const expandedParticipant = expandedMedia
@@ -509,7 +526,10 @@ export function RoomView({
 
           {screenPresenter ? (
             <div className="presentation-layout">
-              <article className="screen-stage media-surface">
+              <article
+                className="screen-stage media-surface"
+                style={{ '--screen-aspect-ratio': screenAspectRatio } as CSSProperties}
+              >
                 <ParticipantVideo
                   stream={participantMedia(screenPresenter).screen!}
                   source="screen"
@@ -517,6 +537,7 @@ export function RoomView({
                   muted
                   volume={0}
                   outputDeviceId={settings.outputDeviceId}
+                  onAspectRatioChange={updateScreenAspectRatio}
                   onExpand={() =>
                     setExpandedMedia({ type: 'screen', participantId: screenPresenter.id })
                   }
@@ -1224,6 +1245,7 @@ function ParticipantVideo({
   volume,
   outputDeviceId,
   expanded = false,
+  onAspectRatioChange,
   onExpand,
 }: {
   stream: MediaStream;
@@ -1234,6 +1256,7 @@ function ParticipantVideo({
   volume: number;
   outputDeviceId: string;
   expanded?: boolean;
+  onAspectRatioChange?(aspectRatio: number): void;
   onExpand(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
@@ -1264,6 +1287,16 @@ function ParticipantVideo({
         autoPlay
         muted={muted}
         playsInline
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0)
+            onAspectRatioChange?.(video.videoWidth / video.videoHeight);
+        }}
+        onResize={(event) => {
+          const video = event.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0)
+            onAspectRatioChange?.(video.videoWidth / video.videoHeight);
+        }}
       />
       <button
         className="video-fullscreen"

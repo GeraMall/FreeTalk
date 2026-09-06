@@ -1792,13 +1792,17 @@ input[type='range']:hover::-webkit-slider-thumb {
 .presentation-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
+  align-items: start;
   gap: 14px;
-  height: min(850px, max(420px, calc(100dvh - 250px)));
+  height: auto;
   animation: media-tile-in 0.2s ease-out;
 }
 .screen-stage {
   position: relative;
+  width: 100%;
   min-width: 0;
+  aspect-ratio: var(--screen-aspect-ratio, 16 / 9);
+  max-height: max(280px, calc(100dvh - 250px));
   overflow: hidden;
   border: 1px solid rgba(75, 166, 174, 0.48);
   border-radius: 17px;
@@ -1875,9 +1879,12 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participant-strip {
   display: grid;
+  align-self: stretch;
   grid-auto-rows: minmax(96px, 108px);
   grid-auto-flow: row;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
   padding: 2px 2px 7px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -2055,7 +2062,6 @@ input[type='range']:hover::-webkit-slider-thumb {
   .presentation-layout {
     grid-template-columns: minmax(0, 1fr) clamp(260px, 15vw, 320px);
     gap: 18px;
-    height: min(1080px, max(620px, calc(100dvh - 250px)));
   }
   .screen-stage {
     border-radius: 20px;
@@ -6087,6 +6093,10 @@ input[type='range']:hover::-webkit-slider-thumb {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(300px, 52vh) auto;
     height: auto;
+  }
+  .screen-stage {
+    aspect-ratio: auto;
+    max-height: none;
   }
   .participant-strip {
     grid-auto-columns: minmax(140px, 42vw);
@@ -12220,7 +12230,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     padding-top: 20px;
   }
   .presentation-layout {
-    height: max(280px, calc(100dvh - 320px));
+    min-height: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
