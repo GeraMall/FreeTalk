@@ -465,6 +465,7 @@ describe('RoomView media layouts', () => {
     expect(stageShell?.style.getPropertyValue('--screen-aspect-ratio')).toBe('1.6');
     expect(stage?.querySelector('.screen-stage-title')).toBeNull();
     expect(stageShell?.querySelector('.screen-stage-toolbar')).not.toBeNull();
+    expect(stageShell?.querySelector('.screen-stage-creator .creator-badge')).not.toBeNull();
   });
 
   it('keeps camera expand and participant menu controls separate beside a shared screen', () => {

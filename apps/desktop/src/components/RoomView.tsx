@@ -558,20 +558,20 @@ export function RoomView({
                       <small>Демонстрация экрана</small>
                     </span>
                   </span>
-                  <span className="screen-stage-toolbar-actions">
+                  <span className="screen-stage-creator">
                     {screenPresenter.isOwner && <CreatorBadge compact />}
-                    <button
-                      className="screen-stage-expand"
-                      aria-label={`Раскрыть демонстрацию экрана ${screenPresenter.name}`}
-                      title="Развернуть демонстрацию"
-                      onClick={() => {
-                        setScreenViewerControlsVisible(false);
-                        setExpandedMedia({ type: 'screen', participantId: screenPresenter.id });
-                      }}
-                    >
-                      <Maximize2 size={16} />
-                    </button>
                   </span>
+                  <button
+                    className="screen-stage-expand"
+                    aria-label={`Раскрыть демонстрацию экрана ${screenPresenter.name}`}
+                    title="Развернуть демонстрацию"
+                    onClick={() => {
+                      setScreenViewerControlsVisible(false);
+                      setExpandedMedia({ type: 'screen', participantId: screenPresenter.id });
+                    }}
+                  >
+                    <Maximize2 size={16} />
+                  </button>
                 </div>
                 <article className="screen-stage media-surface">
                   <ParticipantVideo
