@@ -9,6 +9,7 @@ import { randomToken, tokenHash, usernameSchema } from './security.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
 import { verifyRemoteGif } from './remote-gif.js';
+import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import {
   ChatSendPacer,
   chatGifMetadataSchema,
@@ -32,6 +33,11 @@ const avatarPositionSchema = z.object({
   scale: z.coerce.number().int().min(100).max(250),
 });
 const chatSendPacer = new ChatSendPacer();
+const callRoomParams = z.object({
+  roomId: z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/),
+});
+const callInvitationParams = z.object({ invitationId: uuid });
+const CALL_INVITATION_TTL_MS = 30_000;
 
 function enforceChatSendPacing(reply: FastifyReply, chatId: string, userId: string) {
   const pacing = chatSendPacer.check(`${chatId}:${userId}`);
@@ -248,6 +254,95 @@ async function canInteractInChat(chatId: string, userId: string) {
     [chatId, userId],
   );
   return result.rows[0]?.allowed === true;
+}
+
+async function ensureDirectChat(client: PoolClient, firstUserId: string, secondUserId: string) {
+  const memberIds = [firstUserId, secondUserId].sort();
+  const directPairKey = memberIds.join(':');
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [directPairKey]);
+  const existing = await client.query<{ id: string }>(
+    `SELECT chat.id FROM chats chat
+     JOIN chat_members first_member ON first_member.chat_id=chat.id AND first_member.user_id=$1
+     JOIN chat_members second_member ON second_member.chat_id=chat.id AND second_member.user_id=$2
+     WHERE chat.type='direct'
+       AND (SELECT count(*) FROM chat_members member WHERE member.chat_id=chat.id)=2
+     ORDER BY chat.created_at LIMIT 1`,
+    memberIds,
+  );
+  if (existing.rows[0]) {
+    await client.query('UPDATE chat_members SET left_at=NULL,joined_at=now() WHERE chat_id=$1', [
+      existing.rows[0].id,
+    ]);
+    return existing.rows[0].id;
+  }
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO chats(type,title,created_by,retention_hours)
+     VALUES('direct',NULL,$1,NULL) RETURNING id`,
+    [firstUserId],
+  );
+  const chatId = created.rows[0]!.id;
+  await client.query(
+    `INSERT INTO chat_members(chat_id,user_id,role,added_by)
+     VALUES($1,$2,'owner',$2),($1,$3,'member',$2)`,
+    [chatId, firstUserId, secondUserId],
+  );
+  return chatId;
+}
+
+async function expirePendingCallInvitations() {
+  const expired = await transaction(async (client) => {
+    const due = await client.query<{
+      id: string;
+      room_id: string;
+      inviter_id: string;
+      invitee_id: string;
+      chat_id: string;
+      inviter_name: string;
+    }>(
+      `WITH due AS (
+         SELECT id FROM call_invitations
+         WHERE status='pending' AND expires_at<=now()
+         FOR UPDATE SKIP LOCKED
+       ), updated AS (
+         UPDATE call_invitations invitation
+         SET status='missed',responded_at=now()
+         FROM due WHERE invitation.id=due.id
+         RETURNING invitation.id,invitation.room_id,invitation.inviter_id,
+                   invitation.invitee_id,invitation.chat_id
+       )
+       SELECT updated.*,inviter.display_name AS inviter_name
+       FROM updated JOIN users inviter ON inviter.id=updated.inviter_id`,
+    );
+    const messages: Array<(typeof due.rows)[number] & { messageId: string }> = [];
+    for (const invitation of due.rows) {
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,expires_at)
+         VALUES($1,$2,'call',$3,$4,NULL) RETURNING id`,
+        [
+          invitation.chat_id,
+          invitation.inviter_id,
+          `Пропущенный звонок от ${invitation.inviter_name}`,
+          { roomId: invitation.room_id, missed: true, invitationId: invitation.id },
+        ],
+      );
+      messages.push({ ...invitation, messageId: inserted.rows[0]!.id });
+    }
+    return messages;
+  });
+  for (const invitation of expired) {
+    chatRealtimeHub.publish([invitation.invitee_id], {
+      type: 'call-invitation-resolved',
+      invitationId: invitation.id,
+      status: 'missed',
+    });
+    const message = await loadRealtimeMessage(invitation.messageId);
+    if (message)
+      await publishChatEvent(invitation.chat_id, {
+        type: 'message-created',
+        chatId: invitation.chat_id,
+        message,
+      });
+  }
 }
 
 async function isGroupChat(chatId: string) {
@@ -1779,6 +1874,150 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     return reply.code(201).send({ call: { roomId } });
   });
 
+  app.post('/v1/calls/:roomId/invitations', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { roomId } = callRoomParams.parse(request.params);
+    const { userIds } = z.object({ userIds: z.array(uuid).min(1).max(7) }).parse(request.body);
+    const requestedUserIds = [...new Set(userIds)].filter((userId) => userId !== user.id);
+    if (!requestedUserIds.length) return reply.code(400).send({ code: 'CALL_INVITEES_REQUIRED' });
+
+    const result = await transaction(async (client) => {
+      const call = await client.query<{ id: string }>(
+        `SELECT session.id FROM call_sessions session
+         WHERE session.room_id=$1 AND session.ended_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM call_participants participant
+             WHERE participant.call_id=session.id AND participant.user_id=$2
+               AND participant.left_at IS NULL
+           )
+         ORDER BY session.started_at DESC LIMIT 1 FOR UPDATE`,
+        [roomId, user.id],
+      );
+      const callId = call.rows[0]?.id;
+      if (!callId) return { status: 'call-not-active' as const, invitations: [] };
+
+      const active = await client.query<{ user_id: string | null; participant_count: number }>(
+        `SELECT user_id,count(*) OVER()::int AS participant_count
+         FROM (
+           SELECT DISTINCT participant.user_id,participant.anonymous_user_id
+           FROM call_participants participant
+           WHERE participant.call_id=$1 AND participant.left_at IS NULL
+         ) active_participants`,
+        [callId],
+      );
+      const activeAccountIds = new Set(
+        active.rows.map((participant) => participant.user_id).filter(Boolean),
+      );
+      const availableSlots = Math.max(
+        0,
+        ROOM_MAX_PARTICIPANTS - (active.rows[0]?.participant_count ?? 0),
+      );
+      if (
+        requestedUserIds.length > availableSlots ||
+        requestedUserIds.some((userId) => activeAccountIds.has(userId))
+      )
+        return { status: 'room-capacity' as const, invitations: [] };
+
+      const allowed = await client.query<{ id: string }>(
+        `SELECT target.id FROM friendships friendship
+         JOIN users target ON target.id=CASE
+           WHEN friendship.user_low_id=$1 THEN friendship.user_high_id ELSE friendship.user_low_id END
+         WHERE (friendship.user_low_id=$1 OR friendship.user_high_id=$1)
+           AND target.id=ANY($2::uuid[]) AND target.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM blocks
+             WHERE (blocker_id=$1 AND blocked_id=target.id)
+                OR (blocker_id=target.id AND blocked_id=$1)
+           )`,
+        [user.id, requestedUserIds],
+      );
+      if (allowed.rowCount !== requestedUserIds.length)
+        return { status: 'friends-only' as const, invitations: [] };
+
+      const invitations: Array<{
+        id: string;
+        inviteeId: string;
+        expiresAt: Date;
+      }> = [];
+      for (const inviteeId of requestedUserIds) {
+        const chatId = await ensureDirectChat(client, user.id, inviteeId);
+        const invitation = await client.query<{ id: string; expires_at: Date }>(
+          `INSERT INTO call_invitations(call_id,room_id,inviter_id,invitee_id,chat_id,expires_at)
+           VALUES($1,$2,$3,$4,$5,now()+interval '30 seconds')
+           ON CONFLICT(room_id,invitee_id) WHERE status='pending'
+           DO UPDATE SET inviter_id=EXCLUDED.inviter_id,chat_id=EXCLUDED.chat_id,
+             call_id=EXCLUDED.call_id,created_at=now(),expires_at=EXCLUDED.expires_at
+           RETURNING id,expires_at`,
+          [callId, roomId, user.id, inviteeId, chatId],
+        );
+        invitations.push({
+          id: invitation.rows[0]!.id,
+          inviteeId,
+          expiresAt: invitation.rows[0]!.expires_at,
+        });
+      }
+      return { status: 'created' as const, invitations };
+    });
+
+    if (result.status === 'call-not-active')
+      return reply
+        .code(409)
+        .send({ code: 'CALL_NOT_ACTIVE', message: 'Звонок уже завершён или недоступен' });
+    if (result.status === 'room-capacity')
+      return reply
+        .code(409)
+        .send({ code: 'ROOM_CAPACITY_EXCEEDED', message: 'В звонке недостаточно свободных мест' });
+    if (result.status === 'friends-only')
+      return reply
+        .code(403)
+        .send({ code: 'FRIENDS_ONLY', message: 'В звонок можно приглашать только друзей' });
+
+    const avatarUrl = user.avatar_data
+      ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
+      : null;
+    for (const invitation of result.invitations)
+      chatRealtimeHub.publish([invitation.inviteeId], {
+        type: 'incoming-call',
+        invitationId: invitation.id,
+        roomId,
+        inviter: { id: user.id, displayName: user.display_name, avatarUrl },
+        expiresAt: invitation.expiresAt.toISOString(),
+      });
+    return reply.code(201).send({
+      invitations: result.invitations.map((invitation) => ({
+        id: invitation.id,
+        userId: invitation.inviteeId,
+        expiresAt: invitation.expiresAt.toISOString(),
+      })),
+      timeoutSeconds: CALL_INVITATION_TTL_MS / 1_000,
+    });
+  });
+
+  app.post('/v1/call-invitations/:invitationId/respond', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { invitationId } = callInvitationParams.parse(request.params);
+    const { action } = z.object({ action: z.enum(['accept', 'decline']) }).parse(request.body);
+    const status = action === 'accept' ? 'accepted' : 'declined';
+    const invitation = await db.query<{ room_id: string }>(
+      `UPDATE call_invitations SET status=$1,responded_at=now()
+       WHERE id=$2 AND invitee_id=$3 AND status='pending' AND expires_at>now()
+       RETURNING room_id`,
+      [status, invitationId, user.id],
+    );
+    if (!invitation.rows[0])
+      return reply
+        .code(409)
+        .send({ code: 'CALL_INVITATION_EXPIRED', message: 'Приглашение уже недоступно' });
+    chatRealtimeHub.publish([user.id], {
+      type: 'call-invitation-resolved',
+      invitationId,
+      status,
+    });
+    return { invitation: { id: invitationId, status, roomId: invitation.rows[0].room_id } };
+  });
+
   app.get('/v1/room-invites/:roomId/preview', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -1870,4 +2109,10 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       .catch(() => undefined);
   }, 15 * 60_000);
   cleanup.unref();
+  const callInvitationCleanup = setInterval(
+    () => void expirePendingCallInvitations().catch(() => undefined),
+    1_000,
+  );
+  callInvitationCleanup.unref();
+  void expirePendingCallInvitations().catch(() => undefined);
 }

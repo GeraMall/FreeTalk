@@ -373,6 +373,22 @@ export type ChatMessageReactionSummary = z.infer<typeof chatMessageReactionSumma
 export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }),
   z.object({
+    type: z.literal('incoming-call'),
+    invitationId: z.string().uuid(),
+    roomId,
+    inviter: z.object({
+      id: z.string().uuid(),
+      displayName: z.string().trim().min(1).max(48),
+      avatarUrl: z.string().url().nullable(),
+    }),
+    expiresAt: z.string().datetime({ offset: true }),
+  }),
+  z.object({
+    type: z.literal('call-invitation-resolved'),
+    invitationId: z.string().uuid(),
+    status: z.enum(['accepted', 'declined', 'missed']),
+  }),
+  z.object({
     type: z.literal('message-created'),
     chatId: z.string().uuid(),
     message: realtimeChatMessageSchema,

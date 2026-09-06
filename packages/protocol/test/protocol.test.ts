@@ -18,6 +18,30 @@ const base = {
 };
 
 describe('protocol validation', () => {
+  it('accepts incoming call invitation lifecycle events', () => {
+    const invitationId = '11111111-1111-4111-8111-111111111111';
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'incoming-call',
+        invitationId,
+        roomId: base.roomId,
+        inviter: {
+          id: base.clientId,
+          displayName: base.name,
+          avatarUrl: null,
+        },
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'call-invitation-resolved',
+        invitationId,
+        status: 'missed',
+      }).success,
+    ).toBe(true);
+  });
+
   it('accepts a valid join message', () => {
     expect(clientMessageSchema.parse({ type: 'join-room', ...base })).toEqual({
       type: 'join-room',

@@ -52,6 +52,7 @@ import {
 } from '../lib/camera-background';
 import { cameraConstraints } from '../lib/video-manager';
 import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
+import { CallInviteFriendsDialog, type CallInviteFriend } from './CallInviteFriendsDialog';
 
 export type PeerUiState = Record<
   string,
@@ -89,7 +90,9 @@ interface RoomViewProps {
   recordingState: ScreenRecordingState;
   recordingBannerMessage: string;
   devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
+  friends?: CallInviteFriend[];
   onCopyInvite(): void;
+  onInviteFriends?(userIds: string[]): Promise<boolean>;
   onMute(): void;
   onCamera(): void;
   onInputDevice(deviceId: string): void;
@@ -139,7 +142,9 @@ export function RoomView({
   recordingState,
   recordingBannerMessage,
   devices,
+  friends = [],
   onCopyInvite,
+  onInviteFriends,
   onMute,
   onCamera,
   onInputDevice,
@@ -171,6 +176,7 @@ export function RoomView({
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
+  const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const roomShellRef = useRef<HTMLElement>(null);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
@@ -548,7 +554,11 @@ export function RoomView({
               <div className="participant-strip" role="list" aria-label="Участники комнаты">
                 {ordered.map((participant) => renderParticipant(participant, true))}
                 {openSlots > 0 && (
-                  <InviteCallout compact openSlots={openSlots} onCopyInvite={onCopyInvite} />
+                  <InviteCallout
+                    compact
+                    openSlots={openSlots}
+                    onOpen={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
+                  />
                 )}
               </div>
             </div>
@@ -560,7 +570,12 @@ export function RoomView({
               role="list"
             >
               {ordered.map((participant) => renderParticipant(participant))}
-              {openSlots > 0 && <InviteCallout openSlots={openSlots} onCopyInvite={onCopyInvite} />}
+              {openSlots > 0 && (
+                <InviteCallout
+                  openSlots={openSlots}
+                  onOpen={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
+                />
+              )}
             </div>
           )}
         </section>
@@ -814,6 +829,19 @@ export function RoomView({
           viewerId={viewerId}
           target={fullProfileTarget}
           onClose={() => setFullProfileTarget(undefined)}
+        />
+      ) : null}
+      {onInviteFriends ? (
+        <CallInviteFriendsDialog
+          open={friendsInviteOpen}
+          friends={friends}
+          participantAccountIds={participants.flatMap((participant) =>
+            participant.accountId ? [participant.accountId] : [],
+          )}
+          participantCount={participants.length}
+          capacity={ROOM_MAX_PARTICIPANTS}
+          onClose={() => setFriendsInviteOpen(false)}
+          onInvite={onInviteFriends}
         />
       ) : null}
     </main>
@@ -1477,14 +1505,14 @@ function ParticipantVolume({
 function InviteCallout({
   compact = false,
   openSlots,
-  onCopyInvite,
+  onOpen,
 }: {
   compact?: boolean;
   openSlots: number;
-  onCopyInvite(): void;
+  onOpen(): void;
 }) {
   return (
-    <button className={`invite-empty ${compact ? 'compact' : ''}`} onClick={onCopyInvite}>
+    <button className={`invite-empty ${compact ? 'compact' : ''}`} onClick={onOpen}>
       <span className="invite-empty-icon">
         <UserPlus size={compact ? 18 : 20} />
       </span>
@@ -1492,7 +1520,7 @@ function InviteCallout({
         <strong>{compact ? 'Пригласить' : 'Добавить друзей'}</strong>
         <small>{slotsLabel(openSlots)}</small>
       </span>
-      <Copy size={15} />
+      <UserPlus size={15} />
     </button>
   );
 }

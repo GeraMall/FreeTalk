@@ -7,6 +7,8 @@ import { useMobileLayout } from '../lib/mobile-layout';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { UserProfileDialog } from './UserProfileDialog';
 import { FriendsPage } from './FriendsPage';
+import { CallInviteFriendsDialog } from './CallInviteFriendsDialog';
+import { IncomingCallDialog } from './IncomingCallDialog';
 
 const self = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -81,6 +83,8 @@ export function ChatLayoutPreview() {
   const previewFullProfile = previewParams.has('full-profile');
   const previewOwnProfile = previewParams.get('full-profile') === 'self';
   const previewFriends = previewParams.has('friends');
+  const previewCallFriends = previewParams.has('call-friends');
+  const previewIncomingCall = previewParams.has('incoming-call');
   const mobile = useMobileLayout();
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
     previewParams.has('list') ? undefined : chats[0]!.id,
@@ -250,6 +254,41 @@ export function ChatLayoutPreview() {
             onBlock: () => {},
           }}
           onClose={() => {}}
+        />
+      ) : null}
+      <CallInviteFriendsDialog
+        open={previewCallFriends}
+        friends={[
+          { id: friendId, displayName: 'Алексей', avatarUrl: mascot, presence: 'online' },
+          {
+            id: '77777777-7777-4777-8777-777777777777',
+            displayName: 'Марина',
+            presence: 'away',
+          },
+          {
+            id: '88888888-8888-4888-8888-888888888888',
+            displayName: 'Дмитрий',
+            presence: 'offline',
+          },
+        ]}
+        participantAccountIds={[friendId]}
+        participantCount={5}
+        capacity={8}
+        onClose={() => {}}
+        onInvite={async () => true}
+      />
+      {previewIncomingCall ? (
+        <IncomingCallDialog
+          invitation={{
+            invitationId: '99999999-9999-4999-8999-999999999999',
+            roomId: 'ABCDEFGH2345',
+            inviter: { id: friendId, displayName: 'Алексей', avatarUrl: mascot },
+            expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          }}
+          secondsLeft={27}
+          busy={false}
+          onAccept={() => {}}
+          onDecline={() => {}}
         />
       ) : null}
     </main>

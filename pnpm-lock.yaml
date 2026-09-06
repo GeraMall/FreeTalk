@@ -86,6 +86,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.0
         version: 11.3.0
+      '@freetalk/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@freetalk/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

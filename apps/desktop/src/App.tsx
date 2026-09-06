@@ -25,6 +25,8 @@ import { generateRoomCode, parseRoomCode } from './lib/room-code';
 import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
 import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
+import { ChatRealtimeClient } from './lib/chat-realtime';
+import { IncomingCallRingtone } from './lib/incoming-call-ringtone';
 import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
 import type { VideoPreferences } from './lib/video-quality';
 import {
@@ -35,6 +37,7 @@ import {
 } from './lib/updater';
 import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel';
+import { IncomingCallDialog, type IncomingCallInvitation } from './components/IncomingCallDialog';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { HomeView, type HomeSidebarState } from './components/HomeView';
 import {
@@ -173,6 +176,9 @@ export function App() {
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
   const [recordingBannerMessage, setRecordingBannerMessage] = useState('');
+  const [incomingCall, setIncomingCall] = useState<IncomingCallInvitation>();
+  const [incomingCallSeconds, setIncomingCallSeconds] = useState(30);
+  const [incomingCallBusy, setIncomingCallBusy] = useState(false);
   const {
     width: roomSidebarWidth,
     startResize: startRoomSidebarResize,
@@ -202,6 +208,9 @@ export function App() {
   const signaling = useRef<SignalingClient | undefined>(undefined);
   const currentIceServers = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
   const notificationSounds = useRef(new NotificationSounds());
+  const incomingCallRingtone = useRef(new IncomingCallRingtone());
+  const incomingCallRef = useRef<IncomingCallInvitation | undefined>(undefined);
+  const settingsRef = useRef(settings);
   const participantNotifications = useRef(new ParticipantNotificationTracker());
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
@@ -238,6 +247,8 @@ export function App() {
       return next;
     });
   }, []);
+  settingsRef.current = settings;
+  incomingCallRef.current = incomingCall;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -282,6 +293,58 @@ export function App() {
       unlisten?.();
     };
   }, []);
+
+  useEffect(() => {
+    const ringtone = incomingCallRingtone.current;
+    if (!accountUser) {
+      ringtone.stop();
+      setIncomingCall(undefined);
+      return;
+    }
+    const realtime = new ChatRealtimeClient((event) => {
+      if (event.type === 'incoming-call') {
+        const invitation: IncomingCallInvitation = {
+          invitationId: event.invitationId,
+          roomId: event.roomId,
+          inviter: event.inviter,
+          expiresAt: event.expiresAt,
+        };
+        setIncomingCall(invitation);
+        setIncomingCallBusy(false);
+        void ringtone.start(settingsRef.current);
+      } else if (
+        event.type === 'call-invitation-resolved' &&
+        incomingCallRef.current?.invitationId === event.invitationId
+      ) {
+        ringtone.stop();
+        setIncomingCall(undefined);
+        setIncomingCallBusy(false);
+      }
+    });
+    realtime.start();
+    return () => {
+      realtime.stop();
+      ringtone.stop();
+    };
+  }, [accountUser]);
+
+  useEffect(() => {
+    if (!incomingCall) return;
+    const updateCountdown = () => {
+      const seconds = Math.max(
+        0,
+        Math.ceil((Date.parse(incomingCall.expiresAt) - Date.now()) / 1_000),
+      );
+      setIncomingCallSeconds(seconds);
+      if (seconds === 0) {
+        incomingCallRingtone.current.stop();
+        setIncomingCall(undefined);
+      }
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [incomingCall]);
 
   const cleanup = useCallback(() => {
     if (joinTimer.current) window.clearTimeout(joinTimer.current);
@@ -1071,6 +1134,51 @@ export function App() {
     }
   };
 
+  const inviteFriendsToCall = async (userIds: string[]) => {
+    if (!roomId || !accountUser || !userIds.length) return false;
+    try {
+      await accountClient.request(`/v1/calls/${roomId}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      });
+      setNotice(
+        userIds.length === 1
+          ? 'Приглашение в звонок отправлено'
+          : `Приглашения отправлены: ${userIds.length}`,
+      );
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Не удалось пригласить друзей');
+      return false;
+    }
+  };
+
+  const respondToIncomingCall = async (action: 'accept' | 'decline') => {
+    const invitation = incomingCallRef.current;
+    if (!invitation || incomingCallBusy) return;
+    setIncomingCallBusy(true);
+    try {
+      const result = await accountClient.request<{
+        invitation: { roomId: string; status: 'accepted' | 'declined' };
+      }>(`/v1/call-invitations/${invitation.invitationId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      });
+      incomingCallRingtone.current.stop();
+      setIncomingCall(undefined);
+      if (action === 'accept') {
+        if (roomId) cleanup();
+        await enterRoomRef.current(false, { room: result.invitation.roomId });
+      }
+    } catch (caught) {
+      incomingCallRingtone.current.stop();
+      setIncomingCall(undefined);
+      setError(caught instanceof Error ? caught.message : 'Приглашение больше недоступно');
+    } finally {
+      setIncomingCallBusy(false);
+    }
+  };
+
   const selectInput = async (deviceId: string) => {
     updateSettings({ inputDeviceId: deviceId });
     try {
@@ -1340,6 +1448,16 @@ export function App() {
     />
   ) : null;
 
+  const incomingCallOverlay = incomingCall ? (
+    <IncomingCallDialog
+      invitation={incomingCall}
+      secondsLeft={incomingCallSeconds}
+      busy={incomingCallBusy}
+      onAccept={() => void respondToIncomingCall('accept')}
+      onDecline={() => void respondToIncomingCall('decline')}
+    />
+  ) : null;
+
   if (!roomId) {
     return (
       <>
@@ -1398,6 +1516,7 @@ export function App() {
           />
         )}
         {settingsPanel}
+        {incomingCallOverlay}
         <AppToast message={notice} onClose={() => setNotice('')} />
       </>
     );
@@ -1428,7 +1547,9 @@ export function App() {
       recordingState={screenRecording}
       recordingBannerMessage={recordingBannerMessage}
       devices={devices}
+      friends={roomSidebarState?.friends ?? []}
       onCopyInvite={() => void copyInvite()}
+      onInviteFriends={inviteFriendsToCall}
       onMute={toggleMute}
       onCamera={() => void runVideoAction('camera')}
       onInputDevice={(deviceId) => void selectInput(deviceId)}
@@ -1527,6 +1648,7 @@ export function App() {
         roomView
       )}
       {settingsPanel}
+      {incomingCallOverlay}
       <AppToast
         message={error || notice}
         error={Boolean(error)}

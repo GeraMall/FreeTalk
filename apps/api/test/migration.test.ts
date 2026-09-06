@@ -151,4 +151,14 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('set expires_at = null');
     expect(sql).toContain('set retention_hours = null');
   });
+
+  it('persists expiring call invitations and their resolution state', async () => {
+    const path = fileURLToPath(new URL('../migrations/013_call_invitations.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('create table call_invitations');
+    expect(sql).toContain("interval '30 seconds'");
+    expect(sql).toContain("status in ('pending','accepted','declined','missed')");
+    expect(sql).toContain('call_invitations_pending_room_invitee_idx');
+    expect(sql).toContain("where status='pending'");
+  });
 });
