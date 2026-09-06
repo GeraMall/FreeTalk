@@ -75,6 +75,37 @@ const messages: MessageItem[] = [
     expires_at: null,
   },
 ];
+const eventMessages: MessageItem[] = [
+  {
+    id: '77777777-7777-4777-8777-777777777777',
+    sender_id: self.id,
+    display_name: 'Гера',
+    username: self.username,
+    kind: 'system',
+    body: 'Гера обновил(а) фотографию группы',
+    created_at: '2026-08-26T12:20:00.000Z',
+    expires_at: null,
+  },
+  {
+    id: '88888888-8888-4888-8888-888888888888',
+    sender_id: self.id,
+    display_name: 'Гера',
+    username: self.username,
+    kind: 'call',
+    body: 'Гера начал звонок',
+    created_at: '2026-08-26T12:21:00.000Z',
+    expires_at: null,
+    metadata: {
+      ended: true,
+      startedAt: '2026-08-26T12:17:00.000Z',
+      endedAt: '2026-08-26T12:21:00.000Z',
+      participants: [
+        { userId: self.id, displayName: self.displayName, avatarUrl: mascot },
+        { userId: friendId, displayName: 'Алексей', avatarUrl: mascot },
+      ],
+    },
+  },
+];
 
 export function ChatLayoutPreview() {
   const previewParams = new URLSearchParams(window.location.search);
@@ -88,6 +119,7 @@ export function ChatLayoutPreview() {
   const previewCallFriends = previewParams.has('call-friends');
   const previewIncomingCall = previewParams.has('incoming-call');
   const previewGroupChat = previewParams.has('group-chat');
+  const previewEventMessages = previewParams.has('event-messages');
   const mobile = useMobileLayout();
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
     previewParams.has('list') ? undefined : chats[previewGroupChat ? 1 : 0]!.id,
@@ -155,7 +187,7 @@ export function ChatLayoutPreview() {
             chats={chats}
             friends={[]}
             activeChatId={activeChatId}
-            messages={messages}
+            messages={previewEventMessages ? [...messages, ...eventMessages] : messages}
             chatsLoading={false}
             messagesLoading={false}
             messagesError=""

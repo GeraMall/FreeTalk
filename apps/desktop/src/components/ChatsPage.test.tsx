@@ -176,6 +176,9 @@ describe('MessageList rendering', () => {
     expect(container.querySelectorAll('.message-bubble').length).toBe(2);
     expect(container.querySelector('.message-date-separator')).not.toBeNull();
     expect(getByText('Алексей начал звонок')).not.toBeNull();
+    const callRow = getByText('Алексей начал звонок').closest('.message-event-row');
+    expect(callRow).not.toBeNull();
+    expect(callRow?.querySelector('[aria-label^="Поставить реакцию"]')).toBeNull();
     fireEvent.click(getByRole('button', { name: 'Присоединиться' }));
     expect(onJoinCall).toHaveBeenCalledWith('ROOM12345678');
   });
@@ -245,9 +248,20 @@ describe('MessageList rendering', () => {
       ...message('4', 'self', 'Гера обновил(а) фотографию группы'),
       kind: 'system',
     };
-    const { getByText, container } = render(view('chat-a', [systemMessage]));
+    const { getByRole, getByText, queryByRole, container } = render(
+      view('chat-a', [systemMessage]),
+    );
     expect(getByText('Гера обновил(а) фотографию группы')).toBeTruthy();
     expect(container.querySelector('.system-message')).not.toBeNull();
+    expect(container.querySelector('.message-event-row')).not.toBeNull();
+
+    fireEvent.contextMenu(container.querySelector('.message-event-row')!, {
+      clientX: 100,
+      clientY: 100,
+    });
+    expect(getByRole('menu', { name: 'Действия с сообщением' })).toBeTruthy();
+    expect(getByRole('menuitem', { name: 'Ответить' })).toBeTruthy();
+    expect(queryByRole('button', { name: /Поставить реакцию/ })).toBeNull();
   });
 
   it('turns an in-app group invite link into a join card', async () => {
@@ -699,6 +713,24 @@ describe('Resizable chat list', () => {
     const panel = getByRole('complementary', { name: 'Профиль собеседника' });
 
     expect(panel.firstElementChild?.classList.contains('chat-profile-island')).toBe(true);
+  });
+
+  it('replaces the native composer menu with FreeTalk controls', () => {
+    const { getByRole, queryByRole } = renderPage();
+    const textarea = getByRole('textbox', { name: 'Сообщение' });
+
+    fireEvent.contextMenu(textarea, { clientX: 100, clientY: 100 });
+
+    expect(getByRole('menu', { name: 'Действия с полем сообщения' })).toBeTruthy();
+    expect(getByRole('menuitem', { name: 'Предложения' })).toBeTruthy();
+    expect(getByRole('menuitem', { name: 'Языки' })).toBeTruthy();
+    expect(getByRole('menuitem', { name: /Вставить/ })).toBeTruthy();
+
+    fireEvent.click(getByRole('menuitemcheckbox', { name: 'Проверка правописания' }));
+    expect(textarea.getAttribute('spellcheck')).toBe('false');
+
+    fireEvent.click(getByRole('menuitemcheckbox', { name: 'Кнопка отправки сообщений' }));
+    expect(queryByRole('button', { name: 'Отправить сообщение' })).toBeNull();
   });
 
   it('shrinks only to the left and restores the saved width', () => {

@@ -13934,6 +13934,38 @@ html[data-chat-message-style='compact'] .message-bubble-row {
   transition: opacity 115ms var(--ft-ease);
 }
 
+.message-event-row {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  display: flow-root;
+  margin-top: 4px;
+  outline: none;
+  animation: freetalk-message-arrive 190ms var(--ft-ease) both;
+}
+
+.message-event-row::before {
+  position: absolute;
+  z-index: -1;
+  inset: -2px calc(-1 * var(--message-inline-padding));
+  border-radius: 7px;
+  background: rgba(126, 151, 171, 0.09);
+  content: '';
+  opacity: 0;
+  transition: opacity 115ms var(--ft-ease);
+}
+
+.message-event-row:hover::before,
+.message-event-row:focus-visible::before,
+.message-event-row:has(.event-message-actions button:focus-visible)::before {
+  opacity: 1;
+}
+
+.message-event-row.selected::before {
+  opacity: 1;
+  background: linear-gradient(90deg, rgba(78, 243, 242, 0.09), rgba(61, 123, 255, 0.055));
+}
+
 .message-bubble-row:hover::before,
 .message-bubble-row:focus-visible::before,
 .message-bubble-row:has(.message-hover-actions button:focus-visible)::before {
@@ -14013,10 +14045,17 @@ html[data-chat-message-style='compact'] .message-bubble-row.grouped {
 
 .message-bubble-row:hover .message-hover-actions,
 .message-bubble-row:focus-visible .message-hover-actions,
-.message-bubble-row:has(.message-hover-actions button:focus-visible) .message-hover-actions {
+.message-bubble-row:has(.message-hover-actions button:focus-visible) .message-hover-actions,
+.message-event-row:hover .event-message-actions,
+.message-event-row:focus-visible .event-message-actions,
+.message-event-row:has(.event-message-actions button:focus-visible) .event-message-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
+}
+
+.event-message-actions {
+  top: -7px;
 }
 
 .message-hover-actions button {
@@ -14950,6 +14989,10 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   backdrop-filter: none;
 }
 
+.modern-message-composer.send-button-hidden {
+  grid-template-columns: 42px 42px minmax(0, 1fr);
+}
+
 .composer-reply-preview,
 .composer-image-preview,
 .composer-image-error {
@@ -15070,6 +15113,124 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
 .modern-message-composer textarea {
   min-width: 0;
+}
+
+.composer-context-menu {
+  position: fixed;
+  z-index: 3700;
+  width: 248px;
+  max-width: calc(100vw - 20px);
+  display: grid;
+  gap: 2px;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(105, 177, 220, 0.2);
+  border-radius: 13px;
+  color: #d3dee7;
+  background: linear-gradient(155deg, rgba(13, 29, 41, 0.99), rgba(6, 18, 30, 0.99));
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.58),
+    inset 0 1px rgba(255, 255, 255, 0.035);
+  animation: message-context-menu-in 150ms var(--ft-ease) both;
+}
+
+.composer-context-menu > button,
+.composer-language-options > button {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: #d3dee7;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 560;
+  transform: none;
+}
+
+.composer-context-menu > button:hover,
+.composer-context-menu > button:focus-visible,
+.composer-language-options > button:hover,
+.composer-language-options > button:focus-visible {
+  color: #f1fbff;
+  background: rgba(78, 243, 242, 0.08);
+  box-shadow: none;
+  transform: none;
+}
+
+.composer-context-menu button > svg,
+.composer-language-options button > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: #8da3b6;
+}
+
+.composer-context-menu button > i {
+  width: 19px;
+  height: 19px;
+  display: grid;
+  flex: 0 0 19px;
+  place-items: center;
+  border: 1px solid rgba(132, 164, 190, 0.45);
+  border-radius: 5px;
+  color: #06101b;
+  background: rgba(2, 10, 19, 0.45);
+}
+
+.composer-context-menu button[aria-checked='true'] > i {
+  border-color: rgba(78, 243, 242, 0.7);
+  background: var(--ft-cyan);
+}
+
+.composer-context-menu button > i svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 3;
+}
+
+.composer-context-menu hr {
+  width: calc(100% + 14px);
+  height: 1px;
+  margin: 5px -7px;
+  border: 0;
+  background: rgba(105, 177, 220, 0.12);
+}
+
+.composer-context-menu kbd {
+  color: #879bad;
+  font: inherit;
+  font-weight: 450;
+}
+
+.composer-context-note {
+  margin: -1px 6px 4px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  color: #8398aa;
+  background: rgba(2, 11, 20, 0.5);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.composer-language-options {
+  display: grid;
+  gap: 1px;
+  margin: 0 5px 4px;
+  padding: 4px;
+  border-radius: 9px;
+  background: rgba(2, 11, 20, 0.55);
+}
+
+.composer-language-options > button {
+  min-height: 31px;
+  padding-inline: 8px;
+  font-size: 10px;
 }
 
 /* GIF search floats above the composer and stays usable on compact windows. */

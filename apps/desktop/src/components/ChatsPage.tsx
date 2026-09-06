@@ -8,13 +8,16 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react';
 import {
   ArrowDown,
   ArrowLeft,
   Ban,
+  Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Clock3,
   Copy,
   Crown,
@@ -1810,7 +1813,7 @@ export function MessageList({
     options: { expanded?: boolean; pickerOnly?: boolean } = {},
   ) => {
     const width = 286;
-    const height = 380;
+    const height = message.kind === 'system' || message.kind === 'call' ? 260 : 380;
     setContextMenu({
       message,
       x: Math.max(10, Math.min(x, window.innerWidth - width - 10)),
@@ -2014,13 +2017,24 @@ export function MessageList({
                   key={message.id}
                 >
                   {showDate && <DateSeparator date={message.created_at} />}
-                  {message.kind === 'call' ? (
-                    <SystemCallMessage message={message} onJoin={onJoinCall} />
-                  ) : message.kind === 'system' ? (
-                    <div className="system-message">
-                      <span>{message.body}</span>
-                      <time>{formatMessageTime(message.created_at)}</time>
-                    </div>
+                  {message.kind === 'call' || message.kind === 'system' ? (
+                    <MessageEventRow
+                      message={message}
+                      selected={selectedIds.has(message.id)}
+                      onContextMenu={openMessageContext}
+                      onReply={() => onReply(message)}
+                      onForward={() => setForwardingMessage(message)}
+                      onToggleSelected={() => toggleSelected(message.id)}
+                    >
+                      {message.kind === 'call' ? (
+                        <SystemCallMessage message={message} onJoin={onJoinCall} />
+                      ) : (
+                        <div className="system-message">
+                          <span>{message.body}</span>
+                          <time>{formatMessageTime(message.created_at)}</time>
+                        </div>
+                      )}
+                    </MessageEventRow>
                   ) : (
                     <MessageBubble
                       message={message}
@@ -2533,6 +2547,7 @@ function MessageContextMenu({
   onSelect(): void;
 }) {
   const [customReaction, setCustomReaction] = useState('');
+  const reactionsAllowed = state.message.kind !== 'system' && state.message.kind !== 'call';
   const customReactionValid = chatReactionEmojiSchema.safeParse(customReaction.trim()).success;
   const reactionIsActive = (emoji: string) =>
     state.message.reactions?.some(
@@ -2568,7 +2583,7 @@ function MessageContextMenu({
         controls[nextIndex]?.focus();
       }}
     >
-      {!state.pickerOnly ? (
+      {reactionsAllowed && !state.pickerOnly ? (
         <div className="message-quick-reactions" aria-label="Быстрые реакции">
           {QUICK_MESSAGE_REACTIONS.map((emoji) => (
             <button
@@ -2592,7 +2607,7 @@ function MessageContextMenu({
           </button>
         </div>
       ) : null}
-      {state.expanded || state.pickerOnly ? (
+      {reactionsAllowed && (state.expanded || state.pickerOnly) ? (
         <div className="message-reaction-picker" aria-label="Выбор реакции">
           <div className="message-reaction-palette">
             {MESSAGE_REACTION_PALETTE.map((emoji) => (
@@ -3167,6 +3182,110 @@ function ChatImageMessage({ message, accountId }: { message: MessageItem; accoun
   );
 }
 
+function MessageEventRow({
+  message,
+  selected,
+  children,
+  onContextMenu,
+  onReply,
+  onForward,
+  onToggleSelected,
+}: {
+  message: MessageItem;
+  selected: boolean;
+  children: ReactNode;
+  onContextMenu(message: MessageItem, x: number, y: number): void;
+  onReply(): void;
+  onForward(): void;
+  onToggleSelected(): void;
+}) {
+  const longPressTimerRef = useRef<number | undefined>(undefined);
+  const longPressStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const longPressTriggeredRef = useRef(false);
+  const openContext = (x: number, y: number) => onContextMenu(message, x, y);
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current !== undefined) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = undefined;
+    longPressStartRef.current = undefined;
+  };
+  useEffect(() => cancelLongPress, []);
+  return (
+    <article
+      className={`message-event-row${selected ? ' selected' : ''}`}
+      tabIndex={0}
+      aria-selected={selected || undefined}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' || event.button !== 0) return;
+        cancelLongPress();
+        longPressTriggeredRef.current = false;
+        longPressStartRef.current = { x: event.clientX, y: event.clientY };
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTimerRef.current = undefined;
+          longPressTriggeredRef.current = true;
+          openContext(event.clientX, event.clientY);
+        }, 480);
+      }}
+      onPointerMove={(event) => {
+        const start = longPressStartRef.current;
+        if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 9) return;
+        cancelLongPress();
+      }}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onClickCapture={(event) => {
+        if (!longPressTriggeredRef.current) return;
+        longPressTriggeredRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openContext(event.clientX, event.clientY);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        openContext(rect.left + Math.min(rect.width, 150), rect.top + 24);
+      }}
+    >
+      <div
+        className="message-hover-actions event-message-actions"
+        role="toolbar"
+        aria-label="Быстрые действия"
+      >
+        <button type="button" aria-label="Ответить на сообщение" onClick={onReply}>
+          <Reply />
+        </button>
+        <button type="button" aria-label="Переслать сообщение" onClick={onForward}>
+          <Forward />
+        </button>
+        <button
+          type="button"
+          aria-label="Другие действия"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            openContext(rect.right - 286, rect.bottom + 6);
+          }}
+        >
+          <MoreHorizontal />
+        </button>
+      </div>
+      {children}
+      {selected ? (
+        <button
+          type="button"
+          className="message-selection-check"
+          aria-label="Снять выделение сообщения"
+          onClick={onToggleSelected}
+        >
+          <CheckCircle2 />
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
 function SystemCallMessage({
   message,
   onJoin,
@@ -3193,7 +3312,7 @@ function SystemCallMessage({
       )
     : null;
   return (
-    <article className={`system-call-message${ended ? ' ended' : ''}`}>
+    <div className={`system-call-message${ended ? ' ended' : ''}`}>
       <span className="system-call-icon">
         <Phone />
       </span>
@@ -3249,7 +3368,7 @@ function SystemCallMessage({
           Присоединиться
         </button>
       ) : null}
-    </article>
+    </div>
   );
 }
 
@@ -3297,7 +3416,55 @@ function MessageComposer({
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
   const [imageError, setImageError] = useState('');
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [composerMenu, setComposerMenu] = useState<{
+    x: number;
+    y: number;
+    section?: 'suggestions' | 'languages';
+  }>();
+  const [spellCheckEnabled, setSpellCheckEnabled] = useState(true);
+  const [showSendButton, setShowSendButton] = useState(true);
+  const [composerLanguage, setComposerLanguage] = useState<'ru' | 'en' | 'auto'>('ru');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!composerMenu) return;
+    const close = (event: globalThis.PointerEvent) => {
+      if (!composerMenuRef.current?.contains(event.target as Node)) setComposerMenu(undefined);
+    };
+    const closeOnKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setComposerMenu(undefined);
+    };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', closeOnKey);
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', closeOnKey);
+    };
+  }, [composerMenu]);
+  const pasteClipboardText = async () => {
+    try {
+      const pasted = await navigator.clipboard.readText();
+      if (!pasted) return;
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? value.length;
+      const end = textarea?.selectionEnd ?? start;
+      const next = `${value.slice(0, start)}${pasted}${value.slice(end)}`.slice(
+        0,
+        imageDataUrl ? 1000 : 4000,
+      );
+      setValue(next);
+      window.requestAnimationFrame(() => {
+        const cursor = Math.min(start + pasted.length, next.length);
+        textarea?.focus();
+        textarea?.setSelectionRange(cursor, cursor);
+      });
+    } catch {
+      textareaRef.current?.focus();
+    } finally {
+      setComposerMenu(undefined);
+    }
+  };
   const prepareSelectedImage = (file: File) => {
     if (processingImage) return;
     setProcessingImage(true);
@@ -3343,7 +3510,7 @@ function MessageComposer({
     void send();
   };
   return (
-    <div className="modern-message-composer">
+    <div className={`modern-message-composer${showSendButton ? '' : ' send-button-hidden'}`}>
       {replyTarget ? (
         <div className="composer-reply-preview">
           <Reply />
@@ -3411,14 +3578,24 @@ function MessageComposer({
         GIF
       </button>
       <textarea
+        ref={textareaRef}
         value={value}
         rows={1}
         maxLength={imageDataUrl ? 1000 : 4000}
         disabled={disabled}
+        spellCheck={spellCheckEnabled}
+        lang={composerLanguage === 'auto' ? undefined : composerLanguage}
         placeholder="Написать сообщение…"
         aria-label="Сообщение"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setComposerMenu({
+            x: Math.max(10, Math.min(event.clientX, window.innerWidth - 258)),
+            y: Math.max(10, Math.min(event.clientY, window.innerHeight - 286)),
+          });
+        }}
         onPaste={(event) => {
           const image = Array.from(event.clipboardData.items)
             .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
@@ -3428,15 +3605,17 @@ function MessageComposer({
           prepareSelectedImage(image);
         }}
       />
-      <button
-        className="send-message-button"
-        title="Отправить"
-        aria-label="Отправить сообщение"
-        disabled={disabled || sending || processingImage || (!value.trim() && !imageDataUrl)}
-        onClick={() => void send()}
-      >
-        <Send />
-      </button>
+      {showSendButton ? (
+        <button
+          className="send-message-button"
+          title="Отправить"
+          aria-label="Отправить сообщение"
+          disabled={disabled || sending || processingImage || (!value.trim() && !imageDataUrl)}
+          onClick={() => void send()}
+        >
+          <Send />
+        </button>
+      ) : null}
       {showGifPicker ? (
         <GifPicker
           busy={sending || disabled}
@@ -3455,6 +3634,125 @@ function MessageComposer({
           }}
         />
       ) : null}
+      {composerMenu
+        ? createPortal(
+            <ComposerContextMenu
+              menuRef={composerMenuRef}
+              x={composerMenu.x}
+              y={composerMenu.y}
+              section={composerMenu.section}
+              spellCheckEnabled={spellCheckEnabled}
+              showSendButton={showSendButton}
+              language={composerLanguage}
+              onSection={(section) =>
+                setComposerMenu((current) =>
+                  current
+                    ? { ...current, section: current.section === section ? undefined : section }
+                    : current,
+                )
+              }
+              onToggleSpellCheck={() => setSpellCheckEnabled((enabled) => !enabled)}
+              onToggleSendButton={() => setShowSendButton((visible) => !visible)}
+              onLanguage={(language) => {
+                setComposerLanguage(language);
+                setComposerMenu(undefined);
+              }}
+              onPaste={() => void pasteClipboardText()}
+            />,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+function ComposerContextMenu({
+  menuRef,
+  x,
+  y,
+  section,
+  spellCheckEnabled,
+  showSendButton,
+  language,
+  onSection,
+  onToggleSpellCheck,
+  onToggleSendButton,
+  onLanguage,
+  onPaste,
+}: {
+  menuRef: { current: HTMLDivElement | null };
+  x: number;
+  y: number;
+  section?: 'suggestions' | 'languages';
+  spellCheckEnabled: boolean;
+  showSendButton: boolean;
+  language: 'ru' | 'en' | 'auto';
+  onSection(section: 'suggestions' | 'languages'): void;
+  onToggleSpellCheck(): void;
+  onToggleSendButton(): void;
+  onLanguage(language: 'ru' | 'en' | 'auto'): void;
+  onPaste(): void;
+}) {
+  return (
+    <div
+      ref={menuRef}
+      className="composer-context-menu"
+      style={{ left: x, top: y }}
+      role="menu"
+      aria-label="Действия с полем сообщения"
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button type="button" role="menuitem" onClick={() => onSection('suggestions')}>
+        <span>Предложения</span>
+        <ChevronRight />
+      </button>
+      {section === 'suggestions' ? (
+        <p className="composer-context-note">Подсказки появятся для слов с ошибками</p>
+      ) : null}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={showSendButton}
+        onClick={onToggleSendButton}
+      >
+        <span>Кнопка отправки сообщений</span>
+        <i>{showSendButton ? <Check /> : null}</i>
+      </button>
+      <hr />
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={spellCheckEnabled}
+        onClick={onToggleSpellCheck}
+      >
+        <span>Проверка правописания</span>
+        <i>{spellCheckEnabled ? <Check /> : null}</i>
+      </button>
+      <button type="button" role="menuitem" onClick={() => onSection('languages')}>
+        <span>Языки</span>
+        <ChevronRight />
+      </button>
+      {section === 'languages' ? (
+        <div className="composer-language-options" role="group" aria-label="Язык проверки">
+          {(
+            [
+              ['ru', 'Русский'],
+              ['en', 'English'],
+              ['auto', 'Автоматически'],
+            ] as const
+          ).map(([value, label]) => (
+            <button type="button" onClick={() => onLanguage(value)} key={value}>
+              <span>{label}</span>
+              {language === value ? <Check /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <hr />
+      <button type="button" role="menuitem" onClick={onPaste}>
+        <span>Вставить</span>
+        <kbd>Ctrl+V</kbd>
+      </button>
     </div>
   );
 }
