@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "freetalk"
-version = "0.4.0-beta.117"
+version = "0.4.0-beta.118"
 dependencies = [
  "base64 0.22.1",
  "freetalk-secure-session",
