@@ -1290,24 +1290,41 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .room-main.room-mode-presentation {
   --room-stage-max-width: 1440px;
+  position: relative;
   display: grid;
   height: calc(100dvh - 66px);
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: 4px;
+  padding-bottom: 8px;
 }
 .room-mode-presentation .participants-heading {
-  width: min(100%, var(--room-stage-max-width));
-  margin-right: auto;
-  margin-bottom: 0;
-  margin-left: auto;
+  position: absolute;
+  z-index: 8;
+  top: 4px;
+  right: 0;
+  width: auto;
+  min-width: max-content;
+  min-height: 34px;
+  margin: 0;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  text-align: right;
 }
 .room-shell-embedded .room-mode-presentation .participants-heading {
-  min-height: 30px;
+  min-height: 34px;
   justify-content: flex-end;
+}
+.room-mode-presentation .participants-heading > div {
+  display: none;
+}
+.room-mode-presentation .room-session-meta {
+  margin-left: auto;
+  align-items: end;
+  justify-items: end;
+  text-align: right;
 }
 .participants-heading {
   display: flex;
@@ -1986,7 +2003,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  min-height: 42px;
+  min-height: 36px;
 }
 .presentation-participants-toggle {
   display: inline-flex;
@@ -2196,7 +2213,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   }
   .room-main.room-mode-presentation {
     --room-stage-max-width: 100%;
-    padding-top: 12px;
+    padding-top: 4px;
   }
   .participants-heading {
     margin-bottom: 24px;
