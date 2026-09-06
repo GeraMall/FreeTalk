@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Participant, RoomChatMessage } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
@@ -263,6 +263,23 @@ describe('RoomView media layouts', () => {
     expect(container.querySelectorAll('.dock-split-control.device-off')).toHaveLength(1);
     expect(getByRole('button', { name: 'Открыть звонок во весь экран' })).not.toBeNull();
     expect(getByRole('button', { name: 'Открыть звонок в отдельном окне' })).not.toBeNull();
+  });
+
+  it('smoothly hides idle call controls and reveals them on pointer movement', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(view());
+      const room = container.querySelector<HTMLElement>('.room-shell');
+      expect(room?.classList.contains('call-controls-visible')).toBe(true);
+
+      act(() => vi.advanceTimersByTime(2500));
+      expect(room?.classList.contains('call-controls-visible')).toBe(false);
+
+      fireEvent.pointerMove(room!);
+      expect(room?.classList.contains('call-controls-visible')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('moves the active call to a native window and can restore it', async () => {

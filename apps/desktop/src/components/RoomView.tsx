@@ -177,12 +177,14 @@ export function RoomView({
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [screenStageFullscreen, setScreenStageFullscreen] = useState(false);
   const [callDetached, setCallDetached] = useState(false);
+  const [callControlsVisible, setCallControlsVisible] = useState(true);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
   const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
   const roomShellRef = useRef<HTMLElement>(null);
   const screenStageRef = useRef<HTMLElement>(null);
+  const callControlsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
   const chatOpenRef = useRef(chatOpen);
@@ -227,6 +229,19 @@ export function RoomView({
     expandedParticipant && expandedMedia
       ? participantMedia(expandedParticipant)[expandedMedia.type]
       : undefined;
+
+  const revealCallControls = useCallback(() => {
+    setCallControlsVisible(true);
+    if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
+    callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 2400);
+  }, []);
+
+  useEffect(() => {
+    revealCallControls();
+    return () => {
+      if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
+    };
+  }, [revealCallControls]);
 
   useEffect(() => {
     if (expandedMedia && (!expandedParticipant || !expandedStream)) setExpandedMedia(undefined);
@@ -437,7 +452,8 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
+      onPointerMove={revealCallControls}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
