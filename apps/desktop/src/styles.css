@@ -1255,9 +1255,15 @@ input[type='range']:hover::-webkit-slider-thumb {
   box-shadow: 0 0 26px rgba(94, 214, 188, 0.14);
 }
 .room-main {
-  width: min(1180px, calc(100% - 48px));
+  --room-stage-max-width: 1180px;
+  width: calc(100% - 48px);
   margin: 0 auto;
   padding: clamp(24px, 4vh, 40px) 0 26px;
+}
+.room-main > .participants-grid,
+.room-main > .presentation-layout {
+  width: min(100%, var(--room-stage-max-width));
+  margin-inline: auto;
 }
 .participants-heading {
   display: flex;
@@ -2028,7 +2034,8 @@ input[type='range']:hover::-webkit-slider-thumb {
    presentation surface locked to the regular-window dimensions. */
 @media (min-width: 1600px) and (min-height: 850px) {
   .room-main {
-    width: min(1680px, calc(100% - 72px));
+    --room-stage-max-width: 1680px;
+    width: calc(100% - 72px);
     padding-top: clamp(34px, 3.5vh, 50px);
   }
   .participants-heading {
@@ -3945,21 +3952,34 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .call-friend-check {
   display: grid;
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
   border: 1px solid rgba(137, 170, 195, 0.47);
-  border-radius: 6px;
+  border-radius: 7px;
   background: rgba(2, 11, 21, 0.68);
+  line-height: 0;
   place-items: center;
+  align-self: center;
+  transition:
+    border-color 150ms var(--ft-ease),
+    background 150ms var(--ft-ease),
+    box-shadow 150ms var(--ft-ease),
+    transform 150ms var(--ft-ease);
 }
 .selected .call-friend-check {
   border-color: rgba(78, 243, 242, 0.78);
   color: #03131f;
-  background: var(--ft-cyan);
+  background: linear-gradient(145deg, #58f5e3, #48cdeb);
+  box-shadow:
+    0 4px 12px rgba(55, 213, 219, 0.2),
+    inset 0 1px rgba(255, 255, 255, 0.34);
 }
 .call-friend-check svg {
-  width: 12px;
+  display: block;
+  width: 13px;
+  height: 13px;
   stroke-width: 3;
+  transform: translateY(-0.5px);
 }
 .call-friends-empty {
   display: grid;

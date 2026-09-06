@@ -9,6 +9,8 @@ import { UserProfileDialog } from './UserProfileDialog';
 import { FriendsPage } from './FriendsPage';
 import { CallInviteFriendsDialog } from './CallInviteFriendsDialog';
 import { IncomingCallDialog } from './IncomingCallDialog';
+import { RoomView } from './RoomView';
+import { defaultSettings } from '../lib/settings';
 
 const self = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -89,6 +91,7 @@ export function ChatLayoutPreview() {
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
     previewParams.has('list') ? undefined : chats[0]!.id,
   );
+  if (previewParams.has('room-preview')) return <RoomLayoutPreview />;
   return (
     <main
       className={`account-shell account-shell-with-chat-sidebar${previewHomeSidebar ? ' account-home-shell' : ''}${mobile ? ' mobile-account-shell mobile-chat-open' : ''}`}
@@ -292,5 +295,68 @@ export function ChatLayoutPreview() {
         />
       ) : null}
     </main>
+  );
+}
+
+function RoomLayoutPreview() {
+  return (
+    <RoomView
+      roomId="BANCMQ4FJ7YX"
+      selfId={self.id}
+      viewerId={self.id}
+      participants={[
+        {
+          id: self.id,
+          accountId: self.id,
+          name: 'O_GERYCH',
+          avatar: mascot,
+          muted: false,
+          isOwner: true,
+          connectedAt: Date.now(),
+        },
+      ]}
+      peerState={{}}
+      localSpeaking={false}
+      localVideo={{
+        source: 'none',
+        cameraEnabled: false,
+        screenEnabled: false,
+        screenAudioEnabled: false,
+      }}
+      remoteVideos={{}}
+      videoBusy={false}
+      muted={false}
+      roomStartedAt={Date.now() - 189_000}
+      reactions={[]}
+      roomChatMessages={[]}
+      screenFocusMode={false}
+      settings={defaultSettings()}
+      signalingState="connected"
+      reconnectAttempt={0}
+      inviteCopied={false}
+      turnAvailable
+      recordingState={{ phase: 'idle' }}
+      recordingBannerMessage=""
+      devices={{ inputs: [], outputs: [], cameras: [] }}
+      onCopyInvite={() => {}}
+      onMute={() => {}}
+      onCamera={() => {}}
+      onInputDevice={() => {}}
+      onOutputDevice={() => {}}
+      onCameraDevice={() => {}}
+      onCameraBackground={() => {}}
+      onScreen={() => {}}
+      onReaction={() => {}}
+      onRoomChatSend={() => true}
+      onScreenFocusChange={() => {}}
+      onSettings={() => {}}
+      onRecording={() => {}}
+      onRecordingBannerClose={() => {}}
+      onLeave={() => {}}
+      onPeerVolume={() => {}}
+      onScreenVolume={() => {}}
+      onPeerMute={() => {}}
+      onModerationMute={() => {}}
+    />
   );
 }
