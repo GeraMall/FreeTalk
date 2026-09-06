@@ -257,8 +257,14 @@ export function App() {
       '--ft-chat-wallpaper',
       settings.chatWallpaperDataUrl ? `url("${settings.chatWallpaperDataUrl}")` : 'none',
     );
+    root.style.setProperty('--ft-chat-wallpaper-size', settings.chatWallpaperFit);
     root.dataset.chatMessageStyle = settings.chatMessageStyle;
-  }, [settings.chatMessageStyle, settings.chatTextScale, settings.chatWallpaperDataUrl]);
+  }, [
+    settings.chatMessageStyle,
+    settings.chatTextScale,
+    settings.chatWallpaperDataUrl,
+    settings.chatWallpaperFit,
+  ]);
 
   useEffect(() => {
     void accountClient.restore().then(async (user) => {

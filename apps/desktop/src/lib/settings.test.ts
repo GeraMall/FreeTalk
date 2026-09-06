@@ -26,8 +26,17 @@ describe('platform-specific settings defaults', () => {
       comfortNoise: false,
       screenContentMode: 'balanced',
       screenAudioByDefault: true,
+      chatWallpaperFit: 'cover',
     });
     expect(loadSettings().screenAudioByDefault).toBe(true);
+  });
+
+  it('loads a supported wallpaper fit and normalizes an invalid value', () => {
+    localStorage.setItem('freetalk.settings.v1', JSON.stringify({ chatWallpaperFit: 'contain' }));
+    expect(loadSettings().chatWallpaperFit).toBe('contain');
+
+    localStorage.setItem('freetalk.settings.v1', JSON.stringify({ chatWallpaperFit: 'stretch' }));
+    expect(loadSettings().chatWallpaperFit).toBe('cover');
   });
 
   it('disables screen audio by default for a new macOS installation', () => {

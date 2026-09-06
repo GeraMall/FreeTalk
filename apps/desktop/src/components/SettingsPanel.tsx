@@ -1796,6 +1796,9 @@ function ChatsSettingsTab({
               backgroundImage: settings.chatWallpaperDataUrl
                 ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
                 : undefined,
+              backgroundSize: settings.chatWallpaperDataUrl
+                ? `100% 100%, ${settings.chatWallpaperFit}`
+                : undefined,
             } as CSSProperties
           }
         >
@@ -1851,7 +1854,7 @@ function ChatsSettingsTab({
       <div className="chat-wallpaper-setting">
         <div>
           <strong>Обои всех чатов</strong>
-          <small>Фото уменьшается перед сохранением и остаётся только на вашем компьютере.</small>
+          <small>Исходные пропорции и качество сохраняются, если файл уже подходит.</small>
           {wallpaperError && <small className="error-text">{wallpaperError}</small>}
         </div>
         <div>
@@ -1886,6 +1889,32 @@ function ChatsSettingsTab({
           )}
         </div>
       </div>
+
+      {settings.chatWallpaperDataUrl && (
+        <div className="chat-style-setting chat-wallpaper-fit-setting">
+          <strong>Как показывать обои</strong>
+          <div role="radiogroup" aria-label="Как показывать обои">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={settings.chatWallpaperFit === 'cover'}
+              className={settings.chatWallpaperFit === 'cover' ? 'active' : ''}
+              onClick={() => onSetting({ chatWallpaperFit: 'cover' }, false)}
+            >
+              Заполнить чат
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={settings.chatWallpaperFit === 'contain'}
+              className={settings.chatWallpaperFit === 'contain' ? 'active' : ''}
+              onClick={() => onSetting({ chatWallpaperFit: 'contain' }, false)}
+            >
+              Показать целиком
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="chat-wallpaper-setting">
         <div>

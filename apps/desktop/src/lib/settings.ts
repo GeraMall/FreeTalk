@@ -25,6 +25,7 @@ export interface LocalSettings extends VideoPreferences {
   screenVolumes: Record<string, number>;
   mutedPeers: Record<string, boolean>;
   chatWallpaperDataUrl: string;
+  chatWallpaperFit: 'cover' | 'contain';
   chatTextScale: number;
   chatMessageStyle: 'bubbles' | 'compact';
   recordingDirectory: string;
@@ -64,6 +65,7 @@ const defaults: LocalSettings = {
   screenVolumes: {},
   mutedPeers: {},
   chatWallpaperDataUrl: '',
+  chatWallpaperFit: 'cover',
   chatTextScale: 1,
   chatMessageStyle: 'bubbles',
   recordingDirectory: '',
@@ -121,6 +123,7 @@ export function loadSettings(): LocalSettings {
         typeof value.chatTextScale === 'number'
           ? Math.min(1.3, Math.max(0.85, value.chatTextScale))
           : defaults.chatTextScale,
+      chatWallpaperFit: value.chatWallpaperFit === 'contain' ? 'contain' : 'cover',
       chatMessageStyle: value.chatMessageStyle === 'compact' ? 'compact' : 'bubbles',
       recordingDirectory:
         typeof value.recordingDirectory === 'string' ? value.recordingDirectory : '',

@@ -125,6 +125,47 @@ describe('SettingsPanel profile actions', () => {
     expect(getByText('Обои всех чатов')).toBeTruthy();
   });
 
+  it('lets a custom wallpaper fit inside the chat without cropping', () => {
+    const view = renderProfile();
+    view.rerender(
+      <SettingsPanel
+        initialTab="chats"
+        settings={{
+          ...defaultSettings(),
+          chatWallpaperDataUrl: 'data:image/png;base64,dGVzdA==',
+        }}
+        devices={{ inputs: [], outputs: [], cameras: [] }}
+        inputLevel={0}
+        appVersion="test"
+        updateStatus={{ kind: 'idle' }}
+        turnAvailable
+        outputSupported
+        accountUser={user}
+        guestMode={false}
+        onClose={vi.fn()}
+        onInput={vi.fn()}
+        onOutput={vi.fn()}
+        onCamera={vi.fn()}
+        onSetting={view.onSetting}
+        onVideoSetting={vi.fn()}
+        onKey={vi.fn()}
+        onReset={vi.fn()}
+        onCheckUpdate={vi.fn()}
+        onInstallUpdate={vi.fn()}
+        onSaveDiagnostics={vi.fn().mockResolvedValue('')}
+        onSaveProfile={vi.fn().mockResolvedValue(undefined)}
+        onAccountLogout={vi.fn()}
+        onDeleteAccount={vi.fn().mockResolvedValue(undefined)}
+        onChangePassword={vi.fn().mockResolvedValue(undefined)}
+        onClearChatCache={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: 'Чаты' }));
+    fireEvent.click(view.getByRole('radio', { name: 'Показать целиком' }));
+    expect(view.onSetting).toHaveBeenCalledWith({ chatWallpaperFit: 'contain' }, false);
+  });
+
   it('uses the FreeTalk-styled done action outside the profile tab', () => {
     const { getByRole } = renderProfile();
     fireEvent.click(getByRole('button', { name: 'Аудио' }));

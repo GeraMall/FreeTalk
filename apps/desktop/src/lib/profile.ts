@@ -5,7 +5,7 @@ export const MAX_AVATAR_DATA_URL_LENGTH = 1_300_000;
 export const MAX_COVER_DATA_URL_LENGTH = 3_300_000;
 export const MAX_CHAT_IMAGE_DATA_URL_LENGTH = 3_900_000;
 export const MAX_CHAT_THUMBNAIL_DATA_URL_LENGTH = 340_000;
-export const MAX_CHAT_WALLPAPER_DATA_URL_LENGTH = 1_800_000;
+export const MAX_CHAT_WALLPAPER_DATA_URL_LENGTH = 3_300_000;
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_DECODED_PIXELS = 100_000_000;
@@ -170,14 +170,45 @@ export function prepareCover(file: File) {
   });
 }
 
-export function prepareChatWallpaper(file: File) {
-  return prepareImage(file, {
-    label: 'Файл обоев',
-    width: 1920,
-    height: 1080,
-    maxDataUrlLength: MAX_CHAT_WALLPAPER_DATA_URL_LENGTH,
-    tooLargeMessage: 'Не удалось уменьшить обои. Выберите другое изображение.',
-  });
+export async function prepareChatWallpaper(file: File) {
+  validateImage(file, 'Файл обоев');
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > MAX_DECODED_PIXELS)
+      throw new Error('Разрешение изображения слишком большое.');
+
+    // Keep an already compact source untouched. This avoids a lossy re-encode and,
+    // unlike the old fixed 16:9 crop, preserves portrait and ultrawide wallpapers.
+    const original = await readFileAsDataUrl(file);
+    if (original.length <= MAX_CHAT_WALLPAPER_DATA_URL_LENGTH) return original;
+
+    const errorMessage = 'Не удалось уменьшить обои. Выберите другое изображение.';
+    for (const maxSide of [3200, 2560, 2048]) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Не удалось обработать изображение.');
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      try {
+        return encodeCanvas(
+          canvas,
+          MAX_CHAT_WALLPAPER_DATA_URL_LENGTH,
+          errorMessage,
+          [0.94, 0.9, 0.86, 0.82, 0.76],
+        );
+      } catch {
+        // Prefer reducing resolution gradually instead of destroying detail with
+        // very low JPEG quality.
+      }
+    }
+    throw new Error(errorMessage);
+  } finally {
+    bitmap.close();
+  }
 }
 
 export interface PreparedChatImage {

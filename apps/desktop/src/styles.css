@@ -5806,8 +5806,11 @@ input[type='range']:hover::-webkit-slider-thumb {
   border: 1px solid rgba(89, 190, 249, 0.12);
   border-radius: 12px;
   background-color: #04101d;
-  background-position: center;
-  background-size: cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    100% 100%,
+    cover;
 }
 .preview-message {
   width: fit-content;
@@ -10039,8 +10042,11 @@ html.notification-overlay-document #root {
   background-color: #091722;
   background-image:
     linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
-  background-position: center;
-  background-size: cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    100% 100%,
+    var(--ft-chat-wallpaper-size, cover);
   background-attachment: local;
 }
 .message-scroll-container:focus-visible {
@@ -10817,8 +10823,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   background-color: #091722;
   background-image:
     linear-gradient(rgba(9, 23, 34, 0.72), rgba(9, 23, 34, 0.72)), var(--ft-chat-wallpaper, none);
-  background-position: center;
-  background-size: cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    100% 100%,
+    var(--ft-chat-wallpaper-size, cover);
 }
 .message-skeleton i {
   --bubble-width: 50%;
