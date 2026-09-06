@@ -1176,8 +1176,8 @@ input[type='range']:hover::-webkit-slider-thumb {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  min-height: 82px;
-  padding: 12px clamp(24px, 5vw, 70px);
+  min-height: 66px;
+  padding: 8px clamp(24px, 5vw, 70px);
   border-bottom: 1px solid rgba(89, 190, 249, 0.14);
   background: rgba(2, 10, 21, 0.86);
   box-shadow: 0 12px 38px rgba(0, 0, 0, 0.13);
@@ -1192,7 +1192,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .room-identity {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 4px;
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -1218,7 +1218,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 11px;
+  padding: 4px 10px;
   border: 1px solid rgba(94, 214, 188, 0.25);
   border-radius: 99px;
   color: #acd9cf;
