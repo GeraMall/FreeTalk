@@ -1541,6 +1541,7 @@ function ProfilePanel({
       </aside>
     );
   const name = profile?.displayName ?? fallback?.displayName ?? groupTitle ?? 'Профиль';
+  const presence = profile?.presence ?? fallback?.presence ?? 'offline';
   return (
     <aside className="chat-profile-panel" aria-label="Профиль собеседника">
       <div className="chat-profile-island">
@@ -1551,17 +1552,15 @@ function ProfilePanel({
         <button
           type="button"
           className="chat-profile-avatar"
-          aria-label={`Открыть полный профиль ${name}`}
+          aria-label={`Открыть полный профиль ${name}. ${presenceLabel(presence)}`}
           onClick={onFullProfile}
         >
           {cachedAvatarUrl ? <img src={cachedAvatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
+          <PresenceBadge status={presence} />
         </button>
         <section className="chat-profile-identity">
           <h2>{name}</h2>
           <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
-          <span className={`chat-presence ${profile?.presence ?? fallback?.presence ?? 'offline'}`}>
-            <i /> {presenceLabel(profile?.presence ?? fallback?.presence)}
-          </span>
         </section>
         <section className="chat-profile-block">
           <h3>О СЕБЕ</h3>

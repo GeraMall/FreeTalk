@@ -747,11 +747,15 @@ describe('Resizable chat list', () => {
       />,
     );
 
-  it('renders the direct profile as a separate island', () => {
+  it('renders the direct profile as a separate island', async () => {
     const { getByRole } = renderPage();
     const panel = getByRole('complementary', { name: 'Профиль собеседника' });
 
     expect(panel.firstElementChild?.classList.contains('chat-profile-island')).toBe(true);
+    await waitFor(() => expect(panel.querySelector('.chat-profile-avatar')).toBeTruthy());
+    const avatar = panel.querySelector('.chat-profile-avatar')!;
+    expect(avatar.querySelector('.avatar-presence-badge')).toBeTruthy();
+    expect(panel.querySelector('.chat-profile-identity .chat-presence')).toBeNull();
   });
 
   it('replaces the native composer menu with FreeTalk controls', () => {
