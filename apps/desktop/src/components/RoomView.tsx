@@ -424,7 +424,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''}`}
+      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${callFullscreen ? 'call-fullscreen' : ''}`}
     >
       <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
         {embedded ? (
