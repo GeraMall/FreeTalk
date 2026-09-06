@@ -545,13 +545,19 @@ describe('RoomView media layouts', () => {
     expect(getByLabelText('Камера Друг').classList.contains('mirrored')).toBe(true);
   });
 
-  it('lets the user switch the primary stage when two screens are shared', () => {
+  it('splits the stage when two screens are shared', () => {
     const remoteScreen = {} as MediaStream;
-    const { getByRole, getByLabelText } = render(
+    const { container, getByLabelText, queryByRole } = render(
       view('both', { [peerId]: { camera: stream, screen: remoteScreen } }),
     );
     expect(getByLabelText('Экран Гера')).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: 'Показать экран Друг' }));
     expect(getByLabelText('Экран Друг')).not.toBeNull();
+    expect(container.querySelector('.presentation-stage-grid')?.getAttribute('data-count')).toBe(
+      '2',
+    );
+    expect(container.querySelectorAll('.presentation-stage-grid .screen-stage-shell')).toHaveLength(
+      2,
+    );
+    expect(queryByRole('button', { name: 'Показать экран Друг' })).toBeNull();
   });
 });

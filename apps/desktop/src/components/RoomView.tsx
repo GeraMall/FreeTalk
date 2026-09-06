@@ -163,7 +163,6 @@ export function RoomView({
   onModerationMute,
 }: RoomViewProps) {
   const [menuFor, setMenuFor] = useState<string>();
-  const [presentedScreenId, setPresentedScreenId] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatClosing, setChatClosing] = useState(false);
@@ -171,18 +170,13 @@ export function RoomView({
   const [deviceMenu, setDeviceMenu] = useState<'audio' | 'camera'>();
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [callFullscreen, setCallFullscreen] = useState(false);
-  const [screenStageFullscreen, setScreenStageFullscreen] = useState(false);
   const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
   const [callControlsVisible, setCallControlsVisible] = useState(false);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
-  const [screenGeometry, setScreenGeometry] = useState({ participantId: '', aspectRatio: 16 / 9 });
-  const [screenStageSize, setScreenStageSize] = useState<{ width: number; height: number }>();
   const roomShellRef = useRef<HTMLElement>(null);
-  const screenStageSlotRef = useRef<HTMLDivElement>(null);
-  const screenStageRef = useRef<HTMLElement>(null);
   const callControlsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
@@ -200,25 +194,7 @@ export function RoomView({
   const screenPresenters = ordered.filter((participant) =>
     Boolean(participantMedia(participant).screen),
   );
-  const screenPresenter =
-    screenPresenters.find((participant) => participant.id === presentedScreenId) ??
-    screenPresenters[0];
-  const screenAspectRatio =
-    screenGeometry.participantId === screenPresenter?.id ? screenGeometry.aspectRatio : 16 / 9;
-  const updateScreenAspectRatio = useCallback(
-    (aspectRatio: number) => {
-      if (!screenPresenter || !Number.isFinite(aspectRatio) || aspectRatio <= 0) return;
-      setScreenGeometry((current) => {
-        if (
-          current.participantId === screenPresenter.id &&
-          Math.abs(current.aspectRatio - aspectRatio) < 0.001
-        )
-          return current;
-        return { participantId: screenPresenter.id, aspectRatio };
-      });
-    },
-    [screenPresenter],
-  );
+  const screenPresenter = screenPresenters[0];
   const hasCamera = ordered.some((participant) => Boolean(participantMedia(participant).camera));
   const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
   const revealCallControls = useCallback(() => {
@@ -266,50 +242,9 @@ export function RoomView({
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
 
   useEffect(() => {
-    const slot = screenStageSlotRef.current;
-    if (!screenPresenter || !slot || typeof ResizeObserver === 'undefined') {
-      setScreenStageSize(undefined);
-      return;
-    }
-
-    const resize = () => {
-      const bounds = slot.getBoundingClientRect();
-      const roomBounds = roomShellRef.current?.getBoundingClientRect();
-      const viewportHeight = Math.min(
-        window.innerHeight,
-        document.documentElement.clientHeight || window.innerHeight,
-      );
-      const visibleBottom = Math.min(viewportHeight, roomBounds?.bottom ?? viewportHeight);
-      const availableWidth = Math.max(0, bounds.width);
-      const availableHeight = Math.max(
-        0,
-        Math.min(bounds.height, visibleBottom - bounds.top) - SCREEN_STAGE_BOTTOM_GAP,
-      );
-      const width = Math.min(availableWidth, availableHeight * screenAspectRatio);
-      const height = width / screenAspectRatio;
-      setScreenStageSize((current) =>
-        current && Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
-          ? current
-          : { width, height },
-      );
-    };
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(slot);
-    if (roomShellRef.current) observer.observe(roomShellRef.current);
-    window.addEventListener('resize', resize);
-    resize();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', resize);
-    };
-  }, [screenAspectRatio, screenPresenter]);
-
-  useEffect(() => {
     const sync = () => {
       const fullscreenElement = document.fullscreenElement;
       setCallFullscreen(fullscreenElement === roomShellRef.current);
-      setScreenStageFullscreen(fullscreenElement === screenStageRef.current);
       setFullscreenCameraId(
         fullscreenElement instanceof HTMLElement
           ? fullscreenElement.dataset.cameraParticipantId
@@ -345,12 +280,6 @@ export function RoomView({
     if (!roomShellRef.current) return;
     const mode = await toggleMediaFullscreen(roomShellRef.current).catch(() => 'none' as const);
     setCallFullscreen(mode !== 'none');
-  };
-
-  const toggleScreenStageFullscreen = async () => {
-    if (!screenStageRef.current) return;
-    const mode = await toggleMediaFullscreen(screenStageRef.current).catch(() => 'none' as const);
-    setScreenStageFullscreen(mode !== 'none');
   };
 
   const toggleCameraFullscreen = async (participantId: string, element: HTMLElement) => {
@@ -418,16 +347,6 @@ export function RoomView({
             showExpand={false}
           />
         )}
-        {compact && media.screen && participant.id !== screenPresenter?.id && (
-          <button
-            className="participant-screen-switch"
-            aria-label={`Показать экран ${participant.name}`}
-            onClick={() => setPresentedScreenId(participant.id)}
-          >
-            <MonitorUp size={13} /> Экран
-          </button>
-        )}
-
         <div className="participant-card-top media-overlay-top">
           {participant.isOwner ? <CreatorBadge compact={showCamera || compact} /> : <span />}
           {!showCamera && (
@@ -609,76 +528,18 @@ export function RoomView({
 
           {screenPresenter ? (
             <div className="presentation-layout">
-              <div className="presentation-stage-slot" ref={screenStageSlotRef}>
-                <div
-                  className="screen-stage-shell"
-                  style={
-                    {
-                      '--screen-aspect-ratio': screenAspectRatio,
-                      ...(screenStageSize
-                        ? {
-                            width: `${screenStageSize.width}px`,
-                            height: `${screenStageSize.height}px`,
-                          }
-                        : {}),
-                    } as CSSProperties
-                  }
-                >
-                <div className="screen-stage-toolbar">
-                  <span className="screen-stage-title">
-                    <MonitorUp size={15} />
-                    <span>
-                      <strong>{screenPresenter.name}</strong>
-                      <small>Демонстрация экрана</small>
-                    </span>
-                  </span>
-                  <span className="screen-stage-creator">
-                    {screenPresenter.isOwner && <CreatorBadge compact />}
-                  </span>
-                  <span aria-hidden="true" />
-                </div>
-                  <article
-                    ref={screenStageRef}
-                    className={`screen-stage media-surface ${screenStageFullscreen ? 'screen-stage-window-fullscreen' : ''}`}
-                    aria-label="Демонстрация экрана. Нажмите для полноэкранного режима"
-                    onClick={(event) => {
-                      const target = event.target;
-                      if (target instanceof Element && target.closest('.screen-stage-volume')) return;
-                      void toggleScreenStageFullscreen();
-                    }}
-                  >
-                  <ParticipantVideo
-                    stream={participantMedia(screenPresenter).screen!}
-                    source="screen"
-                    name={screenPresenter.name}
-                    muted
-                    volume={0}
+              <div className="presentation-stage-grid" data-count={screenPresenters.length}>
+                {screenPresenters.map((presenter) => (
+                  <ScreenShareStage
+                    key={presenter.id}
+                    presenter={presenter}
+                    stream={participantMedia(presenter).screen!}
+                    selfId={selfId}
                     outputDeviceId={settings.outputDeviceId}
-                    showExpand={false}
-                    onAspectRatioChange={updateScreenAspectRatio}
+                    volume={settings.screenVolumes[presenter.id] ?? 1}
+                    onVolume={onScreenVolume}
                   />
-                  {screenPresenter.id !== selfId && (
-                    <label className="screen-stage-volume">
-                      <Volume2 size={15} aria-hidden="true" />
-                      <span>Звук демонстрации</span>
-                      <input
-                        aria-label={`Громкость демонстрации ${screenPresenter.name}`}
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={settings.screenVolumes[screenPresenter.id] ?? 1}
-                        onChange={(event) =>
-                          onScreenVolume(screenPresenter.id, Number(event.target.value))
-                        }
-                      />
-                      <output>
-                        {Math.round((settings.screenVolumes[screenPresenter.id] ?? 1) * 100)}%
-                      </output>
-                    </label>
-                  )}
-                  </article>
-                </div>
+                ))}
               </div>
               <div
                 className={`presentation-participants ${presentationParticipantsVisible ? 'visible' : 'collapsed'}`}
@@ -1350,6 +1211,141 @@ function DeviceMenuItem({
       <span>{label}</span>
       {selected && <Check size={15} />}
     </button>
+  );
+}
+
+function ScreenShareStage({
+  presenter,
+  stream,
+  selfId,
+  outputDeviceId,
+  volume,
+  onVolume,
+}: {
+  presenter: Participant;
+  stream: MediaStream;
+  selfId: string;
+  outputDeviceId: string;
+  volume: number;
+  onVolume(participantId: string, volume: number): void;
+}) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const [aspectRatio, setAspectRatio] = useState(16 / 9);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number }>();
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const slot = slotRef.current;
+    if (!slot || typeof ResizeObserver === 'undefined') return;
+    const resize = () => {
+      const bounds = slot.getBoundingClientRect();
+      const roomBounds = slot.closest<HTMLElement>('.room-shell')?.getBoundingClientRect();
+      const viewportHeight = Math.min(
+        window.innerHeight,
+        document.documentElement.clientHeight || window.innerHeight,
+      );
+      const visibleBottom = Math.min(viewportHeight, roomBounds?.bottom ?? viewportHeight);
+      const availableWidth = Math.max(0, bounds.width);
+      const availableHeight = Math.max(
+        0,
+        Math.min(bounds.height, visibleBottom - bounds.top) - SCREEN_STAGE_BOTTOM_GAP,
+      );
+      const width = Math.min(availableWidth, availableHeight * aspectRatio);
+      const height = width / aspectRatio;
+      setStageSize((current) =>
+        current && Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+          ? current
+          : { width, height },
+      );
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(slot);
+    window.addEventListener('resize', resize);
+    resize();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resize);
+    };
+  }, [aspectRatio]);
+
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!stageRef.current) return;
+    const mode = await toggleMediaFullscreen(stageRef.current).catch(() => 'none' as const);
+    setFullscreen(mode !== 'none');
+  };
+
+  return (
+    <div className="presentation-stage-slot" ref={slotRef}>
+      <div
+        className="screen-stage-shell"
+        style={
+          {
+            '--screen-aspect-ratio': aspectRatio,
+            ...(stageSize
+              ? { width: `${stageSize.width}px`, height: `${stageSize.height}px` }
+              : {}),
+          } as CSSProperties
+        }
+      >
+        <div className="screen-stage-toolbar">
+          <span className="screen-stage-title">
+            <MonitorUp size={15} />
+            <span>
+              <strong>{presenter.name}</strong>
+              <small>Демонстрация экрана</small>
+            </span>
+          </span>
+          <span className="screen-stage-creator">
+            {presenter.isOwner && <CreatorBadge compact />}
+          </span>
+          <span aria-hidden="true" />
+        </div>
+        <article
+          ref={stageRef}
+          className={`screen-stage media-surface ${fullscreen ? 'screen-stage-window-fullscreen' : ''}`}
+          aria-label={`Демонстрация экрана ${presenter.name}. Нажмите для полноэкранного режима`}
+          onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('.screen-stage-volume')) return;
+            void toggleFullscreen();
+          }}
+        >
+          <ParticipantVideo
+            stream={stream}
+            source="screen"
+            name={presenter.name}
+            muted
+            volume={0}
+            outputDeviceId={outputDeviceId}
+            showExpand={false}
+            onAspectRatioChange={setAspectRatio}
+          />
+          {presenter.id !== selfId && (
+            <label className="screen-stage-volume">
+              <Volume2 size={15} aria-hidden="true" />
+              <span>Звук демонстрации</span>
+              <input
+                aria-label={`Громкость демонстрации ${presenter.name}`}
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={(event) => onVolume(presenter.id, Number(event.target.value))}
+              />
+              <output>{Math.round(volume * 100)}%</output>
+            </label>
+          )}
+        </article>
+      </div>
+    </div>
   );
 }
 
