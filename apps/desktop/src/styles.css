@@ -1192,6 +1192,10 @@ input[type='range']:hover::-webkit-slider-thumb {
   gap: 2px;
   line-height: 1.1;
 }
+.room-header-embedded {
+  padding-right: 16px;
+  padding-left: 16px;
+}
 .room-header-participants strong {
   color: var(--ft-text);
   font-size: 15px;
@@ -2222,7 +2226,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   z-index: 40;
   inset: 0;
   display: grid;
-  padding: clamp(16px, 3vw, 42px);
+  padding: clamp(8px, 1.2vw, 18px);
   place-items: center;
   background: rgba(1, 6, 12, 0.88);
   backdrop-filter: blur(14px);
@@ -2230,8 +2234,8 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .expanded-media-view {
   position: relative;
-  width: min(1500px, 100%);
-  height: min(900px, 100%);
+  width: 100%;
+  height: 100%;
   min-height: 260px;
   overflow: hidden;
   border: 1px solid rgba(94, 214, 188, 0.45);
