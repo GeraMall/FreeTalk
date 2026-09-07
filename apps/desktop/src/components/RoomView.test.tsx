@@ -13,19 +13,25 @@ const participants: Participant[] = [
   { id: peerId, name: 'Друг', muted: false, isOwner: false, connectedAt: 2 },
 ];
 const stream = {} as MediaStream;
-const { invokeMock, listenMock, toggleMediaFullscreenMock, leaveWindowFullscreenMock } = vi.hoisted(
-  () => ({
-    invokeMock: vi.fn(),
-    listenMock: vi.fn(),
-    toggleMediaFullscreenMock: vi.fn(),
-    leaveWindowFullscreenMock: vi.fn(),
-  }),
-);
+const {
+  invokeMock,
+  listenMock,
+  toggleMediaFullscreenMock,
+  toggleWindowFullscreenMock,
+  leaveWindowFullscreenMock,
+} = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  listenMock: vi.fn(),
+  toggleMediaFullscreenMock: vi.fn(),
+  toggleWindowFullscreenMock: vi.fn(),
+  leaveWindowFullscreenMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
 vi.mock('../lib/fullscreen', () => ({
   toggleMediaFullscreen: toggleMediaFullscreenMock,
+  toggleWindowFullscreen: toggleWindowFullscreenMock,
   leaveWindowFullscreen: leaveWindowFullscreenMock,
 }));
 
@@ -44,6 +50,7 @@ beforeEach(() => {
   invokeMock.mockReset().mockResolvedValue(undefined);
   listenMock.mockReset().mockResolvedValue(vi.fn());
   toggleMediaFullscreenMock.mockReset().mockResolvedValue('none');
+  toggleWindowFullscreenMock.mockReset().mockResolvedValue(false);
   leaveWindowFullscreenMock.mockReset().mockResolvedValue(undefined);
   const previewTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -289,6 +296,22 @@ describe('RoomView media layouts', () => {
     }
   });
 
+  it('uses native window fullscreen for the whole call', async () => {
+    toggleWindowFullscreenMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const { container, getByRole } = render(view());
+
+    fireEvent.click(getByRole('button', { name: 'Открыть звонок во весь экран' }));
+    await waitFor(() =>
+      expect(container.querySelector('.room-shell.call-fullscreen')).not.toBeNull(),
+    );
+    expect(toggleWindowFullscreenMock).toHaveBeenCalledTimes(1);
+    expect(toggleMediaFullscreenMock).not.toHaveBeenCalled();
+
+    fireEvent.click(getByRole('button', { name: 'Выйти из полноэкранного режима' }));
+    await waitFor(() => expect(container.querySelector('.room-shell.call-fullscreen')).toBeNull());
+    expect(toggleWindowFullscreenMock).toHaveBeenCalledTimes(2);
+  });
+
   it('moves the active call to a native window and can restore it', async () => {
     const { findByRole, getByRole } = render(view());
 
@@ -473,7 +496,8 @@ describe('RoomView media layouts', () => {
     );
     expect(queryByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' })).toBeNull();
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: 'Скрыть участников' }));
+    const participantToggle = getByRole('button', { name: 'Скрыть участников' });
+    fireEvent.click(participantToggle.querySelector('svg')!);
     expect(container.querySelector('.presentation-participants.collapsed')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Показать участников' }));
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();

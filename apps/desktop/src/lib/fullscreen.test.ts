@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => windowApi,
 }));
 
-import { leaveWindowFullscreen, toggleMediaFullscreen } from './fullscreen';
+import { leaveWindowFullscreen, toggleMediaFullscreen, toggleWindowFullscreen } from './fullscreen';
 
 describe('media fullscreen fallback', () => {
   beforeEach(() => {
@@ -37,5 +37,14 @@ describe('media fullscreen fallback', () => {
   it('leaves a Tauri fullscreen window when the expanded viewer closes', async () => {
     await leaveWindowFullscreen(true);
     expect(windowApi.setFullscreen).toHaveBeenCalledWith(false);
+  });
+
+  it('toggles the native application window fullscreen mode', async () => {
+    await expect(toggleWindowFullscreen()).resolves.toBe(true);
+    expect(windowApi.setFullscreen).toHaveBeenCalledWith(true);
+
+    windowApi.isFullscreen.mockResolvedValueOnce(true);
+    await expect(toggleWindowFullscreen()).resolves.toBe(false);
+    expect(windowApi.setFullscreen).toHaveBeenLastCalledWith(false);
   });
 });

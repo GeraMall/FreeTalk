@@ -38,7 +38,7 @@ import {
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
-import { toggleMediaFullscreen } from '../lib/fullscreen';
+import { toggleMediaFullscreen, toggleWindowFullscreen } from '../lib/fullscreen';
 import { RoomChatPanel } from './RoomChatPanel';
 import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
@@ -276,9 +276,8 @@ export function RoomView({
   }, []);
 
   const toggleCallFullscreen = async () => {
-    if (!roomShellRef.current) return;
-    const mode = await toggleMediaFullscreen(roomShellRef.current).catch(() => 'none' as const);
-    setCallFullscreen(mode !== 'none');
+    const active = await toggleWindowFullscreen().catch(() => false);
+    setCallFullscreen(active);
   };
 
   const toggleCameraFullscreen = async (participantId: string, element: HTMLElement) => {

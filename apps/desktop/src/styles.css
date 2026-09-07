@@ -1571,7 +1571,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   overflow: hidden;
   aspect-ratio: 16 / 10;
   background: #030912;
-  cursor: zoom-in;
+  cursor: default;
   animation: media-tile-in 0.2s ease-out;
 }
 .participant-card.camera-tile:fullscreen,
@@ -1594,7 +1594,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   aspect-ratio: auto;
   background: #02070d;
   box-shadow: none;
-  cursor: zoom-out;
+  cursor: default;
 }
 .participant-card.camera-tile:fullscreen .participant-video,
 .participant-card.camera-tile.camera-tile-window-fullscreen .participant-video {
@@ -2092,7 +2092,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   border-radius: 0;
   background: #02070d;
   box-shadow: none;
-  cursor: zoom-in;
+  cursor: default;
 }
 .screen-stage:fullscreen,
 .screen-stage.screen-stage-window-fullscreen {
@@ -2111,7 +2111,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   outline: 0;
   border-radius: 0;
   background: #02070d;
-  cursor: zoom-out;
+  cursor: default;
 }
 .screen-stage-shell.media-fullscreen-shell {
   position: fixed;
@@ -2464,6 +2464,17 @@ input[type='range']:hover::-webkit-slider-thumb {
   text-shadow:
     0 1px 2px #000,
     0 2px 7px rgba(0, 0, 0, 0.92);
+}
+.compact-tile.camera-tile .participant-overlay {
+  padding: 0 7px 5px;
+}
+.compact-tile.camera-tile .participant-name strong {
+  font-size: 10px;
+}
+.compact-tile.camera-tile .participant-status {
+  position: absolute;
+  bottom: 21px;
+  left: 7px;
 }
 .compact-tile .participant-name strong {
   max-width: 92px;
@@ -2821,6 +2832,10 @@ input[type='range']:hover::-webkit-slider-thumb {
 .presentation-participants-dock-toggle svg:last-child {
   width: 12px;
   height: 12px;
+}
+.presentation-participants-dock-toggle svg,
+.presentation-participants-dock-toggle svg * {
+  pointer-events: none;
 }
 .presentation-participants-dock-toggle:hover,
 .presentation-participants-dock-toggle.active {

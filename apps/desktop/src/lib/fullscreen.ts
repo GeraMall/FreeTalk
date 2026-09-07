@@ -2,6 +2,13 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export type FullscreenMode = 'element' | 'window' | 'none';
 
+export async function toggleWindowFullscreen(): Promise<boolean> {
+  const appWindow = getCurrentWindow();
+  const next = !(await appWindow.isFullscreen());
+  await appWindow.setFullscreen(next);
+  return next;
+}
+
 export async function toggleMediaFullscreen(element: HTMLElement): Promise<FullscreenMode> {
   const ownerDocument = element.ownerDocument;
   if (ownerDocument.fullscreenElement) {
