@@ -164,6 +164,8 @@ describe('RoomView media layouts', () => {
         participants: registeredParticipants,
       }),
     );
+    expect(audio.container.querySelector('.participant-card.avatar-glass')).toBeTruthy();
+    expect(audio.container.querySelector('.participant-card-ambient img')).toBeTruthy();
     fireEvent.click(audio.getByRole('button', { name: 'Открыть полный профиль Друг' }));
     expect(audio.getByRole('dialog', { name: 'Профиль Друг' })).toBeTruthy();
     audio.unmount();
