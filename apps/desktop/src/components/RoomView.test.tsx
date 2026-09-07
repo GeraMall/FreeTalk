@@ -353,6 +353,28 @@ describe('RoomView media layouts', () => {
     fireEvent.click(getByRole('button', { name: 'Закрыть предпросмотр' }));
   });
 
+  it('selects a camera from the styled preview menu', () => {
+    const camera = {
+      deviceId: 'camera-1',
+      groupId: 'group-1',
+      kind: 'videoinput',
+      label: 'Камера USB',
+      toJSON: () => ({}),
+    } as MediaDeviceInfo;
+    const { getByRole } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        devices: { inputs: [], outputs: [], cameras: [camera] },
+      }),
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Выбрать камеру' }));
+    fireEvent.click(getByRole('button', { name: 'Предпросмотр камеры' }));
+    fireEvent.click(getByRole('button', { name: /Выбрать камеру\. Системная камера/ }));
+    fireEvent.click(getByRole('option', { name: /Камера USB/ }));
+
+    expect(getByRole('button', { name: /Выбрать камеру\. Камера USB/ })).toBeTruthy();
+  });
+
   it('shows creator recording controls and a dismissible start banner', () => {
     const onRecording = vi.fn();
     const onRecordingBannerClose = vi.fn();

@@ -963,6 +963,7 @@ function CameraPreviewDialog({
   const [previewStream, setPreviewStream] = useState<MediaStream>();
   const [previewError, setPreviewError] = useState('');
   const [previewBusy, setPreviewBusy] = useState(true);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const captureRef = useRef<CameraEffectCapture | undefined>(undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1038,6 +1039,12 @@ function CameraPreviewDialog({
       setPreviewBusy(false);
     }
   };
+  const selectedDeviceLabel =
+    devices.find((device) => device.deviceId === deviceId)?.label || 'Системная камера';
+  const chooseDevice = (nextDeviceId: string) => {
+    setDeviceId(nextDeviceId);
+    setDeviceMenuOpen(false);
+  };
 
   return (
     <div className="camera-preview-backdrop" role="presentation" onMouseDown={close}>
@@ -1059,18 +1066,65 @@ function CameraPreviewDialog({
           {previewBusy && <span>Подготавливаем камеру…</span>}
           {previewError && <span className="camera-preview-error">{previewError}</span>}
         </div>
-        <label className="camera-preview-device">
-          <Camera size={17} />
-          <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}>
-            <option value="">Системная камера</option>
-            {devices.map((device, index) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label || `Камера ${index + 1}`}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={17} />
-        </label>
+        <div className="camera-preview-device-picker">
+          <button
+            type="button"
+            className="camera-preview-device"
+            aria-label={`Выбрать камеру. ${selectedDeviceLabel}`}
+            aria-haspopup="listbox"
+            aria-expanded={deviceMenuOpen}
+            onClick={() => setDeviceMenuOpen((open) => !open)}
+          >
+            <span className="camera-preview-device-icon">
+              <Camera size={17} />
+            </span>
+            <span className="camera-preview-device-copy">
+              <small>Камера</small>
+              <strong>{selectedDeviceLabel}</strong>
+            </span>
+            <ChevronDown className="camera-preview-device-chevron" size={17} />
+          </button>
+          {deviceMenuOpen && (
+            <div className="camera-preview-device-menu" role="listbox" aria-label="Камеры">
+              <button
+                type="button"
+                role="option"
+                aria-selected={!deviceId}
+                onClick={() => chooseDevice('')}
+              >
+                <span className="camera-preview-device-option-icon">
+                  <Camera size={16} />
+                </span>
+                <span>
+                  <strong>Системная камера</strong>
+                  <small>Выбирать автоматически</small>
+                </span>
+                {!deviceId && <Check size={16} />}
+              </button>
+              {devices.map((device, index) => {
+                const label = device.label || `Камера ${index + 1}`;
+                return (
+                  <button
+                    key={device.deviceId}
+                    type="button"
+                    role="option"
+                    aria-selected={deviceId === device.deviceId}
+                    onClick={() => chooseDevice(device.deviceId)}
+                  >
+                    <span className="camera-preview-device-option-icon">
+                      <Camera size={16} />
+                    </span>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>Видеоустройство</small>
+                    </span>
+                    {deviceId === device.deviceId && <Check size={16} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div className="camera-background-section">
           <strong>Фон видео</strong>
           <div className="camera-background-options">
