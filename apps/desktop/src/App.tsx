@@ -16,7 +16,6 @@ import { DEFAULT_INVITE_BASE_URL, roomInviteUrl, subscribeToRoomDeepLinks } from
 import {
   NotificationSounds,
   ParticipantNotificationTracker,
-  playNotificationSound,
 } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
@@ -59,6 +58,7 @@ import {
   useAccountSidebarWidth,
 } from './lib/account-sidebar-width';
 import mascot from './assets/freetalk-mascot.png';
+import recordingStartSound from './assets/recording-start.mp3';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
@@ -118,7 +118,15 @@ function telemetryPlatform():
 }
 
 function playRecordingStartNotification(settings: LocalSettings) {
-  return playNotificationSound(settings);
+  const sound = new Audio(recordingStartSound);
+  sound.volume = settings.outputVolume;
+  const playSound = () => sound.play().catch(() => undefined);
+  if (settings.outputDeviceId && 'setSinkId' in sound)
+    return (sound as HTMLAudioElement & { setSinkId(deviceId: string): Promise<void> })
+      .setSinkId(settings.outputDeviceId)
+      .then(playSound)
+      .catch(playSound);
+  return playSound();
 }
 
 async function warmInitialAccountMedia(user: AccountUser) {

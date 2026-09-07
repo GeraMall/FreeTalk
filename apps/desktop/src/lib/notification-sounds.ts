@@ -3,8 +3,8 @@ export type NotificationSound = 'joined' | 'disconnected';
 export const NOTIFICATION_SOUND_URL = '/sounds/notification.mp3';
 
 const SOUND_URLS: Record<NotificationSound, string> = {
-  joined: NOTIFICATION_SOUND_URL,
-  disconnected: NOTIFICATION_SOUND_URL,
+  joined: '/sounds/participant-joined.mp3',
+  disconnected: '/sounds/participant-disconnected.mp3',
 };
 
 const NOTIFICATION_VOLUME = 0.72;

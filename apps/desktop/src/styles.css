@@ -1352,7 +1352,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participants-heading {
   display: flex;
-  align-items: end;
+  align-items: start;
   justify-content: space-between;
   margin-bottom: 19px;
 }
@@ -1416,7 +1416,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participants-grid[data-mode='camera'][data-count='1'] {
   grid-template-columns: minmax(0, 1fr);
-  width: min(860px, max(420px, calc((100dvh - 230px) * 1.4)));
+  width: min(720px, max(360px, calc((100vh - 360px) * 1.6)));
   max-width: 100%;
   margin: 0 auto;
   justify-content: center;
@@ -1427,18 +1427,18 @@ input[type='range']:hover::-webkit-slider-thumb {
 .participants-grid[data-mode='camera'][data-count='3'],
 .participants-grid[data-mode='camera'][data-count='4'] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(100%, max(620px, calc(150dvh - 430px)));
+  width: min(100%, max(560px, calc(160vh - 621px)));
   margin: 0 auto;
 }
 .participants-grid[data-mode='camera'][data-count='3'] .camera-tile,
 .participants-grid[data-mode='camera'][data-count='4'] .camera-tile,
 .participants-grid[data-mode='camera'][data-count='5'] .camera-tile,
 .participants-grid[data-mode='camera'][data-count='6'] .camera-tile {
-  max-height: max(190px, calc((100dvh - 270px) / 2));
+  max-height: max(170px, calc((100vh - 398px) / 2));
 }
 .participants-grid[data-mode='camera'][data-count='7'] .camera-tile,
 .participants-grid[data-mode='camera'][data-count='8'] .camera-tile {
-  max-height: max(165px, calc((100dvh - 286px) / 3));
+  max-height: max(150px, calc((100vh - 414px) / 3));
 }
 .participant-card {
   position: relative;
@@ -1479,7 +1479,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .participant-card.camera-tile {
   min-height: 0;
   overflow: hidden;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
   background: #030912;
   cursor: zoom-in;
   animation: media-tile-in 0.2s ease-out;
@@ -2185,10 +2185,10 @@ input[type='range']:hover::-webkit-slider-thumb {
   display: grid;
   grid-auto-columns: minmax(240px, 280px);
   grid-auto-flow: column;
-  grid-auto-rows: 132px;
+  grid-auto-rows: 154px;
   justify-content: safe center;
   gap: 10px;
-  height: 132px;
+  height: 154px;
   min-height: 0;
   padding: 0 2px;
   overflow-x: auto;
@@ -2208,7 +2208,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participant-card.compact-tile {
   width: 100%;
-  min-height: 132px;
+  min-height: 154px;
   aspect-ratio: auto;
 }
 .compact-tile.audio-tile {
@@ -2348,7 +2348,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   grid-column: auto;
   justify-self: stretch;
   min-width: 0;
-  min-height: 132px;
+  min-height: 154px;
   justify-content: center;
 }
 .participant-strip .invite-empty .invite-copy small,
@@ -7952,7 +7952,7 @@ html.notification-overlay-document #root {
 .recording-start-banner {
   position: fixed;
   z-index: 30;
-  top: 12px;
+  top: 46px;
   left: 50%;
   display: flex;
   min-width: min(520px, calc(100% - 36px));
