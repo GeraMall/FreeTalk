@@ -2,7 +2,8 @@ import type { LocalSettings } from './settings';
 
 export const INCOMING_CALL_RINGTONE_URL = '/sounds/incoming-call.mp3';
 
-type RingtoneSettings = Pick<LocalSettings, 'outputDeviceId' | 'outputVolume'>;
+type RingtoneSettings = Pick<LocalSettings, 'outputDeviceId' | 'outputVolume'> &
+  Partial<Pick<LocalSettings, 'incomingCallSound'>>;
 
 export class IncomingCallRingtone {
   private audio?: HTMLAudioElement;
@@ -14,6 +15,7 @@ export class IncomingCallRingtone {
 
   async start(settings: RingtoneSettings) {
     this.stop();
+    if (settings.incomingCallSound === false) return;
     const audio = this.createAudio();
     audio.preload = 'auto';
     audio.loop = true;

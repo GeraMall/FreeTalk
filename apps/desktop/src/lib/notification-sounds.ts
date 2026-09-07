@@ -11,8 +11,13 @@ const NOTIFICATION_VOLUME = 0.72;
 const ACTIVE_SAMPLE_FLOOR = 0.001;
 
 export async function playNotificationSound(
-  settings: { outputDeviceId?: string; outputVolume?: number } = {},
+  settings: {
+    outputDeviceId?: string;
+    outputVolume?: number;
+    messageNotificationSound?: boolean;
+  } = {},
 ) {
+  if (settings.messageNotificationSound === false) return;
   const audio = new Audio(NOTIFICATION_SOUND_URL);
   audio.preload = 'auto';
   audio.volume = Math.min(1, Math.max(0, settings.outputVolume ?? NOTIFICATION_VOLUME));

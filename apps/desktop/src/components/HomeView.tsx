@@ -15,7 +15,6 @@ import {
 import { generateRoomCode } from '../lib/room-code';
 import type { UpdateStatus } from '../lib/updater';
 import {
-  activeCallRoomId,
   hasConversationParticipants,
   uniqueCallParticipants,
   type CallHistoryParticipant,
@@ -64,7 +63,12 @@ export interface HomeSidebarState {
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
+import type { CallDockState } from './CallDock';
+
 export function HomeView({
+  callDock,
+  initialChatId,
+  joinedRoomId,
   user,
   busy,
   error,
@@ -84,8 +88,11 @@ export function HomeView({
   user: AccountUser;
   busy: boolean;
   error: string;
-  onCreateRoom(roomId?: string): void;
-  onJoinRoom(code: string): void;
+  onCreateRoom(roomId?: string, chatId?: string): void;
+  onJoinRoom(code: string, chatId?: string): void;
+  callDock?: CallDockState;
+  initialChatId?: string;
+  joinedRoomId?: string;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
   onClearError?(): void;
@@ -97,7 +104,7 @@ export function HomeView({
   onInstallUpdate?(): void;
   embedded?: boolean;
 }) {
-  const [internalPage, setInternalPage] = useState<AccountPage>('home');
+  const [internalPage, setInternalPage] = useState<AccountPage>(initialChatId ? 'chats' : 'home');
   const page = controlledPage ?? internalPage;
   const [roomCode, setRoomCode] = useState('');
   const [friends, setFriends] = useState<FriendItem[]>([]);
@@ -329,6 +336,10 @@ export function HomeView({
             // The next normal page refresh will retry without interrupting realtime chat.
           });
       } else if (event.type === 'chat-updated') {
+        void accountClient
+          .request<{ chats: ChatItem[] }>('/v1/chats')
+          .then((result) => setChats(result.chats))
+          .catch(() => undefined);
         setChats((current) =>
           current.map((chat) =>
             chat.id === event.chatId
@@ -495,6 +506,13 @@ export function HomeView({
     },
     [loadChatMessages],
   );
+
+  useEffect(() => {
+    if (initialChatId) {
+      void loadPage('chats');
+      void openChat(initialChatId);
+    }
+  }, [initialChatId, openChat, loadPage]);
 
   const loadOlderMessages = async () => {
     if (!activeChat || !hasMoreMessages) return;
@@ -782,17 +800,28 @@ export function HomeView({
   };
 
   const startDirectCall = async (friendId: string) => {
+    if (joinedRoomId) {
+      onJoinRoom('');
+      return;
+    }
     try {
       const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
         method: 'POST',
         body: JSON.stringify({ type: 'direct', memberIds: [friendId] }),
       });
       const roomId = generateRoomCode();
+      const existing = await accountClient.request<{ call: { roomId: string } | null }>(
+        `/v1/chats/${result.chat.id}/active-call`,
+      );
+      if (existing.call) {
+        onJoinRoom(existing.call.roomId, result.chat.id);
+        return;
+      }
       await accountClient.request(`/v1/chats/${result.chat.id}/calls`, {
         method: 'POST',
         body: JSON.stringify({ roomId }),
       });
-      onCreateRoom(roomId);
+      onCreateRoom(roomId, result.chat.id);
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
     }
@@ -904,18 +933,24 @@ export function HomeView({
 
   const startChatCall = async () => {
     if (!activeChat) return;
-    const existingRoomId = activeCallRoomId(messages);
-    if (existingRoomId) {
-      onJoinRoom(existingRoomId);
-      return;
-    }
     const roomId = generateRoomCode();
     try {
+      const existing = await accountClient.request<{ call: { roomId: string } | null }>(
+        `/v1/chats/${activeChat}/active-call`,
+      );
+      if (existing.call) {
+        onJoinRoom(existing.call.roomId, activeChat);
+        return;
+      }
+      if (joinedRoomId) {
+        onJoinRoom('');
+        return;
+      }
       await accountClient.request(`/v1/chats/${activeChat}/calls`, {
         method: 'POST',
         body: JSON.stringify({ roomId }),
       });
-      onCreateRoom(roomId);
+      onCreateRoom(roomId, activeChat);
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
     }
@@ -1035,6 +1070,7 @@ export function HomeView({
     >
       {!embedded && !mobileLayout && (
         <AccountSidebar
+          callDock={callDock}
           user={user}
           activePage={page}
           readingChatId={activeChat}
@@ -1227,6 +1263,7 @@ export function HomeView({
         )}
         {page === 'chats' && (
           <ChatsPage
+            joinedRoomId={joinedRoomId}
             externalSidebar={!mobileLayout}
             mobile={mobileLayout}
             userId={user.id}
@@ -1276,7 +1313,7 @@ export function HomeView({
             onDeleteDirectChat={deleteDirectChat}
             onLeaveGroup={() => leaveGroup()}
             onAddMember={addChatMember}
-            onJoinCall={onJoinRoom}
+            onJoinCall={(code) => onJoinRoom(code, activeChat)}
           />
         )}
         {page === 'history' && (

@@ -55,9 +55,11 @@ import {
   useAccountSidebarWidth,
 } from './lib/account-sidebar-width';
 import mascot from './assets/freetalk-mascot.png';
-import recordingStartSound from './assets/recording-start.mp3';
+import { playRecordingStartNotification } from './lib/recording-start-sound';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
 import { calculateSignalStrength } from './lib/network-quality';
+import type { CallDockState } from './components/CallDock';
+import type { ChatCallContext } from './components/ChatCallWaiting';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -68,6 +70,7 @@ const NO_LOCAL_VIDEO: LocalVideoState = {
 };
 
 interface EnterRoomOptions {
+  chatId?: string;
   room?: string;
   authToken?: string;
   displayName?: string;
@@ -115,18 +118,6 @@ function telemetryPlatform():
   return typeof window !== 'undefined' ? 'web' : 'unknown';
 }
 
-function playRecordingStartNotification(settings: LocalSettings) {
-  const sound = new Audio(recordingStartSound);
-  sound.volume = settings.outputVolume;
-  const playSound = () => sound.play().catch(() => undefined);
-  if (settings.outputDeviceId && 'setSinkId' in sound)
-    return (sound as HTMLAudioElement & { setSinkId(deviceId: string): Promise<void> })
-      .setSinkId(settings.outputDeviceId)
-      .then(playSound)
-      .catch(playSound);
-  return playSound();
-}
-
 async function warmInitialAccountMedia(user: AccountUser) {
   setActiveAccountMediaScope(user.id);
   const results = await Promise.allSettled([
@@ -150,6 +141,13 @@ export function App() {
   const [lockedFeatureOpen, setLockedFeatureOpen] = useState(false);
   const [name, setName] = useState(settings.displayName);
   const [roomId, setRoomId] = useState<string>();
+  const [callChatId, setCallChatId] = useState<string>();
+  const callChatRef = useRef<string | undefined>(undefined);
+  const pendingChatRing = useRef(false);
+  const [callTitle, setCallTitle] = useState('Комната FreeTalk');
+  const [deafened, setDeafened] = useState(false);
+  const [conversationHidden, setConversationHidden] = useState(false);
+  const [cameraPreviewRequest, setCameraPreviewRequest] = useState(0);
   const [roomDestination, setRoomDestination] = useState<AccountDestination>('room');
   const [roomActiveChatId, setRoomActiveChatId] = useState<string>();
   const [roomSidebarState, setRoomSidebarState] = useState<HomeSidebarState>();
@@ -395,7 +393,6 @@ export function App() {
     setRoomDestination('room');
     setParticipants([]);
     setPeerState({});
-    setMuted(false);
     setSignalState('offline');
     setSignalStrength(0);
     setJoining(false);
@@ -411,9 +408,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    remoteAudio.current.setMasterVolume(settings.outputVolume);
-    remoteScreenAudio.current.setMasterVolume(settings.outputVolume);
-  }, [settings.outputVolume]);
+    remoteAudio.current.setMasterVolume(deafened ? 0 : settings.outputVolume);
+    remoteScreenAudio.current.setMasterVolume(deafened ? 0 : settings.outputVolume);
+  }, [settings.outputVolume, deafened]);
 
   useEffect(() => {
     remoteAudio.current.setDucking(
@@ -558,7 +555,7 @@ export function App() {
         if (joinTimer.current) window.clearTimeout(joinTimer.current);
         joinTimer.current = undefined;
         if (pendingRoomId.current) setRoomId(pendingRoomId.current);
-        setRoomDestination('room');
+        setRoomDestination(callChatRef.current ? 'chats' : 'room');
         setJoining(false);
         setParticipants(message.participants);
         setRoomChatMessages(message.roomChatMessages ?? []);
@@ -809,6 +806,10 @@ export function App() {
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
+    pendingChatRing.current = create && Boolean(options.chatId);
+    callChatRef.current = options.chatId;
+    setCallChatId(options.chatId);
+    setConversationHidden(false);
     setError('');
     setNotice('');
     const cleanName = (options.displayName ?? accountUser?.displayName ?? name).trim();
@@ -842,7 +843,7 @@ export function App() {
       );
       try {
         await manager.start(settings.inputDeviceId);
-        manager.setMuted(false);
+        manager.setMuted(muted);
         audio.current = manager;
       } catch (microphoneError) {
         manager.stop();
@@ -935,8 +936,66 @@ export function App() {
     void enterRoomRef.current(false, { room: code });
   }, [accountReady, accountUser, joining, pendingInviteRoom, roomId]);
 
+  useEffect(() => {
+    if (!roomId || !accountUser) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const result = await accountClient.request<{
+          call: ChatCallContext & { memberIds: string[] };
+        }>(`/v1/calls/${roomId}/context`);
+        if (disposed) return;
+        setCallTitle(result.call.title || 'Комната FreeTalk');
+        if (result.call.chatId && result.call.chatId !== callChatRef.current) {
+          callChatRef.current = result.call.chatId;
+          setCallChatId(result.call.chatId);
+          setRoomDestination('chats');
+        }
+        if (pendingChatRing.current) {
+          pendingChatRing.current = false;
+          const userIds = result.call.memberIds
+            .filter(
+              (id) =>
+                id !== accountUser.id &&
+                !result.call.participants.some((person) => person.userId === id),
+            )
+            .slice(0, 7);
+          if (userIds.length)
+            await accountClient
+              .request(`/v1/calls/${roomId}/invitations`, {
+                method: 'POST',
+                body: JSON.stringify({ userIds }),
+              })
+              .catch(() => {
+                if (!disposed)
+                  setNotice(
+                    'Не удалось отправить вызов. Собеседники могут присоединиться из чата.',
+                  );
+              });
+        }
+      } catch {
+        /* The signaling service may still be registering the room. */
+      }
+      if (!disposed) timer = setTimeout(() => void refresh(), 4000);
+    };
+    void refresh();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [roomId, accountUser]);
+
+  useEffect(() => {
+    if (roomId) signaling.current?.send({ type: 'mute-changed', muted });
+  }, [roomId, muted]);
+
   const toggleMute = async () => {
     const next = !muted;
+    if (!roomId) {
+      setMuted(next);
+      return;
+    }
     if (!next && !audio.current) {
       setError('');
       try {
@@ -1132,6 +1191,9 @@ export function App() {
 
   const logoutAccount = async () => {
     cleanup();
+    callChatRef.current = undefined;
+    setCallChatId(undefined);
+    pendingChatRing.current = false;
     if (accountUser) await clearChatImageCache(accountUser.id);
     await accountClient.logout();
     setActiveAccountMediaScope(undefined);
@@ -1177,7 +1239,7 @@ export function App() {
     setIncomingCallBusy(true);
     try {
       const result = await accountClient.request<{
-        invitation: { roomId: string; status: 'accepted' | 'declined' };
+        invitation: { roomId: string; chatId?: string; status: 'accepted' | 'declined' };
       }>(`/v1/call-invitations/${invitation.invitationId}/respond`, {
         method: 'POST',
         body: JSON.stringify({ action }),
@@ -1186,7 +1248,10 @@ export function App() {
       setIncomingCall(undefined);
       if (action === 'accept') {
         if (roomId) cleanup();
-        await enterRoomRef.current(false, { room: result.invitation.roomId });
+        await enterRoomRef.current(false, {
+          room: result.invitation.roomId,
+          chatId: result.invitation.chatId,
+        });
       }
     } catch (caught) {
       incomingCallRingtone.current.stop();
@@ -1466,6 +1531,54 @@ export function App() {
     />
   ) : null;
 
+  const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
+  const callDock: CallDockState = {
+    active: Boolean(roomId),
+    muted,
+    deafened,
+    strength: signalState === 'connected' ? signalStrength : 0,
+    title:
+      callConversation?.type === 'direct'
+        ? callConversation.members
+            .filter((member) => member.id !== accountUser?.id)
+            .map((member) => member.displayName)
+            .join(', ')
+        : callChatId
+          ? callTitle
+          : participants
+              .filter((person) => person.id !== selfId.current)
+              .map((person) => person.name)
+              .join(', ') || 'Ожидаем участников',
+    camera: localVideo.cameraEnabled,
+    screen: localVideo.screenEnabled,
+    noiseSuppression: settings.noiseSuppression,
+    busy: videoBusy,
+    inputs: devices.inputs,
+    outputs: devices.outputs,
+    inputId: settings.inputDeviceId,
+    outputId: settings.outputDeviceId,
+    onMute: () => void toggleMute(),
+    onDeafen: () => setDeafened((value) => !value),
+    onCamera: () => {
+      if (!localVideo.cameraEnabled && settings.cameraPreviewAlways) {
+        setRoomDestination(callChatId ? 'chats' : 'room');
+        if (callChatId) void roomSidebarState?.openChat(callChatId);
+        setCameraPreviewRequest((value) => value + 1);
+      } else void runVideoAction('camera');
+    },
+    onScreen: () => void runVideoAction('screen'),
+    onNoise: () => void changeAudioSettings({ noiseSuppression: !settings.noiseSuppression }, true),
+    onLeave: cleanup,
+    onOpen: () => {
+      setRoomDestination(callChatId ? 'chats' : 'room');
+      if (callChatId) void roomSidebarState?.openChat(callChatId);
+    },
+    onReaction: sendReaction,
+    onInput: (id) => void selectInput(id),
+    onOutput: (id) => void selectOutput(id),
+    onDevices: () => void refreshDevices(),
+  };
+
   const incomingCallOverlay = incomingCall ? (
     <IncomingCallDialog
       invitation={incomingCall}
@@ -1485,12 +1598,14 @@ export function App() {
           </main>
         ) : accountUser ? (
           <HomeView
+            callDock={callDock}
+            initialChatId={callChatId}
             user={accountUser}
             busy={joining}
             error={error}
             onClearError={() => setError('')}
-            onCreateRoom={(code) => void enterRoom(true, { room: code })}
-            onJoinRoom={(code) => void enterRoom(false, { room: code })}
+            onCreateRoom={(code, chatId) => void enterRoom(true, { room: code, chatId })}
+            onJoinRoom={(code, chatId) => void enterRoom(false, { room: code, chatId })}
             onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
             updateStatus={updateStatus}
@@ -1542,6 +1657,10 @@ export function App() {
 
   const roomView = (
     <RoomView
+      conversation={Boolean(callChatId)}
+      conversationHidden={conversationHidden}
+      onConversationToggle={() => setConversationHidden((value) => !value)}
+      cameraPreviewRequest={cameraPreviewRequest}
       embedded={Boolean(accountUser)}
       viewerId={accountUser?.id}
       roomId={roomId}
@@ -1567,7 +1686,11 @@ export function App() {
       recordingBannerMessage={recordingBannerMessage}
       devices={devices}
       friends={roomSidebarState?.friends ?? []}
-      onCopyInvite={() => void copyInvite()}
+      onCopyInvite={() =>
+        callChatId
+          ? setNotice('Добавьте друга через приглашение — личный звонок продолжится в группе')
+          : void copyInvite()
+      }
       onInviteFriends={inviteFriendsToCall}
       onMute={toggleMute}
       onCamera={() => void runVideoAction('camera')}
@@ -1603,6 +1726,7 @@ export function App() {
           }
         >
           <AccountSidebar
+            callDock={callDock}
             user={accountUser}
             activePage={roomDestination}
             roomActive
@@ -1611,7 +1735,11 @@ export function App() {
             friends={roomSidebarState?.friends ?? []}
             chatsLoading={roomSidebarState?.chatsLoading ?? true}
             updateStatus={updateStatus}
-            onNavigate={setRoomDestination}
+            onNavigate={(destination) =>
+              destination === 'room' && callChatId
+                ? callDock.onOpen()
+                : setRoomDestination(destination)
+            }
             onOpenChat={(chatId) => roomSidebarState?.openChat(chatId)}
             onCreateGroup={(title, memberIds) =>
               roomSidebarState?.createGroup(title, memberIds) ?? Promise.resolve(false)
@@ -1637,12 +1765,59 @@ export function App() {
             onPointerCancel={finishRoomSidebarResize}
             onKeyDown={resizeRoomSidebarWithKeyboard}
           />
-          <section className="account-room-workspace">
-            <div className={`room-view-slot ${roomDestination === 'room' ? '' : 'is-hidden'}`}>
+          <section
+            className={`account-room-workspace${callChatId && roomDestination === 'chats' && roomActiveChatId === callChatId ? ` conversation-call-workspace${conversationHidden ? ' conversation-hidden' : ''}` : ''}`}
+          >
+            <div
+              className={`room-view-slot ${roomDestination === 'room' || (callChatId && roomDestination === 'chats' && roomActiveChatId === callChatId) ? '' : 'is-hidden'}`}
+            >
               {roomView}
             </div>
+            {callChatId &&
+              roomDestination === 'chats' &&
+              roomActiveChatId === callChatId &&
+              !conversationHidden && (
+                <div
+                  className="conversation-call-resizer"
+                  role="separator"
+                  aria-label="Изменить высоту звонка"
+                  aria-orientation="horizontal"
+                  tabIndex={0}
+                  onPointerDown={(event) => {
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    event.preventDefault();
+                  }}
+                  onPointerMove={(event) => {
+                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                    const workspace = event.currentTarget.parentElement!;
+                    const bounds = workspace.getBoundingClientRect();
+                    workspace.style.setProperty(
+                      '--conversation-call-height',
+                      `${Math.max(240, Math.min(bounds.height - 180, event.clientY - bounds.top))}px`,
+                    );
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.currentTarget.hasPointerCapture(event.pointerId))
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+                    event.preventDefault();
+                    const workspace = event.currentTarget.parentElement!;
+                    const height = workspace.firstElementChild!.getBoundingClientRect().height;
+                    workspace.style.setProperty(
+                      '--conversation-call-height',
+                      `${Math.max(240, Math.min(workspace.clientHeight - 180, height + (event.key === 'ArrowUp' ? -30 : 30)))}px`,
+                    );
+                  }}
+                >
+                  <span />
+                </div>
+              )}
             <div className={`account-page-slot ${roomDestination === 'room' ? 'is-hidden' : ''}`}>
               <HomeView
+                initialChatId={callChatId}
+                joinedRoomId={roomId}
                 embedded
                 page={roomDestination === 'room' ? 'home' : (roomDestination as AccountPage)}
                 user={accountUser}
@@ -1656,7 +1831,10 @@ export function App() {
                   setNotice('Вы уже находитесь в звонке');
                   setRoomDestination('room');
                 }}
-                onJoinRoom={() => setNotice('Сначала завершите текущий звонок')}
+                onJoinRoom={(code) => {
+                  if (code === roomId) callDock.onOpen();
+                  else setNotice('Сначала завершите текущий звонок');
+                }}
                 onSettings={(tab) => openSettings(tab)}
                 onLogout={() => void logoutAccount()}
               />

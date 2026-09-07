@@ -16,6 +16,10 @@ export function microphoneSoundVolume(outputVolume: number) {
 }
 
 export async function playMicrophoneToggleSound(muted: boolean, settings: LocalSettings) {
+  if (
+    muted ? settings.microphoneDisabledSound === false : settings.microphoneEnabledSound === false
+  )
+    return;
   const audio = new Audio(microphoneSoundUrl(muted));
   audio.preload = 'auto';
   audio.volume = microphoneSoundVolume(settings.outputVolume);

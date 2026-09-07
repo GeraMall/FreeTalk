@@ -868,7 +868,7 @@ async function refreshCallMessage(roomId: string) {
     metadata: Record<string, unknown>;
   }>(
     `UPDATE messages SET metadata=metadata || $2::jsonb
-     WHERE kind='call' AND metadata->>'roomId'=$1
+     WHERE kind='call' AND metadata->>'roomId'=$1 AND NOT (metadata ? 'movedToChatId')
      RETURNING id,chat_id,metadata`,
     [roomId, JSON.stringify(metadata)],
   );

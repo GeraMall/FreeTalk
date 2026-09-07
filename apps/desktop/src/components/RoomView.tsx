@@ -61,6 +61,10 @@ export type RemoteVideoUiState = Record<string, { camera?: MediaStream; screen?:
 const SCREEN_STAGE_BOTTOM_GAP = 10;
 
 interface RoomViewProps {
+  conversation?: boolean;
+  conversationHidden?: boolean;
+  onConversationToggle?(): void;
+  cameraPreviewRequest?: number;
   embedded?: boolean;
   viewerId?: string;
   roomId: string;
@@ -114,6 +118,10 @@ interface RoomViewProps {
 }
 
 export function RoomView({
+  conversation = false,
+  conversationHidden = false,
+  onConversationToggle,
+  cameraPreviewRequest = 0,
   embedded = false,
   viewerId,
   roomId,
@@ -167,6 +175,9 @@ export function RoomView({
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [deviceMenu, setDeviceMenu] = useState<'audio' | 'camera'>();
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (cameraPreviewRequest) setCameraPreviewOpen(true);
+  }, [cameraPreviewRequest]);
   const [callFullscreen, setCallFullscreen] = useState(false);
   const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
@@ -401,7 +412,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? 'conversation-room' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -424,6 +435,16 @@ export function RoomView({
         </span>
       </div>
 
+      {conversation && onInviteFriends && openSlots > 0 && (
+        <button
+          className="conversation-invite"
+          aria-label="Добавить друга в групповой звонок"
+          title="Добавить друга — продолжить в группе"
+          onClick={() => setFriendsInviteOpen(true)}
+        >
+          <UserPlus size={18} />
+        </button>
+      )}
       {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
           <span>
@@ -715,15 +736,21 @@ export function RoomView({
             )}
           </div>
           <button
-            className={`dock-control dock-control-secondary room-chat-control ${chatOpen ? 'active' : ''}`}
+            className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
             aria-label={
-              unreadChatCount > 0
-                ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
-                : 'Чат комнаты'
+              conversation
+                ? conversationHidden
+                  ? 'Показать чат'
+                  : 'Скрыть чат'
+                : unreadChatCount > 0
+                  ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
+                  : 'Чат комнаты'
             }
-            aria-expanded={chatOpen}
-            title="Чат комнаты"
-            onClick={toggleRoomChat}
+            aria-expanded={conversation ? !conversationHidden : chatOpen}
+            title={
+              conversation ? (conversationHidden ? 'Показать чат' : 'Скрыть чат') : 'Чат комнаты'
+            }
+            onClick={conversation ? onConversationToggle : toggleRoomChat}
           >
             <span className="dock-icon">
               <MessageCircle />

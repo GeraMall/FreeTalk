@@ -47,6 +47,7 @@ import type { ChatItem } from './ChatsPage';
 import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 import { playNotificationSound } from '../lib/notification-sounds';
 import { loadSettings } from '../lib/settings';
+import { CallDock, ProfileAudioControls, type CallDockState } from './CallDock';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
 export type AccountDestination = AccountPage | 'room';
@@ -67,6 +68,7 @@ export function AccountSidebar({
   onInstallUpdate,
   onSettings,
   onLogout,
+  callDock,
 }: {
   user: AccountUser;
   activePage: AccountDestination;
@@ -88,6 +90,7 @@ export function AccountSidebar({
   onInstallUpdate?(): void;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
+  callDock?: CallDockState;
 }) {
   const [presence, setPresence] = useState<PresenceStatus>('offline');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -430,6 +433,7 @@ export function AccountSidebar({
         </section>
       ) : null}
       <div className="account-profile-menu-anchor" ref={profileMenuRef}>
+        {callDock && <CallDock state={callDock} />}
         {menuOpen && (
           <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
             <div
@@ -532,7 +536,7 @@ export function AccountSidebar({
             </button>
           </div>
         )}
-        <div className="account-profile-mini">
+        <div className={`account-profile-mini${callDock ? ' with-audio-controls' : ''}`}>
           <button
             type="button"
             className="account-profile-avatar-trigger"
@@ -567,6 +571,7 @@ export function AccountSidebar({
           >
             <Settings size={17} aria-hidden="true" />
           </button>
+          {callDock && <ProfileAudioControls state={callDock} />}
         </div>
       </div>
       {leaveTarget ? (

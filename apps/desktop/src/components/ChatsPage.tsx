@@ -102,6 +102,8 @@ function storedRecentMessageReactions() {
   }
 }
 
+import { ChatCallWaiting } from './ChatCallWaiting';
+
 export interface ChatMember {
   id: string;
   username: string;
@@ -265,9 +267,11 @@ interface ChatsPageProps {
   ): Promise<boolean>;
   onAddMember(username: string): Promise<boolean>;
   onJoinCall(roomId: string): void;
+  joinedRoomId?: string;
 }
 
 export function ChatsPage({
+  joinedRoomId,
   externalSidebar = false,
   mobile = false,
   userId,
@@ -716,6 +720,14 @@ export function ChatsPage({
       ) : null}
 
       <section className="active-conversation" aria-label="Активный чат">
+        {activeChat && (
+          <ChatCallWaiting
+            chatId={activeChat.id}
+            joinedRoomId={joinedRoomId}
+            revision={messages}
+            onJoin={onJoinCall}
+          />
+        )}
         {activeChat ? (
           <>
             {showChatMenu && (

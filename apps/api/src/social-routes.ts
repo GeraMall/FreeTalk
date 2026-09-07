@@ -39,6 +39,58 @@ const callRoomParams = z.object({
 const callInvitationParams = z.object({ invitationId: uuid });
 const CALL_INVITATION_TTL_MS = 30_000;
 
+async function readActiveCall(roomId: string) {
+  const result = await db.query<{
+    id: string;
+    room_id: string;
+    chat_id: string | null;
+    title: string | null;
+  }>(
+    `SELECT session.id,session.room_id,session.chat_id,chat.title FROM call_sessions session
+     LEFT JOIN chats chat ON chat.id=session.chat_id
+     WHERE session.room_id=$1 AND session.ended_at IS NULL
+       AND EXISTS (SELECT 1 FROM call_participants p WHERE p.call_id=session.id AND p.left_at IS NULL)
+     ORDER BY session.started_at DESC LIMIT 1`,
+    [roomId],
+  );
+  const session = result.rows[0];
+  if (!session) return null;
+  const participants = await db.query<{
+    user_id: string;
+    display_name: string;
+    has_avatar: boolean;
+  }>(
+    `SELECT DISTINCT p.user_id,p.display_name,(u.avatar_data IS NOT NULL) AS has_avatar
+     FROM call_participants p LEFT JOIN users u ON u.id=p.user_id
+     WHERE p.call_id=$1 AND p.left_at IS NULL`,
+    [session.id],
+  );
+  const members = session.chat_id
+    ? await db.query<{ user_id: string; display_name: string }>(
+        `SELECT m.user_id,u.display_name FROM chat_members m JOIN users u ON u.id=m.user_id
+     WHERE m.chat_id=$1 AND m.left_at IS NULL ORDER BY m.joined_at`,
+        [session.chat_id],
+      )
+    : { rows: [] };
+  return {
+    roomId: session.room_id,
+    chatId: session.chat_id,
+    title:
+      session.title ||
+      members.rows.map((member) => member.display_name).join(', ') ||
+      'Комната FreeTalk',
+    memberIds: members.rows.map((member) => member.user_id),
+    participants: participants.rows.map((person) => ({
+      userId: person.user_id,
+      displayName: person.display_name,
+      avatarUrl:
+        person.user_id && person.has_avatar
+          ? publicApiUrl(`/v1/users/${person.user_id}/avatar`)
+          : null,
+    })),
+  };
+}
+
 function enforceChatSendPacing(reply: FastifyReply, chatId: string, userId: string) {
   const pacing = chatSendPacer.check(`${chatId}:${userId}`);
   if (!pacing.limited) return false;
@@ -1893,6 +1945,37 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     return reply.code(410).send({ code: 'RETENTION_SETTINGS_REQUIRED' });
   });
 
+  app.get('/v1/chats/:chatId/active-call', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = chatIdParams.parse(request.params);
+    if (!(await isChatMember(chatId, user.id)) || !(await canInteractInChat(chatId, user.id)))
+      return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+    const result = await db.query<{ room_id: string }>(
+      `SELECT room_id FROM call_sessions WHERE chat_id=$1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+      [chatId],
+    );
+    return { call: result.rows[0] ? await readActiveCall(result.rows[0].room_id) : null };
+  });
+
+  app.get('/v1/calls/:roomId/context', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { roomId } = callRoomParams.parse(request.params);
+    const call = await readActiveCall(roomId);
+    if (
+      !call ||
+      (!call.participants.some((person) => person.userId === user.id) &&
+        !(
+          call.chatId &&
+          (await isChatMember(call.chatId, user.id)) &&
+          (await canInteractInChat(call.chatId, user.id))
+        ))
+    )
+      return reply.code(404).send({ code: 'CALL_NOT_AVAILABLE' });
+    return { call };
+  });
+
   app.post('/v1/chats/:chatId/calls', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -1932,8 +2015,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!requestedUserIds.length) return reply.code(400).send({ code: 'CALL_INVITEES_REQUIRED' });
 
     const result = await transaction(async (client) => {
-      const call = await client.query<{ id: string }>(
-        `SELECT session.id FROM call_sessions session
+      const call = await client.query<{ id: string; chat_id: string | null }>(
+        `SELECT session.id,session.chat_id FROM call_sessions session
          WHERE session.room_id=$1 AND session.ended_at IS NULL
            AND EXISTS (
              SELECT 1 FROM call_participants participant
@@ -1969,20 +2052,99 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         return { status: 'room-capacity' as const, invitations: [] };
 
       const allowed = await client.query<{ id: string }>(
-        `SELECT target.id FROM friendships friendship
-         JOIN users target ON target.id=CASE
-           WHEN friendship.user_low_id=$1 THEN friendship.user_high_id ELSE friendship.user_low_id END
-         WHERE (friendship.user_low_id=$1 OR friendship.user_high_id=$1)
-           AND target.id=ANY($2::uuid[]) AND target.deleted_at IS NULL
+        `SELECT target.id FROM users target
+         WHERE target.id=ANY($2::uuid[]) AND target.deleted_at IS NULL
+           AND (EXISTS (SELECT 1 FROM friendships friendship WHERE
+             (friendship.user_low_id=$1 AND friendship.user_high_id=target.id) OR
+             (friendship.user_high_id=$1 AND friendship.user_low_id=target.id))
+             OR EXISTS (SELECT 1 FROM chat_members mine JOIN chat_members theirs ON theirs.chat_id=mine.chat_id
+               WHERE mine.chat_id=$3 AND mine.user_id=$1 AND theirs.user_id=target.id
+                 AND mine.left_at IS NULL AND theirs.left_at IS NULL))
            AND NOT EXISTS (
              SELECT 1 FROM blocks
              WHERE (blocker_id=$1 AND blocked_id=target.id)
                 OR (blocker_id=target.id AND blocked_id=$1)
            )`,
-        [user.id, requestedUserIds],
+        [user.id, requestedUserIds, call.rows[0]!.chat_id],
       );
       if (allowed.rowCount !== requestedUserIds.length)
         return { status: 'friends-only' as const, invitations: [] };
+
+      let targetChatId = call.rows[0]!.chat_id;
+      let movedFromChatId: string | null = null;
+      if (targetChatId) {
+        const chat = await client.query<{ type: string }>(
+          'SELECT type FROM chats WHERE id=$1 FOR UPDATE',
+          [targetChatId],
+        );
+        const members = await client.query<{ user_id: string }>(
+          'SELECT user_id FROM chat_members WHERE chat_id=$1 AND left_at IS NULL',
+          [targetChatId],
+        );
+        const allIds = [
+          ...new Set([...members.rows.map((member) => member.user_id), ...requestedUserIds]),
+        ];
+        if (!members.rows.some((member) => member.user_id === user.id))
+          return { status: 'friends-only' as const, invitations: [] };
+        const newIds = requestedUserIds.filter(
+          (id) => !members.rows.some((member) => member.user_id === id),
+        );
+        if (newIds.length) {
+          const blocked = await client.query(
+            'SELECT 1 FROM blocks WHERE blocker_id=ANY($1::uuid[]) AND blocked_id=ANY($1::uuid[]) LIMIT 1',
+            [allIds],
+          );
+          if (blocked.rowCount) return { status: 'friends-only' as const, invitations: [] };
+          if (chat.rows[0]?.type === 'direct') {
+            const names = await client.query<{ display_name: string }>(
+              'SELECT display_name FROM users WHERE id=ANY($1::uuid[]) ORDER BY array_position($1::uuid[],id)',
+              [allIds],
+            );
+            const created = await client.query<{ id: string }>(
+              `INSERT INTO chats(type,title,created_by,retention_hours) VALUES('group',$1,$2,720) RETURNING id`,
+              [
+                names.rows
+                  .map((person) => person.display_name)
+                  .join(', ')
+                  .slice(0, 80),
+                user.id,
+              ],
+            );
+            movedFromChatId = targetChatId;
+            targetChatId = created.rows[0]!.id;
+            for (const id of allIds)
+              await client.query(
+                'INSERT INTO chat_members(chat_id,user_id,role,added_by) VALUES($1,$2,$3,$4)',
+                [targetChatId, id, id === user.id ? 'owner' : 'member', user.id],
+              );
+            await client.query('UPDATE call_sessions SET chat_id=$1 WHERE id=$2', [
+              targetChatId,
+              callId,
+            ]);
+            await client.query(
+              `UPDATE messages SET metadata=metadata || jsonb_build_object('ended',true,'movedToChatId',$3::text)
+              WHERE chat_id=$1 AND kind='call' AND metadata->>'roomId'=$2`,
+              [movedFromChatId, roomId, targetChatId],
+            );
+            await client.query(
+              `INSERT INTO messages(chat_id,sender_id,kind,body,metadata)
+              VALUES($1,$2,'call',$3,$4)`,
+              [targetChatId, user.id, `${user.display_name} начал групповой звонок`, { roomId }],
+            );
+            await client.query(
+              `UPDATE call_invitations SET chat_id=$1 WHERE call_id=$2 AND status='pending'`,
+              [targetChatId, callId],
+            );
+          } else {
+            for (const id of newIds)
+              await client.query(
+                `INSERT INTO chat_members(chat_id,user_id,role,added_by) VALUES($1,$2,'member',$3)
+              ON CONFLICT(chat_id,user_id) DO UPDATE SET left_at=NULL,joined_at=now()`,
+                [targetChatId, id, user.id],
+              );
+          }
+        }
+      }
 
       const invitations: Array<{
         id: string;
@@ -1990,7 +2152,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         expiresAt: Date;
       }> = [];
       for (const inviteeId of requestedUserIds) {
-        const chatId = await ensureDirectChat(client, user.id, inviteeId);
+        const chatId = targetChatId ?? (await ensureDirectChat(client, user.id, inviteeId));
         const invitation = await client.query<{ id: string; expires_at: Date }>(
           `INSERT INTO call_invitations(call_id,room_id,inviter_id,invitee_id,chat_id,expires_at)
            VALUES($1,$2,$3,$4,$5,now()+interval '30 seconds')
@@ -2006,7 +2168,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
           expiresAt: invitation.rows[0]!.expires_at,
         });
       }
-      return { status: 'created' as const, invitations };
+      return { status: 'created' as const, invitations, chatId: targetChatId, movedFromChatId };
     });
 
     if (result.status === 'call-not-active')
@@ -2022,6 +2184,22 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         .code(403)
         .send({ code: 'FRIENDS_ONLY', message: 'В звонок можно приглашать только друзей' });
 
+    if (result.chatId)
+      await publishChatEvent(result.chatId, { type: 'chat-updated', chatId: result.chatId });
+    if (result.movedFromChatId) {
+      const moved = await db.query<{ id: string; metadata: Record<string, unknown> }>(
+        `SELECT id,metadata FROM messages WHERE chat_id=$1 AND kind='call' AND metadata->>'roomId'=$2`,
+        [result.movedFromChatId, roomId],
+      );
+      for (const message of moved.rows)
+        await publishChatEvent(result.movedFromChatId, {
+          type: 'message-updated',
+          chatId: result.movedFromChatId,
+          messageId: message.id,
+          metadata: message.metadata,
+        });
+    }
+
     const avatarUrl = user.avatar_data
       ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
       : null;
@@ -2034,6 +2212,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         expiresAt: invitation.expiresAt.toISOString(),
       });
     return reply.code(201).send({
+      chatId: result.chatId,
       invitations: result.invitations.map((invitation) => ({
         id: invitation.id,
         userId: invitation.inviteeId,
@@ -2049,10 +2228,10 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const { invitationId } = callInvitationParams.parse(request.params);
     const { action } = z.object({ action: z.enum(['accept', 'decline']) }).parse(request.body);
     const status = action === 'accept' ? 'accepted' : 'declined';
-    const invitation = await db.query<{ room_id: string }>(
+    const invitation = await db.query<{ room_id: string; chat_id: string | null }>(
       `UPDATE call_invitations SET status=$1,responded_at=now()
        WHERE id=$2 AND invitee_id=$3 AND status='pending' AND expires_at>now()
-       RETURNING room_id`,
+       RETURNING room_id,chat_id`,
       [status, invitationId, user.id],
     );
     if (!invitation.rows[0])
@@ -2064,7 +2243,14 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       invitationId,
       status,
     });
-    return { invitation: { id: invitationId, status, roomId: invitation.rows[0].room_id } };
+    return {
+      invitation: {
+        id: invitationId,
+        status,
+        roomId: invitation.rows[0].room_id,
+        chatId: invitation.rows[0].chat_id ?? undefined,
+      },
+    };
   });
 
   app.get('/v1/room-invites/:roomId/preview', async (request, reply) => {

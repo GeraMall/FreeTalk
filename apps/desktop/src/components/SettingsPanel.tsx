@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  AlignLeft,
   ArrowLeft,
   AudioLines,
   Ban,
@@ -7,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
-  Crown,
   Download,
   FolderOpen,
   Info,
@@ -46,7 +46,10 @@ import {
   type CameraEffectCapture,
 } from '../lib/camera-background';
 import { cameraConstraints } from '../lib/video-manager';
-import { NOTIFICATION_SOUND_URL } from '../lib/notification-sounds';
+import { NOTIFICATION_SOUND_URL, NotificationSounds } from '../lib/notification-sounds';
+import { playMicrophoneToggleSound } from '../lib/microphone-sounds';
+import { INCOMING_CALL_RINGTONE_URL } from '../lib/incoming-call-ringtone';
+import { playRecordingStartNotification } from '../lib/recording-start-sound';
 import {
   chooseRecordingDirectory,
   defaultRecordingDirectory,
@@ -54,6 +57,7 @@ import {
   recordingStorageAvailable,
 } from '../lib/recording-storage';
 import { BrandLogo } from './BrandLogo';
+import { CallCardDesigner } from './CallCardDesigner';
 import mascotUrl from '../assets/freetalk-mascot.png';
 import {
   isValidUsername,
@@ -64,7 +68,6 @@ import {
 import { getChatImageCacheStats } from '../lib/chat-image-cache';
 import { getAccountMediaCacheStats } from '../lib/account-media-cache';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
-import { FullProfileView, type UserProfileData } from './UserProfileDialog';
 
 export type SettingsTab =
   'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
@@ -563,7 +566,7 @@ export function SettingsPanel({
                 Выйти без сохранения
               </button>
               <button
-                className="quiet"
+                className="secondary profile-confirm-cancel"
                 disabled={profileSaving}
                 onClick={() => setConfirmProfileClose(false)}
               >
@@ -706,24 +709,6 @@ function ProfileTab({
     draft.username !== savedDraft.username ||
     draft.bio !== savedDraft.bio ||
     draft.cover !== savedDraft.cover;
-  const previewProfile: UserProfileData | undefined = accountUser
-    ? {
-        id: accountUser.id,
-        username: draft.username,
-        displayName: draft.displayName.trim() || 'Ваше имя',
-        bio: draft.bio.trim() || null,
-        avatarUrl: draft.avatar || null,
-        coverUrl: draft.cover || null,
-        registeredAt: accountUser.registeredAt,
-        presence: 'online',
-        relationship: 'self',
-        mutualFriendsCount: 0,
-        mutualFriends: [],
-        commonChatsCount: 0,
-        commonChats: [],
-        sharedCalls: { count: 0, lastStartedAt: null, lastDurationSeconds: null },
-      }
-    : undefined;
 
   useEffect(() => {
     if (!accountUser) {
@@ -891,8 +876,12 @@ function ProfileTab({
                 <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
                 <small>{draft.username ? `@${draft.username}` : 'Добавьте username'}</small>
                 {draft.avatar ? (
-                  <button className="quiet" onClick={() => onDraft({ avatar: '' })}>
-                    Удалить аватар
+                  <button
+                    type="button"
+                    className="profile-remove-avatar"
+                    onClick={() => onDraft({ avatar: '' })}
+                  >
+                    <Trash2 size={15} aria-hidden="true" /> Удалить аватар
                   </button>
                 ) : null}
               </div>
@@ -946,106 +935,14 @@ function ProfileTab({
             </div>
           </section>
 
-          <section className="profile-zone profile-card-design">
-            <div className="profile-card-design-heading">
-              <span>
-                <strong>Оформление карточки в звонке</strong>
-                <small>Этот выбор применится вместе с остальными изменениями профиля.</small>
-              </span>
-              <Sparkles aria-hidden="true" />
-            </div>
-            <div
-              className={`profile-card-preview participant-card audio-tile ${draft.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? 'avatar-glass' : ''}`}
-            >
-              {draft.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? (
-                <span className="participant-card-ambient" aria-hidden="true">
-                  <img src={cachedDraftAvatar} alt="" />
-                </span>
-              ) : null}
-              <div className="participant-card-top media-overlay-top">
-                <span className="creator-badge">
-                  <Crown size={13} /> Создатель комнаты
-                </span>
-              </div>
-              <div className="participant-avatar" data-variant="1">
-                {cachedDraftAvatar ? (
-                  <img src={cachedDraftAvatar} alt="" />
-                ) : (
-                  <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
-                )}
-                <i aria-label="В сети" />
-              </div>
-              <div className="participant-info">
-                <div className="participant-name-row">
-                  <div className="participant-name">
-                    <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
-                    <span>вы</span>
-                  </div>
-                </div>
-                <div className="participant-status">
-                  <i /> Слушает
-                </div>
-              </div>
-            </div>
-            <div
-              className="profile-card-style-options"
-              role="radiogroup"
-              aria-label="Оформление карточки в звонке"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={draft.participantCardStyle === 'classic'}
-                className={draft.participantCardStyle === 'classic' ? 'active' : ''}
-                onClick={() => onDraft({ participantCardStyle: 'classic' })}
-              >
-                <strong>Классическая</strong>
-                <small>Спокойный фирменный фон FreeTalk</small>
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={draft.participantCardStyle === 'avatar-glass'}
-                className={draft.participantCardStyle === 'avatar-glass' ? 'active' : ''}
-                disabled={!cachedDraftAvatar}
-                onClick={() => onDraft({ participantCardStyle: 'avatar-glass' })}
-              >
-                <strong>Жидкое стекло</strong>
-                <small>
-                  {cachedDraftAvatar ? 'Оттенки выбранной аватарки' : 'Сначала выберите аватарку'}
-                </small>
-              </button>
-            </div>
-          </section>
-
-          <section className="profile-zone profile-full-preview-zone">
-            <header className="profile-zone-heading">
-              <span className="profile-zone-icon">
-                <UserRound />
-              </span>
-              <span>
-                <small>ПРЕДПРОСМОТР</small>
-                <h3>Так выглядит ваш полный профиль</h3>
-              </span>
-            </header>
-            {previewProfile ? (
-              <div className="profile-full-preview-frame">
-                <FullProfileView
-                  viewerId={accountUser.id}
-                  target={{
-                    id: accountUser.id,
-                    displayName: previewProfile.displayName,
-                    username: previewProfile.username,
-                    avatarUrl: previewProfile.avatarUrl,
-                    presence: 'online',
-                    relationship: 'self',
-                  }}
-                  profile={previewProfile}
-                  preview
-                />
-              </div>
-            ) : null}
-          </section>
+          <CallCardDesigner
+            name={draft.displayName}
+            avatar={cachedDraftAvatar ?? ''}
+            glass={draft.participantCardStyle === 'avatar-glass'}
+            onGlass={(value) =>
+              onDraft({ participantCardStyle: value ? 'avatar-glass' : 'classic' })
+            }
+          />
 
           <section className="profile-zone profile-security-zone">
             <header className="profile-zone-heading">
@@ -1160,14 +1057,20 @@ function ProfileTab({
             </header>
             <div className="profile-account-actions-grid">
               <button className="secondary" onClick={onAccountLogout}>
-                <LogOut />{' '}
+                <span className="profile-action-icon">
+                  <LogOut />
+                </span>
                 <span>
                   <strong>Выйти из аккаунта</strong>
                   <small>Завершить текущий сеанс</small>
                 </span>
+                <ChevronRight className="profile-action-chevron" />
               </button>
               <details className="danger-zone profile-accordion">
                 <summary>
+                  <span className="profile-action-icon">
+                    <Trash2 />
+                  </span>
                   <span>
                     <strong>Удалить аккаунт</strong>
                     <small>Безвозвратно удалить личные данные</small>
@@ -1211,11 +1114,9 @@ function ProfileTab({
         </div>
       </div>
       <footer className="profile-sticky-actions single-action">
-        <span>
-          {profileIdentityChanged && remaining === 0
-            ? 'Лимит изменений профиля исчерпан'
-            : 'Все изменения применяются одновременно'}
-        </span>
+        {profileIdentityChanged && remaining === 0 ? (
+          <span role="status">Лимит изменений профиля исчерпан</span>
+        ) : null}
         <button
           className="primary profile-done"
           disabled={isSaving || !usernameValid || (profileIdentityChanged && remaining === 0)}
@@ -1241,6 +1142,14 @@ function VideoTab({
   onVideoSetting(patch: Partial<LocalSettings>): void;
   locked: boolean;
 }) {
+  const participantSounds = useRef<NotificationSounds | null>(null);
+  const previewParticipant = async (joined: boolean) => {
+    participantSounds.current ??= new NotificationSounds();
+    await participantSounds.current.setOutput(settings.outputDeviceId);
+    if (joined) await participantSounds.current.playJoined();
+    else await participantSounds.current.playDisconnected();
+  };
+  useEffect(() => () => participantSounds.current?.stop(), []);
   return (
     <fieldset className="video-settings-fieldset" disabled={locked}>
       {locked && (
@@ -1251,49 +1160,18 @@ function VideoTab({
         </div>
       )}
       <section className="settings-section video-settings-section">
-        <h3>Камера</h3>
-        <CameraSettingsEditor
-          settings={settings}
-          cameras={cameras}
-          onCamera={onCamera}
-          onVideoSetting={onVideoSetting}
-        />
-      </section>
-
-      <section className="settings-section video-settings-section sound-settings-section">
         <div className="section-title-row">
-          <div>
-            <h3>Звуки событий</h3>
-            <p className="settings-section-description">
-              Каждый звук можно отключить отдельно и предварительно прослушать.
-            </p>
+          <div className="video-section-heading">
+            <span className="profile-zone-icon">
+              <MonitorSpeaker />
+            </span>
+            <div>
+              <h3>Демонстрация экрана</h3>
+              <p className="settings-section-description">
+                Качество изображения и звук при показе экрана.
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="sound-setting-list">
-          <SoundSetting
-            label="Участник подключился"
-            checked={settings.participantJoinedSound}
-            onChange={(value) => onVideoSetting({ participantJoinedSound: value })}
-            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
-          />
-          <SoundSetting
-            label="Участник отключился"
-            checked={settings.participantDisconnectedSound}
-            onChange={(value) => onVideoSetting({ participantDisconnectedSound: value })}
-            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
-          />
-          <SoundSetting
-            label="Начало записи"
-            checked={settings.recordingStartSound}
-            onChange={(value) => onVideoSetting({ recordingStartSound: value })}
-            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
-          />
-        </div>
-      </section>
-
-      <section className="settings-section video-settings-section">
-        <div className="section-title-row">
-          <h3>Демонстрация экрана</h3>
           <span className="quality-summary">
             {settings.screenResolution} · {settings.screenFrameRate} FPS
           </span>
@@ -1373,6 +1251,88 @@ function VideoTab({
           Разрешение и FPS применятся при следующем запуске демонстрации. По умолчанию — 1080p/30
           FPS; максимум — 2K/60 FPS.
         </small>
+      </section>
+
+      <section className="settings-section video-settings-section">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <Camera />
+          </span>
+          <div>
+            <h3>Камера</h3>
+            <p className="settings-section-description">
+              Проверьте изображение и выберите фон перед звонком.
+            </p>
+          </div>
+        </div>
+        <CameraSettingsEditor
+          settings={settings}
+          cameras={cameras}
+          onCamera={onCamera}
+          onVideoSetting={onVideoSetting}
+        />
+      </section>
+
+      <section className="settings-section video-settings-section sound-settings-section">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <AudioLines />
+          </span>
+          <div>
+            <h3>Звуки событий</h3>
+            <p className="settings-section-description">
+              Каждый звук можно отключить отдельно и предварительно прослушать.
+            </p>
+          </div>
+        </div>
+        <div className="sound-setting-list">
+          <SoundSetting
+            label="Участник подключился"
+            checked={settings.participantJoinedSound}
+            onChange={(value) => onVideoSetting({ participantJoinedSound: value })}
+            onPreview={() => void previewParticipant(true)}
+          />
+          <SoundSetting
+            label="Участник отключился"
+            checked={settings.participantDisconnectedSound}
+            onChange={(value) => onVideoSetting({ participantDisconnectedSound: value })}
+            onPreview={() => void previewParticipant(false)}
+          />
+          <SoundSetting
+            label="Начало записи"
+            checked={settings.recordingStartSound}
+            onChange={(value) => onVideoSetting({ recordingStartSound: value })}
+            onPreview={() => void playRecordingStartNotification(settings)}
+          />
+          <SoundSetting
+            label="Микрофон включён"
+            checked={settings.microphoneEnabledSound}
+            onChange={(value) => onVideoSetting({ microphoneEnabledSound: value })}
+            onPreview={() =>
+              void playMicrophoneToggleSound(false, { ...settings, microphoneEnabledSound: true })
+            }
+          />
+          <SoundSetting
+            label="Микрофон выключен"
+            checked={settings.microphoneDisabledSound}
+            onChange={(value) => onVideoSetting({ microphoneDisabledSound: value })}
+            onPreview={() =>
+              void playMicrophoneToggleSound(true, { ...settings, microphoneDisabledSound: true })
+            }
+          />
+          <SoundSetting
+            label="Входящий звонок"
+            checked={settings.incomingCallSound}
+            onChange={(value) => onVideoSetting({ incomingCallSound: value })}
+            onPreview={() => void playSettingsSound(INCOMING_CALL_RINGTONE_URL, settings)}
+          />
+          <SoundSetting
+            label="Уведомление о сообщении"
+            checked={settings.messageNotificationSound}
+            onChange={(value) => onVideoSetting({ messageNotificationSound: value })}
+            onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
+          />
+        </div>
       </section>
     </fieldset>
   );
@@ -1578,20 +1538,25 @@ function SoundSetting({
     <div className="sound-setting-row">
       <span>
         <strong>{label}</strong>
-        <button type="button" onClick={onPreview}>
-          Прослушать звук
-        </button>
       </span>
-      <label className="toggle-control">
-        <input
-          type="checkbox"
-          role="switch"
-          aria-label={label}
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <i />
-      </label>
+      <button
+        type="button"
+        className="secondary compact sound-preview-button"
+        aria-label={`Прослушать звук: ${label}`}
+        onClick={onPreview}
+      >
+        <AudioLines size={16} /> Прослушать
+      </button>
+      <button
+        type="button"
+        role="switch"
+        aria-label={label}
+        aria-checked={checked}
+        className={`switch ${checked ? 'on' : ''}`}
+        onClick={() => onChange(!checked)}
+      >
+        <span />
+      </button>
     </div>
   );
 }
@@ -1631,8 +1596,18 @@ function AudioTab({
 }) {
   return (
     <>
-      <section className="settings-section">
-        <h3>Режим передачи</h3>
+      <section className="settings-section audio-settings-section">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <Mic2 />
+          </span>
+          <div>
+            <h3>Режим передачи</h3>
+            <p className="settings-section-description">
+              Выберите, когда собеседники будут слышать ваш микрофон.
+            </p>
+          </div>
+        </div>
         <div className="transmission-modes" role="radiogroup" aria-label="Режим передачи">
           <ModeOption
             title="По голосу (VAD)"
@@ -1705,9 +1680,19 @@ function AudioTab({
         )}
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section audio-settings-section">
         <div className="section-title-row">
-          <h3>Обработка звука</h3>
+          <div className="video-section-heading">
+            <span className="profile-zone-icon">
+              <AudioLines />
+            </span>
+            <div>
+              <h3>Обработка микрофона</h3>
+              <p className="settings-section-description">
+                Уберите лишние звуки и выровняйте голос.
+              </p>
+            </div>
+          </div>
           <button className="secondary compact" disabled={recording} onClick={onRecord}>
             <AudioLines size={16} /> {recording ? 'Запись 4 секунды…' : 'Записать тест'}
           </button>
@@ -1724,12 +1709,6 @@ function AudioTab({
             description="Удаляет постоянный фоновый шум."
             checked={settings.noiseSuppression}
             onChange={(value) => onSetting({ noiseSuppression: value }, true)}
-          />
-          <Toggle
-            label="Приглушать собеседников"
-            description="Снижает громкость других участников."
-            checked={settings.echoDucking}
-            onChange={(value) => onSetting({ echoDucking: value }, false)}
           />
           <Toggle
             label="Автоматическое усиление"
@@ -1756,6 +1735,26 @@ function AudioTab({
             onChange={(value) => onSetting({ comfortNoise: value }, true)}
           />
         </div>
+      </section>
+
+      <section className="settings-section audio-settings-section">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <MonitorSpeaker />
+          </span>
+          <div>
+            <h3>Громкость собеседников</h3>
+            <p className="settings-section-description">
+              Настройте приглушение голосов других участников.
+            </p>
+          </div>
+        </div>
+        <Toggle
+          label="Приглушать собеседников"
+          description="Снижает громкость других участников."
+          checked={settings.echoDucking}
+          onChange={(value) => onSetting({ echoDucking: value }, false)}
+        />
         {settings.echoDucking && (
           <label className="slider-setting compact-slider">
             <span>
@@ -1772,6 +1771,7 @@ function AudioTab({
                 onSetting({ echoDuckingLevel: Number(event.target.value) }, false)
               }
             />
+            <small>Оставшаяся громкость голосов: 0% — тишина, 100% — без приглушения.</small>
           </label>
         )}
       </section>
@@ -2012,12 +2012,16 @@ function RecordingSettingsTab({
   return (
     <div className="recording-settings-page">
       <section className="settings-section recording-storage-section">
-        <div className="section-title-row">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <FolderOpen />
+          </span>
           <div>
             <h3>Локальное хранилище записей</h3>
-            <p>Видео сохраняется только на этом компьютере и не загружается на сервер.</p>
+            <p className="settings-section-description">
+              Видео сохраняется только на этом компьютере и не загружается на сервер.
+            </p>
           </div>
-          <CircleDot size={22} />
         </div>
         <div className="recording-directory-row">
           <div className="recording-directory-value" title={directory}>
@@ -2045,7 +2049,7 @@ function RecordingSettingsTab({
           </small>
         )}
         <Toggle
-          label="Выбирать папку после каждой конференции"
+          label="Спрашивать папку перед записью"
           description="Перед началом каждой записи FreeTalk спросит, куда сохранить видео."
           checked={settings.recordingAskDirectory}
           onChange={(value) => onSetting({ recordingAskDirectory: value }, false)}
@@ -2053,11 +2057,18 @@ function RecordingSettingsTab({
       </section>
 
       <section className="settings-section recording-options-section">
-        <h3>Настройки записи</h3>
-        <p className="settings-section-description">
-          Запись создаётся в WebM или MP4 с высоким битрейтом и исходным разрешением выбранного
-          экрана.
-        </p>
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <CircleDot />
+          </span>
+          <div>
+            <h3>Настройки записи</h3>
+            <p className="settings-section-description">
+              Запись создаётся в WebM или MP4 с высоким битрейтом и исходным разрешением выбранного
+              экрана.
+            </p>
+          </div>
+        </div>
         <div className="video-toggle-list">
           <Toggle
             label="Показывать имена участников"
@@ -2128,138 +2139,162 @@ function ChatsSettingsTab({
 
   return (
     <section className="settings-section chat-settings-section">
-      <label className="slider-setting chat-text-size-setting">
-        <span>
-          <strong>Размер текста сообщений</strong>
-          <output>{Math.round(settings.chatTextScale * 100)}%</output>
-        </span>
-        <input
-          aria-label="Размер текста сообщений"
-          type="range"
-          min="0.85"
-          max="1.3"
-          step="0.05"
-          value={settings.chatTextScale}
-          onChange={(event) => onSetting({ chatTextScale: Number(event.target.value) }, false)}
-        />
-      </label>
-
-      <div className="chat-style-setting">
-        <strong>Вид сообщений</strong>
-        <div role="radiogroup" aria-label="Вид сообщений">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={settings.chatMessageStyle === 'bubbles'}
-            className={settings.chatMessageStyle === 'bubbles' ? 'active' : ''}
-            onClick={() => onSetting({ chatMessageStyle: 'bubbles' }, false)}
-          >
-            Пузырьки
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={settings.chatMessageStyle === 'compact'}
-            className={settings.chatMessageStyle === 'compact' ? 'active' : ''}
-            onClick={() => onSetting({ chatMessageStyle: 'compact' }, false)}
-          >
-            Компактно
-          </button>
+      <div className="chat-settings-group">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <MessageCircle />
+          </span>
+          <div>
+            <h3>Сообщения</h3>
+            <p className="settings-section-description">
+              Размер текста и удобный для вас вид переписки.
+            </p>
+          </div>
         </div>
-      </div>
+        <label className="slider-setting chat-text-size-setting">
+          <span>
+            <strong>Размер текста сообщений</strong>
+            <output>{Math.round(settings.chatTextScale * 100)}%</output>
+          </span>
+          <input
+            aria-label="Размер текста сообщений"
+            type="range"
+            min="0.85"
+            max="1.3"
+            step="0.05"
+            value={settings.chatTextScale}
+            onChange={(event) => onSetting({ chatTextScale: Number(event.target.value) }, false)}
+          />
+        </label>
 
-      <div className="chat-wallpaper-setting">
-        <div>
-          <strong>Обои всех чатов</strong>
-          <small>Исходные пропорции и качество сохраняются, если файл уже подходит.</small>
-          {wallpaperError && <small className="error-text">{wallpaperError}</small>}
-        </div>
-        <div>
-          <label className="secondary compact profile-file-button settings-action-button">
-            <ImagePlus size={16} /> {settings.chatWallpaperDataUrl ? 'Заменить' : 'Выбрать фото'}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.currentTarget.value = '';
-                if (!file) return;
-                setWallpaperError('');
-                void prepareChatWallpaper(file)
-                  .then((chatWallpaperDataUrl) => onSetting({ chatWallpaperDataUrl }, false))
-                  .catch((caught) =>
-                    setWallpaperError(
-                      caught instanceof Error ? caught.message : 'Не удалось обработать обои.',
-                    ),
-                  );
-              }}
-            />
-          </label>
-          {settings.chatWallpaperDataUrl && (
-            <button
-              type="button"
-              className="secondary compact settings-action-button"
-              onClick={() => onSetting({ chatWallpaperDataUrl: '' }, false)}
-            >
-              <Trash2 size={15} /> Убрать
-            </button>
-          )}
-        </div>
-      </div>
-
-      {settings.chatWallpaperDataUrl && (
-        <div className="chat-style-setting chat-wallpaper-fit-setting">
-          <strong>Размер обоев</strong>
-          <div role="radiogroup" aria-label="Размер обоев">
+        <div className="chat-style-setting">
+          <strong>Вид сообщений</strong>
+          <div role="radiogroup" aria-label="Вид сообщений">
             <button
               type="button"
               role="radio"
-              aria-checked={settings.chatWallpaperFit === 'cover'}
-              className={settings.chatWallpaperFit === 'cover' ? 'active' : ''}
-              onClick={() => onSetting({ chatWallpaperFit: 'cover' }, false)}
+              aria-checked={settings.chatMessageStyle === 'bubbles'}
+              className={settings.chatMessageStyle === 'bubbles' ? 'active' : ''}
+              onClick={() => onSetting({ chatMessageStyle: 'bubbles' }, false)}
             >
-              Заполнить чат
+              <MessageCircle size={20} aria-hidden="true" /> Пузырьки
             </button>
             <button
               type="button"
               role="radio"
-              aria-checked={settings.chatWallpaperFit === 'contain'}
-              className={settings.chatWallpaperFit === 'contain' ? 'active' : ''}
-              onClick={() => onSetting({ chatWallpaperFit: 'contain' }, false)}
+              aria-checked={settings.chatMessageStyle === 'compact'}
+              className={settings.chatMessageStyle === 'compact' ? 'active' : ''}
+              onClick={() => onSetting({ chatMessageStyle: 'compact' }, false)}
             >
-              Показать целиком
+              <AlignLeft size={20} aria-hidden="true" /> Компактно
             </button>
           </div>
         </div>
-      )}
-
-      <div className="chat-settings-preview-card">
-        <div
-          className={`chat-settings-preview ${settings.chatMessageStyle}`}
-          aria-label="Предпросмотр оформления чата"
-          style={
-            {
-              '--preview-text-scale': settings.chatTextScale,
-              backgroundImage: settings.chatWallpaperDataUrl
-                ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
-                : undefined,
-              backgroundSize: settings.chatWallpaperDataUrl
-                ? `100% 100%, ${settings.chatWallpaperFit}`
-                : undefined,
-            } as CSSProperties
-          }
-        >
-          <div className="preview-message remote">Привет! Как тебе оформление?</div>
-          <div className="preview-message own">Отлично, так намного удобнее.</div>
-          <div className="preview-composer">Написать сообщение…</div>
+      </div>
+      <div className="chat-settings-group">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon">
+            <ImagePlus />
+          </span>
+          <div>
+            <h3>Фон и предпросмотр</h3>
+            <p className="settings-section-description">
+              Посмотрите, как будут выглядеть ваши чаты.
+            </p>
+          </div>
         </div>
-        <div>
-          <strong>Предпросмотр</strong>
-          <small>Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.</small>
+        <div className="chat-wallpaper-setting">
+          <div>
+            <strong>Обои всех чатов</strong>
+            <small>Исходные пропорции и качество сохраняются, если файл уже подходит.</small>
+            {wallpaperError && <small className="error-text">{wallpaperError}</small>}
+          </div>
+          <div>
+            <label className="secondary compact profile-file-button settings-action-button">
+              <ImagePlus size={16} /> {settings.chatWallpaperDataUrl ? 'Заменить' : 'Выбрать фото'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = '';
+                  if (!file) return;
+                  setWallpaperError('');
+                  void prepareChatWallpaper(file)
+                    .then((chatWallpaperDataUrl) => onSetting({ chatWallpaperDataUrl }, false))
+                    .catch((caught) =>
+                      setWallpaperError(
+                        caught instanceof Error ? caught.message : 'Не удалось обработать обои.',
+                      ),
+                    );
+                }}
+              />
+            </label>
+            {settings.chatWallpaperDataUrl && (
+              <button
+                type="button"
+                className="secondary compact settings-action-button"
+                onClick={() => onSetting({ chatWallpaperDataUrl: '' }, false)}
+              >
+                <Trash2 size={15} /> Убрать
+              </button>
+            )}
+          </div>
+        </div>
+
+        {settings.chatWallpaperDataUrl && (
+          <div className="chat-style-setting chat-wallpaper-fit-setting">
+            <strong>Размер обоев</strong>
+            <div role="radiogroup" aria-label="Размер обоев">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={settings.chatWallpaperFit === 'cover'}
+                className={settings.chatWallpaperFit === 'cover' ? 'active' : ''}
+                onClick={() => onSetting({ chatWallpaperFit: 'cover' }, false)}
+              >
+                Заполнить чат
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={settings.chatWallpaperFit === 'contain'}
+                className={settings.chatWallpaperFit === 'contain' ? 'active' : ''}
+                onClick={() => onSetting({ chatWallpaperFit: 'contain' }, false)}
+              >
+                Показать целиком
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="chat-settings-preview-card">
+          <div
+            className={`chat-settings-preview ${settings.chatMessageStyle}`}
+            aria-label="Предпросмотр оформления чата"
+            style={
+              {
+                '--preview-text-scale': settings.chatTextScale,
+                backgroundImage: settings.chatWallpaperDataUrl
+                  ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
+                  : undefined,
+                backgroundSize: settings.chatWallpaperDataUrl
+                  ? `100% 100%, ${settings.chatWallpaperFit}`
+                  : undefined,
+              } as CSSProperties
+            }
+          >
+            <div className="preview-message remote">Привет! Как тебе оформление?</div>
+            <div className="preview-message own">Отлично, так намного удобнее.</div>
+            <div className="preview-composer">Написать сообщение…</div>
+          </div>
+          <div>
+            <strong>Предпросмотр</strong>
+            <small>Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.</small>
+          </div>
         </div>
       </div>
-
-      <div className="chat-wallpaper-setting">
+      <div className="chat-wallpaper-setting chat-cache-card">
         <div>
           <strong>Кэш изображений</strong>
           <small>

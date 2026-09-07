@@ -40,6 +40,10 @@ export interface LocalSettings extends VideoPreferences {
   participantJoinedSound: boolean;
   participantDisconnectedSound: boolean;
   recordingStartSound: boolean;
+  microphoneEnabledSound: boolean;
+  microphoneDisabledSound: boolean;
+  incomingCallSound: boolean;
+  messageNotificationSound: boolean;
 }
 
 const KEY = 'freetalk.settings.v1';
@@ -81,6 +85,10 @@ const defaults: LocalSettings = {
   participantJoinedSound: true,
   participantDisconnectedSound: true,
   recordingStartSound: true,
+  microphoneEnabledSound: true,
+  microphoneDisabledSound: true,
+  incomingCallSound: true,
+  messageNotificationSound: true,
 };
 
 function isMacOS() {
@@ -159,6 +167,10 @@ export function loadSettings(): LocalSettings {
           : true,
       recordingStartSound:
         typeof value.recordingStartSound === 'boolean' ? value.recordingStartSound : true,
+      microphoneEnabledSound: value.microphoneEnabledSound !== false,
+      microphoneDisabledSound: value.microphoneDisabledSound !== false,
+      incomingCallSound: value.incomingCallSound !== false,
+      messageNotificationSound: value.messageNotificationSound !== false,
     };
     if (migrateMacScreenAudio) {
       localStorage.setItem(KEY, JSON.stringify(settings));

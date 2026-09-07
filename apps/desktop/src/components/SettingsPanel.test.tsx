@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
+import { NotificationSounds } from '../lib/notification-sounds';
+import recordingStartSound from '../assets/recording-start.mp3';
 
 afterEach(() => {
   cleanup();
@@ -94,12 +96,40 @@ function renderProfile() {
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('previews actual event sounds and exposes microphone and ringtone settings', async () => {
+    const joined = vi.spyOn(NotificationSounds.prototype, 'playJoined').mockResolvedValue();
+    const disconnected = vi
+      .spyOn(NotificationSounds.prototype, 'playDisconnected')
+      .mockResolvedValue();
+    vi.spyOn(NotificationSounds.prototype, 'setOutput').mockResolvedValue([]);
+    const audio = vi.spyOn(window, 'Audio').mockImplementation(function () {
+      return { play: vi.fn().mockResolvedValue(undefined) } as unknown as HTMLAudioElement;
+    });
+    const { getByRole, onVideoSetting } = renderProfile();
+    fireEvent.click(getByRole('button', { name: 'Видео и звуки' }));
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Участник подключился' }));
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Участник отключился' }));
+    await waitFor(() => {
+      expect(joined).toHaveBeenCalledOnce();
+      expect(disconnected).toHaveBeenCalledOnce();
+    });
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Начало записи' }));
+    expect(audio).toHaveBeenLastCalledWith(recordingStartSound);
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Микрофон включён' }));
+    expect(audio).toHaveBeenLastCalledWith('/sounds/microphone-enabled.mp3');
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Микрофон выключен' }));
+    expect(audio).toHaveBeenLastCalledWith('/sounds/microphone-disabled.mp3');
+    fireEvent.click(getByRole('button', { name: 'Прослушать звук: Входящий звонок' }));
+    expect(audio).toHaveBeenLastCalledWith('/sounds/incoming-call.mp3');
+    fireEvent.click(getByRole('switch', { name: 'Микрофон выключен' }));
+    expect(onVideoSetting).toHaveBeenCalledWith({ microphoneDisabledSound: false });
+  });
   it('keeps card styling in the draft until the single done action', async () => {
     const { container, getByRole, onClose, onSaveProfile, onSetting } = renderProfile();
 
     expect(container.querySelector('.profile-card-preview')).toBeTruthy();
-    expect(getByRole('radio', { name: /Классическая/ }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(getByRole('radio', { name: /Жидкое стекло/ }));
+    expect(getByRole('switch', { name: 'Жидкое стекло' }).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(getByRole('switch', { name: 'Жидкое стекло' }));
     expect(onSetting).not.toHaveBeenCalled();
 
     fireEvent.click(getByRole('button', { name: 'Готово' }));
@@ -116,9 +146,7 @@ describe('SettingsPanel profile actions', () => {
     expect(getByText('Осталось изменений: 5 из 5')).toBeTruthy();
     expect(getByText('Не привязан')).toBeTruthy();
     expect(getByText('ge•••@example.com')).toBeTruthy();
-    expect(
-      container.querySelector('.profile-full-preview-frame .full-profile-dialog'),
-    ).toBeTruthy();
+    expect(container.querySelector('.profile-full-preview-frame')).toBeNull();
     expect(getAllByRole('button', { name: 'Готово' })).toHaveLength(1);
 
     fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
