@@ -1308,7 +1308,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   --room-stage-max-width: 1180px;
   width: calc(100% - 48px);
   margin: 0 auto;
-  padding: clamp(14px, 2vh, 24px) 0 26px;
+  padding: clamp(11px, 1.6vh, 20px) 0 26px;
 }
 .room-main > .participants-grid,
 .room-main > .presentation-layout {
@@ -1329,7 +1329,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .room-mode-presentation .participants-heading {
   position: absolute;
   z-index: 8;
-  top: 4px;
+  top: 12px;
   left: 0;
   width: auto;
   min-width: max-content;
@@ -1354,15 +1354,15 @@ input[type='range']:hover::-webkit-slider-thumb {
   margin-bottom: 19px;
 }
 .participants-heading h1 {
-  font-size: 23px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.025em;
 }
 .participants-heading p {
-  margin-top: 5px;
+  margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 .room-security {
   display: flex;
@@ -2428,7 +2428,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   .room-main {
     --room-stage-max-width: 1680px;
     width: calc(100% - 48px);
-    padding-top: clamp(18px, 2vh, 28px);
+    padding-top: 12px;
   }
   .room-main.room-mode-presentation {
     --room-stage-max-width: 100%;
@@ -2441,12 +2441,14 @@ input[type='range']:hover::-webkit-slider-thumb {
     margin-bottom: 8px;
   }
   .participants-heading h1 {
-    font-size: 27px;
+    font-size: 20px;
   }
-  .participants-heading p,
   .call-timer,
   .room-security {
     font-size: 13px;
+  }
+  .participants-heading p {
+    font-size: 11px;
   }
   .presentation-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -16447,6 +16449,19 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     opacity: 0;
     transform: translateY(24px);
   }
+}
+
+/* The detached call has no account sidebar, so its controls must be centered
+   against the pop-out window instead of inheriting the embedded-room offset. */
+.call-popout-active .room-shell-embedded .voice-dock,
+.call-popout-active
+  .room-account-shell.account-shell-with-chat-sidebar:not(.screen-focus-active)
+  .room-shell-embedded
+  .voice-dock {
+  right: 50%;
+  left: auto;
+  width: auto;
+  transform: translateX(50%);
 }
 
 @media (prefers-reduced-motion: reduce) {
