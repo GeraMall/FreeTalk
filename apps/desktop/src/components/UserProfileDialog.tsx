@@ -153,50 +153,8 @@ export function UserProfileDialog({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [activeTarget, onClose]);
 
-  const commonChats = profile?.commonChats ?? [];
-  const sharedCalls = profile?.sharedCalls ?? {
-    count: 0,
-    lastStartedAt: null,
-    lastDurationSeconds: null,
-  };
-  const relationship =
-    profile?.relationship ??
-    activeTarget?.relationship ??
-    (activeTarget?.id === viewerId ? 'self' : undefined);
-  const isSelf = relationship === 'self' || activeTarget?.id === viewerId;
-  const activityItems = (() => {
-    if (!profile) return [];
-    const items: Array<{ icon: 'call' | 'chat' | 'presence'; title: string; text: string }> = [];
-    if (sharedCalls.lastStartedAt)
-      items.push({
-        icon: 'call',
-        title: isSelf ? 'Последний звонок' : 'Последний звонок с вами',
-        text: `${formatRelativeDate(sharedCalls.lastStartedAt)} · ${formatDuration(sharedCalls.lastDurationSeconds)}`,
-      });
-    if (commonChats[0])
-      items.push({
-        icon: 'chat',
-        title: commonChats[0].title,
-        text: commonChats[0].lastInteractionAt
-          ? `${isSelf ? 'Твой чат' : 'Общий чат'} · ${formatRelativeDate(commonChats[0].lastInteractionAt)}`
-          : isSelf
-            ? 'Твой чат'
-            : 'Общий чат',
-      });
-    if (profile.presence && profile.presence !== 'offline')
-      items.push({
-        icon: 'presence',
-        title: presenceLabel(profile.presence),
-        text: 'Текущий статус в FreeTalk',
-      });
-    return items;
-  })();
-
   if (!activeTarget) return null;
-  const displayName = profile?.displayName ?? activeTarget.displayName;
   const username = profile?.username ?? activeTarget.username;
-  const avatarUrl = profile?.avatarUrl ?? activeTarget.avatarUrl;
-  const presence = profile?.presence ?? activeTarget.presence ?? 'offline';
 
   const runAction = async (key: string, action: () => Promise<void> | void) => {
     if (busyAction) return;
@@ -224,13 +182,118 @@ export function UserProfileDialog({
 
   return createPortal(
     <div className="full-profile-backdrop" onMouseDown={onClose}>
-      <article
-        className="full-profile-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Профиль ${displayName}`}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <FullProfileView
+        viewerId={viewerId}
+        target={activeTarget}
+        profile={profile}
+        loading={loading}
+        error={error}
+        busyAction={busyAction}
+        actions={actions}
+        onClose={onClose}
+        onAddFriend={addFriend}
+        onRun={runAction}
+        onOpenMutual={(friend) => {
+          setActiveTarget(friend);
+          setTab('profile');
+        }}
+        activeTab={tab}
+        onTabChange={setTab}
+      />
+    </div>,
+    document.body,
+  );
+}
+
+export function FullProfileView({
+  viewerId,
+  target,
+  profile,
+  loading = false,
+  error = '',
+  preview = false,
+  busyAction = '',
+  actions,
+  onClose,
+  onAddFriend,
+  onRun,
+  onOpenMutual,
+  activeTab: controlledTab,
+  onTabChange,
+}: {
+  viewerId: string;
+  target: UserProfileTarget;
+  profile?: UserProfileData;
+  loading?: boolean;
+  error?: string;
+  preview?: boolean;
+  busyAction?: string;
+  actions?: UserProfileActions;
+  onClose?: () => void;
+  onAddFriend?: () => void;
+  onRun?: (key: string, action: () => Promise<void> | void) => Promise<void>;
+  onOpenMutual?: (friend: UserProfileData['mutualFriends'][number]) => void;
+  activeTab?: ProfileTab;
+  onTabChange?: (tab: ProfileTab) => void;
+}) {
+  const [localTab, setLocalTab] = useState<ProfileTab>('profile');
+  const tab = controlledTab ?? localTab;
+  const setTab = onTabChange ?? setLocalTab;
+  const commonChats = profile?.commonChats ?? [];
+  const sharedCalls = profile?.sharedCalls ?? {
+    count: 0,
+    lastStartedAt: null,
+    lastDurationSeconds: null,
+  };
+  const relationship =
+    profile?.relationship ?? target.relationship ?? (target.id === viewerId ? 'self' : undefined);
+  const isSelf = relationship === 'self' || target.id === viewerId;
+  const displayName = profile?.displayName ?? target.displayName;
+  const username = profile?.username ?? target.username;
+  const avatarUrl = profile?.avatarUrl ?? target.avatarUrl;
+  const presence = profile?.presence ?? target.presence ?? 'offline';
+  const activityItems: Array<{
+    icon: 'call' | 'chat' | 'presence';
+    title: string;
+    text: string;
+  }> = [];
+  if (sharedCalls.lastStartedAt)
+    activityItems.push({
+      icon: 'call',
+      title: isSelf ? 'Последний звонок' : 'Последний звонок с вами',
+      text: `${formatRelativeDate(sharedCalls.lastStartedAt)} · ${formatDuration(sharedCalls.lastDurationSeconds)}`,
+    });
+  if (commonChats[0])
+    activityItems.push({
+      icon: 'chat',
+      title: commonChats[0].title,
+      text: commonChats[0].lastInteractionAt
+        ? `${isSelf ? 'Твой чат' : 'Общий чат'} · ${formatRelativeDate(commonChats[0].lastInteractionAt)}`
+        : isSelf
+          ? 'Твой чат'
+          : 'Общий чат',
+    });
+  if (profile?.presence && profile.presence !== 'offline')
+    activityItems.push({
+      icon: 'presence',
+      title: presenceLabel(profile.presence),
+      text: 'Текущий статус в FreeTalk',
+    });
+  const run =
+    onRun ??
+    (async (_key: string, action: () => Promise<void> | void) => {
+      await action();
+    });
+
+  return (
+    <article
+      className={`full-profile-dialog${preview ? ' full-profile-preview' : ''}`}
+      role={preview ? 'region' : 'dialog'}
+      aria-modal={preview ? undefined : true}
+      aria-label={`${preview ? 'Предпросмотр профиля' : 'Профиль'} ${displayName}`}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {onClose ? (
         <button
           type="button"
           className="full-profile-close"
@@ -239,106 +302,99 @@ export function UserProfileDialog({
         >
           <X />
         </button>
-
-        <section className="full-profile-identity-card">
-          <div className="full-profile-cover">
-            {profile?.coverUrl ? <CachedMediaImage src={profile.coverUrl} alt="" /> : null}
-          </div>
-          <div className="full-profile-avatar">
-            {avatarUrl ? (
-              <CachedMediaImage src={avatarUrl} alt={`Аватар ${displayName}`} />
-            ) : (
-              <span>{displayName.trim().slice(0, 1).toLocaleUpperCase('ru-RU')}</span>
-            )}
-            <i className={presence} aria-label={presenceLabel(presence)} />
-          </div>
-          <div className="full-profile-name">
-            <h2>{displayName}</h2>
-            {username ? <p>@{username}</p> : null}
-            <span className={presence}>
-              <i /> {presenceLabel(presence)}
-            </span>
-          </div>
-
+      ) : null}
+      <section className="full-profile-identity-card">
+        <div className="full-profile-cover">
+          {profile?.coverUrl ? <CachedMediaImage src={profile.coverUrl} alt="" /> : null}
+        </div>
+        <div className="full-profile-avatar">
+          {avatarUrl ? (
+            <CachedMediaImage src={avatarUrl} alt={`Аватар ${displayName}`} />
+          ) : (
+            <span>{displayName.trim().slice(0, 1).toLocaleUpperCase('ru-RU')}</span>
+          )}
+          <i className={presence} aria-label={presenceLabel(presence)} />
+        </div>
+        <div className="full-profile-name">
+          <h2>{displayName}</h2>
+          {username ? <p>@{username}</p> : null}
+          <span className={presence}>
+            <i /> {presenceLabel(presence)}
+          </span>
+        </div>
+        {!preview ? (
           <ProfileActions
             relationship={relationship}
-            targetId={activeTarget.id}
+            targetId={target.id}
             busy={busyAction}
             actions={actions}
-            onAddFriend={addFriend}
-            onRun={runAction}
+            onAddFriend={onAddFriend}
+            onRun={run}
           />
-
-          <div className="full-profile-relationship">
-            <Users />
-            <span>{relationshipLabel(relationship)}</span>
+        ) : null}
+        <div className="full-profile-relationship">
+          <Users />
+          <span>{relationshipLabel(relationship)}</span>
+        </div>
+        {profile?.registeredAt ? (
+          <div className="full-profile-since">
+            <CalendarDays />
+            <span>
+              <small>В FreeTalk с</small>
+              <strong>{formatRegistrationDate(profile.registeredAt)}</strong>
+            </span>
           </div>
-          {profile?.registeredAt ? (
-            <div className="full-profile-since">
-              <CalendarDays />
-              <span>
-                <small>В FreeTalk с</small>
-                <strong>{formatRegistrationDate(profile.registeredAt)}</strong>
-              </span>
-            </div>
+        ) : null}
+      </section>
+      <section className="full-profile-content">
+        <header>
+          <span>ПОЛНЫЙ ПРОФИЛЬ</span>
+          {loading ? <i>Обновляем…</i> : null}
+        </header>
+        <nav className="full-profile-tabs" aria-label="Разделы профиля">
+          {(
+            [
+              ['profile', 'Профиль'],
+              ['activity', 'Активность'],
+              ['common', isSelf ? 'Твои' : 'Общие'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              type="button"
+              key={id}
+              className={tab === id ? 'active' : ''}
+              aria-selected={tab === id}
+              role="tab"
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="full-profile-tab-panel" key={tab} role="tabpanel">
+          {tab === 'profile' ? (
+            <ProfileTabContent
+              profile={profile}
+              commonChats={commonChats}
+              isSelf={isSelf}
+              onOpenMutual={(friend) => onOpenMutual?.(friend)}
+              onOpenChat={preview ? undefined : actions?.onOpenChat}
+              onRun={run}
+            />
           ) : null}
-        </section>
-
-        <section className="full-profile-content">
-          <header>
-            <span>ПОЛНЫЙ ПРОФИЛЬ</span>
-            {loading ? <i>Обновляем…</i> : null}
-          </header>
-          <nav className="full-profile-tabs" aria-label="Разделы профиля">
-            {(
-              [
-                ['profile', 'Профиль'],
-                ['activity', 'Активность'],
-                ['common', isSelf ? 'Твои' : 'Общие'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                type="button"
-                key={id}
-                className={tab === id ? 'active' : ''}
-                aria-selected={tab === id}
-                role="tab"
-                onClick={() => setTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="full-profile-tab-panel" key={tab} role="tabpanel">
-            {tab === 'profile' ? (
-              <ProfileTabContent
-                profile={profile}
-                commonChats={commonChats}
-                isSelf={isSelf}
-                onOpenMutual={(friend) => {
-                  setActiveTarget(friend);
-                  setTab('profile');
-                }}
-                onOpenChat={actions?.onOpenChat}
-                onRun={runAction}
-              />
-            ) : null}
-            {tab === 'activity' ? <ActivityTab items={activityItems} /> : null}
-            {tab === 'common' ? (
-              <CommonTab
-                profile={profile}
-                commonChats={commonChats}
-                sharedCalls={sharedCalls}
-                isSelf={isSelf}
-              />
-            ) : null}
-          </div>
-          {error ? <p className="full-profile-error">{error}</p> : null}
-        </section>
-      </article>
-    </div>,
-    document.body,
+          {tab === 'activity' ? <ActivityTab items={activityItems} /> : null}
+          {tab === 'common' ? (
+            <CommonTab
+              profile={profile}
+              commonChats={commonChats}
+              sharedCalls={sharedCalls}
+              isSelf={isSelf}
+            />
+          ) : null}
+        </div>
+        {error ? <p className="full-profile-error">{error}</p> : null}
+      </section>
+    </article>
   );
 }
 

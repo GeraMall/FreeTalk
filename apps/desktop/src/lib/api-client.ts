@@ -21,6 +21,12 @@ export interface AccountUser {
   registeredAt: string;
 }
 
+/** Reserved frontend contract for phone binding once the account API supports it. */
+export interface AccountPhoneBinding {
+  phoneNumber: string | null;
+  verified: boolean;
+}
+
 export interface AccountSession {
   id: string;
   current: boolean;

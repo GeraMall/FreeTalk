@@ -94,31 +94,72 @@ function renderProfile() {
 }
 
 describe('SettingsPanel profile actions', () => {
-  it('previews and enables avatar glass card styling from the profile tab', () => {
-    const { container, getByRole, onSetting } = renderProfile();
+  it('keeps card styling in the draft until the single done action', async () => {
+    const { container, getByRole, onClose, onSaveProfile, onSetting } = renderProfile();
 
     expect(container.querySelector('.profile-card-preview')).toBeTruthy();
     expect(getByRole('radio', { name: /Классическая/ }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(getByRole('radio', { name: /Жидкое стекло/ }));
+    expect(onSetting).not.toHaveBeenCalled();
+
+    fireEvent.click(getByRole('button', { name: 'Готово' }));
+    await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
     expect(onSetting).toHaveBeenCalledWith({ participantCardStyle: 'avatar-glass' }, false);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('keeps save and done together in the dedicated action bar', async () => {
-    const { container, getAllByText, getByRole, getByText, onClose, onSaveProfile } =
+  it('saves the complete draft with the only done button and closes', async () => {
+    const { container, getAllByRole, getByRole, getByText, onClose, onSaveProfile } =
       renderProfile();
     const actionBar = container.querySelector('.profile-sticky-actions');
     expect(actionBar).toBeTruthy();
     expect(getByText('Осталось изменений: 5 из 5')).toBeTruthy();
-    expect(getAllByText(/до 25 МБ/)).toHaveLength(2);
+    expect(getByText('Не привязан')).toBeTruthy();
+    expect(getByText('ge•••@example.com')).toBeTruthy();
+    expect(
+      container.querySelector('.profile-full-preview-frame .full-profile-dialog'),
+    ).toBeTruthy();
+    expect(getAllByRole('button', { name: 'Готово' })).toHaveLength(1);
 
     fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
       target: { value: 'Новая информация' },
     });
-    fireEvent.click(getByRole('button', { name: /Сохранить профиль/ }));
-    await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
-
     fireEvent.click(getByRole('button', { name: 'Готово' }));
+    await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('closes without a save request when the profile has not changed', () => {
+    const { getByRole, onClose, onSaveProfile } = renderProfile();
+    fireEvent.click(getByRole('button', { name: 'Готово' }));
+    expect(onSaveProfile).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('asks what to do when closing with an unsaved profile draft', () => {
+    const { getAllByRole, getByRole, onClose } = renderProfile();
+    fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
+      target: { value: 'Черновик' },
+    });
+
+    fireEvent.click(getAllByRole('button', { name: 'Закрыть настройки' }).at(-1)!);
+    expect(getByRole('heading', { name: 'Сохранить изменения?' })).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(getAllByRole('button', { name: 'Отмена' }).at(-1)!);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('keeps settings open and explains a failed profile save', async () => {
+    const { getByRole, getByText, onClose, onSaveProfile } = renderProfile();
+    onSaveProfile.mockRejectedValueOnce(new Error('Сервер временно недоступен'));
+    fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
+      target: { value: 'Новая информация' },
+    });
+    fireEvent.click(getByRole('button', { name: 'Готово' }));
+
+    expect(await waitFor(() => getByText('Сервер временно недоступен'))).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('provides local chat appearance controls with a live preview', () => {

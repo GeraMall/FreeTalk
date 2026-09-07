@@ -13,12 +13,16 @@ import {
   Info,
   ImagePlus,
   Laptop,
+  LogOut,
+  Mail,
   MessageCircle,
   Mic2,
   MonitorSpeaker,
+  Phone,
   RefreshCw,
   RotateCcw,
   Save,
+  ShieldCheck,
   Sparkles,
   Trash2,
   UserRound,
@@ -60,6 +64,7 @@ import {
 import { getChatImageCacheStats } from '../lib/chat-image-cache';
 import { getAccountMediaCacheStats } from '../lib/account-media-cache';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
+import { FullProfileView, type UserProfileData } from './UserProfileDialog';
 
 export type SettingsTab =
   'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
@@ -97,6 +102,44 @@ interface SettingsPanelProps {
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
   onClearChatCache(): Promise<void>;
+}
+
+interface ProfileDraft {
+  displayName: string;
+  avatar: string;
+  cover: string;
+  username: string;
+  bio: string;
+  participantCardStyle: LocalSettings['participantCardStyle'];
+}
+
+function profileDraftFrom(settings: LocalSettings, accountUser?: AccountUser): ProfileDraft {
+  return {
+    displayName: settings.displayName,
+    avatar: accountUser?.avatarUrl || settings.avatarDataUrl,
+    cover: accountUser?.coverUrl ?? '',
+    username: accountUser?.username ?? '',
+    bio: accountUser?.bio ?? '',
+    participantCardStyle: settings.participantCardStyle,
+  };
+}
+
+function profileDraftsEqual(first: ProfileDraft, second: ProfileDraft) {
+  return (
+    first.displayName === second.displayName &&
+    first.avatar === second.avatar &&
+    first.cover === second.cover &&
+    first.username === second.username &&
+    first.bio === second.bio &&
+    first.participantCardStyle === second.participantCardStyle
+  );
+}
+
+function maskedEmail(email: string) {
+  const [local = '', domain = ''] = email.split('@');
+  if (!domain) return email;
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${'•'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
 }
 
 export function SettingsPanel({
@@ -137,9 +180,72 @@ export function SettingsPanel({
   const [testError, setTestError] = useState('');
   const [diagnosticPath, setDiagnosticPath] = useState('');
   const [diagnosticError, setDiagnosticError] = useState('');
+  const [savedProfile, setSavedProfile] = useState<ProfileDraft>(() =>
+    profileDraftFrom(settings, accountUser),
+  );
+  const [draftProfile, setDraftProfile] = useState<ProfileDraft>(() =>
+    profileDraftFrom(settings, accountUser),
+  );
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState('');
+  const [confirmProfileClose, setConfirmProfileClose] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const testStream = useRef<MediaStream | undefined>(undefined);
   const testRecorder = useRef<MediaRecorder | undefined>(undefined);
   const recordingUrlRef = useRef('');
+  const profileDirty = !profileDraftsEqual(savedProfile, draftProfile);
+
+  const saveProfileDraft = async (closeAfterSave: boolean) => {
+    if (!profileDirty) {
+      if (closeAfterSave) onClose();
+      return true;
+    }
+    const displayName = draftProfile.displayName.trim();
+    const hasUnsafeCharacter = [...displayName].some((character) => {
+      const code = character.charCodeAt(0);
+      return character === '<' || character === '>' || code <= 31 || code === 127;
+    });
+    if (!displayName || displayName.length > 32 || hasUnsafeCharacter) {
+      setProfileSaveError('Имя должно содержать от 1 до 32 символов без < и >.');
+      return false;
+    }
+    if (!isValidUsername(draftProfile.username)) {
+      setProfileSaveError('Username: минимум 5 символов, только латинские буквы, цифры и _.');
+      return false;
+    }
+    setProfileSaving(true);
+    setProfileSaveError('');
+    try {
+      await onSaveProfile(
+        displayName,
+        draftProfile.avatar,
+        draftProfile.username || undefined,
+        draftProfile.bio,
+        draftProfile.cover,
+      );
+      if (draftProfile.participantCardStyle !== savedProfile.participantCardStyle)
+        onSetting({ participantCardStyle: draftProfile.participantCardStyle }, false);
+      const committed = { ...draftProfile, displayName };
+      setSavedProfile(committed);
+      setDraftProfile(committed);
+      if (closeAfterSave) onClose();
+      return true;
+    } catch (caught) {
+      setProfileSaveError(
+        caught instanceof Error
+          ? caught.message
+          : 'Не удалось сохранить профиль. Попробуйте ещё раз.',
+      );
+      return false;
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const requestClose = () => {
+    if (profileDirty) setConfirmProfileClose(true);
+    else onClose();
+  };
 
   useEffect(
     () => () => {
@@ -199,7 +305,7 @@ export function SettingsPanel({
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) => event.target === event.currentTarget && requestClose()}
     >
       <section
         className={`settings-modal${mobileLayout ? ' mobile-settings-modal' : ''}${tab ? ' mobile-settings-section-open' : ''}`}
@@ -217,7 +323,7 @@ export function SettingsPanel({
               <button
                 className="icon-button quiet"
                 aria-label="Закрыть настройки"
-                onClick={onClose}
+                onClick={requestClose}
               >
                 <X size={21} />
               </button>
@@ -267,7 +373,7 @@ export function SettingsPanel({
               onClick={() => setTab('about')}
             />
           </nav>
-          <button className="reset-settings" onClick={onReset}>
+          <button className="reset-settings" onClick={() => setConfirmReset(true)}>
             <RotateCcw size={16} /> Сбросить настройки
           </button>
         </aside>
@@ -319,7 +425,7 @@ export function SettingsPanel({
               <button
                 className="icon-button quiet"
                 aria-label="Закрыть настройки"
-                onClick={onClose}
+                onClick={requestClose}
               >
                 <X size={21} />
               </button>
@@ -345,12 +451,19 @@ export function SettingsPanel({
                   settings={settings}
                   accountUser={accountUser}
                   guestMode={guestMode}
-                  onSaveProfile={onSaveProfile}
+                  draft={draftProfile}
+                  savedDraft={savedProfile}
+                  isSaving={profileSaving}
+                  saveError={profileSaveError}
+                  onDraft={(patch) => {
+                    setProfileSaveError('');
+                    setDraftProfile((current) => ({ ...current, ...patch }));
+                  }}
+                  onDraftError={setProfileSaveError}
                   onAccountLogout={onAccountLogout}
                   onDeleteAccount={onDeleteAccount}
                   onChangePassword={onChangePassword}
-                  onSetting={onSetting}
-                  onDone={onClose}
+                  onDone={() => void saveProfileDraft(true)}
                 />
               )}
               {tab === 'video' && (
@@ -407,7 +520,7 @@ export function SettingsPanel({
 
             {tab !== 'profile' && (
               <footer className="settings-footer">
-                <button className="primary settings-done" onClick={onClose}>
+                <button className="primary settings-done" onClick={requestClose}>
                   Готово
                 </button>
               </footer>
@@ -415,6 +528,83 @@ export function SettingsPanel({
           </div>
         )}
       </section>
+      {confirmProfileClose ? (
+        <div className="profile-confirm-backdrop" onMouseDown={(event) => event.stopPropagation()}>
+          <section
+            className="profile-confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="profile-confirm-title"
+          >
+            <header>
+              <div>
+                <p className="eyebrow">НЕСОХРАНЁННЫЕ ИЗМЕНЕНИЯ</p>
+                <h2 id="profile-confirm-title">Сохранить изменения?</h2>
+              </div>
+              <button
+                className="icon-button quiet"
+                aria-label="Отмена"
+                onClick={() => setConfirmProfileClose(false)}
+              >
+                <X />
+              </button>
+            </header>
+            <p>Изменения профиля ещё не применены. Выберите, что с ними сделать.</p>
+            {profileSaveError ? <small className="inline-error">{profileSaveError}</small> : null}
+            <footer>
+              <button
+                className="primary"
+                disabled={profileSaving}
+                onClick={() => void saveProfileDraft(true)}
+              >
+                {profileSaving ? 'Сохраняем…' : 'Сохранить и выйти'}
+              </button>
+              <button className="secondary" disabled={profileSaving} onClick={onClose}>
+                Выйти без сохранения
+              </button>
+              <button
+                className="quiet"
+                disabled={profileSaving}
+                onClick={() => setConfirmProfileClose(false)}
+              >
+                Отмена
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+      {confirmReset ? (
+        <div className="profile-confirm-backdrop" onMouseDown={(event) => event.stopPropagation()}>
+          <section
+            className="profile-confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="reset-confirm-title"
+          >
+            <header>
+              <div>
+                <p className="eyebrow">СБРОС НАСТРОЕК</p>
+                <h2 id="reset-confirm-title">Сбросить настройки?</h2>
+              </div>
+            </header>
+            <p>Настройки звука, видео, записи и оформления вернутся к значениям по умолчанию.</p>
+            <footer>
+              <button
+                className="danger"
+                onClick={() => {
+                  setConfirmReset(false);
+                  onReset();
+                }}
+              >
+                Сбросить
+              </button>
+              <button className="secondary" onClick={() => setConfirmReset(false)}>
+                Отмена
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -472,72 +662,68 @@ function ProfileTab({
   settings,
   accountUser,
   guestMode,
-  onSaveProfile,
+  draft,
+  savedDraft,
+  isSaving,
+  saveError,
+  onDraft,
+  onDraftError,
   onAccountLogout,
   onDeleteAccount,
   onChangePassword,
-  onSetting,
   onDone,
 }: {
   settings: LocalSettings;
   accountUser?: AccountUser;
   guestMode: boolean;
-  onSaveProfile(
-    name: string,
-    avatar: string,
-    username: string | undefined,
-    bio: string,
-    cover: string,
-  ): Promise<void>;
+  draft: ProfileDraft;
+  savedDraft: ProfileDraft;
+  isSaving: boolean;
+  saveError: string;
+  onDraft(patch: Partial<ProfileDraft>): void;
+  onDraftError(message: string): void;
   onAccountLogout(): void;
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
-  onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
   onDone(): void;
 }) {
-  const [draftName, setDraftName] = useState(settings.displayName);
-  const persistedAvatar = accountUser?.avatarUrl ?? '';
-  const initialAvatar = persistedAvatar || settings.avatarDataUrl;
-  const [draftAvatar, setDraftAvatar] = useState(initialAvatar);
-  const [draftCover, setDraftCover] = useState(accountUser?.coverUrl ?? '');
-  const [draftBio, setDraftBio] = useState(accountUser?.bio ?? '');
-  const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [draftUsername, setDraftUsername] = useState(accountUser?.username ?? '');
-  const cachedDraftAvatar = useCachedMediaUrl(draftAvatar);
-  const cachedDraftCover = useCachedMediaUrl(draftCover);
+  const cachedDraftAvatar = useCachedMediaUrl(draft.avatar);
+  const cachedDraftCover = useCachedMediaUrl(draft.cover);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [securityMessage, setSecurityMessage] = useState('');
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState(false);
   const connectedDevices = useMemo(() => uniqueDeviceSessions(sessions), [sessions]);
   const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
-  const usernameValid = isValidUsername(draftUsername);
-  const changed =
-    draftName.trim() !== settings.displayName ||
-    draftAvatar !== persistedAvatar ||
-    draftUsername !== accountUser?.username ||
-    draftBio !== (accountUser?.bio ?? '') ||
-    draftCover !== (accountUser?.coverUrl ?? '');
-
-  useEffect(() => {
-    setDraftName(settings.displayName);
-    setDraftAvatar(accountUser?.avatarUrl || settings.avatarDataUrl);
-    setDraftCover(accountUser?.coverUrl ?? '');
-    setDraftBio(accountUser?.bio ?? '');
-    setDraftUsername(accountUser?.username ?? '');
-  }, [
-    accountUser?.avatarUrl,
-    accountUser?.bio,
-    accountUser?.coverUrl,
-    accountUser?.username,
-    settings.avatarDataUrl,
-    settings.displayName,
-  ]);
+  const usernameValid = isValidUsername(draft.username);
+  const profileIdentityChanged =
+    draft.displayName.trim() !== savedDraft.displayName ||
+    draft.avatar !== savedDraft.avatar ||
+    draft.username !== savedDraft.username ||
+    draft.bio !== savedDraft.bio ||
+    draft.cover !== savedDraft.cover;
+  const previewProfile: UserProfileData | undefined = accountUser
+    ? {
+        id: accountUser.id,
+        username: draft.username,
+        displayName: draft.displayName.trim() || 'Ваше имя',
+        bio: draft.bio.trim() || null,
+        avatarUrl: draft.avatar || null,
+        coverUrl: draft.cover || null,
+        registeredAt: accountUser.registeredAt,
+        presence: 'online',
+        relationship: 'self',
+        mutualFriendsCount: 0,
+        mutualFriends: [],
+        commonChatsCount: 0,
+        commonChats: [],
+        sharedCalls: { count: 0, lastStartedAt: null, lastDurationSeconds: null },
+      }
+    : undefined;
 
   useEffect(() => {
     if (!accountUser) {
@@ -563,33 +749,6 @@ function ProfileTab({
     };
   }, [accountUser]);
 
-  const save = async () => {
-    const name = draftName.trim();
-    setError('');
-    setSaved(false);
-    const hasUnsafeCharacter = [...name].some((character) => {
-      const code = character.charCodeAt(0);
-      return character === '<' || character === '>' || code <= 31 || code === 127;
-    });
-    if (!name || name.length > 32 || hasUnsafeCharacter) {
-      setError('Имя должно содержать от 1 до 32 символов без < и >.');
-      return;
-    }
-    if (!usernameValid) {
-      setError('Username: минимум 5 символов, только латинские буквы, цифры и _.');
-      return;
-    }
-    setBusy(true);
-    try {
-      await onSaveProfile(name, draftAvatar, draftUsername || undefined, draftBio, draftCover);
-      setSaved(true);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить профиль.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (guestMode || !accountUser)
     return (
       <div className="profile-tab-layout">
@@ -614,33 +773,99 @@ function ProfileTab({
   return (
     <div className="profile-tab-layout">
       <div className="profile-tab-scroll">
-        <section className="settings-section profile-section">
-          <div className="account-profile-facts">
-            <span>
-              <small>Почта</small>
-              <strong>{accountUser.email}</strong>
-            </span>
-            <span>
-              <small>Регистрация</small>
-              <strong>{new Date(accountUser.registeredAt).toLocaleDateString('ru-RU')}</strong>
-            </span>
-          </div>
-          <div className="profile-editor">
-            <div className="profile-avatar-preview">
-              {cachedDraftAvatar ? (
-                <img src={cachedDraftAvatar} alt="Предпросмотр аватара" />
-              ) : (
-                <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
-              )}
+        <div className="profile-redesign">
+          <section className="profile-zone profile-account-zone">
+            <header className="profile-zone-heading">
+              <span className="profile-zone-icon">
+                <ShieldCheck />
+              </span>
+              <span>
+                <small>АККАУНТ</small>
+                <h3>Контактные данные</h3>
+              </span>
+            </header>
+            <div className="profile-account-grid">
+              <article>
+                <Mail />
+                <span>
+                  <small>Почта</small>
+                  <strong>{maskedEmail(accountUser.email)}</strong>
+                  <em>Подтверждена</em>
+                </span>
+              </article>
+              <article>
+                <Phone />
+                <span>
+                  <small>Телефон</small>
+                  <strong>Не привязан</strong>
+                  <em>Поддержка появится позже</em>
+                </span>
+                <button
+                  className="secondary compact"
+                  disabled
+                  title="Серверная привязка телефона пока не поддерживается"
+                >
+                  Привязать
+                </button>
+              </article>
             </div>
-            <div className="profile-avatar-actions">
-              <strong>Аватар</strong>
-              <small>
-                JPEG, PNG или WebP до 25 МБ. FreeTalk уменьшит его до 768×768 и примерно 1 МБ.
-              </small>
-              <div>
-                <label className="secondary compact profile-file-button">
-                  <ImagePlus size={16} /> Выбрать фото
+          </section>
+
+          <section className="profile-zone profile-identity-zone">
+            <header className="profile-zone-heading">
+              <span className="profile-zone-icon">
+                <UserRound />
+              </span>
+              <span>
+                <small>ПРОФИЛЬ</small>
+                <h3>Внешний вид и имя</h3>
+              </span>
+            </header>
+            <div className="profile-media-editor">
+              <div
+                className="profile-media-cover"
+                style={
+                  cachedDraftCover ? { backgroundImage: `url(${cachedDraftCover})` } : undefined
+                }
+              >
+                <div className="profile-media-cover-actions">
+                  <label className="secondary compact profile-file-button">
+                    <ImagePlus /> {draft.cover ? 'Заменить обложку' : 'Добавить обложку'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.currentTarget.value = '';
+                        if (!file) return;
+                        onDraftError('');
+                        void prepareCover(file)
+                          .then((cover) => onDraft({ cover }))
+                          .catch((caught) =>
+                            onDraftError(
+                              caught instanceof Error
+                                ? caught.message
+                                : 'Не удалось обработать обложку.',
+                            ),
+                          );
+                      }}
+                    />
+                  </label>
+                  {draft.cover ? (
+                    <button className="secondary compact" onClick={() => onDraft({ cover: '' })}>
+                      <Trash2 /> Удалить
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="profile-media-avatar">
+                {cachedDraftAvatar ? (
+                  <img src={cachedDraftAvatar} alt="Предпросмотр аватара" />
+                ) : (
+                  <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
+                )}
+                <label className="profile-avatar-overlay" aria-label="Изменить аватар">
+                  <ImagePlus />
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
@@ -648,11 +873,11 @@ function ProfileTab({
                       const file = event.target.files?.[0];
                       event.currentTarget.value = '';
                       if (!file) return;
-                      setError('');
+                      onDraftError('');
                       void prepareAvatar(file)
-                        .then(setDraftAvatar)
+                        .then((avatar) => onDraft({ avatar }))
                         .catch((caught) =>
-                          setError(
+                          onDraftError(
                             caught instanceof Error
                               ? caught.message
                               : 'Не удалось обработать фото.',
@@ -661,30 +886,82 @@ function ProfileTab({
                     }}
                   />
                 </label>
-                {draftAvatar && (
-                  <button className="secondary compact" onClick={() => setDraftAvatar('')}>
-                    <Trash2 size={15} /> Удалить
+              </div>
+              <div className="profile-media-caption">
+                <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
+                <small>{draft.username ? `@${draft.username}` : 'Добавьте username'}</small>
+                {draft.avatar ? (
+                  <button className="quiet" onClick={() => onDraft({ avatar: '' })}>
+                    Удалить аватар
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
-          </div>
-          <div className="profile-card-design">
+            <p className="profile-media-help">
+              Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, FreeTalk
+              подготовит изображение 1800×700.
+            </p>
+            <div className="profile-fields-grid">
+              <label className="field-label">
+                Отображаемое имя
+                <input
+                  maxLength={32}
+                  value={draft.displayName}
+                  placeholder="Ваше имя"
+                  onChange={(event) => onDraft({ displayName: event.target.value })}
+                />
+                <small>{draft.displayName.length}/32</small>
+              </label>
+              <label className="field-label">
+                Уникальный @username
+                <input
+                  minLength={USERNAME_MIN_LENGTH}
+                  maxLength={USERNAME_MAX_LENGTH}
+                  pattern="[a-z0-9_]{5,24}"
+                  aria-invalid={!usernameValid}
+                  value={draft.username}
+                  onChange={(event) => onDraft({ username: normalizeUsername(event.target.value) })}
+                />
+                <small>5–24 символа: латиница, цифры и _. Изменение раз в 30 дней.</small>
+              </label>
+              <label className="field-label profile-bio-field">
+                О себе
+                <textarea
+                  value={draft.bio}
+                  maxLength={200}
+                  rows={4}
+                  placeholder="Несколько слов о себе"
+                  onChange={(event) => onDraft({ bio: event.target.value })}
+                />
+                <small>{draft.bio.length}/200</small>
+              </label>
+            </div>
+            <div className="profile-limit">
+              <span>
+                {remaining > 0
+                  ? `Осталось изменений: ${remaining} из 5`
+                  : 'Лимит изменений исчерпан'}
+              </span>
+              <small>Имя и аватар вместе можно сохранять не более пяти раз за пять часов.</small>
+            </div>
+          </section>
+
+          <section className="profile-zone profile-card-design">
             <div className="profile-card-design-heading">
               <span>
                 <strong>Оформление карточки в звонке</strong>
-                <small>Выберите, как будут выглядеть карточки участников на этом устройстве.</small>
+                <small>Этот выбор применится вместе с остальными изменениями профиля.</small>
               </span>
               <Sparkles aria-hidden="true" />
             </div>
             <div
-              className={`profile-card-preview participant-card audio-tile ${settings.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? 'avatar-glass' : ''}`}
+              className={`profile-card-preview participant-card audio-tile ${draft.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? 'avatar-glass' : ''}`}
             >
-              {settings.participantCardStyle === 'avatar-glass' && cachedDraftAvatar && (
+              {draft.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? (
                 <span className="participant-card-ambient" aria-hidden="true">
                   <img src={cachedDraftAvatar} alt="" />
                 </span>
-              )}
+              ) : null}
               <div className="participant-card-top media-overlay-top">
                 <span className="creator-badge">
                   <Crown size={13} /> Создатель комнаты
@@ -694,14 +971,14 @@ function ProfileTab({
                 {cachedDraftAvatar ? (
                   <img src={cachedDraftAvatar} alt="" />
                 ) : (
-                  <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
+                  <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
                 )}
                 <i aria-label="В сети" />
               </div>
               <div className="participant-info">
                 <div className="participant-name-row">
                   <div className="participant-name">
-                    <strong>{draftName.trim() || 'Ваше имя'}</strong>
+                    <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
                     <span>вы</span>
                   </div>
                 </div>
@@ -718,9 +995,9 @@ function ProfileTab({
               <button
                 type="button"
                 role="radio"
-                aria-checked={settings.participantCardStyle === 'classic'}
-                className={settings.participantCardStyle === 'classic' ? 'active' : ''}
-                onClick={() => onSetting({ participantCardStyle: 'classic' }, false)}
+                aria-checked={draft.participantCardStyle === 'classic'}
+                className={draft.participantCardStyle === 'classic' ? 'active' : ''}
+                onClick={() => onDraft({ participantCardStyle: 'classic' })}
               >
                 <strong>Классическая</strong>
                 <small>Спокойный фирменный фон FreeTalk</small>
@@ -728,153 +1005,111 @@ function ProfileTab({
               <button
                 type="button"
                 role="radio"
-                aria-checked={settings.participantCardStyle === 'avatar-glass'}
-                className={settings.participantCardStyle === 'avatar-glass' ? 'active' : ''}
+                aria-checked={draft.participantCardStyle === 'avatar-glass'}
+                className={draft.participantCardStyle === 'avatar-glass' ? 'active' : ''}
                 disabled={!cachedDraftAvatar}
-                onClick={() => onSetting({ participantCardStyle: 'avatar-glass' }, false)}
+                onClick={() => onDraft({ participantCardStyle: 'avatar-glass' })}
               >
                 <strong>Жидкое стекло</strong>
-                <small>{cachedDraftAvatar ? 'Оттенки выбранной аватарки' : 'Сначала выберите аватарку'}</small>
+                <small>
+                  {cachedDraftAvatar ? 'Оттенки выбранной аватарки' : 'Сначала выберите аватарку'}
+                </small>
               </button>
             </div>
-          </div>
-          <div className="profile-cover-editor">
-            <div
-              className="profile-cover-preview"
-              style={cachedDraftCover ? { backgroundImage: `url(${cachedDraftCover})` } : undefined}
-            >
-              {!draftCover && <span>FreeTalk cover</span>}
-            </div>
-            <div className="profile-avatar-actions">
-              <strong>Обложка профиля</strong>
-              <small>
-                Изображение до 25 МБ. FreeTalk подготовит обложку 1800×700 весом до 2–3 МБ.
-              </small>
-              <div>
-                <label className="secondary compact profile-file-button">
-                  <ImagePlus size={16} /> {draftCover ? 'Заменить' : 'Загрузить'}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.currentTarget.value = '';
-                      if (!file) return;
-                      setError('');
-                      void prepareCover(file)
-                        .then(setDraftCover)
-                        .catch((caught) =>
-                          setError(
-                            caught instanceof Error
-                              ? caught.message
-                              : 'Не удалось обработать обложку.',
-                          ),
-                        );
-                    }}
-                  />
-                </label>
-                {draftCover && (
-                  <button className="secondary compact" onClick={() => setDraftCover('')}>
-                    <Trash2 size={15} /> Удалить
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-          <label className="field-label">
-            Отображаемое имя
-            <input
-              maxLength={32}
-              value={draftName}
-              placeholder="Ваше имя"
-              onChange={(event) => {
-                setDraftName(event.target.value);
-                setSaved(false);
-              }}
-            />
-          </label>
-          <label className="field-label">
-            Уникальный @username
-            <input
-              minLength={USERNAME_MIN_LENGTH}
-              maxLength={USERNAME_MAX_LENGTH}
-              pattern="[a-z0-9_]{5,24}"
-              aria-invalid={!usernameValid}
-              value={draftUsername}
-              onChange={(event) => {
-                setDraftUsername(normalizeUsername(event.target.value));
-                setSaved(false);
-              }}
-            />
-            <small>От 5 символов: латинские буквы, цифры и _. Изменить можно раз в 30 дней.</small>
-          </label>
-          <label className="field-label">
-            О себе
-            <textarea
-              value={draftBio}
-              maxLength={200}
-              rows={3}
-              placeholder="Несколько слов о себе"
-              onChange={(event) => {
-                setDraftBio(event.target.value);
-                setSaved(false);
-              }}
-            />
-            <small>{draftBio.length}/200</small>
-          </label>
-          <div className="profile-limit">
-            <span>
-              {remaining > 0 ? `Осталось изменений: ${remaining} из 5` : 'Лимит изменений исчерпан'}
-            </span>
-            <small>Ник и аватар вместе можно сохранять не более пяти раз за пять часов.</small>
-          </div>
-          <details className="connected-devices">
-            <summary>
-              <span className="connected-devices-icon">
-                <Laptop />
+          </section>
+
+          <section className="profile-zone profile-full-preview-zone">
+            <header className="profile-zone-heading">
+              <span className="profile-zone-icon">
+                <UserRound />
               </span>
               <span>
-                <strong>Подключённые устройства</strong>
-                <small>
-                  {sessionsLoading
-                    ? 'Проверяем активные сеансы…'
-                    : sessionsError
-                      ? 'Не удалось получить список'
-                      : `${connectedDevices.length} ${deviceCountWord(connectedDevices.length)}`}
-                </small>
+                <small>ПРЕДПРОСМОТР</small>
+                <h3>Так выглядит ваш полный профиль</h3>
               </span>
-              {!sessionsLoading && !sessionsError && <b>{connectedDevices.length}</b>}
-              <ChevronDown className="connected-devices-chevron" />
-            </summary>
-            <div className="connected-device-list">
-              {sessionsError ? (
-                <p>Не удалось загрузить информацию об устройствах.</p>
-              ) : connectedDevices.length === 0 && !sessionsLoading ? (
-                <p>Активных устройств нет.</p>
-              ) : (
-                connectedDevices.map((session) => (
-                  <article key={session.id}>
-                    <Laptop />
-                    <span>
-                      <strong>{sessionDeviceName(session.userAgent, session.current)}</strong>
-                      <small>
-                        Активность: {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
-                      </small>
-                      <small>
-                        Подключено: {new Date(session.createdAt).toLocaleDateString('ru-RU')}
-                      </small>
-                    </span>
-                    {session.current && <em>Это устройство</em>}
-                  </article>
-                ))
-              )}
-            </div>
-          </details>
-          {error && <small className="inline-error">{error}</small>}
-          {saved && <small className="inline-success">Профиль обновлён для всех участников.</small>}
-          <div className="account-actions">
-            <details>
-              <summary>Изменить пароль</summary>
+            </header>
+            {previewProfile ? (
+              <div className="profile-full-preview-frame">
+                <FullProfileView
+                  viewerId={accountUser.id}
+                  target={{
+                    id: accountUser.id,
+                    displayName: previewProfile.displayName,
+                    username: previewProfile.username,
+                    avatarUrl: previewProfile.avatarUrl,
+                    presence: 'online',
+                    relationship: 'self',
+                  }}
+                  profile={previewProfile}
+                  preview
+                />
+              </div>
+            ) : null}
+          </section>
+
+          <section className="profile-zone profile-security-zone">
+            <header className="profile-zone-heading">
+              <span className="profile-zone-icon">
+                <ShieldCheck />
+              </span>
+              <span>
+                <small>БЕЗОПАСНОСТЬ</small>
+                <h3>Доступ к аккаунту</h3>
+              </span>
+            </header>
+            <details className="connected-devices profile-accordion">
+              <summary>
+                <span className="connected-devices-icon">
+                  <Laptop />
+                </span>
+                <span>
+                  <strong>Подключённые устройства</strong>
+                  <small>
+                    {sessionsLoading
+                      ? 'Проверяем активные сеансы…'
+                      : sessionsError
+                        ? 'Не удалось получить список'
+                        : `${connectedDevices.length} ${deviceCountWord(connectedDevices.length)}`}
+                  </small>
+                </span>
+                {!sessionsLoading && !sessionsError && <b>{connectedDevices.length}</b>}
+                <ChevronDown className="connected-devices-chevron" />
+              </summary>
+              <div className="connected-device-list">
+                {sessionsError ? (
+                  <p>Не удалось загрузить информацию об устройствах.</p>
+                ) : connectedDevices.length === 0 && !sessionsLoading ? (
+                  <p>Активных устройств нет.</p>
+                ) : (
+                  connectedDevices.map((session) => (
+                    <article key={session.id}>
+                      <Laptop />
+                      <span>
+                        <strong>{sessionDeviceName(session.userAgent, session.current)}</strong>
+                        <small>
+                          Активность: {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
+                        </small>
+                        <small>
+                          Подключено: {new Date(session.createdAt).toLocaleDateString('ru-RU')}
+                        </small>
+                      </span>
+                      {session.current && <em>Это устройство</em>}
+                    </article>
+                  ))
+                )}
+              </div>
+            </details>
+            <details className="profile-accordion">
+              <summary>
+                <span className="connected-devices-icon">
+                  <ShieldCheck />
+                </span>
+                <span>
+                  <strong>Изменить пароль</strong>
+                  <small>Обновите пароль от аккаунта</small>
+                </span>
+                <ChevronDown className="connected-devices-chevron" />
+              </summary>
               <div className="password-change-form">
                 <input
                   type="password"
@@ -891,15 +1126,16 @@ function ProfileTab({
                 <button
                   disabled={!currentPassword || !newPassword}
                   onClick={() => {
-                    setError('');
+                    onDraftError('');
+                    setSecurityMessage('');
                     void onChangePassword(currentPassword, newPassword)
                       .then(() => {
                         setCurrentPassword('');
                         setNewPassword('');
-                        setSaved(true);
+                        setSecurityMessage('Пароль успешно изменён.');
                       })
                       .catch((caught: unknown) =>
-                        setError(
+                        onDraftError(
                           caught instanceof Error ? caught.message : 'Не удалось изменить пароль',
                         ),
                       );
@@ -909,51 +1145,83 @@ function ProfileTab({
                 </button>
               </div>
             </details>
-            <button className="secondary" onClick={onAccountLogout}>
-              Выйти из аккаунта
-            </button>
-            <details className="danger-zone">
-              <summary>Удалить аккаунт</summary>
-              <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
-              <input
-                type="password"
-                value={deletePassword}
-                placeholder="Текущий пароль"
-                onChange={(event) => setDeletePassword(event.target.value)}
-              />
-              <input
-                value={deleteConfirmation}
-                placeholder="Введите УДАЛИТЬ"
-                onChange={(event) => setDeleteConfirmation(event.target.value)}
-              />
-              <button
-                className="danger"
-                disabled={!deletePassword || deleteConfirmation !== 'УДАЛИТЬ'}
-                onClick={() => {
-                  setError('');
-                  void onDeleteAccount(deletePassword).catch((caught: unknown) =>
-                    setError(
-                      caught instanceof Error ? caught.message : 'Не удалось удалить аккаунт',
-                    ),
-                  );
-                }}
-              >
-                Удалить навсегда
+            {securityMessage ? <small className="inline-success">{securityMessage}</small> : null}
+          </section>
+
+          <section className="profile-zone profile-account-actions-zone">
+            <header className="profile-zone-heading">
+              <span className="profile-zone-icon">
+                <LogOut />
+              </span>
+              <span>
+                <small>ДЕЙСТВИЯ</small>
+                <h3>Управление аккаунтом</h3>
+              </span>
+            </header>
+            <div className="profile-account-actions-grid">
+              <button className="secondary" onClick={onAccountLogout}>
+                <LogOut />{' '}
+                <span>
+                  <strong>Выйти из аккаунта</strong>
+                  <small>Завершить текущий сеанс</small>
+                </span>
               </button>
-            </details>
-          </div>
-        </section>
+              <details className="danger-zone profile-accordion">
+                <summary>
+                  <span>
+                    <strong>Удалить аккаунт</strong>
+                    <small>Безвозвратно удалить личные данные</small>
+                  </span>
+                  <ChevronDown />
+                </summary>
+                <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  placeholder="Текущий пароль"
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                />
+                <input
+                  value={deleteConfirmation}
+                  placeholder="Введите УДАЛИТЬ"
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                />
+                <button
+                  className="danger"
+                  disabled={!deletePassword || deleteConfirmation !== 'УДАЛИТЬ'}
+                  onClick={() => {
+                    onDraftError('');
+                    void onDeleteAccount(deletePassword).catch((caught: unknown) =>
+                      onDraftError(
+                        caught instanceof Error ? caught.message : 'Не удалось удалить аккаунт',
+                      ),
+                    );
+                  }}
+                >
+                  Удалить навсегда
+                </button>
+              </details>
+            </div>
+          </section>
+          {saveError ? (
+            <div className="profile-save-error" role="alert">
+              {saveError}
+            </div>
+          ) : null}
+        </div>
       </div>
-      <footer className="profile-sticky-actions">
+      <footer className="profile-sticky-actions single-action">
+        <span>
+          {profileIdentityChanged && remaining === 0
+            ? 'Лимит изменений профиля исчерпан'
+            : 'Все изменения применяются одновременно'}
+        </span>
         <button
-          className="secondary profile-save"
-          disabled={!changed || !usernameValid || remaining === 0 || busy}
-          onClick={() => void save()}
+          className="primary profile-done"
+          disabled={isSaving || !usernameValid || (profileIdentityChanged && remaining === 0)}
+          onClick={onDone}
         >
-          <Save size={16} /> {busy ? 'Сохраняем…' : 'Сохранить профиль'}
-        </button>
-        <button className="primary profile-done" onClick={onDone}>
-          Готово
+          {isSaving ? 'Сохраняем…' : 'Готово'}
         </button>
       </footer>
     </div>
