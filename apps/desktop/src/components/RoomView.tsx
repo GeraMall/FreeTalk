@@ -38,7 +38,6 @@ import {
 import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
-import { toggleMediaFullscreen, toggleWindowFullscreen } from '../lib/fullscreen';
 import { RoomChatPanel } from './RoomChatPanel';
 import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
@@ -241,20 +240,6 @@ export function RoomView({
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
 
   useEffect(() => {
-    const sync = () => {
-      const fullscreenElement = document.fullscreenElement;
-      setCallFullscreen(fullscreenElement === roomShellRef.current);
-      setFullscreenCameraId(
-        fullscreenElement instanceof HTMLElement
-          ? fullscreenElement.dataset.cameraParticipantId
-          : undefined,
-      );
-    };
-    document.addEventListener('fullscreenchange', sync);
-    return () => document.removeEventListener('fullscreenchange', sync);
-  }, []);
-
-  useEffect(() => {
     callDetachedRef.current = callDetached;
     document.documentElement.classList.toggle('call-popout-active', callDetached);
     return () => document.documentElement.classList.remove('call-popout-active');
@@ -275,15 +260,10 @@ export function RoomView({
     };
   }, []);
 
-  const toggleCallFullscreen = async () => {
-    const active = await toggleWindowFullscreen().catch(() => false);
-    setCallFullscreen(active);
-  };
+  const toggleCallFullscreen = () => setCallFullscreen((active) => !active);
 
-  const toggleCameraFullscreen = async (participantId: string, element: HTMLElement) => {
-    const mode = await toggleMediaFullscreen(element).catch(() => 'none' as const);
-    setFullscreenCameraId(mode === 'none' ? undefined : participantId);
-  };
+  const toggleCameraFullscreen = (participantId: string) =>
+    setFullscreenCameraId((active) => (active === participantId ? undefined : participantId));
 
   const toggleCallPopout = async () => {
     const nextDetached = !callDetached;
@@ -330,7 +310,7 @@ export function RoomView({
           if (!showCamera) return;
           const target = event.target;
           if (target instanceof Element && target.closest('button, input, label')) return;
-          void toggleCameraFullscreen(participant.id, event.currentTarget);
+          toggleCameraFullscreen(participant.id);
         }}
       >
         {!showCamera && participant.avatar && settings.participantCardStyle === 'avatar-glass' && (
@@ -559,7 +539,7 @@ export function RoomView({
             callFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть звонок во весь экран'
           }
           data-tooltip={callFullscreen ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим'}
-          onClick={() => void toggleCallFullscreen()}
+          onClick={toggleCallFullscreen}
         >
           {callFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
         </button>
@@ -574,7 +554,15 @@ export function RoomView({
               presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
             }
             title={presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'}
-            onClick={() => setPresentationParticipantsVisible((visible) => !visible)}
+            onMouseDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              setPresentationParticipantsVisible((visible) => !visible);
+            }}
+            onClick={(event) => {
+              if (event.detail !== 0) return;
+              setPresentationParticipantsVisible((visible) => !visible);
+            }}
           >
             <Users size={19} />
             {presentationParticipantsVisible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -1228,17 +1216,7 @@ function ScreenShareStage({
     };
   }, [aspectRatio]);
 
-  useEffect(() => {
-    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
-    document.addEventListener('fullscreenchange', sync);
-    return () => document.removeEventListener('fullscreenchange', sync);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    if (!stageRef.current) return;
-    const mode = await toggleMediaFullscreen(stageRef.current).catch(() => 'none' as const);
-    setFullscreen(mode !== 'none');
-  };
+  const toggleFullscreen = () => setFullscreen((active) => !active);
 
   return (
     <div className="presentation-stage-slot" ref={slotRef}>
@@ -1273,7 +1251,7 @@ function ScreenShareStage({
           onClick={(event) => {
             const target = event.target;
             if (target instanceof Element && target.closest('.screen-stage-volume')) return;
-            void toggleFullscreen();
+            toggleFullscreen();
           }}
         >
           <ParticipantVideo

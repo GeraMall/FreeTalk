@@ -1577,11 +1577,11 @@ input[type='range']:hover::-webkit-slider-thumb {
 .participant-card.camera-tile:fullscreen,
 .participant-card.camera-tile.camera-tile-window-fullscreen {
   position: fixed;
-  z-index: 100;
+  z-index: 1000;
   inset: 0;
   box-sizing: border-box;
-  width: auto;
-  height: auto;
+  width: 100vw;
+  height: 100vh;
   min-width: 0;
   min-height: 0;
   max-width: none;
@@ -2097,11 +2097,11 @@ input[type='range']:hover::-webkit-slider-thumb {
 .screen-stage:fullscreen,
 .screen-stage.screen-stage-window-fullscreen {
   position: fixed;
-  z-index: 100;
+  z-index: 1000;
   inset: 0;
   box-sizing: border-box;
-  width: auto;
-  height: auto;
+  width: 100vw;
+  height: 100vh;
   min-width: 0;
   min-height: 0;
   max-height: none;
@@ -2115,11 +2115,11 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .screen-stage-shell.media-fullscreen-shell {
   position: fixed;
-  z-index: 100;
+  z-index: 1000;
   inset: 0;
   box-sizing: border-box;
-  width: auto !important;
-  height: auto !important;
+  width: 100vw !important;
+  height: 100vh !important;
   min-width: 0;
   min-height: 0;
   padding: 0;
@@ -3647,10 +3647,11 @@ input[type='range']:hover::-webkit-slider-thumb {
 .room-shell.call-fullscreen,
 .room-shell:fullscreen {
   position: fixed;
+  z-index: 1000;
   inset: 0;
   box-sizing: border-box;
-  width: auto;
-  height: auto;
+  width: 100vw;
+  height: 100vh;
   min-width: 0;
   min-height: 0;
   margin: 0;

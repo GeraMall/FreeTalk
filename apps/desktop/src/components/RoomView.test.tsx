@@ -13,27 +13,13 @@ const participants: Participant[] = [
   { id: peerId, name: 'Друг', muted: false, isOwner: false, connectedAt: 2 },
 ];
 const stream = {} as MediaStream;
-const {
-  invokeMock,
-  listenMock,
-  toggleMediaFullscreenMock,
-  toggleWindowFullscreenMock,
-  leaveWindowFullscreenMock,
-} = vi.hoisted(() => ({
+const { invokeMock, listenMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   listenMock: vi.fn(),
-  toggleMediaFullscreenMock: vi.fn(),
-  toggleWindowFullscreenMock: vi.fn(),
-  leaveWindowFullscreenMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
-vi.mock('../lib/fullscreen', () => ({
-  toggleMediaFullscreen: toggleMediaFullscreenMock,
-  toggleWindowFullscreen: toggleWindowFullscreenMock,
-  leaveWindowFullscreen: leaveWindowFullscreenMock,
-}));
 
 beforeAll(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'play', {
@@ -49,9 +35,6 @@ afterEach(() => {
 beforeEach(() => {
   invokeMock.mockReset().mockResolvedValue(undefined);
   listenMock.mockReset().mockResolvedValue(vi.fn());
-  toggleMediaFullscreenMock.mockReset().mockResolvedValue('none');
-  toggleWindowFullscreenMock.mockReset().mockResolvedValue(false);
-  leaveWindowFullscreenMock.mockReset().mockResolvedValue(undefined);
   const previewTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -296,20 +279,15 @@ describe('RoomView media layouts', () => {
     }
   });
 
-  it('uses native window fullscreen for the whole call', async () => {
-    toggleWindowFullscreenMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  it('uses an isolated viewport layer for the whole call', async () => {
     const { container, getByRole } = render(view());
 
     fireEvent.click(getByRole('button', { name: 'Открыть звонок во весь экран' }));
     await waitFor(() =>
       expect(container.querySelector('.room-shell.call-fullscreen')).not.toBeNull(),
     );
-    expect(toggleWindowFullscreenMock).toHaveBeenCalledTimes(1);
-    expect(toggleMediaFullscreenMock).not.toHaveBeenCalled();
-
     fireEvent.click(getByRole('button', { name: 'Выйти из полноэкранного режима' }));
     await waitFor(() => expect(container.querySelector('.room-shell.call-fullscreen')).toBeNull());
-    expect(toggleWindowFullscreenMock).toHaveBeenCalledTimes(2);
   });
 
   it('moves the active call to a native window and can restore it', async () => {
@@ -497,9 +475,9 @@ describe('RoomView media layouts', () => {
     expect(queryByRole('button', { name: 'Раскрыть демонстрацию экрана Друг' })).toBeNull();
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
     const participantToggle = getByRole('button', { name: 'Скрыть участников' });
-    fireEvent.click(participantToggle.querySelector('svg')!);
+    fireEvent.mouseDown(participantToggle.querySelector('svg')!, { button: 0 });
     expect(container.querySelector('.presentation-participants.collapsed')).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: 'Показать участников' }));
+    fireEvent.mouseDown(getByRole('button', { name: 'Показать участников' }), { button: 0 });
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
     expect(
       container.querySelector('.room-shell > .room-session-meta .room-security'),
@@ -515,7 +493,6 @@ describe('RoomView media layouts', () => {
   });
 
   it('toggles the shared screen fullscreen by clicking the stage', async () => {
-    toggleMediaFullscreenMock.mockResolvedValueOnce('element').mockResolvedValueOnce('none');
     const { getByLabelText } = render(view('none', { [peerId]: { screen: stream } }));
     const screen = getByLabelText('Экран Друг');
     const stage = screen.closest('.screen-stage');
@@ -526,8 +503,6 @@ describe('RoomView media layouts', () => {
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),
     );
     expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
-    expect(toggleMediaFullscreenMock).toHaveBeenLastCalledWith(stage);
-
     fireEvent.click(screen);
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false),
@@ -555,7 +530,6 @@ describe('RoomView media layouts', () => {
   });
 
   it('opens and closes a camera by clicking its tile without overlay buttons', async () => {
-    toggleMediaFullscreenMock.mockResolvedValueOnce('element').mockResolvedValueOnce('none');
     const { container, getByLabelText } = render(view('screen', { [peerId]: { camera: stream } }));
     const compactCamera = container.querySelector('.participant-strip .compact-tile.camera-tile');
     expect(compactCamera).not.toBeNull();
@@ -566,8 +540,6 @@ describe('RoomView media layouts', () => {
     await waitFor(() =>
       expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(true),
     );
-    expect(toggleMediaFullscreenMock).toHaveBeenLastCalledWith(compactCamera);
-
     fireEvent.click(getByLabelText('Камера Друг'));
     await waitFor(() =>
       expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(false),
