@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PeopleOutline
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VideocamOff
@@ -82,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -220,6 +223,9 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     var roomStatus by remember { mutableStateOf("") }
     var roomId by remember { mutableStateOf<String?>(null) }
     var activeChat by remember { mutableStateOf<ChatSummary?>(null) }
+    var incomingCall by remember { mutableStateOf<IncomingCall?>(null) }
+    var incomingCallBusy by remember { mutableStateOf(false) }
+    var pendingCallInvitees by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val load: () -> Unit = {
@@ -237,7 +243,22 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             mainHandler.post {
                 when (event) {
                     RoomEvent.Connected -> roomStatus = "Сигналинг подключён"
-                    is RoomEvent.Created -> { roomId = event.roomId; roomStatus = "Комната создана" }
+                    is RoomEvent.Created -> {
+                        roomId = event.roomId
+                        roomStatus = "Комната создана"
+                        val invitees = pendingCallInvitees
+                        pendingCallInvitees = emptyList()
+                        if (invitees.isNotEmpty()) scope.launch {
+                            var lastFailure: Throwable? = null
+                            repeat(3) { attempt ->
+                                delay(350L + attempt * 450L)
+                                val result = runCatching { api.inviteToCall(event.roomId, invitees) }
+                                if (result.isSuccess) return@launch
+                                lastFailure = result.exceptionOrNull()
+                            }
+                            error = lastFailure?.message ?: "Не удалось позвонить участникам чата"
+                        }
+                    }
                     is RoomEvent.Error -> roomStatus = event.message
                     RoomEvent.Disconnected -> {
                         roomId = null
@@ -282,6 +303,18 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 when (event.optString("type")) {
                     "message-created" -> { notifications.show(event, user.id, latestChat); latestLoad() }
                     "ready", "chat-updated", "history-cleared" -> latestLoad()
+                    "incoming-call" -> {
+                        val inviter = event.optJSONObject("inviter") ?: org.json.JSONObject()
+                        incomingCall = IncomingCall(
+                            invitationId = event.optString("invitationId"),
+                            roomId = event.optString("roomId"),
+                            inviterId = inviter.optString("id"),
+                            inviterName = inviter.optString("displayName", "Входящий звонок"),
+                            inviterAvatarUrl = inviter.optString("avatarUrl").takeIf { it.isNotBlank() },
+                            expiresAt = event.optString("expiresAt"),
+                        )
+                    }
+                    "call-invitation-resolved" -> if (event.optString("invitationId") == incomingCall?.invitationId) incomingCall = null
                 }
             }
         }
@@ -311,11 +344,58 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 load()
             },
         )
+        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
+            incomingCallBusy = true
+            scope.launch {
+                runCatching { api.respondToCall(call.invitationId, "accept") }
+                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
+                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
+                incomingCallBusy = false
+            }
+        }, onDecline = {
+            incomingCallBusy = true
+            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
+        }) }
         return
     }
 
     if (activeChat != null) {
-        NativeChatScreen(api, cache, user, activeChat!!, onBack = { activeChat = null }, onChanged = load)
+        val chat = activeChat!!
+        NativeChatScreen(
+            api, cache, user, chat,
+            onBack = { activeChat = null },
+            onChanged = load,
+            onStartCall = {
+                scope.launch {
+                    roomStatus = "Открываем звонок…"
+                    runCatching { api.activeCall(chat.id) }.onSuccess { active ->
+                        if (active != null) api.accessToken?.let { signaling.join(active.roomId, user, it) }
+                        else {
+                            val code = generateRoomCode()
+                            runCatching { api.startChatCall(chat.id, code) }
+                                .onSuccess {
+                                    pendingCallInvitees = chat.members.map { it.id }.filter { it != user.id }
+                                    api.accessToken?.let { signaling.create(code, user, it) }
+                                }
+                                .onFailure { error = it.message ?: "Не удалось начать звонок" }
+                        }
+                    }.onFailure { error = it.message ?: "Не удалось проверить звонок" }
+                }
+            },
+            onJoinCall = { code -> roomStatus = "Подключаемся…"; api.accessToken?.let { signaling.join(code, user, it) } },
+        )
+        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
+            incomingCallBusy = true
+            scope.launch {
+                runCatching { api.respondToCall(call.invitationId, "accept") }
+                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
+                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
+                incomingCallBusy = false
+            }
+        }, onDecline = {
+            incomingCallBusy = true
+            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
+        }) }
         return
     }
 
@@ -364,11 +444,46 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                     },
                 )
                 page == 1 -> ChatsPage(user, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load)
-                page == 2 -> FriendsPage(data?.friends.orEmpty(), data?.pendingFriends ?: 0, load)
+                page == 2 -> FriendsPage(api, user, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load)
                 else -> HistoryPage(data?.calls.orEmpty(), data?.devices.orEmpty(), cache)
             }
         }
     }
+    incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
+        incomingCallBusy = true
+        scope.launch {
+            runCatching { api.respondToCall(call.invitationId, "accept") }
+                .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
+                .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
+            incomingCallBusy = false
+        }
+    }, onDecline = {
+        incomingCallBusy = true
+        scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
+    }) }
+}
+
+@Composable
+private fun IncomingCallDialog(call: IncomingCall, busy: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {},
+        containerColor = Color(0xFF071827),
+        title = { Text("Входящий звонок") },
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                    if (call.inviterAvatarUrl != null) AsyncImage(call.inviterAvatarUrl, call.inviterName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    else Text(call.inviterName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.padding(start = 14.dp)) {
+                    Text(call.inviterName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("приглашает вас в разговор", color = muted, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onAccept, enabled = !busy) { Text("Принять") } },
+        dismissButton = { OutlinedButton(onClick = onDecline, enabled = !busy) { Text("Отклонить") } },
+    )
 }
 
 
@@ -586,13 +701,49 @@ private fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: 
 }
 
 @Composable
-private fun FriendsPage(friends: List<FriendSummary>, pending: Int, onRefresh: () -> Unit) {
+private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<FriendSummary>, pending: List<FriendRequestSummary>, onRefresh: () -> Unit) {
+    var username by remember { mutableStateOf("") }
+    var busyId by remember { mutableStateOf<String?>(null) }
+    var feedback by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val incoming = pending.filter { it.recipientId == user.id }
     Column {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Друзья", fontSize = 26.sp, fontWeight = FontWeight.Bold); if (pending > 0) Text("Новых запросов: $pending", color = colors.primary) }
+            Column(Modifier.weight(1f)) { Text("Друзья", fontSize = 26.sp, fontWeight = FontWeight.Bold); if (incoming.isNotEmpty()) Text("Новых запросов: ${incoming.size}", color = colors.primary) }
             TextButton(onClick = onRefresh) { Text("Обновить") }
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(username, { username = it.take(32) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("Ник пользователя") }, prefix = { Text("@") })
+            Button(onClick = {
+                val value = username
+                busyId = "send"
+                scope.launch {
+                    runCatching { api.sendFriendRequest(value) }.onSuccess { feedback = "Заявка отправлена"; username = ""; onRefresh() }.onFailure { feedback = it.message ?: "Не удалось отправить заявку" }
+                    busyId = null
+                }
+            }, enabled = username.isNotBlank() && busyId == null, modifier = Modifier.padding(start = 8.dp)) { Icon(Icons.Outlined.PersonAdd, null) }
+        }
+        if (feedback.isNotBlank()) Text(feedback, color = colors.primary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
+            if (incoming.isNotEmpty()) item { SectionTitle("Входящие заявки") }
+            items(incoming, key = { "request:${it.id}" }) { request ->
+                Surface(Modifier.fillMaxWidth(), color = Color(0xFF071827), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF174052))) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                                if (request.avatarUrl != null) AsyncImage(request.avatarUrl, request.displayName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                else Text(request.displayName.take(1).uppercase(), color = colors.primary)
+                            }
+                            Column(Modifier.padding(start = 12.dp)) { Text(request.displayName, fontWeight = FontWeight.Bold); Text("@${request.username}", color = muted, fontSize = 12.sp) }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "accept") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { Text("Принять") }
+                            OutlinedButton(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "decline") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { Text("Отклонить") }
+                        }
+                    }
+                }
+            }
+            item { SectionTitle("Ваши друзья") }
             if (friends.isEmpty()) item { EmptyState("Список пуст", "Добавленные друзья появятся здесь") }
             items(friends, key = { it.id }) { friend ->
                 val online = friend.presence != "offline"

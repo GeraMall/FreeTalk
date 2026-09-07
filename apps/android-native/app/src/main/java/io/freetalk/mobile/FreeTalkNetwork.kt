@@ -41,6 +41,31 @@ data class ChatSummary(
         ?: "Чат"
 }
 data class FriendSummary(val id: String, val username: String, val displayName: String, val avatarUrl: String?, val presence: String)
+data class FriendRequestSummary(
+    val id: String,
+    val senderId: String,
+    val recipientId: String,
+    val profileId: String,
+    val username: String,
+    val displayName: String,
+    val avatarUrl: String?,
+    val presence: String,
+)
+data class ActiveCall(
+    val roomId: String,
+    val chatId: String?,
+    val title: String,
+    val memberIds: List<String>,
+    val participants: List<CallParticipant>,
+)
+data class IncomingCall(
+    val invitationId: String,
+    val roomId: String,
+    val inviterId: String,
+    val inviterName: String,
+    val inviterAvatarUrl: String?,
+    val expiresAt: String,
+)
 data class CallParticipant(val userId: String?, val displayName: String, val avatarUrl: String?)
 data class CallSummary(
     val id: String,
@@ -58,7 +83,7 @@ data class AccountDevice(val id: String, val current: Boolean, val userAgent: St
 data class AccountData(
     val chats: List<ChatSummary>,
     val friends: List<FriendSummary>,
-    val pendingFriends: Int,
+    val pendingFriends: List<FriendRequestSummary>,
     val calls: List<CallSummary>,
     val devices: List<AccountDevice>,
 )
@@ -126,7 +151,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
         AccountData(
             chats = chatsJson.objects().map(::parseChat),
             friends = (friendsJson.optJSONArray("friends") ?: JSONArray()).objects().map(::parseFriend),
-            pendingFriends = friendsJson.optJSONArray("pending")?.length() ?: 0,
+            pendingFriends = (friendsJson.optJSONArray("pending") ?: JSONArray()).objects().map(::parseFriendRequest),
             calls = historyJson.objects().map(::parseCall),
             devices = devicesJson.objects().map {
                 AccountDevice(it.optString("id"), it.optBoolean("current"), it.optString("userAgent", "Android"), it.optString("lastActiveAt"))
@@ -147,6 +172,35 @@ class FreeTalkApi(private val sessions: SessionStore) {
     suspend fun inviteFriend(friendId: String, link: String) {
         val chat = authorizedJson("/v1/chats", "POST", JSONObject().put("type", "direct").put("memberIds", JSONArray().put(friendId))).getJSONObject("chat")
         sendMessage(chat.getString("id"), link)
+    }
+
+    suspend fun sendFriendRequest(username: String) {
+        authorizedJson("/v1/friends/requests", "POST", JSONObject().put("username", username.trim().removePrefix("@").lowercase()))
+    }
+
+    suspend fun respondFriendRequest(requestId: String, action: String) {
+        require(action == "accept" || action == "decline")
+        authorizedJson("/v1/friends/requests/$requestId/$action", "POST", JSONObject())
+    }
+
+    suspend fun activeCall(chatId: String): ActiveCall? =
+        authorizedJson("/v1/chats/$chatId/active-call").optJSONObject("call")?.let(::parseActiveCall)
+
+    suspend fun startChatCall(chatId: String, roomId: String) {
+        authorizedJson("/v1/chats/$chatId/calls", "POST", JSONObject().put("roomId", roomId))
+    }
+
+    suspend fun inviteToCall(roomId: String, userIds: List<String>) {
+        authorizedJson("/v1/calls/$roomId/invitations", "POST", JSONObject().put("userIds", JSONArray(userIds)))
+    }
+
+    suspend fun respondToCall(invitationId: String, action: String): String {
+        require(action == "accept" || action == "decline")
+        return authorizedJson(
+            "/v1/call-invitations/$invitationId/respond",
+            "POST",
+            JSONObject().put("action", action),
+        ).getJSONObject("invitation").getString("roomId")
     }
 
     suspend fun downloadChatImage(messageId: String, full: Boolean): ByteArray = withContext(Dispatchers.IO) {
@@ -248,6 +302,29 @@ class FreeTalkApi(private val sessions: SessionStore) {
         json.optString("id"), json.optString("username"),
         json.optString("displayName", json.optString("display_name")), json.nullableString("avatarUrl"),
         json.optString("presence", "offline"),
+    )
+
+    private fun parseFriendRequest(json: JSONObject) = FriendRequestSummary(
+        id = json.optString("id"),
+        senderId = json.optString("sender_id", json.optString("senderId")),
+        recipientId = json.optString("recipient_id", json.optString("recipientId")),
+        profileId = json.optString("profile_id", json.optString("profileId")),
+        username = json.optString("username"),
+        displayName = json.optString("display_name", json.optString("displayName", "Пользователь")),
+        avatarUrl = json.nullableString("avatarUrl"),
+        presence = json.optString("presence", "offline"),
+    )
+
+    private fun parseActiveCall(json: JSONObject) = ActiveCall(
+        roomId = json.optString("roomId"),
+        chatId = json.nullableString("chatId"),
+        title = json.optString("title", "Звонок FreeTalk"),
+        memberIds = (json.optJSONArray("memberIds") ?: JSONArray()).let { array ->
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+        },
+        participants = (json.optJSONArray("participants") ?: JSONArray()).objects().map {
+            CallParticipant(it.nullableString("userId"), it.optString("displayName", "Участник"), it.nullableString("avatarUrl"))
+        },
     )
 
     private fun parseCall(json: JSONObject) = CallSummary(

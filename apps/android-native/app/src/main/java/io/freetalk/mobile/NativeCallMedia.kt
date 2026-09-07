@@ -45,13 +45,14 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     private val peers = mutableMapOf<String, Peer>()
     private val captures = mutableMapOf<String, Capture>()
     private data class Capture(val capturer: VideoCapturer, val source: VideoSource, val helper: SurfaceTextureHelper, val track: VideoTrack)
+    private data class SenderBinding(val sender: RtpSender, val transceiver: RtpTransceiver)
     private class Peer(val pc: PeerConnection) {
         var ignore = false
         val operations = SdpOperationQueue()
         var negotiationPending = false
         val candidates = mutableListOf<IceCandidate>()
         val channels = mutableListOf<DataChannel>()
-        val senders = mutableMapOf<String, RtpSender>()
+        val senders = mutableMapOf<String, SenderBinding>()
         val remoteTracks = mutableMapOf<String, VideoTrack>()
         var remoteSources: JSONObject? = null
     }
@@ -105,6 +106,9 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                     PeerConnection.IceConnectionState.DISCONNECTED -> "Связь потеряна"
                     else -> "Подключение…"
                 })
+                if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
+                    peers[id]?.let(::publishVideo)
+                }
                 if (state == PeerConnection.IceConnectionState.FAILED) peers[id]?.pc?.restartIce()
             }
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
@@ -122,7 +126,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         }) ?: error("Не удалось создать медиасоединение")
         val peer = Peer(pc); peers[id] = peer
         pc.addTrack(audio, listOf("audio"))
-        captures.forEach { (source, c) -> peer.senders[source] = pc.addTrack(c.track, listOf(source)) }
+        captures.forEach { (source, c) -> peer.senders[source] = addVideoSender(pc, source, c.track) }
         if (signal.room.selfId < id) channel(id, pc.createDataChannel("freetalk-video-state-v1", DataChannel.Init()))
         return peer
     }
@@ -220,7 +224,12 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         p.channels.add(c)
         c.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previous: Long) {}
-            override fun onStateChange() = post { publishVideo(p) }
+            override fun onStateChange() = post {
+                if (c.state() == DataChannel.State.OPEN) {
+                    sendData(c, JSONObject().put("version", 2).put("request", "video-state"))
+                    publishVideo(p)
+                }
+            }
             override fun onMessage(buffer: DataChannel.Buffer) = post {
                 if (buffer.binary) return@post
                 val bytes = ByteArray(buffer.data.remaining()); buffer.data.get(bytes)
@@ -233,20 +242,38 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     private fun refreshRemoteVideo(id: String) {
         val p = peers[id] ?: return
         val sources = p.remoteSources
-        val activeIds = if (sources == null) p.remoteTracks.keys else listOf("camera", "screen").mapNotNull {
-            sources.optJSONObject(it)?.takeIf { source -> source.optBoolean("active") }?.optString("trackId")
-        }.toSet()
-        videos = videos.filterKeys { !it.startsWith("$id:") } + p.remoteTracks.filterKeys { it in activeIds }.mapKeys { "$id:${it.key}" }
+        val mapped = buildMap<String, VideoTrack> {
+            if (sources == null) p.remoteTracks.values.firstOrNull()?.let { put("$id:camera", it) }
+            else listOf("camera", "screen").forEach { sourceName ->
+                val source = sources.optJSONObject(sourceName)
+                val trackId = source?.takeIf { it.optBoolean("active") }?.optString("trackId")
+                if (!trackId.isNullOrBlank()) p.remoteTracks[trackId]?.let { put("$id:$sourceName", it) }
+            }
+        }
+        videos = videos.filterKeys { !it.startsWith("$id:") } + mapped
     }
     private fun publishVideo(p: Peer) {
         val sources = JSONObject()
         listOf("camera", "screen").forEach { source ->
-            val sender = p.senders[source]
-            val mid = p.pc.transceivers.firstOrNull { it.sender.id() == sender?.id() }?.mid
+            val binding = p.senders[source]
+            val mid = binding?.transceiver?.mid
             sources.put(source, JSONObject().put("active", captures.containsKey(source)).put("mid", mid ?: JSONObject.NULL).put("trackId", captures[source]?.track?.id() ?: JSONObject.NULL))
         }
-        val bytes = JSONObject().put("version", 2).put("sources", sources).toString().toByteArray()
-        p.channels.filter { it.state() == DataChannel.State.OPEN }.forEach { it.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false)) }
+        val message = JSONObject().put("version", 2).put("sources", sources)
+        p.channels.filter { it.state() == DataChannel.State.OPEN }.forEach { sendData(it, message) }
+    }
+    private fun sendData(channel: DataChannel, message: JSONObject) {
+        channel.send(DataChannel.Buffer(ByteBuffer.wrap(message.toString().toByteArray(Charsets.UTF_8)), false))
+    }
+    private fun addVideoSender(pc: PeerConnection, source: String, track: VideoTrack): SenderBinding {
+        val transceiver = pc.addTransceiver(
+            track,
+            RtpTransceiver.RtpTransceiverInit(
+                RtpTransceiver.RtpTransceiverDirection.SEND_ONLY,
+                listOf(source),
+            ),
+        )
+        return SenderBinding(transceiver.sender, transceiver)
     }
     fun changeMuted(value: Boolean) { audio.setEnabled(!value); muted = value; signal.send(JSONObject().put("type", "mute-changed").put("muted", value)) }
     fun startCamera() {
@@ -282,12 +309,12 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         catch (e: Exception) { capturer.dispose(); helper.dispose(); track.dispose(); source.dispose(); throw e }
         captures[name] = Capture(capturer, source, helper, track)
         videos = videos + ("self:$name" to track)
-        peers.forEach { (id, p) -> p.senders[name] = p.pc.addTrack(track, listOf(name)); negotiate(id); publishVideo(p) }
+        peers.forEach { (id, p) -> p.senders[name] = addVideoSender(p.pc, name, track); negotiate(id); publishVideo(p) }
     }
     fun stopCapture(name: String) {
         val c = captures.remove(name) ?: return
         videos = videos - "self:$name"
-        peers.forEach { (id, p) -> p.senders.remove(name)?.let { p.pc.removeTrack(it) }; publishVideo(p); negotiate(id) }
+        peers.forEach { (id, p) -> p.senders.remove(name)?.let { p.pc.removeTrack(it.sender) }; publishVideo(p); negotiate(id) }
         runCatching { c.capturer.stopCapture() }; c.capturer.dispose(); c.helper.dispose(); c.track.dispose(); c.source.dispose()
         if (name == "camera") camera = false else sharing = false
     }

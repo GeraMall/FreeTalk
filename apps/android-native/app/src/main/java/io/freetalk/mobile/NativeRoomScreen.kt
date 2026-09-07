@@ -117,31 +117,49 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 }
                 Text("Комната · $roomId", color = secondary, fontSize = 12.sp)
             }
+            media?.videos?.toList()?.filter { it.first.endsWith(":screen") }?.forEach { (key, track) ->
+                item(key = "screen:$key") {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text(if (key == "self:screen") "Вы показываете экран" else "Демонстрация экрана", color = cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Surface(color = Color.Black, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF1E6070))) {
+                            RoomVideo(track, media!!, mirror = false, modifier = Modifier.fillMaxWidth().height(235.dp))
+                        }
+                    }
+                }
+            }
             items(state.peers, key = { it.id }) { peer ->
                 val self = peer.id == state.selfId
                 val off = if (self) media?.muted != false else peer.muted
                 val talking = !off && media?.speaking?.contains(peer.id) == true
+                val cameraTrack = media?.videos?.get(if (self) "self:camera" else "${peer.id}:camera")
                 Surface(color = Color(0xFF061624), shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, if (talking) cyan else Color(0xFF193345))) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.size(if (state.peers.size == 1) 86.dp else 58.dp).clip(CircleShape).background(Color(0xFF10354A)), contentAlignment = Alignment.Center) {
-                            if (peer.avatar != null) AsyncImage(peer.avatar, peer.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            else Text(peer.name.take(1), fontSize = 26.sp)
+                    Column(Modifier.fillMaxWidth()) {
+                        if (cameraTrack != null) {
+                            Box(Modifier.fillMaxWidth().height(if (state.peers.size == 1) 260.dp else 205.dp).clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))) {
+                                RoomVideo(cameraTrack, media!!, mirror = self, modifier = Modifier.fillMaxSize())
+                                Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xB804111D)).padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(peer.name + if (self) " · Вы" else "", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    if (off) Icon(Icons.Outlined.MicOff, null, tint = Color(0xFFFF8096), modifier = Modifier.size(18.dp))
+                                    else if (talking) Text("Говорит", color = cyan, fontSize = 11.sp)
+                                }
+                            }
+                        } else {
+                            Column(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(if (state.peers.size == 1) 86.dp else 62.dp).clip(CircleShape).background(Color(0xFF10354A)), contentAlignment = Alignment.Center) {
+                                    if (peer.avatar != null) AsyncImage(peer.avatar, peer.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    else Text(peer.name.take(1), fontSize = 26.sp)
+                                }
+                                Text(peer.name + if (self) " · Вы" else "", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                            }
                         }
-                        Text(peer.name + if (self) " · Вы" else "", fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                        if (peer.owner) Text("♛ Создатель комнаты", color = cyan, fontSize = 12.sp)
-                        Text(when { off -> "Микрофон выключен"; talking -> "Говорит"; self -> "Слушает"; media?.connections?.get(peer.id) == "Подключён" -> "Слушает"; else -> media?.connections?.get(peer.id) ?: "Подключение…" }, color = if (talking) cyan else secondary, fontSize = 12.sp)
-                        VoiceLevelIndicator(level = if (off) 0f else media?.levels?.get(peer.id) ?: 0f, speaking = talking, modifier = Modifier.padding(top = 8.dp))
-                        val reactions = state.reactions.filter { it.peerId == peer.id && now - it.at < 2850 }
-                        if (reactions.isNotEmpty()) Text(reactions.joinToString(" ") { it.emoji }, fontSize = 26.sp)
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (peer.owner) Text("♛ Создатель комнаты", color = cyan, fontSize = 11.sp)
+                            Text(when { off -> "Микрофон выключен"; talking -> "Говорит"; self -> "Слушает"; media?.connections?.get(peer.id) == "Подключён" -> "Слушает"; else -> media?.connections?.get(peer.id) ?: "Подключение…" }, color = if (talking) cyan else secondary, fontSize = 12.sp)
+                            VoiceLevelIndicator(level = if (off) 0f else media?.levels?.get(peer.id) ?: 0f, speaking = talking, modifier = Modifier.padding(top = 7.dp))
+                            val reactions = state.reactions.filter { it.peerId == peer.id && now - it.at < 2850 }
+                            if (reactions.isNotEmpty()) Text(reactions.joinToString(" ") { it.emoji }, fontSize = 26.sp)
+                        }
                     }
-                }
-            }
-            media?.videos?.toList()?.forEach { (key, track) ->
-                item(key = "video:$key") {
-                    val engine = media!!
-                    Text(if (key == "self:screen") "Ваш экран" else if (key == "self:camera") "Ваша камера" else "Видео участника", color = secondary, fontSize = 12.sp)
-                    AndroidView(factory = { ctx -> SurfaceViewRenderer(ctx).apply { init(engine.egl.eglBaseContext, null); setEnableHardwareScaler(true); track.addSink(this) } },
-                        modifier = Modifier.fillMaxWidth().height(220.dp), onRelease = { runCatching { track.removeSink(it) }; it.release() })
                 }
             }
             item { OutlinedButton(onClick = { sheet = "invite" }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PersonAdd, null); Text("Добавить друзей · ${(8 - state.peers.size).coerceAtLeast(0)} мест") } }
@@ -189,13 +207,14 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                         item { Text("Друзья", color = secondary) }
                         items(friends, key = { "friend:${it.id}" }) { friend ->
                             TextButton(enabled = !pendingInvite, onClick = { pendingInvite = true; scope.launch {
-                                runCatching { api.inviteFriend(friend.id, link) }.onSuccess { feedback = "Приглашение отправлено"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }
+                                runCatching { api.inviteToCall(roomId, listOf(friend.id)) }.onSuccess { feedback = "Приглашение в звонок отправлено"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }
                                 pendingInvite = false
                             } }) { Text(friend.displayName) }
                         }
                         item { Text("Чаты и группы", color = secondary) }
                         items(chats, key = { it.id }) { chat ->
-                        TextButton(enabled = !pendingInvite, onClick = { pendingInvite = true; scope.launch { runCatching { api.sendMessage(chat.id, link) }.onSuccess { feedback = "Приглашение отправлено"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { Text(chat.displayTitle(user.id)) }
+                        val invitees = chat.members.map { it.id }.filter { it != user.id && state.peers.none { peer -> peer.id == it } }
+                        TextButton(enabled = !pendingInvite && invitees.isNotEmpty(), onClick = { pendingInvite = true; scope.launch { runCatching { api.inviteToCall(roomId, invitees) }.onSuccess { feedback = "Участники приглашены"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { Text(chat.displayTitle(user.id)) }
                     } }
                 }
                 "chat" -> {
@@ -203,16 +222,42 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                     val list = rememberLazyListState()
                     LaunchedEffect(state.messages.size) { if (state.messages.isNotEmpty()) list.animateScrollToItem(state.messages.lastIndex) }
                     Text("Чат комнаты", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    LazyColumn(Modifier.heightIn(max = 330.dp), state = list) { items(state.messages, key = { it.id }) { message ->
-                        Column(Modifier.padding(vertical = 6.dp)) { Text(message.name, color = cyan, fontSize = 12.sp); Text(message.text) }
+                    LazyColumn(Modifier.heightIn(max = 360.dp).fillMaxWidth(), state = list, verticalArrangement = Arrangement.spacedBy(8.dp)) { items(state.messages, key = { it.id }) { message ->
+                        val mine = message.name == user.displayName
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+                            Surface(color = if (mine) Color(0xFF0C3347) else Color(0xFF071D2C), shape = RoundedCornerShape(topStart = 17.dp, topEnd = 17.dp, bottomStart = if (mine) 17.dp else 5.dp, bottomEnd = if (mine) 5.dp else 17.dp), border = BorderStroke(1.dp, Color(0xFF1B4657))) {
+                                Column(Modifier.widthIn(max = 285.dp).padding(horizontal = 13.dp, vertical = 9.dp)) {
+                                    if (!mine) Text(message.name, color = cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(message.text)
+                                }
+                            }
+                        }
                     } }
                     if (state.messages.isEmpty()) Text("Пока нет сообщений", color = secondary)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(draft, { if (it.length <= 2000) draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("Сообщение") }, maxLines = 4)
-                        IconButton(enabled = draft.isNotBlank(), onClick = { if (signaling.send(JSONObject().put("type", "room-chat-message").put("id", UUID.randomUUID().toString()).put("text", draft.trim()))) draft = "" else feedback = "Нет соединения" }) { Icon(Icons.AutoMirrored.Outlined.Send, "Отправить") }
+                        OutlinedTextField(draft, { if (it.length <= 2000) draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("Сообщение") }, maxLines = 4, shape = RoundedCornerShape(16.dp))
+                        IconButton(enabled = draft.isNotBlank(), onClick = { if (signaling.send(JSONObject().put("type", "room-chat-message").put("id", UUID.randomUUID().toString()).put("text", draft.trim()))) draft = "" else feedback = "Нет соединения" }, modifier = Modifier.padding(start = 7.dp).background(cyan, RoundedCornerShape(14.dp))) { Icon(Icons.AutoMirrored.Outlined.Send, "Отправить", tint = Color(0xFF02101A)) }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RoomVideo(track: org.webrtc.VideoTrack, engine: NativeCallMedia, mirror: Boolean, modifier: Modifier = Modifier) {
+    key(track.id()) {
+        AndroidView(
+            factory = { ctx ->
+                SurfaceViewRenderer(ctx).apply {
+                    init(engine.egl.eglBaseContext, null)
+                    setEnableHardwareScaler(true)
+                    setMirror(mirror)
+                    track.addSink(this)
+                }
+            },
+            modifier = modifier.background(Color.Black),
+            onRelease = { renderer -> runCatching { track.removeSink(renderer) }; renderer.release() },
+        )
     }
 }

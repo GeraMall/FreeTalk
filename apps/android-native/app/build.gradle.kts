@@ -12,8 +12,8 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.1.0-native-alpha.16"
+        versionCode = 17
+        versionName = "0.2.0-beta-v2"
     }
 
     buildTypes {
