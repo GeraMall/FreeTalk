@@ -1468,10 +1468,14 @@ input[type='range']:hover::-webkit-slider-thumb {
   position: fixed;
   z-index: 100;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
+  min-width: 100dvw;
+  min-height: 100dvh;
   max-width: none;
   max-height: none;
+  padding: 0;
+  margin: 0;
   border: 0;
   border-radius: 0;
   aspect-ratio: auto;
@@ -1480,8 +1484,22 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participant-card.camera-tile:fullscreen .participant-video,
 .participant-card.camera-tile.camera-tile-window-fullscreen .participant-video {
-  width: 100vw;
-  height: 100vh;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.participant-card.camera-tile:fullscreen .participant-video video,
+.participant-card.camera-tile.camera-tile-window-fullscreen .participant-video video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.participant-card.camera-tile:fullscreen .participant-overlay,
+.participant-card.camera-tile.camera-tile-window-fullscreen .participant-overlay {
+  background: none;
+  text-shadow: 0 2px 8px #000, 0 0 2px #000;
 }
 @keyframes media-tile-in {
   from {
@@ -1965,9 +1983,13 @@ input[type='range']:hover::-webkit-slider-thumb {
   position: fixed;
   z-index: 100;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
+  min-width: 100dvw;
+  min-height: 100dvh;
   max-height: none;
+  padding: 0;
+  margin: 0;
   border: 0;
   border-radius: 0;
   background: #02070d;
@@ -1975,8 +1997,17 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .screen-stage:fullscreen .participant-video,
 .screen-stage.screen-stage-window-fullscreen .participant-video {
-  width: 100vw;
-  height: 100vh;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.screen-stage:fullscreen .participant-video video,
+.screen-stage.screen-stage-window-fullscreen .participant-video video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .screen-stage:fullscreen .screen-stage-volume,
 .screen-stage.screen-stage-window-fullscreen .screen-stage-volume {
