@@ -82,6 +82,7 @@ interface RoomViewProps {
   screenFocusMode: boolean;
   signalingState: SignalingState;
   signalStrength?: number;
+  signalPing?: number;
   reconnectAttempt: number;
   settings: LocalSettings;
   inviteCopied: boolean;
@@ -139,6 +140,7 @@ export function RoomView({
   screenFocusMode,
   signalingState,
   signalStrength = 100,
+  signalPing = 0,
   reconnectAttempt,
   settings,
   inviteCopied,
@@ -209,7 +211,7 @@ export function RoomView({
   const revealCallControls = useCallback(() => {
     setCallControlsVisible(true);
     if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
-    callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 2400);
+    callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 1000);
   }, []);
 
   useEffect(
@@ -420,6 +422,7 @@ export function RoomView({
           state={signalingState}
           attempt={reconnectAttempt}
           strength={signalStrength}
+          pingMs={signalPing}
         />
       </div>
 
@@ -1323,17 +1326,22 @@ function ScreenShareStage({
           <span className="screen-stage-creator">
             {presenter.isOwner && <CreatorBadge compact />}
           </span>
-          <span aria-hidden="true" />
+          <button
+            type="button"
+            className="screen-stage-expand"
+            aria-label={
+              fullscreen ? 'Свернуть демонстрацию экрана' : 'Развернуть демонстрацию экрана'
+            }
+            aria-pressed={fullscreen}
+            onClick={toggleFullscreen}
+          >
+            {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
         </div>
         <article
           ref={stageRef}
           className={`screen-stage media-surface ${fullscreen ? 'screen-stage-window-fullscreen' : ''}`}
-          aria-label={`Демонстрация экрана ${presenter.name}. Нажмите для полноэкранного режима`}
-          onClick={(event) => {
-            const target = event.target;
-            if (target instanceof Element && target.closest('.screen-stage-volume')) return;
-            toggleFullscreen();
-          }}
+          aria-label={`Демонстрация экрана ${presenter.name}`}
         >
           <ParticipantVideo
             stream={stream}
@@ -1578,10 +1586,12 @@ function ConnectionStatus({
   state,
   attempt,
   strength,
+  pingMs,
 }: {
   state: SignalingState;
   attempt: number;
   strength: number;
+  pingMs: number;
 }) {
   void attempt;
   const score = state === 'connected' ? Math.max(0, Math.min(100, Math.round(strength))) : 0;
@@ -1608,8 +1618,8 @@ function ConnectionStatus({
   return (
     <span className="connection-pill" data-state={state} data-quality={quality} role="status">
       <i />
+      <b>{state === 'connected' && pingMs > 0 ? `${pingMs} мс` : '—'}</b>
       <span>{label}</span>
-      <b>{score}</b>
     </span>
   );
 }

@@ -20,6 +20,7 @@ export interface CallDockState {
   muted: boolean;
   deafened: boolean;
   strength: number;
+  pingMs?: number;
   title: string;
   camera: boolean;
   screen: boolean;
@@ -59,7 +60,7 @@ export function CallDock({ state }: { state: CallDockState }) {
         <button onClick={state.onOpen} className="sidebar-call-location" title={state.title}>
           <Wifi size={18} />
           <span>
-            <strong>{state.strength ? `Связь · ${state.strength}` : 'Нет соединения'}</strong>
+            <strong>{state.pingMs ? `Пинг · ${state.pingMs} мс` : 'Пинг · —'}</strong>
             <small>{state.title}</small>
           </span>
         </button>

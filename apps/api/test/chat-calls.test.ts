@@ -137,3 +137,22 @@ describe('conversation calls', () => {
     expect(query.mock.calls.some(([sql]) => sql.includes('INSERT INTO chats'))).toBe(false);
   });
 });
+
+describe('direct chat creation', () => {
+  it('creates a direct conversation through the shared race-safe helper', async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM friendships')) return result([{ id: peer }]);
+      if (sql.includes('INSERT INTO chats(type,title,created_by,retention_hours)'))
+        return result([{ id: chat }]);
+      return result();
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/chats',
+      payload: { type: 'direct', memberIds: [peer] },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({ chat: { id: chat }, existing: false });
+    expect(query.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(true);
+  });
+});

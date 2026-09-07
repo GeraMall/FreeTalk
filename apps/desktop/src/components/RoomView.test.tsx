@@ -272,7 +272,9 @@ describe('RoomView media layouts', () => {
       fireEvent.pointerMove(room!);
       expect(room?.classList.contains('call-controls-visible')).toBe(true);
 
-      act(() => vi.advanceTimersByTime(2500));
+      act(() => vi.advanceTimersByTime(999));
+      expect(room?.classList.contains('call-controls-visible')).toBe(true);
+      act(() => vi.advanceTimersByTime(2));
       expect(room?.classList.contains('call-controls-visible')).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -514,18 +516,20 @@ describe('RoomView media layouts', () => {
     expect(onScreenFocusChange).not.toHaveBeenCalled();
   });
 
-  it('toggles the shared screen fullscreen by clicking the stage', async () => {
-    const { getByLabelText } = render(view('none', { [peerId]: { screen: stream } }));
+  it('only toggles the shared screen fullscreen from the explicit control', async () => {
+    const { getByLabelText, getByRole } = render(view('none', { [peerId]: { screen: stream } }));
     const screen = getByLabelText('Экран Друг');
     const stage = screen.closest('.screen-stage');
     const stageShell = screen.closest('.screen-stage-shell');
 
     fireEvent.click(screen);
+    expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false);
+    fireEvent.click(getByRole('button', { name: 'Развернуть демонстрацию экрана' }));
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),
     );
     expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
-    fireEvent.click(screen);
+    fireEvent.click(getByRole('button', { name: 'Свернуть демонстрацию экрана' }));
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false),
     );

@@ -327,7 +327,7 @@ async function ensureDirectChat(client: PoolClient, firstUserId: string, secondU
     await client.query('UPDATE chat_members SET left_at=NULL,joined_at=now() WHERE chat_id=$1', [
       existing.rows[0].id,
     ]);
-    return existing.rows[0].id;
+    return { id: existing.rows[0].id, existing: true };
   }
   const created = await client.query<{ id: string }>(
     `INSERT INTO chats(type,title,created_by,retention_hours)
@@ -340,7 +340,7 @@ async function ensureDirectChat(client: PoolClient, firstUserId: string, secondU
      VALUES($1,$2,'owner',$2),($1,$3,'member',$2)`,
     [chatId, firstUserId, secondUserId],
   );
-  return chatId;
+  return { id: chatId, existing: false };
 }
 
 async function expirePendingCallInvitations() {
@@ -1028,24 +1028,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (blocked.rowCount) return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
     const result = await transaction(async (client) => {
       if (input.type === 'direct') {
-        const directPairKey = [...memberIds].sort().join(':');
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [directPairKey]);
-        const existing = await client.query<{ id: string }>(
-          `SELECT c.id FROM chats c
-           JOIN chat_members a ON a.chat_id=c.id AND a.user_id=$1
-           JOIN chat_members b ON b.chat_id=c.id AND b.user_id=$2
-           WHERE c.type='direct'
-             AND (SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id)=2
-           ORDER BY c.created_at LIMIT 1`,
-          [memberIds[0], memberIds[1]],
-        );
-        if (existing.rows[0]) {
-          await client.query(
-            'UPDATE chat_members SET left_at=NULL,joined_at=now() WHERE chat_id=$1',
-            [existing.rows[0].id],
-          );
-          return { chat: existing.rows[0], existing: true };
-        }
+        const direct = await ensureDirectChat(client, memberIds[0]!, memberIds[1]!);
+        return { chat: { id: direct.id }, existing: direct.existing };
       }
       const created = await client.query<{ id: string }>(
         `INSERT INTO chats(type,title,created_by,retention_hours)
@@ -2152,7 +2136,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         expiresAt: Date;
       }> = [];
       for (const inviteeId of requestedUserIds) {
-        const chatId = targetChatId ?? (await ensureDirectChat(client, user.id, inviteeId));
+        const chatId = targetChatId ?? (await ensureDirectChat(client, user.id, inviteeId)).id;
         const invitation = await client.query<{ id: string; expires_at: Date }>(
           `INSERT INTO call_invitations(call_id,room_id,inviter_id,invitee_id,chat_id,expires_at)
            VALUES($1,$2,$3,$4,$5,now()+interval '30 seconds')

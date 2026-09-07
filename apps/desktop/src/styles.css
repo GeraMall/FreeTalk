@@ -2561,7 +2561,13 @@ input[type='range']:hover::-webkit-slider-thumb {
   gap: 10px;
   height: 100%;
   min-height: 0;
-  animation: media-tile-in 0.2s ease-out;
+  animation: presentation-layout-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes presentation-layout-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(8px);
+  }
 }
 .presentation-stage-grid {
   order: 2;
@@ -2675,6 +2681,29 @@ input[type='range']:hover::-webkit-slider-thumb {
   border-radius: 0;
   background: #02070d;
   box-shadow: none;
+  animation: screen-stage-expand-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes screen-stage-expand-in {
+  from {
+    opacity: 0.65;
+    transform: scale(0.96);
+  }
+}
+.screen-stage-expand {
+  justify-self: end;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(111, 188, 211, 0.24);
+  border-radius: 10px;
+  color: #dffaff;
+  background: rgba(3, 14, 25, 0.64);
+}
+.screen-stage-expand:hover {
+  border-color: rgba(78, 243, 242, 0.5);
+  background: rgba(12, 48, 62, 0.88);
 }
 .screen-stage-shell.media-fullscreen-shell .screen-stage {
   position: absolute;
@@ -17857,6 +17886,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .account-room-workspace.conversation-call-workspace {
   display: grid;
   grid-template-rows: minmax(240px, var(--conversation-call-height, 48%)) 8px minmax(180px, 1fr);
+  transition: grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .conversation-call-workspace > .room-view-slot,
 .conversation-call-workspace > .account-page-slot {
@@ -18030,6 +18060,54 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .conversation-room:not(.call-fullscreen) .presentation-layout {
   min-height: 0;
+}
+.conversation-room:not(.call-fullscreen) .dock-device-arrow,
+.conversation-room:not(.call-fullscreen) .dock-recording-control,
+.conversation-room:not(.call-fullscreen) .reaction-control,
+.conversation-room:not(.call-fullscreen) .room-chat-control,
+.conversation-room:not(.call-fullscreen)
+  .dock-secondary-actions
+  > .dock-control:not(.screen-control),
+.conversation-room:not(.call-fullscreen) .presentation-participants-dock-toggle,
+.conversation-room:not(.call-fullscreen) .call-view-controls {
+  display: none;
+}
+.conversation-room:not(.call-fullscreen) .voice-dock {
+  gap: 8px;
+  min-height: 58px;
+  padding: 7px 9px;
+}
+.conversation-room:not(.call-fullscreen) .dock-island {
+  gap: 6px;
+}
+
+/* Automatic lightweight rendering for low-end laptops and reduced-motion setups. */
+.performance-low .modal-backdrop,
+.performance-low .settings-modal,
+.performance-low .settings-modal * {
+  backdrop-filter: none !important;
+  animation: none !important;
+  transition-duration: 0.01ms !important;
+}
+.performance-low .settings-modal {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+.performance-low .settings-modal .profile-zone {
+  background: #081827;
+  box-shadow: none;
+}
+.performance-low .call-card-designer .call-card-stage {
+  perspective: none;
+  background: rgba(8, 25, 40, 0.72);
+}
+.performance-low .call-card-designer .call-card-tilt.participant-card.audio-tile {
+  transform: none !important;
+  transition: none;
+  will-change: auto;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+.performance-low .call-card-motion-hint {
+  display: none;
 }
 .active-conversation:has(> .chat-call-waiting) {
   grid-template-rows: auto minmax(0, 1fr) auto;

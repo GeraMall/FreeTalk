@@ -26,3 +26,11 @@ export function calculateSignalStrength(samples: TelemetryConnectionSample[]) {
   if (samples.length === 0) return 100;
   return Math.min(...samples.map(sampleScore));
 }
+
+export function calculatePingMs(samples: TelemetryConnectionSample[]) {
+  const values = samples
+    .filter((sample) => sample.connectionState === 'connected')
+    .map((sample) => sample.rttMs)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  return values.length ? Math.max(1, Math.round(Math.max(...values))) : 0;
+}

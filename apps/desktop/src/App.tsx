@@ -57,7 +57,7 @@ import {
 import mascot from './assets/freetalk-mascot.png';
 import { playRecordingStartNotification } from './lib/recording-start-sound';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
-import { calculateSignalStrength } from './lib/network-quality';
+import { calculatePingMs, calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
@@ -157,6 +157,7 @@ export function App() {
   const [inputLevel, setInputLevel] = useState(0);
   const [signalState, setSignalState] = useState<SignalingState>('offline');
   const [signalStrength, setSignalStrength] = useState(100);
+  const [signalPing, setSignalPing] = useState(0);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -395,6 +396,7 @@ export function App() {
     setPeerState({});
     setSignalState('offline');
     setSignalStrength(0);
+    setSignalPing(0);
     setJoining(false);
     setTurnAvailable(false);
     setLocalVideo(NO_LOCAL_VIDEO);
@@ -664,6 +666,7 @@ export function App() {
           const connections = await peers.current?.collectTelemetry();
           if (!connections || !joinedRoom.current) return;
           setSignalStrength(calculateSignalStrength(connections));
+          setSignalPing(calculatePingMs(connections));
           signaling.current?.send({
             type: 'telemetry-report',
             report: {
@@ -677,6 +680,7 @@ export function App() {
             },
           });
         };
+        void reportTelemetry();
         telemetryTimer.current = window.setInterval(() => void reportTelemetry(), 10_000);
         return;
       }
@@ -879,6 +883,7 @@ export function App() {
           if (state === 'reconnecting') awaitingRejoin.current = true;
           setSignalState(state);
           if (state === 'offline' || state === 'reconnecting') setSignalStrength(0);
+          if (state === 'offline' || state === 'reconnecting') setSignalPing(0);
           else if (state === 'connecting') setSignalStrength(55);
           else setSignalStrength((current) => (current === 0 ? 100 : current));
           setReconnectAttempt(attempt ?? 0);
@@ -1537,6 +1542,7 @@ export function App() {
     muted,
     deafened,
     strength: signalState === 'connected' ? signalStrength : 0,
+    pingMs: signalState === 'connected' ? signalPing : 0,
     title:
       callConversation?.type === 'direct'
         ? callConversation.members
@@ -1679,6 +1685,7 @@ export function App() {
       settings={settings}
       signalingState={signalState}
       signalStrength={signalStrength}
+      signalPing={signalPing}
       reconnectAttempt={reconnectAttempt}
       inviteCopied={inviteCopied}
       turnAvailable={turnAvailable}

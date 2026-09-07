@@ -10,6 +10,7 @@ function state(): CallDockState {
     muted: false,
     deafened: false,
     strength: 91,
+    pingMs: 47,
     title: 'Алексей, Мария',
     camera: false,
     screen: false,
@@ -65,7 +66,7 @@ describe('CallDock', () => {
     fireEvent.click(view.getByLabelText('Реакция 👍'));
     expect(props.onReaction).toHaveBeenCalledWith('👍');
     expect(view.queryByLabelText('Реакция 👍')).toBeNull();
-    expect(view.getByText('Связь · 91')).toBeTruthy();
+    expect(view.getByText('Пинг · 47 мс')).toBeTruthy();
   });
   it('selects devices and closes the device menu', () => {
     const props = state();

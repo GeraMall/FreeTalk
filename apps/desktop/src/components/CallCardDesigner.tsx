@@ -17,6 +17,7 @@ export function CallCardDesigner({
   const move = (event: PointerEvent<HTMLDivElement>) => {
     if (
       event.pointerType !== 'mouse' ||
+      document.documentElement.classList.contains('performance-low') ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
     )
       return;

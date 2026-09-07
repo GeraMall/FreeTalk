@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TelemetryConnectionSample } from '@freetalk/protocol';
-import { calculateSignalStrength } from './network-quality';
+import { calculatePingMs, calculateSignalStrength } from './network-quality';
 
 const sample = (
   rttMs: number,
@@ -45,5 +45,15 @@ describe('calculateSignalStrength', () => {
 
   it('uses the weakest peer and reports a disconnected connection as unavailable', () => {
     expect(calculateSignalStrength([sample(40), sample(40, 0, 'disconnected')])).toBe(20);
+  });
+});
+
+describe('calculatePingMs', () => {
+  it('uses the slowest connected peer latency', () => {
+    expect(calculatePingMs([sample(42), sample(118)])).toBe(118);
+  });
+
+  it('ignores disconnected samples', () => {
+    expect(calculatePingMs([sample(700, 0, 'disconnected')])).toBe(0);
   });
 });

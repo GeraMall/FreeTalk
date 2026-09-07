@@ -11,6 +11,13 @@ import './styles.css';
 
 installInteractionGuards();
 
+const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+const lowPerformanceDevice =
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+  navigator.hardwareConcurrency <= 4 ||
+  deviceMemory <= 4;
+document.documentElement.classList.toggle('performance-low', lowPerformanceDevice);
+
 const preview =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('chat-preview');
 const notificationOverlay = new URLSearchParams(window.location.search).has('notification-overlay');

@@ -795,6 +795,22 @@ export function HomeView({
       await loadPage('chats');
       await openChat(result.chat.id);
     } catch (caught) {
+      // If creation raced with an already existing/archived direct chat, recover
+      // the conversation instead of leaving the user behind a generic API error.
+      try {
+        const snapshot = await accountClient.request<{ chats: ChatItem[] }>('/v1/chats');
+        const existing = snapshot.chats.find(
+          (chat) => chat.type === 'direct' && chat.members.some((member) => member.id === friendId),
+        );
+        if (existing) {
+          setChats(snapshot.chats);
+          navigatePage('chats');
+          await openChat(existing.id);
+          return;
+        }
+      } catch {
+        // Preserve the original, more useful creation error below.
+      }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать чат');
     }
   };
