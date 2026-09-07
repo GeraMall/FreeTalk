@@ -1423,6 +1423,10 @@ input[type='range']:hover::-webkit-slider-thumb {
 }
 .participants-grid[data-mode='audio'] {
   grid-template-columns: repeat(3, minmax(230px, 1fr));
+  /* Switching off the final camera changes both the tile and grid mode in one
+     render. Do not interpolate from the wide camera column, otherwise the new
+     audio card flashes across the stage for a fraction of a second. */
+  transition: none;
 }
 .participants-grid[data-mode='audio'][data-count='1'] {
   grid-template-columns: minmax(280px, 420px);
