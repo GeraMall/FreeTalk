@@ -13,10 +13,7 @@ import { AudioManager } from './lib/audio-manager';
 import { connectionDiagnostics } from './lib/connection-diagnostics';
 import { hasTurnServer } from './lib/ice-config';
 import { DEFAULT_INVITE_BASE_URL, roomInviteUrl, subscribeToRoomDeepLinks } from './lib/deep-link';
-import {
-  NotificationSounds,
-  ParticipantNotificationTracker,
-} from './lib/notification-sounds';
+import { NotificationSounds, ParticipantNotificationTracker } from './lib/notification-sounds';
 import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
 import { playMicrophoneToggleSound } from './lib/microphone-sounds';
@@ -60,6 +57,7 @@ import {
 import mascot from './assets/freetalk-mascot.png';
 import recordingStartSound from './assets/recording-start.mp3';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
+import { calculateSignalStrength } from './lib/network-quality';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -160,6 +158,7 @@ export function App() {
   const [localSpeaking, setLocalSpeaking] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [signalState, setSignalState] = useState<SignalingState>('offline');
+  const [signalStrength, setSignalStrength] = useState(100);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -398,6 +397,7 @@ export function App() {
     setPeerState({});
     setMuted(false);
     setSignalState('offline');
+    setSignalStrength(0);
     setJoining(false);
     setTurnAvailable(false);
     setLocalVideo(NO_LOCAL_VIDEO);
@@ -666,6 +666,7 @@ export function App() {
         const reportTelemetry = async () => {
           const connections = await peers.current?.collectTelemetry();
           if (!connections || !joinedRoom.current) return;
+          setSignalStrength(calculateSignalStrength(connections));
           signaling.current?.send({
             type: 'telemetry-report',
             report: {
@@ -876,6 +877,9 @@ export function App() {
         (state, attempt) => {
           if (state === 'reconnecting') awaitingRejoin.current = true;
           setSignalState(state);
+          if (state === 'offline' || state === 'reconnecting') setSignalStrength(0);
+          else if (state === 'connecting') setSignalStrength(55);
+          else setSignalStrength((current) => (current === 0 ? 100 : current));
           setReconnectAttempt(attempt ?? 0);
           if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
           else if (state === 'connected') setNotice('');
@@ -1555,6 +1559,7 @@ export function App() {
       screenFocusMode={screenFocusMode}
       settings={settings}
       signalingState={signalState}
+      signalStrength={signalStrength}
       reconnectAttempt={reconnectAttempt}
       inviteCopied={inviteCopied}
       turnAvailable={turnAvailable}

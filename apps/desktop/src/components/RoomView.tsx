@@ -78,6 +78,7 @@ interface RoomViewProps {
   roomChatMessages: RoomChatMessage[];
   screenFocusMode: boolean;
   signalingState: SignalingState;
+  signalStrength?: number;
   reconnectAttempt: number;
   settings: LocalSettings;
   inviteCopied: boolean;
@@ -130,6 +131,7 @@ export function RoomView({
   roomChatMessages,
   screenFocusMode,
   signalingState,
+  signalStrength = 100,
   reconnectAttempt,
   settings,
   inviteCopied,
@@ -424,7 +426,11 @@ export function RoomView({
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
-        <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
+        <ConnectionStatus
+          state={signalingState}
+          attempt={reconnectAttempt}
+          strength={signalStrength}
+        />
       </div>
 
       <div className="room-session-meta">
@@ -1510,15 +1516,42 @@ function InviteCallout({
   );
 }
 
-function ConnectionStatus({ state, attempt }: { state: SignalingState; attempt: number }) {
+function ConnectionStatus({
+  state,
+  attempt,
+  strength,
+}: {
+  state: SignalingState;
+  attempt: number;
+  strength: number;
+}) {
+  void attempt;
+  const score = state === 'connected' ? Math.max(0, Math.min(100, Math.round(strength))) : 0;
+  const quality =
+    score >= 90
+      ? 'excellent'
+      : score >= 75
+        ? 'good'
+        : score >= 55
+          ? 'normal'
+          : score >= 30
+            ? 'poor'
+            : 'offline';
+  const label =
+    quality === 'excellent'
+      ? 'Сигнал отличный'
+      : quality === 'good'
+        ? 'Сигнал хороший'
+        : quality === 'normal'
+          ? 'Сигнал нормальный'
+          : quality === 'poor'
+            ? 'Сигнал плохой'
+            : 'Нет интернета';
   return (
-    <span className="connection-pill" data-state={state} role="status">
+    <span className="connection-pill" data-state={state} data-quality={quality} role="status">
       <i />
-      {state === 'connected'
-        ? 'Сигналинг подключён'
-        : state === 'reconnecting'
-          ? `Переподключение · ${attempt}`
-          : 'Подключение…'}
+      <span>{label}</span>
+      <b>{score}</b>
     </span>
   );
 }
