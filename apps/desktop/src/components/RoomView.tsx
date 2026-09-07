@@ -1244,7 +1244,7 @@ function ScreenShareStage({
   return (
     <div className="presentation-stage-slot" ref={slotRef}>
       <div
-        className="screen-stage-shell"
+        className={`screen-stage-shell ${fullscreen ? 'media-fullscreen-shell' : ''}`}
         style={
           {
             '--screen-aspect-ratio': aspectRatio,

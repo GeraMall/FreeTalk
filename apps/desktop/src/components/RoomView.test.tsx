@@ -495,17 +495,20 @@ describe('RoomView media layouts', () => {
     const { getByLabelText } = render(view('none', { [peerId]: { screen: stream } }));
     const screen = getByLabelText('Экран Друг');
     const stage = screen.closest('.screen-stage');
+    const stageShell = screen.closest('.screen-stage-shell');
 
     fireEvent.click(screen);
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),
     );
+    expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
     expect(toggleMediaFullscreenMock).toHaveBeenLastCalledWith(stage);
 
     fireEvent.click(screen);
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false),
     );
+    expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(false);
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {
