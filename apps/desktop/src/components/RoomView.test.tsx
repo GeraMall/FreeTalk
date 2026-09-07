@@ -89,6 +89,7 @@ function view(
     onRecordingBannerClose?: () => void;
     viewerId?: string;
     participants?: Participant[];
+    participantCardStyle?: 'classic' | 'avatar-glass';
   } = {},
 ) {
   return (
@@ -119,7 +120,10 @@ function view(
       screenFocusMode={handlers.screenFocusMode ?? false}
       signalingState="connected"
       reconnectAttempt={0}
-      settings={defaultSettings()}
+      settings={{
+        ...defaultSettings(),
+        participantCardStyle: handlers.participantCardStyle ?? 'classic',
+      }}
       inviteCopied={false}
       turnAvailable
       recordingState={handlers.recordingState ?? { phase: 'idle' }}
@@ -162,6 +166,7 @@ describe('RoomView media layouts', () => {
       view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
         viewerId: '44444444-4444-4444-8444-444444444444',
         participants: registeredParticipants,
+        participantCardStyle: 'avatar-glass',
       }),
     );
     expect(audio.container.querySelector('.participant-card.avatar-glass')).toBeTruthy();

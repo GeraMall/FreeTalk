@@ -7,6 +7,7 @@ import {
 export interface LocalSettings extends VideoPreferences {
   displayName: string;
   avatarDataUrl: string;
+  participantCardStyle: 'classic' | 'avatar-glass';
   profileChangeTimestamps: number[];
   inputDeviceId: string;
   outputDeviceId: string;
@@ -46,6 +47,7 @@ const MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION = 'freetalk.migration.mac-screen-au
 const defaults: LocalSettings = {
   displayName: '',
   avatarDataUrl: '',
+  participantCardStyle: 'classic',
   profileChangeTimestamps: [],
   ...DEFAULT_VIDEO_PREFERENCES,
   inputDeviceId: '',
@@ -113,6 +115,8 @@ export function loadSettings(): LocalSettings {
           : video.screenAudioByDefault,
       transmissionMode:
         value.transmissionMode ?? (legacy.pushToTalk ? 'push-to-talk' : 'voice-activation'),
+      participantCardStyle:
+        value.participantCardStyle === 'avatar-glass' ? 'avatar-glass' : 'classic',
       peerVolumes: value.peerVolumes ?? {},
       screenVolumes: value.screenVolumes ?? {},
       mutedPeers: value.mutedPeers ?? {},

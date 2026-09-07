@@ -321,7 +321,7 @@ export function RoomView({
 
     return (
       <article
-        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? `camera-tile media-surface ${fullscreenCameraId === participant.id ? 'camera-tile-window-fullscreen' : ''}` : `audio-tile ${participant.avatar ? 'avatar-glass' : ''}`} ${!showCamera && (!isSelf || canModerate) ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? `camera-tile media-surface ${fullscreenCameraId === participant.id ? 'camera-tile-window-fullscreen' : ''}` : `audio-tile ${participant.avatar && settings.participantCardStyle === 'avatar-glass' ? 'avatar-glass' : ''}`} ${!showCamera && (!isSelf || canModerate) ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
         data-camera-participant-id={showCamera ? participant.id : undefined}
         role="listitem"
         key={participant.id}
@@ -332,7 +332,7 @@ export function RoomView({
           void toggleCameraFullscreen(participant.id, event.currentTarget);
         }}
       >
-        {!showCamera && participant.avatar && (
+        {!showCamera && participant.avatar && settings.participantCardStyle === 'avatar-glass' && (
           <span className="participant-card-ambient" aria-hidden="true">
             <CachedMediaImage src={participant.avatar} alt="" />
           </span>

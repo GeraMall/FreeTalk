@@ -59,7 +59,11 @@ function renderProfile() {
   const view = render(
     <SettingsPanel
       initialTab="profile"
-      settings={{ ...defaultSettings(), displayName: 'Gera' }}
+      settings={{
+        ...defaultSettings(),
+        displayName: 'Gera',
+        avatarDataUrl: 'data:image/png;base64,dGVzdA==',
+      }}
       devices={{ inputs: [], outputs: [], cameras: [] }}
       inputLevel={0}
       appVersion="test"
@@ -90,6 +94,15 @@ function renderProfile() {
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('previews and enables avatar glass card styling from the profile tab', () => {
+    const { container, getByRole, onSetting } = renderProfile();
+
+    expect(container.querySelector('.profile-card-preview')).toBeTruthy();
+    expect(getByRole('radio', { name: /Классическая/ }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(getByRole('radio', { name: /Жидкое стекло/ }));
+    expect(onSetting).toHaveBeenCalledWith({ participantCardStyle: 'avatar-glass' }, false);
+  });
+
   it('keeps save and done together in the dedicated action bar', async () => {
     const { container, getAllByText, getByRole, getByText, onClose, onSaveProfile } =
       renderProfile();

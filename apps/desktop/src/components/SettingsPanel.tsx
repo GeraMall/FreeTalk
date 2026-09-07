@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Crown,
   Download,
   FolderOpen,
   Info,
@@ -348,6 +349,7 @@ export function SettingsPanel({
                   onAccountLogout={onAccountLogout}
                   onDeleteAccount={onDeleteAccount}
                   onChangePassword={onChangePassword}
+                  onSetting={onSetting}
                   onDone={onClose}
                 />
               )}
@@ -474,6 +476,7 @@ function ProfileTab({
   onAccountLogout,
   onDeleteAccount,
   onChangePassword,
+  onSetting,
   onDone,
 }: {
   settings: LocalSettings;
@@ -489,6 +492,7 @@ function ProfileTab({
   onAccountLogout(): void;
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
+  onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
   onDone(): void;
 }) {
   const [draftName, setDraftName] = useState(settings.displayName);
@@ -663,6 +667,75 @@ function ProfileTab({
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+          <div className="profile-card-design">
+            <div className="profile-card-design-heading">
+              <span>
+                <strong>Оформление карточки в звонке</strong>
+                <small>Выберите, как будут выглядеть карточки участников на этом устройстве.</small>
+              </span>
+              <Sparkles aria-hidden="true" />
+            </div>
+            <div
+              className={`profile-card-preview participant-card audio-tile ${settings.participantCardStyle === 'avatar-glass' && cachedDraftAvatar ? 'avatar-glass' : ''}`}
+            >
+              {settings.participantCardStyle === 'avatar-glass' && cachedDraftAvatar && (
+                <span className="participant-card-ambient" aria-hidden="true">
+                  <img src={cachedDraftAvatar} alt="" />
+                </span>
+              )}
+              <div className="participant-card-top media-overlay-top">
+                <span className="creator-badge">
+                  <Crown size={13} /> Создатель комнаты
+                </span>
+              </div>
+              <div className="participant-avatar" data-variant="1">
+                {cachedDraftAvatar ? (
+                  <img src={cachedDraftAvatar} alt="" />
+                ) : (
+                  <span>{draftName.trim().charAt(0).toUpperCase() || '?'}</span>
+                )}
+                <i aria-label="В сети" />
+              </div>
+              <div className="participant-info">
+                <div className="participant-name-row">
+                  <div className="participant-name">
+                    <strong>{draftName.trim() || 'Ваше имя'}</strong>
+                    <span>вы</span>
+                  </div>
+                </div>
+                <div className="participant-status">
+                  <i /> Слушает
+                </div>
+              </div>
+            </div>
+            <div
+              className="profile-card-style-options"
+              role="radiogroup"
+              aria-label="Оформление карточки в звонке"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={settings.participantCardStyle === 'classic'}
+                className={settings.participantCardStyle === 'classic' ? 'active' : ''}
+                onClick={() => onSetting({ participantCardStyle: 'classic' }, false)}
+              >
+                <strong>Классическая</strong>
+                <small>Спокойный фирменный фон FreeTalk</small>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={settings.participantCardStyle === 'avatar-glass'}
+                className={settings.participantCardStyle === 'avatar-glass' ? 'active' : ''}
+                disabled={!cachedDraftAvatar}
+                onClick={() => onSetting({ participantCardStyle: 'avatar-glass' }, false)}
+              >
+                <strong>Жидкое стекло</strong>
+                <small>{cachedDraftAvatar ? 'Оттенки выбранной аватарки' : 'Сначала выберите аватарку'}</small>
+              </button>
             </div>
           </div>
           <div className="profile-cover-editor">
