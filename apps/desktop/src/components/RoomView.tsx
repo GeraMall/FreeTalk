@@ -572,6 +572,7 @@ export function RoomView({
             onClick={() => setPresentationParticipantsVisible((visible) => !visible)}
           >
             <Users size={19} />
+            {presentationParticipantsVisible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         )}
         <div className="dock-island dock-primary-actions">
