@@ -128,7 +128,9 @@ describe('SettingsPanel profile actions', () => {
     const { container, getByRole, onClose, onSaveProfile, onSetting } = renderProfile();
 
     expect(container.querySelector('.profile-card-preview')).toBeTruthy();
-    expect(getByRole('switch', { name: 'Жидкое стекло' }).getAttribute('aria-checked')).toBe('false');
+    expect(getByRole('switch', { name: 'Жидкое стекло' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
     fireEvent.click(getByRole('switch', { name: 'Жидкое стекло' }));
     expect(onSetting).not.toHaveBeenCalled();
 
