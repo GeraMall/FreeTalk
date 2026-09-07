@@ -477,8 +477,15 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.presentation-participants.collapsed')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Показать участников' }));
     expect(container.querySelector('.presentation-participants.visible')).not.toBeNull();
-    expect(container.querySelector('.participants-heading .room-security')).not.toBeNull();
-    expect(container.querySelector('.participants-heading .call-timer')).not.toBeNull();
+    expect(
+      container.querySelector('.room-shell > .room-session-meta .room-security'),
+    ).not.toBeNull();
+    expect(container.querySelector('.room-shell > .room-session-meta .call-timer')).not.toBeNull();
+    expect(
+      container.querySelector('.voice-dock .presentation-participants-dock-toggle'),
+    ).not.toBeNull();
+    expect(container.querySelector('.presentation-participants-toggle')).toBeNull();
+    expect(container.querySelector('.participants-heading h1')?.textContent).toBe('Участники');
     expect(container.querySelector('.room-shell.has-presentation')).not.toBeNull();
     expect(onScreenFocusChange).not.toHaveBeenCalled();
   });
@@ -522,9 +529,7 @@ describe('RoomView media layouts', () => {
 
   it('opens and closes a camera by clicking its tile without overlay buttons', async () => {
     toggleMediaFullscreenMock.mockResolvedValueOnce('element').mockResolvedValueOnce('none');
-    const { container, getByLabelText } = render(
-      view('screen', { [peerId]: { camera: stream } }),
-    );
+    const { container, getByLabelText } = render(view('screen', { [peerId]: { camera: stream } }));
     const compactCamera = container.querySelector('.participant-strip .compact-tile.camera-tile');
     expect(compactCamera).not.toBeNull();
     expect(compactCamera?.querySelector('.video-fullscreen')).toBeNull();

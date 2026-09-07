@@ -427,6 +427,18 @@ export function RoomView({
         <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
       </div>
 
+      <div className="room-session-meta">
+        <span
+          className="room-security"
+          title={turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'}
+        >
+          <ShieldCheck size={14} /> Приватное соединение
+        </span>
+        <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
+          <i /> {elapsed}
+        </span>
+      </div>
+
       {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
           <span>
@@ -439,27 +451,12 @@ export function RoomView({
       <div className="room-body-layout">
         <section className={`room-main room-mode-${roomMode}`}>
           <div className="participants-heading">
-            {!embedded && (
-              <div>
-                <h1>Участники</h1>
-                <p>
-                  {participants.length} из {ROOM_MAX_PARTICIPANTS}
-                </p>
-              </div>
-            )}
-            <span className="room-session-meta">
-              <span
-                className="room-security"
-                title={
-                  turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'
-                }
-              >
-                <ShieldCheck size={14} /> Приватное соединение
-              </span>
-              <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-                <i /> {elapsed}
-              </span>
-            </span>
+            <div>
+              <h1>Участники</h1>
+              <p>
+                {participants.length} из {ROOM_MAX_PARTICIPANTS}
+              </p>
+            </div>
           </div>
 
           {screenPresenter ? (
@@ -480,27 +477,6 @@ export function RoomView({
               <div
                 className={`presentation-participants ${presentationParticipantsVisible ? 'visible' : 'collapsed'}`}
               >
-                <div className="presentation-participants-bar">
-                  <button
-                    className="presentation-participants-toggle"
-                    aria-expanded={presentationParticipantsVisible}
-                    aria-label={
-                      presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
-                    }
-                    title={
-                      presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
-                    }
-                    onClick={() => setPresentationParticipantsVisible((visible) => !visible)}
-                  >
-                    <Users size={16} />
-                    <span>Участники · {participants.length}</span>
-                    {presentationParticipantsVisible ? (
-                      <ChevronUp size={15} />
-                    ) : (
-                      <ChevronDown size={15} />
-                    )}
-                  </button>
-                </div>
                 <div className="participant-strip" role="list" aria-label="Участники комнаты">
                   {ordered.map((participant) => renderParticipant(participant, true))}
                   {openSlots > 0 && (
@@ -585,6 +561,19 @@ export function RoomView({
       </div>
 
       <footer className="voice-dock" aria-label="Управление звонком">
+        {screenPresenter && (
+          <button
+            className={`presentation-participants-dock-toggle ${presentationParticipantsVisible ? 'active' : ''}`}
+            aria-expanded={presentationParticipantsVisible}
+            aria-label={
+              presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
+            }
+            title={presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'}
+            onClick={() => setPresentationParticipantsVisible((visible) => !visible)}
+          >
+            <Users size={19} />
+          </button>
+        )}
         <div className="dock-island dock-primary-actions">
           <div className={`dock-split-control ${muted ? 'device-off' : 'device-on'}`}>
             <button
