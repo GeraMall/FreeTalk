@@ -12,7 +12,6 @@ import {
   ChevronRight,
   ChevronUp,
   CircleDot,
-  Copy,
   Crown,
   LogOut,
   Maximize2,
@@ -23,7 +22,6 @@ import {
   Minimize2,
   MoreHorizontal,
   SmilePlus,
-  Settings,
   ShieldCheck,
   Square,
   UserPlus,
@@ -41,7 +39,6 @@ import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { toggleMediaFullscreen } from '../lib/fullscreen';
-import { BrandLogo } from './BrandLogo';
 import { RoomChatPanel } from './RoomChatPanel';
 import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
@@ -421,75 +418,9 @@ export function RoomView({
       className={`room-shell ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
-      <header className={`room-header ${embedded ? 'room-header-embedded' : ''}`}>
-        {embedded ? (
-          <div className="room-header-participants">
-            <strong>Участники</strong>
-            <small>
-              {participants.length} из {ROOM_MAX_PARTICIPANTS}
-            </small>
-          </div>
-        ) : (
-          <div className="room-wordmark">
-            <BrandLogo variant="compact" />
-          </div>
-        )}
-        <div className="room-identity">
-          <div>
-            <strong>Голосовая комната</strong>
-            <span aria-hidden="true">•</span>
-            <code>{roomId}</code>
-            <button
-              className="inline-icon"
-              aria-label="Скопировать код комнаты"
-              onClick={onCopyInvite}
-            >
-              {inviteCopied ? <Check size={15} /> : <Copy size={15} />}
-            </button>
-          </div>
-          <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
-        </div>
-        <div className="room-header-actions">
-          {self?.isOwner && (
-            <button
-              className={`room-recording-button ${recordingState.phase === 'recording' ? 'active' : ''}`}
-              aria-label={
-                recordingState.phase === 'recording'
-                  ? 'Остановить запись экрана'
-                  : recordingState.phase === 'saving'
-                    ? 'Запись сохраняется'
-                    : 'Начать запись экрана'
-              }
-              disabled={recordingState.phase === 'saving'}
-              onClick={onRecording}
-            >
-              {recordingState.phase === 'recording' ? (
-                <Square size={15} />
-              ) : (
-                <CircleDot size={18} />
-              )}
-              <span>
-                {recordingState.phase === 'recording'
-                  ? 'Остановить'
-                  : recordingState.phase === 'saving'
-                    ? 'Сохранение…'
-                    : 'Запись'}
-              </span>
-            </button>
-          )}
-          <button
-            className="room-settings-button"
-            aria-label="Настройки аудио и устройств"
-            onClick={onSettings}
-          >
-            <Settings size={18} />
-          </button>
-          <button className="invite-button" onClick={onCopyInvite}>
-            {inviteCopied ? <Check size={18} /> : <Copy size={18} />}
-            {inviteCopied ? 'Скопировано' : 'Пригласить'}
-          </button>
-        </div>
-      </header>
+      <div className="room-connection-flyout">
+        <ConnectionStatus state={signalingState} attempt={reconnectAttempt} />
+      </div>
 
       {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
@@ -740,6 +671,31 @@ export function RoomView({
               {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
             </span>
           </button>
+          {self?.isOwner && (
+            <button
+              className={`dock-control dock-control-secondary dock-recording-control ${recordingState.phase === 'recording' ? 'active' : ''}`}
+              aria-label={
+                recordingState.phase === 'recording'
+                  ? 'Остановить запись экрана'
+                  : recordingState.phase === 'saving'
+                    ? 'Запись сохраняется'
+                    : 'Начать запись экрана'
+              }
+              title={
+                recordingState.phase === 'recording'
+                  ? 'Остановить запись'
+                  : recordingState.phase === 'saving'
+                    ? 'Запись сохраняется'
+                    : 'Запись'
+              }
+              disabled={recordingState.phase === 'saving'}
+              onClick={onRecording}
+            >
+              <span className="dock-icon">
+                {recordingState.phase === 'recording' ? <Square /> : <CircleDot />}
+              </span>
+            </button>
+          )}
           <div className="reaction-control">
             <button
               className={`dock-control dock-control-secondary reaction-button ${reactionMenuOpen ? 'active' : ''}`}
@@ -792,8 +748,8 @@ export function RoomView({
           </button>
           <button
             className="dock-control dock-control-secondary"
-            aria-label="Настройки звонка"
-            title="Настройки звонка"
+            aria-label="Настройки аудио и устройств"
+            title="Настройки аудио и устройств"
             onClick={onSettings}
           >
             <span className="dock-icon">
@@ -840,7 +796,10 @@ export function RoomView({
           )}
           participantCount={participants.length}
           capacity={ROOM_MAX_PARTICIPANTS}
+          roomId={roomId}
+          inviteCopied={inviteCopied}
           onClose={() => setFriendsInviteOpen(false)}
+          onCopyInvite={onCopyInvite}
           onInvite={onInviteFriends}
         />
       ) : null}

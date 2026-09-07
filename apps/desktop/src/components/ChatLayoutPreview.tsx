@@ -310,7 +310,10 @@ export function ChatLayoutPreview() {
         participantAccountIds={[friendId]}
         participantCount={5}
         capacity={8}
+        roomId="PREVIEW8"
+        inviteCopied={false}
         onClose={() => {}}
+        onCopyInvite={() => {}}
         onInvite={async () => true}
       />
       {previewIncomingCall ? (

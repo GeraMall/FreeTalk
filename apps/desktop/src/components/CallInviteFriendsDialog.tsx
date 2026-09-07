@@ -1,4 +1,4 @@
-import { Check, Search, UserPlus, Users, X } from 'lucide-react';
+import { Check, Copy, Link2, Search, UserPlus, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PresenceStatus } from '@freetalk/protocol';
@@ -18,7 +18,10 @@ export function CallInviteFriendsDialog({
   participantAccountIds,
   participantCount,
   capacity,
+  roomId,
+  inviteCopied,
   onClose,
+  onCopyInvite,
   onInvite,
 }: {
   open: boolean;
@@ -26,7 +29,10 @@ export function CallInviteFriendsDialog({
   participantAccountIds: string[];
   participantCount: number;
   capacity: number;
+  roomId: string;
+  inviteCopied: boolean;
   onClose(): void;
+  onCopyInvite(): void;
   onInvite(userIds: string[]): Promise<boolean>;
 }) {
   const [search, setSearch] = useState('');
@@ -102,6 +108,20 @@ export function CallInviteFriendsDialog({
             <X />
           </button>
         </header>
+
+        <div className="call-friends-room-link">
+          <span className="call-friends-room-link-icon">
+            <Link2 aria-hidden="true" />
+          </span>
+          <span>
+            <small>Ссылка на голосовую комнату</small>
+            <code>{roomId}</code>
+          </span>
+          <button type="button" onClick={onCopyInvite}>
+            {inviteCopied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+            {inviteCopied ? 'Скопировано' : 'Копировать'}
+          </button>
+        </div>
 
         <label className="call-friends-search">
           <Search aria-hidden="true" />
