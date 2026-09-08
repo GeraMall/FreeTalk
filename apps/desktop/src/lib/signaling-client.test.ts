@@ -121,7 +121,30 @@ describe('SignalingClient', () => {
       socket.sent
         .map((message) => JSON.parse(message) as { type: string })
         .filter((message) => message.type === 'ping'),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
+  });
+
+  it('reports server round-trip latency immediately after connecting', () => {
+    const onLatency = vi.fn();
+    const client = new SignalingClient(
+      'wss://example.test/ws',
+      vi.fn(),
+      vi.fn(),
+      undefined,
+      onLatency,
+    );
+    client.connect(join);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    const ping = socket.sent
+      .map((message) => JSON.parse(message) as { type: string; timestamp: number })
+      .find((message) => message.type === 'ping')!;
+
+    vi.advanceTimersByTime(47);
+    socket.receive({ type: 'pong', timestamp: ping.timestamp });
+
+    expect(ping.type).toBe('ping');
+    expect(onLatency).toHaveBeenCalledWith(47);
   });
 
   it('records native ping confirmation, pong time, and transport close evidence', () => {

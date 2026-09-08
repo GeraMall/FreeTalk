@@ -82,7 +82,6 @@ interface RoomViewProps {
   screenFocusMode: boolean;
   signalingState: SignalingState;
   signalStrength?: number;
-  signalPing?: number;
   reconnectAttempt: number;
   settings: LocalSettings;
   inviteCopied: boolean;
@@ -140,7 +139,6 @@ export function RoomView({
   screenFocusMode,
   signalingState,
   signalStrength = 100,
-  signalPing = 0,
   reconnectAttempt,
   settings,
   inviteCopied,
@@ -414,7 +412,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${conversation ? 'conversation-room' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? 'conversation-room' : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -422,7 +420,6 @@ export function RoomView({
           state={signalingState}
           attempt={reconnectAttempt}
           strength={signalStrength}
-          pingMs={signalPing}
         />
       </div>
 
@@ -549,6 +546,16 @@ export function RoomView({
       </div>
 
       <div className="call-view-controls" aria-label="Режим отображения звонка">
+        {conversation && !conversationHidden && (
+          <button
+            aria-label="Скрыть чат"
+            aria-expanded="true"
+            data-tooltip="Скрыть чат"
+            onClick={onConversationToggle}
+          >
+            <MessageCircle size={19} />
+          </button>
+        )}
         <button
           aria-label={
             callDetached ? 'Вернуть звонок в основное окно' : 'Открыть звонок в отдельном окне'
@@ -738,32 +745,30 @@ export function RoomView({
               </div>
             )}
           </div>
-          <button
-            className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
-            aria-label={
-              conversation
-                ? conversationHidden
+          {(!conversation || conversationHidden) && (
+            <button
+              className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
+              aria-label={
+                conversation
                   ? 'Показать чат'
-                  : 'Скрыть чат'
-                : unreadChatCount > 0
-                  ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
-                  : 'Чат комнаты'
-            }
-            aria-expanded={conversation ? !conversationHidden : chatOpen}
-            title={
-              conversation ? (conversationHidden ? 'Показать чат' : 'Скрыть чат') : 'Чат комнаты'
-            }
-            onClick={conversation ? onConversationToggle : toggleRoomChat}
-          >
-            <span className="dock-icon">
-              <MessageCircle />
-              {unreadChatCount > 0 && (
-                <b className="room-chat-badge" aria-hidden="true">
-                  {unreadChatCount}
-                </b>
-              )}
-            </span>
-          </button>
+                  : unreadChatCount > 0
+                    ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
+                    : 'Чат комнаты'
+              }
+              aria-expanded={conversation ? !conversationHidden : chatOpen}
+              title={conversation ? 'Показать чат' : 'Чат комнаты'}
+              onClick={conversation ? onConversationToggle : toggleRoomChat}
+            >
+              <span className="dock-icon">
+                <MessageCircle />
+                {unreadChatCount > 0 && (
+                  <b className="room-chat-badge" aria-hidden="true">
+                    {unreadChatCount}
+                  </b>
+                )}
+              </span>
+            </button>
+          )}
           <button
             className="dock-control dock-control-secondary"
             aria-label="Настройки аудио и устройств"
@@ -1333,7 +1338,10 @@ function ScreenShareStage({
               fullscreen ? 'Свернуть демонстрацию экрана' : 'Развернуть демонстрацию экрана'
             }
             aria-pressed={fullscreen}
-            onClick={toggleFullscreen}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleFullscreen();
+            }}
           >
             {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
           </button>
@@ -1342,6 +1350,11 @@ function ScreenShareStage({
           ref={stageRef}
           className={`screen-stage media-surface ${fullscreen ? 'screen-stage-window-fullscreen' : ''}`}
           aria-label={`Демонстрация экрана ${presenter.name}`}
+          onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('.screen-stage-volume')) return;
+            toggleFullscreen();
+          }}
         >
           <ParticipantVideo
             stream={stream}
@@ -1586,12 +1599,10 @@ function ConnectionStatus({
   state,
   attempt,
   strength,
-  pingMs,
 }: {
   state: SignalingState;
   attempt: number;
   strength: number;
-  pingMs: number;
 }) {
   void attempt;
   const score = state === 'connected' ? Math.max(0, Math.min(100, Math.round(strength))) : 0;
@@ -1618,7 +1629,6 @@ function ConnectionStatus({
   return (
     <span className="connection-pill" data-state={state} data-quality={quality} role="status">
       <i />
-      <b>{state === 'connected' && pingMs > 0 ? `${pingMs} мс` : '—'}</b>
       <span>{label}</span>
     </span>
   );

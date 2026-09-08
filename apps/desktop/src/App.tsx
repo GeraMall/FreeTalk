@@ -57,7 +57,7 @@ import {
 import mascot from './assets/freetalk-mascot.png';
 import { playRecordingStartNotification } from './lib/recording-start-sound';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
-import { calculatePingMs, calculateSignalStrength } from './lib/network-quality';
+import { calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
@@ -666,7 +666,6 @@ export function App() {
           const connections = await peers.current?.collectTelemetry();
           if (!connections || !joinedRoom.current) return;
           setSignalStrength(calculateSignalStrength(connections));
-          setSignalPing(calculatePingMs(connections));
           signaling.current?.send({
             type: 'telemetry-report',
             report: {
@@ -894,6 +893,7 @@ export function App() {
           }
         },
         options.authToken || !accountUser ? undefined : () => accountClient.realtimeAccessToken(),
+        setSignalPing,
       );
       signaling.current = client;
       client.connect({
@@ -1685,7 +1685,6 @@ export function App() {
       settings={settings}
       signalingState={signalState}
       signalStrength={signalStrength}
-      signalPing={signalPing}
       reconnectAttempt={reconnectAttempt}
       inviteCopied={inviteCopied}
       turnAvailable={turnAvailable}

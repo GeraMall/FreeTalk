@@ -2643,7 +2643,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   border-radius: 0;
   background: #02070d;
   box-shadow: none;
-  cursor: default;
+  cursor: zoom-in;
 }
 .screen-stage:fullscreen,
 .screen-stage.screen-stage-window-fullscreen {
@@ -2662,7 +2662,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   outline: 0;
   border-radius: 0;
   background: #02070d;
-  cursor: default;
+  cursor: zoom-out;
 }
 .screen-stage-shell.media-fullscreen-shell {
   position: fixed;
@@ -2761,6 +2761,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .screen-stage-shell:hover .screen-stage-toolbar,
 .screen-stage-shell:focus-within .screen-stage-toolbar {
   opacity: 1;
+  pointer-events: auto;
   transform: translateY(0);
 }
 .screen-stage-creator {
@@ -17885,7 +17886,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 /* Conversation calls share the existing media surface without remounting it. */
 .account-room-workspace.conversation-call-workspace {
   display: grid;
-  grid-template-rows: minmax(240px, var(--conversation-call-height, 48%)) 8px minmax(180px, 1fr);
+  grid-template-rows: minmax(240px, var(--conversation-call-height, 48%)) 0 minmax(180px, 1fr);
   transition: grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .conversation-call-workspace > .room-view-slot,
@@ -17893,6 +17894,15 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+.conversation-call-workspace > .room-view-slot {
+  grid-row: 1;
+}
+.conversation-call-workspace > .conversation-call-resizer {
+  grid-row: 2;
+}
+.conversation-call-workspace > .account-page-slot {
+  grid-row: 3;
 }
 .room-view-slot {
   position: relative;
@@ -17905,10 +17915,10 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .conversation-call-workspace:has(.room-mode-camera):not(.conversation-hidden),
 .conversation-call-workspace:has(.has-presentation):not(.conversation-hidden) {
-  grid-template-rows: minmax(260px, var(--conversation-call-height, 68%)) 8px minmax(150px, 1fr);
+  grid-template-rows: minmax(260px, var(--conversation-call-height, 68%)) 0 minmax(150px, 1fr);
 }
 .conversation-call-resizer {
-  display: grid;
+  display: none;
   place-items: center;
   cursor: row-resize;
   touch-action: none;
@@ -17924,17 +17934,17 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .conversation-call-resizer:focus-visible span {
   background: #4ef3f2;
 }
-.conversation-room:not(.call-fullscreen) {
+.conversation-call-compact:not(.call-fullscreen) {
   min-height: 0;
   height: 100%;
   overflow: hidden;
 }
-.conversation-room:not(.call-fullscreen) .room-main {
+.conversation-call-compact:not(.call-fullscreen) .room-main {
   min-height: 0;
   height: 100%;
   padding: 0;
 }
-.conversation-room:not(.call-fullscreen) .room-body-layout {
+.conversation-call-compact:not(.call-fullscreen) .room-body-layout {
   position: absolute;
   inset: 0;
   height: 100%;
@@ -17951,10 +17961,10 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   color: #b8e6ed;
   border-radius: 10px;
 }
-.conversation-room:not(.call-fullscreen) .participants-heading {
+.conversation-call-compact:not(.call-fullscreen) .participants-heading {
   display: none;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .participants-grid {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participants-grid {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -17964,24 +17974,24 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   height: 100%;
   padding: 52px 24px 88px;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
   flex: 0 1 min(310px, calc(50% - 8px));
   width: min(310px, calc(50% - 8px));
   max-width: 360px;
   min-height: 165px;
   height: 180px;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .participants-grid {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participants-grid {
   overflow: auto;
   align-content: safe center;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .invite-empty {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .invite-empty {
   display: none;
 }
-.conversation-room:not(.call-fullscreen) .invite-empty {
+.conversation-call-compact:not(.call-fullscreen) .invite-empty {
   display: none;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-camera .participants-grid {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-camera .participants-grid {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17992,14 +18002,14 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   padding: 52px 24px 82px;
   overflow: auto;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-camera .participant-card {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-camera .participant-card {
   flex: 0 1 min(420px, calc(50% - 8px));
   min-height: 0;
   height: min(100%, 240px);
   max-height: 100%;
 }
 .room-account-shell.account-shell-with-chat-sidebar
-  .room-shell.conversation-room:not(.call-fullscreen)
+  .room-shell.conversation-call-compact:not(.call-fullscreen)
   .voice-dock {
   position: absolute;
   left: 50%;
@@ -18025,60 +18035,78 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   grid-column: 1;
   grid-row: 1;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .participants-grid {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participants-grid {
   min-height: 0;
   padding: 52px 24px 88px;
 }
-.conversation-room:not(.call-fullscreen)
+.conversation-call-compact:not(.call-fullscreen)
   .room-mode-audio
   .participant-card.audio-tile
   .participant-avatar {
   width: 58px;
   height: 58px;
 }
-.conversation-room:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
+.conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
   padding: 14px;
   grid-template-rows: 22px minmax(0, 1fr) auto;
 }
-.conversation-room:not(.call-fullscreen) .call-view-controls {
+.conversation-call-compact:not(.call-fullscreen) .call-view-controls {
   position: absolute;
-  bottom: 16px;
+  top: 12px;
   right: 14px;
+  bottom: auto;
+  display: flex;
+  opacity: 1;
 }
-.conversation-room:not(.call-fullscreen) .room-connection-flyout {
+.conversation-call-compact:not(.call-fullscreen) .room-connection-flyout {
   position: absolute;
   left: 50%;
   top: 12px;
   transform: translateX(-50%);
 }
-.conversation-room:not(.call-fullscreen) .room-session-meta {
+.conversation-call-compact:not(.call-fullscreen) .room-session-meta {
   top: 14px;
-  right: 16px;
+  right: auto;
+  left: 16px;
 }
-.conversation-room:not(.call-fullscreen) .room-security {
+.conversation-call-compact:not(.call-fullscreen) .room-security {
   display: none;
 }
-.conversation-room:not(.call-fullscreen) .presentation-layout {
+.conversation-call-compact:not(.call-fullscreen) .presentation-layout {
   min-height: 0;
 }
-.conversation-room:not(.call-fullscreen) .dock-device-arrow,
-.conversation-room:not(.call-fullscreen) .dock-recording-control,
-.conversation-room:not(.call-fullscreen) .reaction-control,
-.conversation-room:not(.call-fullscreen) .room-chat-control,
-.conversation-room:not(.call-fullscreen)
+.conversation-call-compact:not(.call-fullscreen) .dock-device-arrow,
+.conversation-call-compact:not(.call-fullscreen) .dock-recording-control,
+.conversation-call-compact:not(.call-fullscreen) .reaction-control,
+.conversation-call-compact:not(.call-fullscreen) .room-chat-control,
+.conversation-call-compact:not(.call-fullscreen)
   .dock-secondary-actions
   > .dock-control:not(.screen-control),
-.conversation-room:not(.call-fullscreen) .presentation-participants-dock-toggle,
-.conversation-room:not(.call-fullscreen) .call-view-controls {
+.conversation-call-compact:not(.call-fullscreen) .presentation-participants-dock-toggle {
   display: none;
 }
-.conversation-room:not(.call-fullscreen) .voice-dock {
-  gap: 8px;
+.conversation-call-compact:not(.call-fullscreen) .voice-dock {
+  gap: 10px;
   min-height: 58px;
-  padding: 7px 9px;
+  padding: 0;
 }
-.conversation-room:not(.call-fullscreen) .dock-island {
-  gap: 6px;
+.conversation-call-compact:not(.call-fullscreen) .dock-island {
+  display: contents;
+}
+.conversation-call-compact:not(.call-fullscreen) .dock-split-control .dock-control,
+.conversation-call-compact:not(.call-fullscreen) .dock-secondary-actions .screen-control,
+.conversation-call-compact:not(.call-fullscreen) .leave-button {
+  width: 58px;
+  min-width: 58px;
+  min-height: 58px;
+  padding: 0;
+  border: 1px solid rgba(91, 113, 142, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+}
+.conversation-call-compact:not(.call-fullscreen) .dock-secondary-actions .screen-control {
+  color: #f7f9fc;
+  background: #07111e;
 }
 
 /* Automatic lightweight rendering for low-end laptops and reduced-motion setups. */
@@ -18349,12 +18377,12 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 @media (max-height: 640px) {
   .account-room-workspace.conversation-call-workspace {
-    grid-template-rows: minmax(180px, 50%) 8px minmax(100px, 1fr);
+    grid-template-rows: minmax(180px, 50%) 0 minmax(100px, 1fr);
   }
   .account-room-workspace.conversation-call-workspace.conversation-hidden {
     grid-template-rows: minmax(0, 1fr);
   }
-  .conversation-room:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
+  .conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participant-card.audio-tile {
     min-height: 150px;
     height: 150px;
   }

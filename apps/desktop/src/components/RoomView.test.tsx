@@ -80,10 +80,16 @@ function view(
     viewerId?: string;
     participants?: Participant[];
     participantCardStyle?: 'classic' | 'avatar-glass';
+    conversation?: boolean;
+    conversationHidden?: boolean;
+    onConversationToggle?: () => void;
   } = {},
 ) {
   return (
     <RoomView
+      conversation={handlers.conversation}
+      conversationHidden={handlers.conversationHidden}
+      onConversationToggle={handlers.onConversationToggle}
       viewerId={handlers.viewerId}
       roomId="ABCDEF123456"
       selfId={selfId}
@@ -260,6 +266,36 @@ describe('RoomView media layouts', () => {
     expect(container.querySelectorAll('.dock-split-control.device-off')).toHaveLength(1);
     expect(getByRole('button', { name: 'Открыть звонок во весь экран' })).not.toBeNull();
     expect(getByRole('button', { name: 'Открыть звонок в отдельном окне' })).not.toBeNull();
+    expect(container.querySelector('.connection-pill')?.textContent).toContain('Сигнал отличный');
+    expect(container.querySelector('.connection-pill b')).toBeNull();
+  });
+
+  it('uses compact call actions beside chat and restores standard controls when chat is hidden', () => {
+    const onConversationToggle = vi.fn();
+    const compact = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        conversationHidden: false,
+        onConversationToggle,
+      }),
+    );
+    expect(compact.container.querySelector('.conversation-call-compact')).not.toBeNull();
+    expect(compact.container.querySelector('.call-view-controls')?.children).toHaveLength(3);
+    fireEvent.click(compact.getByRole('button', { name: 'Скрыть чат' }));
+    expect(onConversationToggle).toHaveBeenCalledOnce();
+    compact.unmount();
+
+    const expanded = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        conversationHidden: true,
+        onConversationToggle,
+      }),
+    );
+    expect(expanded.container.querySelector('.conversation-call-compact')).toBeNull();
+    expect(expanded.container.querySelector('.conversation-chat-hidden')).not.toBeNull();
+    expect(expanded.container.querySelector('.call-view-controls')?.children).toHaveLength(2);
+    expect(expanded.getByRole('button', { name: 'Показать чат' })).not.toBeNull();
   });
 
   it('starts with call controls hidden and reveals them on pointer movement', () => {
@@ -516,14 +552,20 @@ describe('RoomView media layouts', () => {
     expect(onScreenFocusChange).not.toHaveBeenCalled();
   });
 
-  it('only toggles the shared screen fullscreen from the explicit control', async () => {
+  it('toggles the shared screen from both the familiar surface click and explicit control', async () => {
     const { getByLabelText, getByRole } = render(view('none', { [peerId]: { screen: stream } }));
     const screen = getByLabelText('Экран Друг');
     const stage = screen.closest('.screen-stage');
     const stageShell = screen.closest('.screen-stage-shell');
 
     fireEvent.click(screen);
-    expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false);
+    await waitFor(() =>
+      expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),
+    );
+    fireEvent.click(screen);
+    await waitFor(() =>
+      expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(false),
+    );
     fireEvent.click(getByRole('button', { name: 'Развернуть демонстрацию экрана' }));
     await waitFor(() =>
       expect(stage?.classList.contains('screen-stage-window-fullscreen')).toBe(true),

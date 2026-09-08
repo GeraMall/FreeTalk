@@ -37,6 +37,7 @@ export class SignalingClient {
     private readonly onMessage: (message: ServerMessage) => Promise<void>,
     private readonly onState: (state: SignalingState, attempt?: number) => void,
     private readonly refreshAuthorization?: () => Promise<string | undefined>,
+    private readonly onLatency?: (pingMs: number) => void,
   ) {}
 
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
@@ -156,6 +157,7 @@ export class SignalingClient {
         });
         if (message.type === 'pong') {
           this.lastPongReceivedAt = Date.now();
+          this.onLatency?.(Math.max(1, this.lastPongReceivedAt - message.timestamp));
           connectionDiagnostics.record('signaling-pong:received', undefined, {
             pingTimestamp: message.timestamp,
             receivedAt: new Date(this.lastPongReceivedAt).toISOString(),
@@ -242,7 +244,7 @@ export class SignalingClient {
 
   private startHeartbeat(socket: SignalSocket) {
     if (this.heartbeat) window.clearInterval(this.heartbeat);
-    this.heartbeat = window.setInterval(() => {
+    const ping = () => {
       if (this.socket !== socket) return;
       if (Date.now() - this.lastServerActivity >= SERVER_ACTIVITY_TIMEOUT_MS) {
         connectionDiagnostics.record('signaling-heartbeat:timeout', undefined, {
@@ -259,7 +261,9 @@ export class SignalingClient {
         queuedAt: new Date(timestamp).toISOString(),
       });
       this.send({ type: 'ping', timestamp });
-    }, HEARTBEAT_INTERVAL_MS);
+    };
+    ping();
+    this.heartbeat = window.setInterval(ping, HEARTBEAT_INTERVAL_MS);
   }
 
   private clearTimers() {
