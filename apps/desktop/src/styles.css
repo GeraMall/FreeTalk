@@ -2082,19 +2082,16 @@ input[type='range']:hover::-webkit-slider-thumb {
 .participant-card-decoration {
   position: absolute;
   z-index: 1;
-  right: 2%;
-  bottom: 0;
-  left: 2%;
-  width: 96%;
-  height: 72%;
-  object-fit: contain;
-  object-position: center bottom;
-  opacity: 0.48;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.52;
   pointer-events: none;
   user-select: none;
   filter: saturate(0.88) brightness(0.82);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 34%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 34%, black 100%);
 }
 .participant-card-ambient {
   position: absolute;
@@ -3996,7 +3993,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .dock-split-control .dock-control {
   width: 44px;
   min-width: 44px;
-  border-radius: 11px 5px 5px 11px;
+  border-radius: 11px;
 }
 .voice-dock .dock-icon,
 .voice-dock .dock-control-secondary .dock-icon {

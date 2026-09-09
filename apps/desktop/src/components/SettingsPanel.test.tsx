@@ -121,7 +121,7 @@ describe('SettingsPanel profile actions', () => {
     fireEvent.click(getByRole('button', { name: 'Прослушать звук: Микрофон выключен' }));
     expect(audio).toHaveBeenLastCalledWith('/sounds/microphone-disabled.mp3');
     fireEvent.click(getByRole('button', { name: 'Прослушать звук: Входящий звонок' }));
-    expect(audio).toHaveBeenLastCalledWith('/sounds/incoming-call.mp3');
+    expect(audio).toHaveBeenLastCalledWith('/sounds/incoming-call.wav');
     fireEvent.click(getByRole('switch', { name: 'Микрофон выключен' }));
     expect(onVideoSetting).toHaveBeenCalledWith({ microphoneDisabledSound: false });
   });

@@ -1,6 +1,6 @@
 import type { LocalSettings } from './settings';
 
-export const INCOMING_CALL_RINGTONE_URL = '/sounds/incoming-call.mp3';
+export const INCOMING_CALL_RINGTONE_URL = '/sounds/incoming-call.wav';
 
 type RingtoneSettings = Pick<LocalSettings, 'outputDeviceId' | 'outputVolume'> &
   Partial<Pick<LocalSettings, 'incomingCallSound'>>;

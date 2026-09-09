@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IncomingCallRingtone } from './incoming-call-ringtone';
+import { INCOMING_CALL_RINGTONE_URL, IncomingCallRingtone } from './incoming-call-ringtone';
 
 function audioHarness() {
   return {
@@ -14,6 +14,10 @@ function audioHarness() {
 }
 
 describe('incoming call ringtone', () => {
+  it('uses the bundled custom ringtone', () => {
+    expect(INCOMING_CALL_RINGTONE_URL).toBe('/sounds/incoming-call.wav');
+  });
+
   it('loops on the selected output at the configured volume', async () => {
     const audio = audioHarness();
     const ringtone = new IncomingCallRingtone(() => audio as unknown as HTMLAudioElement);
