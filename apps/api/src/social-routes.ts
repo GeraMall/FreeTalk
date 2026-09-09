@@ -9,6 +9,7 @@ import { randomToken, tokenHash, usernameSchema } from './security.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
 import { verifyRemoteGif } from './remote-gif.js';
+import { resolveLinkPreview } from './link-preview.js';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import {
   ChatSendPacer,
@@ -38,6 +39,57 @@ const callRoomParams = z.object({
 });
 const callInvitationParams = z.object({ invitationId: uuid });
 const CALL_INVITATION_TTL_MS = 30_000;
+const ABANDONED_CONVERSATION_CALL_MS = 8 * 60_000;
+
+async function expireAbandonedConversationCalls(chatId: string) {
+  const messages = await db.query<{
+    id: string;
+    chat_id: string;
+    metadata: Record<string, unknown>;
+  }>(
+    `WITH stale_sessions AS (
+       UPDATE call_sessions session SET ended_at=now()
+       WHERE session.chat_id=$1 AND session.ended_at IS NULL
+         AND session.started_at<=now()-($2::int * interval '1 millisecond')
+         AND GREATEST(
+           session.started_at,
+           COALESCE((
+             SELECT max(recent.left_at) FROM call_participants recent
+             WHERE recent.call_id=session.id
+           ),session.started_at)
+         )<=now()-($2::int * interval '1 millisecond')
+         AND (
+           SELECT count(DISTINCT COALESCE(participant.user_id::text,participant.anonymous_user_id::text))
+           FROM call_participants participant
+           WHERE participant.call_id=session.id AND participant.left_at IS NULL
+         )<=1
+       RETURNING session.id,session.room_id,session.ended_at
+     ), left_participants AS (
+       UPDATE call_participants participant SET left_at=COALESCE(participant.left_at,stale.ended_at)
+       FROM stale_sessions stale WHERE participant.call_id=stale.id
+       RETURNING participant.call_id
+     )
+     UPDATE messages message
+     SET metadata=message.metadata || jsonb_build_object(
+       'ended',true,
+       'endedAt',stale.ended_at
+     )
+     FROM stale_sessions stale
+     WHERE message.kind='call' AND message.metadata->>'roomId'=stale.room_id
+     RETURNING message.id,message.chat_id,message.metadata`,
+    [chatId, ABANDONED_CONVERSATION_CALL_MS],
+  );
+  await Promise.all(
+    messages.rows.map((message) =>
+      publishChatEvent(message.chat_id, {
+        type: 'message-updated',
+        chatId: message.chat_id,
+        messageId: message.id,
+        metadata: message.metadata,
+      }),
+    ),
+  );
+}
 
 async function readActiveCall(roomId: string) {
   const result = await db.query<{
@@ -45,8 +97,9 @@ async function readActiveCall(roomId: string) {
     room_id: string;
     chat_id: string | null;
     title: string | null;
+    started_at: Date;
   }>(
-    `SELECT session.id,session.room_id,session.chat_id,chat.title FROM call_sessions session
+    `SELECT session.id,session.room_id,session.chat_id,session.started_at,chat.title FROM call_sessions session
      LEFT JOIN chats chat ON chat.id=session.chat_id
      WHERE session.room_id=$1 AND session.ended_at IS NULL
        AND EXISTS (SELECT 1 FROM call_participants p WHERE p.call_id=session.id AND p.left_at IS NULL)
@@ -75,6 +128,7 @@ async function readActiveCall(roomId: string) {
   return {
     roomId: session.room_id,
     chatId: session.chat_id,
+    startedAt: session.started_at.toISOString(),
     title:
       session.title ||
       members.rows.map((member) => member.display_name).join(', ') ||
@@ -351,7 +405,6 @@ async function expirePendingCallInvitations() {
       inviter_id: string;
       invitee_id: string;
       chat_id: string;
-      inviter_name: string;
     }>(
       `WITH due AS (
          SELECT id FROM call_invitations
@@ -364,24 +417,9 @@ async function expirePendingCallInvitations() {
          RETURNING invitation.id,invitation.room_id,invitation.inviter_id,
                    invitation.invitee_id,invitation.chat_id
        )
-       SELECT updated.*,inviter.display_name AS inviter_name
-       FROM updated JOIN users inviter ON inviter.id=updated.inviter_id`,
+       SELECT * FROM updated`,
     );
-    const messages: Array<(typeof due.rows)[number] & { messageId: string }> = [];
-    for (const invitation of due.rows) {
-      const inserted = await client.query<{ id: string }>(
-        `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,expires_at)
-         VALUES($1,$2,'call',$3,$4,NULL) RETURNING id`,
-        [
-          invitation.chat_id,
-          invitation.inviter_id,
-          `Пропущенный звонок от ${invitation.inviter_name}`,
-          { roomId: invitation.room_id, missed: true, invitationId: invitation.id },
-        ],
-      );
-      messages.push({ ...invitation, messageId: inserted.rows[0]!.id });
-    }
-    return messages;
+    return due.rows;
   });
   for (const invitation of expired) {
     chatRealtimeHub.publish([invitation.invitee_id], {
@@ -389,13 +427,13 @@ async function expirePendingCallInvitations() {
       invitationId: invitation.id,
       status: 'missed',
     });
-    const message = await loadRealtimeMessage(invitation.messageId);
-    if (message)
-      await publishChatEvent(invitation.chat_id, {
-        type: 'message-created',
-        chatId: invitation.chat_id,
-        message,
-      });
+    chatRealtimeHub.publish([invitation.inviter_id], {
+      type: 'call-invitation-resolved',
+      invitationId: invitation.id,
+      status: 'missed',
+      roomId: invitation.room_id,
+      inviteeId: invitation.invitee_id,
+    });
   }
 }
 
@@ -410,6 +448,17 @@ async function isDirectChat(chatId: string) {
 }
 
 export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireUser) {
+  app.get(
+    '/v1/link-preview',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { url } = z.object({ url: z.string().url().max(2_048) }).parse(request.query);
+      return { preview: await resolveLinkPreview(url) };
+    },
+  );
+
   app.get('/v1/users/search', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -1935,6 +1984,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const { chatId } = chatIdParams.parse(request.params);
     if (!(await isChatMember(chatId, user.id)) || !(await canInteractInChat(chatId, user.id)))
       return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+    await expireAbandonedConversationCalls(chatId);
     const result = await db.query<{ room_id: string }>(
       `SELECT room_id FROM call_sessions WHERE chat_id=$1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
       [chatId],
@@ -1969,6 +2019,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
     if (!(await canInteractInChat(chatId, user.id)))
       return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+    await expireAbandonedConversationCalls(chatId);
     const callMessage = await transaction(async (client) => {
       const inserted = await client.query<ChatMessageRow>(
         `INSERT INTO messages(chat_id,sender_id,kind,body,metadata,expires_at)
@@ -2212,10 +2263,15 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const { invitationId } = callInvitationParams.parse(request.params);
     const { action } = z.object({ action: z.enum(['accept', 'decline']) }).parse(request.body);
     const status = action === 'accept' ? 'accepted' : 'declined';
-    const invitation = await db.query<{ room_id: string; chat_id: string | null }>(
+    const invitation = await db.query<{
+      room_id: string;
+      chat_id: string | null;
+      inviter_id: string;
+      invitee_id: string;
+    }>(
       `UPDATE call_invitations SET status=$1,responded_at=now()
        WHERE id=$2 AND invitee_id=$3 AND status='pending' AND expires_at>now()
-       RETURNING room_id,chat_id`,
+       RETURNING room_id,chat_id,inviter_id,invitee_id`,
       [status, invitationId, user.id],
     );
     if (!invitation.rows[0])
@@ -2226,6 +2282,13 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       type: 'call-invitation-resolved',
       invitationId,
       status,
+    });
+    chatRealtimeHub.publish([invitation.rows[0].inviter_id], {
+      type: 'call-invitation-resolved',
+      invitationId,
+      status,
+      roomId: invitation.rows[0].room_id,
+      inviteeId: invitation.rows[0].invitee_id,
     });
     return {
       invitation: {

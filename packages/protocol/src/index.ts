@@ -18,12 +18,23 @@ const hostedAvatarSchema = z
   .max(2_048)
   .regex(/^https:\/\/[^\s]+$/);
 const avatarSchema = z.union([inlineAvatarSchema, hostedAvatarSchema]);
+export const participantCardStyleSchema = z.enum(['classic', 'avatar-glass']);
+export const participantCardDecorationSchema = z.enum([
+  'none',
+  'japan',
+  'china',
+  'britain',
+  'kazakhstan',
+  'russia',
+]);
 
 export const participantSchema = z.object({
   id: z.string().uuid(),
   accountId: z.string().uuid().optional(),
   name: z.string().regex(DISPLAY_NAME_PATTERN),
   avatar: avatarSchema.optional(),
+  cardStyle: participantCardStyleSchema.optional(),
+  cardDecoration: participantCardDecorationSchema.optional(),
   muted: z.boolean(),
   isOwner: z.boolean(),
   connectedAt: z.number().int().nonnegative(),
@@ -134,6 +145,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     authToken: z.string().min(32).max(256).optional(),
     name: displayName,
     avatar,
+    cardStyle: participantCardStyleSchema.optional(),
+    cardDecoration: participantCardDecorationSchema.optional(),
   }),
   z.object({
     type: z.literal('join-room'),
@@ -143,6 +156,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     authToken: z.string().min(32).max(256).optional(),
     name: displayName,
     avatar,
+    cardStyle: participantCardStyleSchema.optional(),
+    cardDecoration: participantCardDecorationSchema.optional(),
   }),
   z.object({ type: z.literal('leave-room') }),
   z.object({ type: z.literal('offer'), to: clientId, description: sdp }),
@@ -150,6 +165,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ice-candidate'), to: clientId, candidate: ice }),
   z.object({ type: z.literal('mute-changed'), muted: z.boolean() }),
   z.object({ type: z.literal('update-profile'), name: displayName, avatar }),
+  z.object({
+    type: z.literal('update-card-appearance'),
+    cardStyle: participantCardStyleSchema,
+    cardDecoration: participantCardDecorationSchema,
+  }),
   z.object({ type: z.literal('reaction'), id: z.string().uuid(), reaction: reactionSchema }),
   z.object({
     type: z.literal('room-chat-message'),
@@ -241,6 +261,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export type Participant = z.infer<typeof participantSchema>;
+export type ParticipantCardStyle = z.infer<typeof participantCardStyleSchema>;
+export type ParticipantCardDecoration = z.infer<typeof participantCardDecorationSchema>;
 export type Reaction = z.infer<typeof reactionSchema>;
 export type RoomChatMessage = z.infer<typeof roomChatMessageSchema>;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -388,6 +410,8 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('call-invitation-resolved'),
     invitationId: z.string().uuid(),
     status: z.enum(['accepted', 'declined', 'missed']),
+    roomId: roomId.optional(),
+    inviteeId: z.string().uuid().optional(),
   }),
   z.object({
     type: z.literal('message-created'),

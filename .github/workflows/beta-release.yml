@@ -111,7 +111,7 @@ jobs:
           test -f "$intel_file.sig"
           jq -n \
             --arg version "$version" \
-            --arg notes "FreeTalk ${version}: новое меню сообщений, ответы, закрепление, пересылка, реакции и поиск GIF в чатах." \
+            --arg notes "FreeTalk ${version}: стабильнее звонки и демонстрация экрана, синхронное оформление карточек, жидкое стекло по умолчанию и новые узоры стран." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg windows_signature "$(cat "$windows_file.sig")" \
             --arg windows_url "$base_url/$(basename "$windows_file")" \
@@ -132,6 +132,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: true
-          make_latest: false
+          make_latest: true
           generate_release_notes: true
           files: release-assets/**/*

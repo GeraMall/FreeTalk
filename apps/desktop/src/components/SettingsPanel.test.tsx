@@ -65,6 +65,7 @@ function renderProfile() {
         ...defaultSettings(),
         displayName: 'Gera',
         avatarDataUrl: 'data:image/png;base64,dGVzdA==',
+        participantCardStyle: 'classic',
       }}
       devices={{ inputs: [], outputs: [], cameras: [] }}
       inputLevel={0}
@@ -132,11 +133,13 @@ describe('SettingsPanel profile actions', () => {
       'false',
     );
     fireEvent.click(getByRole('switch', { name: 'Жидкое стекло' }));
+    fireEvent.click(getByRole('radio', { name: 'Япония' }));
     expect(onSetting).not.toHaveBeenCalled();
 
     fireEvent.click(getByRole('button', { name: 'Готово' }));
     await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
     expect(onSetting).toHaveBeenCalledWith({ participantCardStyle: 'avatar-glass' }, false);
+    expect(onSetting).toHaveBeenCalledWith({ participantCardDecoration: 'japan' }, false);
     expect(onClose).toHaveBeenCalledOnce();
   });
 

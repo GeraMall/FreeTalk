@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  AudioLines,
   Camera,
   CameraOff,
   ChevronDown,
@@ -9,7 +10,6 @@ import {
   MicOff,
   MonitorUp,
   PhoneOff,
-  ShieldCheck,
   SmilePlus,
   Wifi,
 } from 'lucide-react';
@@ -57,13 +57,13 @@ export function CallDock({ state }: { state: CallDockState }) {
   return (
     <div className="sidebar-call-dock">
       <div className={`sidebar-call-status ${tone}`}>
-        <button onClick={state.onOpen} className="sidebar-call-location" title={state.title}>
+        <div className="sidebar-call-location" title={state.title} aria-label="Состояние звонка">
           <Wifi size={18} />
           <span>
             <strong>{state.pingMs ? `Пинг · ${state.pingMs} мс` : 'Пинг · —'}</strong>
             <small>{state.title}</small>
           </span>
-        </button>
+        </div>
         <button className="dock-hangup" onClick={state.onLeave} aria-label="Завершить звонок">
           <PhoneOff size={18} />
         </button>
@@ -95,9 +95,10 @@ export function CallDock({ state }: { state: CallDockState }) {
         <button
           aria-label="Шумоподавление"
           aria-pressed={state.noiseSuppression}
+          data-tooltip="Шумоподавление"
           onClick={state.onNoise}
         >
-          <ShieldCheck />
+          <AudioLines />
         </button>
       </div>
       {reactions && (
@@ -124,42 +125,46 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
   const [deviceMenu, setDeviceMenu] = useState<'input' | 'output'>();
   return (
     <div className="profile-audio-controls">
-      <button
-        aria-label={state.muted ? 'Включить микрофон' : 'Выключить микрофон'}
-        aria-pressed={state.muted}
-        onClick={state.onMute}
-      >
-        {state.muted ? <MicOff /> : <Mic />}
-      </button>
-      <button
-        className="audio-device-chevron"
-        aria-label="Выбор микрофона"
-        aria-expanded={deviceMenu === 'input'}
-        onClick={() => {
-          state.onDevices();
-          setDeviceMenu(deviceMenu === 'input' ? undefined : 'input');
-        }}
-      >
-        <ChevronDown />
-      </button>
-      <button
-        aria-label={state.deafened ? 'Включить звук собеседников' : 'Выключить звук собеседников'}
-        aria-pressed={state.deafened}
-        onClick={state.onDeafen}
-      >
-        {state.deafened ? <HeadphoneOff /> : <Headphones />}
-      </button>
-      <button
-        className="audio-device-chevron"
-        aria-label="Выбор наушников"
-        aria-expanded={deviceMenu === 'output'}
-        onClick={() => {
-          state.onDevices();
-          setDeviceMenu(deviceMenu === 'output' ? undefined : 'output');
-        }}
-      >
-        <ChevronDown />
-      </button>
+      <span className="profile-audio-device">
+        <button
+          aria-label={state.muted ? 'Включить микрофон' : 'Выключить микрофон'}
+          aria-pressed={state.muted}
+          onClick={state.onMute}
+        >
+          {state.muted ? <MicOff /> : <Mic />}
+        </button>
+        <button
+          className="audio-device-chevron"
+          aria-label="Выбор микрофона"
+          aria-expanded={deviceMenu === 'input'}
+          onClick={() => {
+            state.onDevices();
+            setDeviceMenu(deviceMenu === 'input' ? undefined : 'input');
+          }}
+        >
+          <ChevronDown />
+        </button>
+      </span>
+      <span className="profile-audio-device">
+        <button
+          aria-label={state.deafened ? 'Включить звук собеседников' : 'Выключить звук собеседников'}
+          aria-pressed={state.deafened}
+          onClick={state.onDeafen}
+        >
+          {state.deafened ? <HeadphoneOff /> : <Headphones />}
+        </button>
+        <button
+          className="audio-device-chevron"
+          aria-label="Выбор наушников"
+          aria-expanded={deviceMenu === 'output'}
+          onClick={() => {
+            state.onDevices();
+            setDeviceMenu(deviceMenu === 'output' ? undefined : 'output');
+          }}
+        >
+          <ChevronDown />
+        </button>
+      </span>
       {deviceMenu && (
         <div
           className="dock-device-menu"

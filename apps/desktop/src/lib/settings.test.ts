@@ -27,7 +27,8 @@ describe('platform-specific settings defaults', () => {
       screenContentMode: 'balanced',
       screenAudioByDefault: true,
       chatWallpaperFit: 'cover',
-      participantCardStyle: 'classic',
+      participantCardStyle: 'avatar-glass',
+      participantCardDecoration: 'none',
     });
     expect(loadSettings().screenAudioByDefault).toBe(true);
   });
@@ -40,7 +41,7 @@ describe('platform-specific settings defaults', () => {
     expect(loadSettings().chatWallpaperFit).toBe('cover');
   });
 
-  it('keeps participant cards classic unless avatar glass is explicitly selected', () => {
+  it('enables avatar glass by default and preserves an explicit classic choice', () => {
     localStorage.setItem(
       'freetalk.settings.v1',
       JSON.stringify({ participantCardStyle: 'avatar-glass' }),
@@ -49,9 +50,15 @@ describe('platform-specific settings defaults', () => {
 
     localStorage.setItem(
       'freetalk.settings.v1',
-      JSON.stringify({ participantCardStyle: 'unknown' }),
+      JSON.stringify({ participantCardStyle: 'classic' }),
     );
     expect(loadSettings().participantCardStyle).toBe('classic');
+
+    localStorage.setItem(
+      'freetalk.settings.v1',
+      JSON.stringify({ participantCardStyle: 'unknown' }),
+    );
+    expect(loadSettings().participantCardStyle).toBe('avatar-glass');
   });
 
   it('disables screen audio by default for a new macOS installation', () => {

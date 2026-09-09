@@ -223,6 +223,7 @@ fn restore_call_popout(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     fit_webview_to_window(&main_webview, &main_window)?;
     if let Some(popout) = app.get_window("call-popout") {
+        let _ = popout.set_fullscreen(false);
         let _ = popout.hide();
     }
     let _ = main_webview.emit("call-popout-restored", ());
@@ -375,6 +376,19 @@ fn call_popout_restore(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[cfg(desktop)]
+#[tauri::command]
+fn call_popout_set_fullscreen(app: tauri::AppHandle, fullscreen: bool) -> Result<(), String> {
+    use tauri::Manager;
+
+    let popout = app
+        .get_window("call-popout")
+        .ok_or_else(|| "call popout window is unavailable".to_string())?;
+    popout
+        .set_fullscreen(fullscreen)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(desktop)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -410,7 +424,8 @@ pub fn run() {
             notification_overlay_open_main,
             main_window_start_dragging,
             call_popout_open,
-            call_popout_restore
+            call_popout_restore,
+            call_popout_set_fullscreen
         ])
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())

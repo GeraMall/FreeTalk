@@ -1,5 +1,11 @@
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import type { Participant, RoomChatMessage, ServerMessage } from '@freetalk/protocol';
+import type {
+  Participant,
+  ParticipantCardDecoration,
+  ParticipantCardStyle,
+  RoomChatMessage,
+  ServerMessage,
+} from '@freetalk/protocol';
 
 export interface PeerConnection {
   send(message: ServerMessage): void;
@@ -17,11 +23,15 @@ interface Peer {
 
 interface Room {
   id: string;
-  ownerId: string;
+  ownerId?: string;
+  authority: RoomAuthority;
   peers: Map<string, Peer>;
   createdAt: number;
   chatMessages: RoomChatMessage[];
 }
+
+export type RoomAuthority =
+  { scope: 'standalone' } | { scope: 'direct' } | { scope: 'group'; groupOwnerAccountId?: string };
 
 export class RoomError extends Error {
   constructor(
@@ -43,16 +53,31 @@ export class RoomManager {
     connection: PeerConnection,
     avatar?: string,
     accountId?: string,
+    authority: RoomAuthority = { scope: 'standalone' },
+    cardStyle: ParticipantCardStyle = 'avatar-glass',
+    cardDecoration: ParticipantCardDecoration = 'none',
   ) {
     if (this.rooms.has(roomId)) throw new RoomError('ROOM_EXISTS', 'Комната уже существует');
     this.rooms.set(roomId, {
       id: roomId,
-      ownerId: clientId,
+      ownerId: authority.scope === 'standalone' ? clientId : undefined,
+      authority,
       peers: new Map(),
       createdAt: Date.now(),
       chatMessages: [],
     });
-    return this.join(roomId, clientId, sessionId, name, connection, avatar, accountId);
+    return this.join(
+      roomId,
+      clientId,
+      sessionId,
+      name,
+      connection,
+      avatar,
+      accountId,
+      authority,
+      cardStyle,
+      cardDecoration,
+    );
   }
 
   join(
@@ -63,6 +88,9 @@ export class RoomManager {
     connection: PeerConnection,
     avatar?: string,
     accountId?: string,
+    authority?: RoomAuthority,
+    cardStyle: ParticipantCardStyle = 'avatar-glass',
+    cardDecoration: ParticipantCardDecoration = 'none',
   ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
@@ -75,20 +103,24 @@ export class RoomManager {
       throw new RoomError('ROOM_FULL', 'Этот идентификатор участника уже используется');
     }
 
+    const authorityChanged = authority ? this.applyAuthority(room, authority) : false;
     const participant: Participant = existing?.participant ?? {
       id: clientId,
       accountId,
       name,
       avatar,
+      cardStyle,
+      cardDecoration,
       muted: false,
-      isOwner: clientId === room.ownerId,
+      isOwner: false,
       connectedAt: Date.now(),
     };
     if (existing) existing.connection.close(4001, 'Соединение заменено после переподключения');
     participant.name = name;
     participant.avatar = avatar;
     participant.accountId = accountId;
-    participant.isOwner = clientId === room.ownerId;
+    participant.cardStyle = cardStyle;
+    participant.cardDecoration = cardDecoration;
     const peer: Peer = {
       participant,
       sessionId,
@@ -98,6 +130,7 @@ export class RoomManager {
       lastReactionAt: existing?.lastReactionAt ?? 0,
     };
     room.peers.set(clientId, peer);
+    const ownerChanged = this.reconcileOwner(room);
 
     connection.send({
       type: 'joined-room',
@@ -108,6 +141,11 @@ export class RoomManager {
       roomChatMessages: room.chatMessages,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
+    if (authorityChanged || ownerChanged)
+      this.broadcast(room, {
+        type: 'participants',
+        participants: [...room.peers.values()].map((entry) => entry.participant),
+      });
     return participant;
   }
 
@@ -118,7 +156,7 @@ export class RoomManager {
     room.peers.delete(clientId);
     this.broadcast(room, { type: 'participant-left', participantId: clientId, reason });
     if (room.peers.size === 0) this.rooms.delete(roomId);
-    else if (room.ownerId === clientId) {
+    else if (room.authority.scope === 'standalone' && room.ownerId === clientId) {
       const nextOwner = [...room.peers.values()].sort(
         (a, b) => a.participant.connectedAt - b.participant.connectedAt,
       )[0]!;
@@ -173,6 +211,21 @@ export class RoomManager {
     return 'OK' as const;
   }
 
+  updateCardAppearance(
+    roomId: string,
+    clientId: string,
+    cardStyle: ParticipantCardStyle,
+    cardDecoration: ParticipantCardDecoration,
+  ) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return false;
+    peer.participant.cardStyle = cardStyle;
+    peer.participant.cardDecoration = cardDecoration;
+    this.broadcast(room, { type: 'participant-updated', participant: peer.participant });
+    return true;
+  }
+
   react(
     roomId: string,
     clientId: string,
@@ -211,7 +264,7 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return 'TARGET_NOT_FOUND' as const;
-    if (room.ownerId !== clientId) return 'NOT_OWNER' as const;
+    if (room.authority.scope !== 'direct' && room.ownerId !== clientId) return 'NOT_OWNER' as const;
     this.broadcast(room, {
       type: 'recording-started',
       participantId: clientId,
@@ -260,5 +313,26 @@ export class RoomManager {
 
   private broadcast(room: Room, message: ServerMessage, exceptId?: string) {
     for (const [id, peer] of room.peers) if (id !== exceptId) peer.connection.send(message);
+  }
+
+  private applyAuthority(room: Room, authority: RoomAuthority) {
+    const previous = JSON.stringify(room.authority);
+    if (authority.scope === 'group') room.authority = authority;
+    else if (room.authority.scope !== 'group') room.authority = authority;
+    return previous !== JSON.stringify(room.authority);
+  }
+
+  private reconcileOwner(room: Room) {
+    const previousOwnerId = room.ownerId;
+    if (room.authority.scope === 'direct') room.ownerId = undefined;
+    else if (room.authority.scope === 'group') {
+      const groupOwnerAccountId = room.authority.groupOwnerAccountId;
+      room.ownerId = [...room.peers.values()].find(
+        (peer) => peer.participant.accountId === groupOwnerAccountId,
+      )?.participant.id;
+    }
+    for (const entry of room.peers.values())
+      entry.participant.isOwner = entry.participant.id === room.ownerId;
+    return previousOwnerId !== room.ownerId;
   }
 }

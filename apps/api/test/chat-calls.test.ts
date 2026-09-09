@@ -10,6 +10,7 @@ vi.mock('../src/env.js', () => ({
   publicApiUrl: (path: string) => `https://api.example.test${path}`,
 }));
 import { registerSocialRoutes } from '../src/social-routes.js';
+import { chatRealtimeHub } from '../src/chat-realtime.js';
 
 const self = '11111111-1111-4111-8111-111111111111';
 const peer = '22222222-2222-4222-8222-222222222222';
@@ -37,6 +38,30 @@ afterEach(async () => {
 });
 
 describe('conversation calls', () => {
+  it('notifies the caller immediately when an invitation is declined', async () => {
+    const invitationId = '66666666-6666-4666-8666-666666666666';
+    query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('UPDATE call_invitations'))
+        return result([{ room_id: room, chat_id: chat, inviter_id: peer, invitee_id: self }]);
+      return result();
+    });
+    const publish = vi.spyOn(chatRealtimeHub, 'publish');
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/call-invitations/${invitationId}/respond`,
+      payload: { action: 'decline' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(publish).toHaveBeenCalledWith([peer], {
+      type: 'call-invitation-resolved',
+      invitationId,
+      status: 'declined',
+      roomId: room,
+      inviteeId: self,
+    });
+    publish.mockRestore();
+  });
+
   it('does not reveal active calls to non-members', async () => {
     const response = await app.inject({ method: 'GET', url: `/v1/chats/${chat}/active-call` });
     expect(response.statusCode).toBe(403);
@@ -51,6 +76,13 @@ describe('conversation calls', () => {
     const response = await app.inject({ method: 'GET', url: `/v1/chats/${chat}/active-call` });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ call: null });
+    expect(query.mock.calls).toContainEqual([
+      expect.stringContaining('stale_sessions'),
+      [chat, 8 * 60_000],
+    ]);
+    expect(query.mock.calls.find(([sql]) => sql.includes('stale_sessions'))?.[0]).toContain(
+      'participant.left_at IS NULL',
+    );
   });
   it('returns current participants to chat members after the ringing invitation expires', async () => {
     query.mockImplementation(async (sql: string) => {
@@ -58,7 +90,15 @@ describe('conversation calls', () => {
       if (sql.includes('END AS allowed')) return result([{ allowed: true }]);
       if (sql.startsWith('SELECT room_id')) return result([{ room_id: room }]);
       if (sql.includes('SELECT session.id,session.room_id'))
-        return result([{ id: 'session', room_id: room, chat_id: chat, title: null }]);
+        return result([
+          {
+            id: 'session',
+            room_id: room,
+            chat_id: chat,
+            title: null,
+            started_at: new Date('2026-09-09T10:00:00.000Z'),
+          },
+        ]);
       if (sql.includes('SELECT DISTINCT p.user_id'))
         return result([{ user_id: peer, display_name: 'Алексей', has_avatar: false }]);
       if (sql.includes('SELECT m.user_id,u.display_name'))
@@ -73,6 +113,19 @@ describe('conversation calls', () => {
     expect(response.json().call.participants).toEqual([
       { userId: peer, displayName: 'Алексей', avatarUrl: null },
     ]);
+    expect(response.json().call.startedAt).toBe('2026-09-09T10:00:00.000Z');
+  });
+
+  it('starts the empty-call timeout from the latest departure, not the original call start', async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('SELECT 1 FROM chat_members')) return result([{}]);
+      if (sql.includes('END AS allowed')) return result([{ allowed: true }]);
+      return result();
+    });
+    await app.inject({ method: 'GET', url: `/v1/chats/${chat}/active-call` });
+    const expirationSql = query.mock.calls.find(([sql]) => sql.includes('stale_sessions'))?.[0];
+    expect(expirationSql).toContain('SELECT max(recent.left_at)');
+    expect(expirationSql).toContain('GREATEST');
   });
   it('moves a direct call into a new named group while retaining the same media room', async () => {
     query.mockImplementation(async (sql: string) => {

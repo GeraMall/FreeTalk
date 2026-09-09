@@ -8,6 +8,8 @@ export type RoomAuthorization =
       userId?: string;
       anonymousUserId?: string;
       disconnectAt?: string;
+      callScope?: 'direct' | 'group';
+      groupOwnerId?: string;
     }
   | { allowed: false; reason?: string };
 

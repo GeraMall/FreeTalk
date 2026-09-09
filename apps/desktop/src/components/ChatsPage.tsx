@@ -54,6 +54,11 @@ import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-m
 import { chatReactionEmojiSchema, type PresenceStatus } from '@freetalk/protocol';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
 import { avatarImageStyle } from '../lib/avatar-image-style';
+import { collapseDuplicateCallMessages, extractMessageLinks } from '../lib/chat-call-messages';
+import {
+  EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
+  isAbandonedConversationCall,
+} from '../lib/conversation-call-lifecycle';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { GroupInviteFriendsDialog } from './GroupInviteFriendsDialog';
 import { CachedMediaImage } from './CachedMedia';
@@ -148,8 +153,11 @@ export interface MessageItem {
     width?: number;
     height?: number;
     ended?: boolean;
+    missed?: boolean;
+    invitationId?: string;
     startedAt?: string;
     endedAt?: string | null;
+    aloneSince?: string | null;
     participants?: Array<{
       userId?: string | null;
       displayName: string;
@@ -267,10 +275,12 @@ interface ChatsPageProps {
   ): Promise<boolean>;
   onAddMember(username: string): Promise<boolean>;
   onJoinCall(roomId: string): void;
+  joinedChatId?: string;
   joinedRoomId?: string;
 }
 
 export function ChatsPage({
+  joinedChatId,
   joinedRoomId,
   externalSidebar = false,
   mobile = false,
@@ -319,6 +329,7 @@ export function ChatsPage({
   const [showMember, setShowMember] = useState(false);
   const [inviteToken, setInviteToken] = useState('');
   const [actionBusy, setActionBusy] = useState('');
+  const actionBusyRef = useRef(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
     'leave-group' | 'delete-direct' | 'block-direct'
@@ -536,11 +547,13 @@ export function ChatsPage({
   }, [chats, search, userId]);
 
   const runAction = async (key: string, action: () => Promise<boolean | void>) => {
-    if (actionBusy) return false;
+    if (actionBusyRef.current) return false;
+    actionBusyRef.current = true;
     setActionBusy(key);
     try {
       return (await action()) !== false;
     } finally {
+      actionBusyRef.current = false;
       setActionBusy('');
     }
   };
@@ -723,6 +736,8 @@ export function ChatsPage({
         {activeChat && (
           <ChatCallWaiting
             chatId={activeChat.id}
+            currentUserId={userId}
+            joinedChatId={joinedChatId}
             joinedRoomId={joinedRoomId}
             revision={messages}
             onJoin={onJoinCall}
@@ -1691,6 +1706,99 @@ interface MessageContextState {
   pickerOnly?: boolean;
 }
 
+interface MessageLinkPreview {
+  url: string;
+  provider: 'YouTube' | 'Wikipedia';
+  title: string;
+  description: string;
+  imageUrl?: string;
+}
+
+const messageLinkPreviewCache = new Map<string, Promise<MessageLinkPreview | null>>();
+
+function supportsRichLinkPreview(value: string) {
+  try {
+    const url = new URL(value);
+    return (
+      ['youtu.be', 'youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(
+        url.hostname.toLowerCase(),
+      ) || /^[a-z][a-z0-9-]{0,11}\.wikipedia\.org$/i.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function loadMessageLinkPreview(url: string) {
+  let request = messageLinkPreviewCache.get(url);
+  if (!request) {
+    request = accountClient
+      .request<{ preview: MessageLinkPreview | null }>(
+        `/v1/link-preview?url=${encodeURIComponent(url)}`,
+      )
+      .then((result) => result.preview)
+      .catch(() => null);
+    messageLinkPreviewCache.set(url, request);
+  }
+  return request;
+}
+
+function MessageLinkPreviewCard({ url }: { url: string }) {
+  const [preview, setPreview] = useState<MessageLinkPreview | null>();
+  useEffect(() => {
+    let active = true;
+    void loadMessageLinkPreview(url).then((result) => {
+      if (active) setPreview(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [url]);
+  if (!preview) return null;
+  return (
+    <a
+      className="message-link-preview"
+      href={preview.url}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {preview.imageUrl ? <img src={preview.imageUrl} alt="" loading="lazy" /> : null}
+      <span>
+        <small>{preview.provider}</small>
+        <strong>{preview.title}</strong>
+        {preview.description ? <em>{preview.description}</em> : null}
+      </span>
+      <Link2 aria-hidden="true" />
+    </a>
+  );
+}
+
+function MessageRichText({ text }: { text: string }) {
+  const links = extractMessageLinks(text);
+  const previewUrl = links.find(supportsRichLinkPreview);
+  const parts: ReactNode[] = [];
+  let offset = 0;
+  for (const [index, link] of links.entries()) {
+    const start = text.indexOf(link, offset);
+    if (start < 0) continue;
+    if (start > offset) parts.push(text.slice(offset, start));
+    parts.push(
+      <a href={link} target="_blank" rel="noopener noreferrer" key={`${start}-${link}`}>
+        {link}
+      </a>,
+    );
+    offset = start + link.length;
+    if (index === links.length - 1 && offset < text.length) parts.push(text.slice(offset));
+  }
+  if (!links.length) parts.push(text);
+  return (
+    <>
+      {previewUrl ? <MessageLinkPreviewCard url={previewUrl} /> : null}
+      <p className="message-rich-text">{parts}</p>
+    </>
+  );
+}
+
 export function MessageList({
   chatId,
   userId,
@@ -1744,6 +1852,7 @@ export function MessageList({
   searchQuery?: string;
   focusedMessageId?: string;
 }) {
+  const visibleMessages = useMemo(() => collapseDuplicateCallMessages(messages), [messages]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
@@ -1767,6 +1876,18 @@ export function MessageList({
   const [actionPending, setActionPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const menuRef = useRef<HTMLDivElement>(null);
+  const dragSelectionRef = useRef<
+    | {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        startId: string;
+        selecting: boolean;
+        active: boolean;
+      }
+    | undefined
+  >(undefined);
+  const suppressSelectionClickRef = useRef(false);
   const pinnedMessage =
     loadedPinnedMessage ?? [...messages].reverse().find((message) => message.pinned_at);
 
@@ -1777,6 +1898,17 @@ export function MessageList({
     setEditingMessage(undefined);
     setSelectedIds(new Set());
   }, [chatId]);
+
+  useEffect(() => {
+    const cancelSelection = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setSelectedIds(new Set());
+      dragSelectionRef.current = undefined;
+      scrollRef.current?.classList.remove('is-drag-selecting');
+    };
+    document.addEventListener('keydown', cancelSelection);
+    return () => document.removeEventListener('keydown', cancelSelection);
+  }, []);
 
   useEffect(() => {
     if (!focusedMessageId) return;
@@ -2010,20 +2142,90 @@ export function MessageList({
         tabIndex={0}
         aria-label="История сообщений"
         onScroll={onScroll}
+        onDragStart={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          if ((event.pointerType && event.pointerType !== 'mouse') || event.button !== 0) return;
+          const target = event.target as HTMLElement;
+          if (
+            target.closest(
+              '.message-bubble,a,button,input,textarea,select,[contenteditable="true"]',
+            )
+          )
+            return;
+          const entry = target.closest<HTMLElement>('[data-message-id]');
+          const startId = entry?.dataset.messageId;
+          if (!startId) return;
+          dragSelectionRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startId,
+            selecting: !selectedIds.has(startId),
+            active: false,
+          };
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragSelectionRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          if (!drag.active) {
+            if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+            drag.active = true;
+            event.currentTarget.classList.add('is-drag-selecting');
+          }
+          event.preventDefault();
+          const hovered = document
+            .elementFromPoint?.(event.clientX, event.clientY)
+            ?.closest<HTMLElement>('[data-message-id]')?.dataset.messageId;
+          if (!hovered) return;
+          const startIndex = visibleMessages.findIndex((message) => message.id === drag.startId);
+          const endIndex = visibleMessages.findIndex((message) => message.id === hovered);
+          if (startIndex < 0 || endIndex < 0) return;
+          const [from, to] =
+            startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+          const range = visibleMessages.slice(from, to + 1).map((message) => message.id);
+          setSelectedIds((current) => {
+            const next = new Set(current);
+            for (const messageId of range) {
+              if (drag.selecting) next.add(messageId);
+              else next.delete(messageId);
+            }
+            return next;
+          });
+        }}
+        onPointerUp={(event) => {
+          const drag = dragSelectionRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          suppressSelectionClickRef.current = drag.active;
+          dragSelectionRef.current = undefined;
+          event.currentTarget.classList.remove('is-drag-selecting');
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId))
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          dragSelectionRef.current = undefined;
+          event.currentTarget.classList.remove('is-drag-selecting');
+        }}
+        onClickCapture={(event) => {
+          if (!suppressSelectionClickRef.current) return;
+          suppressSelectionClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
         <div className="message-stream" ref={contentRef}>
           {olderBusy && (
             <div className="older-messages-loading">Загружаем предыдущие сообщения…</div>
           )}
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 ? (
             <div className="message-history-empty">
               <MessageCircle />
               <strong>Начните разговор</strong>
               <p>Напишите первое сообщение в этом чате.</p>
             </div>
           ) : (
-            messages.map((message, index) => {
-              const previous = messages[index - 1];
+            visibleMessages.map((message, index) => {
+              const previous = visibleMessages[index - 1];
               const showDate = !previous || !isSameDay(previous.created_at, message.created_at);
               const grouped = isGroupedMessage(previous, message);
               const searchMatch = Boolean(
@@ -2447,7 +2649,7 @@ function MessageBubble({
           ) : roomInviteId ? (
             <RoomInviteMessageCard roomId={roomInviteId} onJoin={onJoinCall} />
           ) : (
-            <p>{message.body}</p>
+            <MessageRichText text={message.body} />
           )}
           <span className="message-meta">
             {message.edited_at ? <small>изменено</small> : null}
@@ -3315,24 +3517,32 @@ function SystemCallMessage({
   message: MessageItem;
   onJoin(roomId: string): void;
 }) {
-  const ended = message.metadata?.ended === true;
+  const serverEnded = message.metadata?.ended === true;
   const participants = message.metadata?.participants ?? [];
   const startedAt = message.metadata?.startedAt;
   const endedAt = message.metadata?.endedAt;
+  const aloneSince = message.metadata?.aloneSince;
   const [now, setNow] = useState(() => Date.now());
+  const abandoned =
+    !serverEnded &&
+    isAbandonedConversationCall(startedAt, participants.length, now, aloneSince ?? undefined);
   useEffect(() => {
-    if (ended || !startedAt) return;
+    if (serverEnded || abandoned || !startedAt) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
-  }, [ended, startedAt]);
-  const duration = startedAt
-    ? formatCallDuration(
-        Math.max(
-          0,
-          Math.floor(((endedAt ? Date.parse(endedAt) : now) - Date.parse(startedAt)) / 1_000),
-        ),
-      )
-    : null;
+  }, [abandoned, serverEnded, startedAt]);
+  const ended = serverEnded || abandoned;
+  const durationEnd = endedAt
+    ? Date.parse(endedAt)
+    : abandoned && startedAt
+      ? Date.parse(aloneSince || startedAt) + EMPTY_CONVERSATION_CALL_TIMEOUT_MS
+      : serverEnded
+        ? undefined
+        : now;
+  const duration =
+    startedAt && durationEnd !== undefined
+      ? formatCallDuration(Math.max(0, Math.floor((durationEnd - Date.parse(startedAt)) / 1_000)))
+      : null;
   return (
     <div className={`system-call-message${ended ? ' ended' : ''}`}>
       <span className="system-call-icon">

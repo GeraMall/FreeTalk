@@ -38,6 +38,8 @@ describe('protocol validation', () => {
         type: 'call-invitation-resolved',
         invitationId,
         status: 'missed',
+        roomId: base.roomId,
+        inviteeId: invitationId,
       }).success,
     ).toBe(true);
   });
@@ -47,6 +49,31 @@ describe('protocol validation', () => {
       type: 'join-room',
       ...base,
     });
+  });
+
+  it('validates participant card appearance shared through signaling', () => {
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'join-room',
+        ...base,
+        cardStyle: 'avatar-glass',
+        cardDecoration: 'japan',
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'update-card-appearance',
+        cardStyle: 'classic',
+        cardDecoration: 'russia',
+      }).success,
+    ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'update-card-appearance',
+        cardStyle: 'neon',
+        cardDecoration: '../custom',
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts trusted hosted profile avatars in room messages', () => {

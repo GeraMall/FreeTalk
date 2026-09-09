@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Participant, RoomChatMessage } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
-import { RoomView, type RemoteVideoUiState } from './RoomView';
+import { RoomView, type RemoteVideoUiState, type WaitingCallParticipant } from './RoomView';
 
 const selfId = '11111111-1111-4111-8111-111111111111';
 const peerId = '22222222-2222-4222-8222-222222222222';
@@ -13,13 +13,23 @@ const participants: Participant[] = [
   { id: peerId, name: 'Друг', muted: false, isOwner: false, connectedAt: 2 },
 ];
 const stream = {} as MediaStream;
-const { invokeMock, listenMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  listenMock: vi.fn(),
-}));
+const { invokeMock, listenMock, isWindowFullscreenMock, setWindowFullscreenMock } = vi.hoisted(
+  () => ({
+    invokeMock: vi.fn(),
+    listenMock: vi.fn(),
+    isWindowFullscreenMock: vi.fn(),
+    setWindowFullscreenMock: vi.fn(),
+  }),
+);
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({
+    isFullscreen: isWindowFullscreenMock,
+    setFullscreen: setWindowFullscreenMock,
+  }),
+}));
 
 beforeAll(() => {
   Object.defineProperty(HTMLMediaElement.prototype, 'play', {
@@ -35,6 +45,8 @@ afterEach(() => {
 beforeEach(() => {
   invokeMock.mockReset().mockResolvedValue(undefined);
   listenMock.mockReset().mockResolvedValue(vi.fn());
+  isWindowFullscreenMock.mockReset().mockResolvedValue(false);
+  setWindowFullscreenMock.mockReset().mockResolvedValue(undefined);
   const previewTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -81,19 +93,26 @@ function view(
     participants?: Participant[];
     participantCardStyle?: 'classic' | 'avatar-glass';
     conversation?: boolean;
+    conversationType?: 'direct' | 'group';
     conversationHidden?: boolean;
+    embedded?: boolean;
     onConversationToggle?: () => void;
+    waitingParticipants?: WaitingCallParticipant[];
+    roomStartedAt?: number;
   } = {},
 ) {
   return (
     <RoomView
       conversation={handlers.conversation}
+      conversationType={handlers.conversationType}
+      embedded={handlers.embedded}
       conversationHidden={handlers.conversationHidden}
       onConversationToggle={handlers.onConversationToggle}
       viewerId={handlers.viewerId}
       roomId="ABCDEF123456"
       selfId={selfId}
       participants={handlers.participants ?? participants}
+      waitingParticipants={handlers.waitingParticipants}
       peerState={{
         [peerId]: { connection: 'connected', speaking: remoteSpeaking, hasAudio: true },
       }}
@@ -110,7 +129,7 @@ function view(
       remoteVideos={remoteVideos}
       videoBusy={false}
       muted={false}
-      roomStartedAt={Date.now() - 65_000}
+      roomStartedAt={handlers.roomStartedAt ?? Date.now() - 65_000}
       reactions={[]}
       roomChatMessages={handlers.roomChatMessages ?? []}
       screenFocusMode={handlers.screenFocusMode ?? false}
@@ -185,6 +204,34 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.room-mode-audio')).not.toBeNull();
     expect(container.querySelectorAll('.participant-card.audio-tile')).toHaveLength(2);
     expect(queryByText(/TURN резерв/)).toBeNull();
+  });
+
+  it('renders each participant card with that participant shared appearance', () => {
+    const styledParticipants: Participant[] = [
+      {
+        ...participants[0]!,
+        avatar: 'https://example.com/self.webp',
+        cardStyle: 'classic',
+        cardDecoration: 'none',
+      },
+      {
+        ...participants[1]!,
+        avatar: 'https://example.com/friend.webp',
+        cardStyle: 'avatar-glass',
+        cardDecoration: 'japan',
+      },
+    ];
+    const { getByText } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), { participants: styledParticipants }),
+    );
+    const selfCard = getByText('Гера').closest('.participant-card');
+    const friendCard = getByText('Друг').closest('.participant-card');
+
+    expect(selfCard?.classList.contains('avatar-glass')).toBe(false);
+    expect(friendCard?.classList.contains('avatar-glass')).toBe(true);
+    expect(friendCard?.querySelector('.participant-card-decoration')?.getAttribute('src')).toBe(
+      '/card-decorations/japan.png',
+    );
   });
 
   it('turns a participant card itself into the camera surface', () => {
@@ -280,7 +327,10 @@ describe('RoomView media layouts', () => {
       }),
     );
     expect(compact.container.querySelector('.conversation-call-compact')).not.toBeNull();
-    expect(compact.container.querySelector('.call-view-controls')?.children).toHaveLength(3);
+    expect(compact.container.querySelector('.call-view-controls')?.children).toHaveLength(2);
+    expect(compact.container.querySelector('.conversation-chat-hide')?.textContent).toContain(
+      'Скрыть чат',
+    );
     fireEvent.click(compact.getByRole('button', { name: 'Скрыть чат' }));
     expect(onConversationToggle).toHaveBeenCalledOnce();
     compact.unmount();
@@ -295,7 +345,47 @@ describe('RoomView media layouts', () => {
     expect(expanded.container.querySelector('.conversation-call-compact')).toBeNull();
     expect(expanded.container.querySelector('.conversation-chat-hidden')).not.toBeNull();
     expect(expanded.container.querySelector('.call-view-controls')?.children).toHaveLength(2);
-    expect(expanded.getByRole('button', { name: 'Показать чат' })).not.toBeNull();
+    expect(
+      expanded
+        .getByRole('button', { name: 'Показать чат' })
+        .classList.contains('conversation-chat-hide'),
+    ).toBe(true);
+    expect(expanded.container.querySelector('.voice-dock .room-chat-control')).toBeNull();
+  });
+
+  it('shows missing conversation members as pulsing waiting cards for 30 seconds', () => {
+    vi.useFakeTimers();
+    try {
+      const roomStartedAt = Date.now();
+      const { container, getByLabelText, queryByLabelText } = render(
+        view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+          conversation: true,
+          participants: [participants[0]!],
+          roomStartedAt,
+          waitingParticipants: [
+            {
+              id: '33333333-3333-4333-8333-333333333333',
+              displayName: 'Ожидаемый друг',
+              avatarUrl: 'https://example.com/waiting.webp',
+            },
+          ],
+        }),
+      );
+
+      expect(getByLabelText('Ожидаемый друг — ожидаем подключения')).not.toBeNull();
+      expect(container.querySelector('.connection-pill')?.textContent).toContain('Подключение');
+      expect(container.querySelector('.call-timer')?.textContent).toContain('Ожидание');
+      expect(container.querySelector('.waiting-participant-card')).not.toBeNull();
+      expect(
+        container.querySelector('.waiting-participant-card .participant-avatar'),
+      ).not.toBeNull();
+      act(() => vi.advanceTimersByTime(29_999));
+      expect(queryByLabelText('Ожидаемый друг — ожидаем подключения')).not.toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      expect(queryByLabelText('Ожидаемый друг — ожидаем подключения')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('starts with call controls hidden and reveals them on pointer movement', () => {
@@ -324,8 +414,11 @@ describe('RoomView media layouts', () => {
     await waitFor(() =>
       expect(container.querySelector('.room-shell.call-fullscreen')).not.toBeNull(),
     );
+    expect(setWindowFullscreenMock).toHaveBeenCalledWith(true);
+    isWindowFullscreenMock.mockResolvedValue(true);
     fireEvent.click(getByRole('button', { name: 'Выйти из полноэкранного режима' }));
     await waitFor(() => expect(container.querySelector('.room-shell.call-fullscreen')).toBeNull());
+    expect(setWindowFullscreenMock).toHaveBeenLastCalledWith(false);
   });
 
   it('moves the active call to a native window and can restore it', async () => {
@@ -336,6 +429,27 @@ describe('RoomView media layouts', () => {
     expect(invokeMock).toHaveBeenCalledWith('call_popout_open');
     fireEvent.click(await findByRole('button', { name: 'Вернуть звонок в основное окно' }));
     expect(invokeMock).toHaveBeenCalledWith('call_popout_restore');
+  });
+
+  it('toggles fullscreen on the detached native call window only', async () => {
+    const { findByRole, getByRole } = render(view());
+
+    fireEvent.click(getByRole('button', { name: 'Открыть звонок в отдельном окне' }));
+    fireEvent.click(await findByRole('button', { name: 'Открыть звонок во весь экран' }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('call_popout_set_fullscreen', {
+        fullscreen: true,
+      }),
+    );
+    expect(setWindowFullscreenMock).not.toHaveBeenCalled();
+
+    fireEvent.click(await findByRole('button', { name: 'Выйти из полноэкранного режима' }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('call_popout_set_fullscreen', {
+        fullscreen: false,
+      }),
+    );
   });
 
   it('quickly selects microphone, output, and camera devices from dock arrows', () => {
@@ -431,6 +545,38 @@ describe('RoomView media layouts', () => {
     expect(onRecordingBannerClose).toHaveBeenCalledOnce();
   });
 
+  it('hides ownership and moderation in direct calls while keeping equal recording access', () => {
+    const { queryByText, getByRole, queryByRole } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        conversationType: 'direct',
+      }),
+    );
+    expect(queryByText(/Создатель/)).toBeNull();
+    expect(getByRole('button', { name: 'Начать запись экрана' })).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
+    const drawer = getByRole('dialog', { name: 'Управление участником Друг' });
+    expect(drawer.closest('.participant-card')).toBeNull();
+    expect(queryByRole('menuitem', { name: 'Выключить микрофон' })).toBeNull();
+    fireEvent.mouseDown(document.body);
+    expect(queryByRole('dialog', { name: 'Управление участником Друг' })).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(queryByRole('dialog', { name: 'Управление участником Друг' })).toBeNull();
+  });
+
+  it('labels only the owner in a group call and keeps owner moderation', () => {
+    const { getByText, getByRole } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        conversationType: 'group',
+      }),
+    );
+    expect(getByText('Создатель группы')).not.toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
+    expect(getByRole('menuitem', { name: 'Выключить микрофон' })).not.toBeNull();
+  });
+
   it('shows the call timer and sends one of five reactions', () => {
     const onReaction = vi.fn();
     const { getByRole, getByLabelText } = render(view('none', {}, false, vi.fn(), onReaction));
@@ -439,6 +585,16 @@ describe('RoomView media layouts', () => {
     expect(getByRole('menu', { name: 'Реакции' }).querySelectorAll('button')).toHaveLength(5);
     fireEvent.click(getByRole('menuitem', { name: 'Отправить реакцию 🎉' }));
     expect(onReaction).toHaveBeenCalledWith('🎉');
+  });
+
+  it('keeps the original conversation duration after reconnecting to an existing room', () => {
+    const { getByLabelText } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        roomStartedAt: Date.now() - 20 * 60_000,
+      }),
+    );
+    expect(getByLabelText(/Длительность звонка 20:0[01]/)).not.toBeNull();
   });
 
   it('keeps all existing call-control handlers wired through camera preview', async () => {
@@ -578,6 +734,42 @@ describe('RoomView media layouts', () => {
     expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(false);
   });
 
+  it('keeps the account sidebar visible for media expansion until the whole call is fullscreen', async () => {
+    const { container, getByLabelText, getByRole } = render(
+      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        embedded: true,
+      }),
+    );
+    const screen = getByLabelText('Экран Друг');
+    const stageShell = screen.closest('.screen-stage-shell');
+
+    fireEvent.click(screen);
+    expect(stageShell?.classList.contains('media-workspace-fullscreen-shell')).toBe(true);
+
+    fireEvent.click(getByRole('button', { name: 'Открыть звонок во весь экран' }));
+    await waitFor(() =>
+      expect(container.querySelector('.room-shell.call-fullscreen')).not.toBeNull(),
+    );
+    expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
+    expect(stageShell?.classList.contains('media-workspace-fullscreen-shell')).toBe(false);
+  });
+
+  it('uses the entire detached window when expanding a shared screen', async () => {
+    const { getByLabelText, getByRole } = render(
+      view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        embedded: true,
+      }),
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Открыть звонок в отдельном окне' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('call_popout_open'));
+    fireEvent.click(getByLabelText('Экран Друг'));
+
+    const stageShell = getByLabelText('Экран Друг').closest('.screen-stage-shell');
+    expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
+    expect(stageShell?.classList.contains('media-workspace-fullscreen-shell')).toBe(false);
+  });
+
   it('shows screen as the stage and keeps the camera in the participant strip', () => {
     const { container } = render(view('both'));
     const stageShell = container.querySelector<HTMLElement>('.screen-stage-shell');
@@ -597,20 +789,51 @@ describe('RoomView media layouts', () => {
     expect(stageShell?.querySelector('.screen-stage-creator .creator-badge')).not.toBeNull();
   });
 
-  it('opens and closes a camera by clicking its tile without overlay buttons', async () => {
+  it('opens a camera outside the participant strip and closes it by click or Escape', async () => {
     const { container, getByLabelText } = render(view('screen', { [peerId]: { camera: stream } }));
     const compactCamera = container.querySelector('.participant-strip .compact-tile.camera-tile');
     expect(compactCamera).not.toBeNull();
     expect(compactCamera?.querySelector('.video-fullscreen')).toBeNull();
-    expect(compactCamera?.querySelector('.participant-menu-button')).toBeNull();
+    expect(compactCamera?.querySelector('.participant-menu-button')).not.toBeNull();
 
     fireEvent.click(getByLabelText('Камера Друг'));
-    await waitFor(() =>
-      expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(true),
+    const overlay = await waitFor(() =>
+      expect(container.querySelector('.camera-focus-overlay')).not.toBeNull(),
+    ).then(() => container.querySelector('.camera-focus-overlay'));
+    expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(false);
+    fireEvent.click(within(overlay as HTMLElement).getByLabelText('Камера Друг'));
+    await waitFor(() => expect(container.querySelector('.camera-focus-overlay')).toBeNull());
+
+    fireEvent.click(getByLabelText('Камера Друг'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(container.querySelector('.camera-focus-overlay')).toBeNull());
+  });
+
+  it('keeps the account sidebar visible when expanding a camera in the embedded call', () => {
+    const { container, getByLabelText } = render(
+      view('none', { [peerId]: { camera: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+        embedded: true,
+      }),
     );
     fireEvent.click(getByLabelText('Камера Друг'));
+    expect(
+      container.querySelector('.camera-focus-overlay.media-workspace-fullscreen-shell'),
+    ).not.toBeNull();
+  });
+
+  it('shows screen-share resolution and frame rate next to the expand control', async () => {
+    const qualityStream = {
+      getVideoTracks: () => [
+        {
+          getSettings: () => ({ width: 1920, height: 1080, frameRate: 30 }),
+        },
+      ],
+    } as unknown as MediaStream;
+    const { getByLabelText } = render(view('none', { [peerId]: { screen: qualityStream } }));
     await waitFor(() =>
-      expect(compactCamera?.classList.contains('camera-tile-window-fullscreen')).toBe(false),
+      expect(getByLabelText('Параметры демонстрации экрана').textContent).toBe(
+        '1920×1080 · 30 FPS',
+      ),
     );
   });
 

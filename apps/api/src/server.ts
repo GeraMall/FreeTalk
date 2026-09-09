@@ -760,7 +760,20 @@ app.post(
         user.user_id,
         eventType,
       ]);
-      return { limited: false, user } as const;
+      const call = await client.query<{
+        chat_type: 'direct' | 'group';
+        group_owner_id: string | null;
+      }>(
+        `SELECT chat.type AS chat_type,owner.user_id AS group_owner_id
+         FROM messages message
+         JOIN chats chat ON chat.id=message.chat_id
+         LEFT JOIN chat_members owner ON owner.chat_id=chat.id
+          AND owner.role='owner' AND owner.left_at IS NULL
+         WHERE message.kind='call' AND message.metadata->>'roomId'=$1
+         ORDER BY message.created_at DESC LIMIT 1`,
+        [input.roomId],
+      );
+      return { limited: false, user, call: call.rows[0] } as const;
     });
     if (registered?.limited)
       return reply.code(429).send({ allowed: false, reason: 'RATE_LIMITED' });
@@ -771,6 +784,8 @@ app.post(
         userId: registered.user.user_id,
         displayName: registered.user.display_name,
         avatar: publicAvatarUrl(registered.user.user_id, registered.user.has_avatar),
+        callScope: registered.call?.chat_type,
+        groupOwnerId: registered.call?.group_owner_id ?? undefined,
       };
     if (input.action === 'create')
       return reply.code(403).send({ allowed: false, reason: 'REGISTERED_ONLY' });
@@ -824,9 +839,21 @@ async function refreshCallMessage(roomId: string) {
     id: string;
     started_at: Date;
     ended_at: Date | null;
+    alone_since: Date | null;
   }>(
-    `SELECT id,started_at,ended_at FROM call_sessions
-     WHERE room_id=$1 ORDER BY started_at DESC LIMIT 1`,
+    `SELECT session.id,session.started_at,session.ended_at,
+       CASE WHEN (
+         SELECT count(*) FROM call_participants active
+         WHERE active.call_id=session.id AND active.left_at IS NULL
+       )<=1 THEN GREATEST(
+         session.started_at,
+         COALESCE((
+           SELECT max(recent.left_at) FROM call_participants recent
+           WHERE recent.call_id=session.id
+         ),session.started_at)
+       ) ELSE NULL END AS alone_since
+     FROM call_sessions session
+     WHERE session.room_id=$1 ORDER BY session.started_at DESC LIMIT 1`,
     [roomId],
   );
   const session = call.rows[0];
@@ -854,6 +881,7 @@ async function refreshCallMessage(roomId: string) {
     ended: session.ended_at !== null,
     startedAt: new Date(session.started_at).toISOString(),
     endedAt: session.ended_at ? new Date(session.ended_at).toISOString() : null,
+    aloneSince: session.alone_since ? new Date(session.alone_since).toISOString() : null,
     participants: participants.rows.map((participant) => ({
       userId: participant.user_id,
       displayName: participant.display_name,
@@ -901,13 +929,25 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
     if (!input.userId || !input.displayName) return reply.code(400).send({ ok: false });
     await transaction(async (client) => {
       const call = await client.query<{ id: string }>(
-        `INSERT INTO call_sessions(room_id,created_by,chat_id)
-         VALUES($1::text,$2,(SELECT chat_id FROM messages WHERE kind='call'
-           AND metadata->>'roomId'=$1::text ORDER BY created_at DESC LIMIT 1)) RETURNING id`,
+        `WITH existing AS (
+           SELECT id FROM call_sessions WHERE room_id=$1 AND ended_at IS NULL
+           ORDER BY started_at DESC LIMIT 1
+         ), inserted AS (
+           INSERT INTO call_sessions(room_id,created_by,chat_id)
+           SELECT $1::text,$2,(SELECT chat_id FROM messages WHERE kind='call'
+             AND metadata->>'roomId'=$1::text ORDER BY created_at DESC LIMIT 1)
+           WHERE NOT EXISTS (SELECT 1 FROM existing)
+           RETURNING id
+         )
+         SELECT id FROM inserted UNION ALL SELECT id FROM existing LIMIT 1`,
         [input.roomId, input.userId],
       );
       await client.query(
-        `INSERT INTO call_participants(call_id,user_id,display_name) VALUES($1,$2,$3)`,
+        `INSERT INTO call_participants(call_id,user_id,display_name)
+         SELECT $1,$2,$3 WHERE NOT EXISTS (
+           SELECT 1 FROM call_participants
+           WHERE call_id=$1 AND user_id=$2 AND left_at IS NULL
+         )`,
         [call.rows[0]!.id, input.userId, input.displayName],
       );
     });
@@ -916,9 +956,18 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
     if ((!input.userId && !input.anonymousUserId) || !input.displayName)
       return reply.code(400).send({ ok: false });
     await db.query(
-      `INSERT INTO call_participants(call_id,user_id,anonymous_user_id,display_name)
-       SELECT id,$2,$3,$4 FROM call_sessions WHERE room_id=$1 AND ended_at IS NULL
-       ORDER BY started_at DESC LIMIT 1`,
+      `WITH active_call AS (
+         SELECT id FROM call_sessions WHERE room_id=$1 AND ended_at IS NULL
+         ORDER BY started_at DESC LIMIT 1
+       )
+       INSERT INTO call_participants(call_id,user_id,anonymous_user_id,display_name)
+       SELECT active_call.id,$2,$3,$4 FROM active_call
+       WHERE NOT EXISTS (
+         SELECT 1 FROM call_participants participant
+         WHERE participant.call_id=active_call.id AND participant.left_at IS NULL
+           AND (($2::uuid IS NOT NULL AND participant.user_id=$2)
+             OR ($3::uuid IS NOT NULL AND participant.anonymous_user_id=$3))
+       )`,
       [input.roomId, input.userId ?? null, input.anonymousUserId ?? null, input.displayName],
     );
     await refreshCallMessage(input.roomId);

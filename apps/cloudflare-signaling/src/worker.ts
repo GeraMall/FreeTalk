@@ -11,6 +11,8 @@ import {
 import {
   parseClientMessage,
   type Participant,
+  type ParticipantCardDecoration,
+  type ParticipantCardStyle,
   type RoomChatMessage,
   type ServerMessage,
 } from '@freetalk/protocol';
@@ -90,6 +92,8 @@ interface SocketAttachment {
   sessionId?: string;
   name?: string;
   avatar?: string;
+  cardStyle?: ParticipantCardStyle;
+  cardDecoration?: ParticipantCardDecoration;
   muted?: boolean;
   isOwner?: boolean;
   connectedAt?: number;
@@ -281,6 +285,16 @@ export class VoiceRoom implements DurableObject {
             participant: this.participant(attachment),
           });
         }
+        return;
+      }
+      if (message.type === 'update-card-appearance') {
+        attachment.cardStyle = message.cardStyle;
+        attachment.cardDecoration = message.cardDecoration;
+        socket.serializeAttachment(attachment);
+        this.broadcast({
+          type: 'participant-updated',
+          participant: this.participant(attachment),
+        });
         return;
       }
       if (message.type === 'reaction') {
@@ -540,6 +554,8 @@ export class VoiceRoom implements DurableObject {
       sessionId: message.sessionId,
       name: message.name,
       avatar: message.avatar,
+      cardStyle: message.cardStyle ?? 'avatar-glass',
+      cardDecoration: message.cardDecoration ?? 'none',
       muted: sameAttachment?.muted ?? false,
       profileChanges: sameAttachment?.profileChanges ?? [],
       lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
@@ -630,6 +646,8 @@ export class VoiceRoom implements DurableObject {
       id: value.clientId!,
       name: value.name!,
       avatar: value.avatar,
+      cardStyle: value.cardStyle ?? 'avatar-glass',
+      cardDecoration: value.cardDecoration ?? 'none',
       muted: value.muted ?? false,
       isOwner: value.isOwner ?? false,
       connectedAt: value.connectedAt!,

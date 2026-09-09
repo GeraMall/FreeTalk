@@ -11,6 +11,7 @@ const call = {
   roomId: 'ABCDEFGHJKLM',
   chatId: 'chat',
   title: 'Алексей',
+  startedAt: '2026-09-09T10:00:00.000Z',
   participants: [{ userId: 'a', displayName: 'Алексей', avatarUrl: null }],
 };
 describe('ChatCallWaiting', () => {
@@ -32,6 +33,29 @@ describe('ChatCallWaiting', () => {
     await act(async () =>
       view.rerender(<ChatCallWaiting chatId="chat" revision={2} onJoin={vi.fn()} />),
     );
+    expect(view.queryByText('Присоединиться')).toBeNull();
+  });
+  it('does not poll or show a stale waiting room while this chat is already joined', async () => {
+    const request = vi.spyOn(accountClient, 'request').mockResolvedValue({ call });
+    const view = render(
+      <ChatCallWaiting
+        chatId="chat"
+        joinedChatId="chat"
+        joinedRoomId="STALE-ROOM-ID"
+        revision={1}
+        onJoin={vi.fn()}
+      />,
+    );
+    await act(async () => undefined);
+    expect(request).not.toHaveBeenCalled();
+    expect(view.queryByText('Присоединиться')).toBeNull();
+  });
+  it('hides a stale call containing only the current user', async () => {
+    vi.spyOn(accountClient, 'request').mockResolvedValue({ call });
+    const view = render(
+      <ChatCallWaiting chatId="chat" currentUserId="a" revision={1} onJoin={vi.fn()} />,
+    );
+    await waitFor(() => expect(accountClient.request).toHaveBeenCalled());
     expect(view.queryByText('Присоединиться')).toBeNull();
   });
 });

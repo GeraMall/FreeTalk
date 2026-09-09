@@ -41,6 +41,8 @@ describe('signaling account authorization adapter', () => {
           kind: 'registered',
           userId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
           displayName: 'Гера',
+          callScope: 'group',
+          groupOwnerId: '386d39ef-61af-4aca-84b8-47f78b0f554a',
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -48,7 +50,13 @@ describe('signaling account authorization adapter', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { authorizeRoom } = await import('../src/authorization.js');
     const result = await authorizeRoom('create', 'ABCDEFGH2345', 'a'.repeat(43));
-    expect(result).toMatchObject({ allowed: true, kind: 'registered', displayName: 'Гера' });
+    expect(result).toMatchObject({
+      allowed: true,
+      kind: 'registered',
+      displayName: 'Гера',
+      callScope: 'group',
+      groupOwnerId: '386d39ef-61af-4aca-84b8-47f78b0f554a',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('http://127.0.0.1:8790/v1/internal/room-authorize');

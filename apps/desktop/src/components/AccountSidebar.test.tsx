@@ -70,7 +70,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('AccountSidebar in an active room', () => {
-  it('switches between the shared sections and the current call', () => {
+  it('switches shared sections while the current-call indicator stays informational', () => {
     const onNavigate = vi.fn();
     const { getByRole } = render(
       <AccountSidebar
@@ -87,7 +87,10 @@ describe('AccountSidebar in an active room', () => {
     fireEvent.click(getByRole('button', { name: /Текущий звонок/ }));
 
     expect(onNavigate).toHaveBeenNthCalledWith(1, 'friends');
-    expect(onNavigate).toHaveBeenNthCalledWith(2, 'room');
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(getByRole('button', { name: /Текущий звонок/ }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
   });
 
   it('keeps the current call directly below chat search in the unified sidebar', () => {

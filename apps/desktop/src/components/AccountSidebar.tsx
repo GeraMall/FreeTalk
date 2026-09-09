@@ -288,7 +288,7 @@ export function AccountSidebar({
             icon={<PhoneCall />}
             label="Текущий звонок"
             live
-            onClick={() => onNavigate('room')}
+            passive
           />
         </nav>
       ) : null}
@@ -315,7 +315,7 @@ export function AccountSidebar({
             icon={<PhoneCall />}
             label="Текущий звонок"
             live
-            onClick={() => onNavigate('room')}
+            passive
           />
         )}
         <Nav
@@ -549,7 +549,7 @@ export function AccountSidebar({
           >
             <ProfileAvatar user={user} />
           </button>
-          <span>
+          <span className="account-profile-identity">
             <strong>{user.displayName}</strong>
             <small>
               <i
@@ -703,6 +703,7 @@ function Nav({
   icon,
   label,
   live = false,
+  passive = false,
   unread = 0,
   onClick,
 }: {
@@ -710,15 +711,17 @@ function Nav({
   icon: ReactNode;
   label: string;
   live?: boolean;
+  passive?: boolean;
   unread?: number;
-  onClick(): void;
+  onClick?(): void;
 }) {
   return (
     <button
-      className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''}`}
+      className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''} ${passive ? 'passive' : ''}`}
       aria-label={unread > 0 ? `${label}, непрочитанных сообщений: ${unread}` : label}
       aria-current={active ? 'page' : undefined}
-      onClick={onClick}
+      aria-disabled={passive || undefined}
+      onClick={passive ? undefined : onClick}
     >
       {icon}
       <span>{label}</span>

@@ -65,6 +65,38 @@ describe('RoomManager', () => {
     );
   });
 
+  it('shares only the changed participant card appearance with everyone immediately', () => {
+    const manager = new RoomManager();
+    const first = new FakeConnection();
+    const second = new FakeConnection();
+    manager.create(
+      room,
+      id(1),
+      'session-123456789',
+      'One',
+      first,
+      undefined,
+      undefined,
+      undefined,
+      'avatar-glass',
+      'japan',
+    );
+    manager.join(room, id(2), 'session-223456789', 'Two', second);
+
+    const joined = second.messages.find((message) => message.type === 'joined-room');
+    expect(joined?.type === 'joined-room' ? joined.participants : []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: id(1), cardDecoration: 'japan' }),
+        expect.objectContaining({ id: id(2), cardStyle: 'avatar-glass' }),
+      ]),
+    );
+    expect(manager.updateCardAppearance(room, id(1), 'classic', 'russia')).toBe(true);
+    expect(second.messages.at(-1)).toMatchObject({
+      type: 'participant-updated',
+      participant: { id: id(1), cardStyle: 'classic', cardDecoration: 'russia' },
+    });
+  });
+
   it('enforces the eight participant limit', () => {
     const manager = new RoomManager();
     manager.create(room, id(1), 'session-123456789', 'One', new FakeConnection());
@@ -110,6 +142,70 @@ describe('RoomManager', () => {
           message.type === 'mute-changed' && message.participantId === id(2) && message.muted,
       ),
     ).toBe(true);
+  });
+
+  it('gives both participants equal rights in a direct call', () => {
+    const manager = new RoomManager();
+    const first = new FakeConnection();
+    const second = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'One', first, undefined, id(11), {
+      scope: 'direct',
+    });
+    manager.join(room, id(2), 'session-223456789', 'Two', second, undefined, id(12), {
+      scope: 'direct',
+    });
+
+    const joined = second.messages.find((message) => message.type === 'joined-room');
+    expect(
+      joined?.type === 'joined-room' ? joined.participants.every((item) => !item.isOwner) : false,
+    ).toBe(true);
+    expect(manager.moderationMute(room, id(1), id(2))).toBe('NOT_OWNER');
+    expect(manager.moderationMute(room, id(2), id(1))).toBe('NOT_OWNER');
+    expect(manager.recordingStarted(room, id(1))).toBe('OK');
+    expect(manager.recordingStarted(room, id(2))).toBe('OK');
+  });
+
+  it('assigns group call control only to the group owner account', () => {
+    const manager = new RoomManager();
+    const member = new FakeConnection();
+    const groupOwner = new FakeConnection();
+    const authority = { scope: 'group', groupOwnerAccountId: id(12) } as const;
+    manager.create(
+      room,
+      id(1),
+      'session-123456789',
+      'Member',
+      member,
+      undefined,
+      id(11),
+      authority,
+    );
+    manager.join(
+      room,
+      id(2),
+      'session-223456789',
+      'Group owner',
+      groupOwner,
+      undefined,
+      id(12),
+      authority,
+    );
+
+    const joined = groupOwner.messages.find((message) => message.type === 'joined-room');
+    expect(joined?.type === 'joined-room' ? joined.participants : []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ accountId: id(11), isOwner: false }),
+        expect.objectContaining({ accountId: id(12), isOwner: true }),
+      ]),
+    );
+    expect(manager.moderationMute(room, id(1), id(2))).toBe('NOT_OWNER');
+    expect(manager.moderationMute(room, id(2), id(1))).toBe('OK');
+    expect(manager.recordingStarted(room, id(1))).toBe('NOT_OWNER');
+    expect(manager.recordingStarted(room, id(2))).toBe('OK');
+
+    manager.leave(room, id(2), groupOwner);
+    expect(manager.recordingStarted(room, id(1))).toBe('NOT_OWNER');
+    expect(member.messages.some((message) => message.type === 'owner-changed')).toBe(false);
   });
 
   it('assigns ownership to the earliest remaining participant', () => {

@@ -63,11 +63,17 @@ export interface HomeSidebarState {
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
+interface ActiveChatCall {
+  roomId: string;
+  participants?: Array<{ userId: string }>;
+}
+
 import type { CallDockState } from './CallDock';
 
 export function HomeView({
   callDock,
   initialChatId,
+  joinedChatId,
   joinedRoomId,
   user,
   busy,
@@ -92,6 +98,7 @@ export function HomeView({
   onJoinRoom(code: string, chatId?: string): void;
   callDock?: CallDockState;
   initialChatId?: string;
+  joinedChatId?: string;
   joinedRoomId?: string;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
@@ -104,6 +111,11 @@ export function HomeView({
   onInstallUpdate?(): void;
   embedded?: boolean;
 }) {
+  const isOwnAbandonedCall = (call: ActiveChatCall | null) =>
+    Boolean(
+      call?.participants?.length &&
+      call.participants.every((participant) => participant.userId === user.id),
+    );
   const [internalPage, setInternalPage] = useState<AccountPage>(initialChatId ? 'chats' : 'home');
   const page = controlledPage ?? internalPage;
   const [roomCode, setRoomCode] = useState('');
@@ -820,16 +832,18 @@ export function HomeView({
       onJoinRoom('');
       return;
     }
+    let directChatId: string | undefined;
     try {
       const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
         method: 'POST',
         body: JSON.stringify({ type: 'direct', memberIds: [friendId] }),
       });
+      directChatId = result.chat.id;
       const roomId = generateRoomCode();
-      const existing = await accountClient.request<{ call: { roomId: string } | null }>(
+      const existing = await accountClient.request<{ call: ActiveChatCall | null }>(
         `/v1/chats/${result.chat.id}/active-call`,
       );
-      if (existing.call) {
+      if (existing.call && !isOwnAbandonedCall(existing.call)) {
         onJoinRoom(existing.call.roomId, result.chat.id);
         return;
       }
@@ -839,6 +853,19 @@ export function HomeView({
       });
       onCreateRoom(roomId, result.chat.id);
     } catch (caught) {
+      if (directChatId) {
+        try {
+          const recovered = await accountClient.request<{ call: ActiveChatCall | null }>(
+            `/v1/chats/${directChatId}/active-call`,
+          );
+          if (recovered.call && !isOwnAbandonedCall(recovered.call)) {
+            onJoinRoom(recovered.call.roomId, directChatId);
+            return;
+          }
+        } catch {
+          // Keep the original call error when recovery is unavailable.
+        }
+      }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
     }
   };
@@ -949,25 +976,37 @@ export function HomeView({
 
   const startChatCall = async () => {
     if (!activeChat) return;
+    const chatId = activeChat;
     const roomId = generateRoomCode();
     try {
-      const existing = await accountClient.request<{ call: { roomId: string } | null }>(
-        `/v1/chats/${activeChat}/active-call`,
+      const existing = await accountClient.request<{ call: ActiveChatCall | null }>(
+        `/v1/chats/${chatId}/active-call`,
       );
-      if (existing.call) {
-        onJoinRoom(existing.call.roomId, activeChat);
+      if (existing.call && !isOwnAbandonedCall(existing.call)) {
+        onJoinRoom(existing.call.roomId, chatId);
         return;
       }
       if (joinedRoomId) {
         onJoinRoom('');
         return;
       }
-      await accountClient.request(`/v1/chats/${activeChat}/calls`, {
+      await accountClient.request(`/v1/chats/${chatId}/calls`, {
         method: 'POST',
         body: JSON.stringify({ roomId }),
       });
-      onCreateRoom(roomId, activeChat);
+      onCreateRoom(roomId, chatId);
     } catch (caught) {
+      try {
+        const recovered = await accountClient.request<{ call: ActiveChatCall | null }>(
+          `/v1/chats/${chatId}/active-call`,
+        );
+        if (recovered.call && !isOwnAbandonedCall(recovered.call)) {
+          onJoinRoom(recovered.call.roomId, chatId);
+          return;
+        }
+      } catch {
+        // Keep the original call error when recovery is unavailable.
+      }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
     }
   };
@@ -1279,6 +1318,7 @@ export function HomeView({
         )}
         {page === 'chats' && (
           <ChatsPage
+            joinedChatId={joinedChatId}
             joinedRoomId={joinedRoomId}
             externalSidebar={!mobileLayout}
             mobile={mobileLayout}

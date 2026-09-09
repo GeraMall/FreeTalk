@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { DEFAULT_ICE_SERVERS } from '@freetalk/config';
+import { DEFAULT_ICE_SERVERS, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import type {
   ClientMessage,
   Participant,
@@ -31,7 +31,12 @@ import {
   installPendingUpdate,
   type UpdateStatus,
 } from './lib/updater';
-import { RoomView, type PeerUiState, type RemoteVideoUiState } from './components/RoomView';
+import {
+  RoomView,
+  type PeerUiState,
+  type RemoteVideoUiState,
+  type WaitingCallParticipant,
+} from './components/RoomView';
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel';
 import { IncomingCallDialog, type IncomingCallInvitation } from './components/IncomingCallDialog';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -60,6 +65,11 @@ import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder
 import { calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
+import {
+  clampConversationCallHeight,
+  EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
+  remainingConversationWaitMs,
+} from './lib/conversation-call-lifecycle';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -68,6 +78,11 @@ const NO_LOCAL_VIDEO: LocalVideoState = {
   screenAudioEnabled: false,
   source: 'none',
 };
+
+function pinConversationToBottom(workspace: HTMLElement) {
+  const messages = workspace.querySelector<HTMLElement>('.message-scroll-container');
+  if (messages) messages.scrollTop = messages.scrollHeight;
+}
 
 interface EnterRoomOptions {
   chatId?: string;
@@ -147,6 +162,10 @@ export function App() {
   const [callTitle, setCallTitle] = useState('Комната FreeTalk');
   const [deafened, setDeafened] = useState(false);
   const [conversationHidden, setConversationHidden] = useState(false);
+  const [callExiting, setCallExiting] = useState(false);
+  const [dismissedWaitingParticipantIds, setDismissedWaitingParticipantIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [cameraPreviewRequest, setCameraPreviewRequest] = useState(0);
   const [roomDestination, setRoomDestination] = useState<AccountDestination>('room');
   const [roomActiveChatId, setRoomActiveChatId] = useState<string>();
@@ -226,8 +245,10 @@ export function App() {
     async () => undefined,
   );
   const joinedRoom = useRef(false);
+  const conversationPeerJoined = useRef(false);
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
+  const callExitTimer = useRef<number | undefined>(undefined);
   const reactionTimers = useRef(new Map<string, number>());
   const recordingCompatibilityErrorUntil = useRef(0);
   const guestWarningTimer = useRef<number | undefined>(undefined);
@@ -331,6 +352,17 @@ export function App() {
         ringtone.stop();
         setIncomingCall(undefined);
         setIncomingCallBusy(false);
+      } else if (
+        event.type === 'call-invitation-resolved' &&
+        (event.status === 'declined' || event.status === 'missed') &&
+        event.roomId === pendingRoomId.current &&
+        event.inviteeId
+      ) {
+        setDismissedWaitingParticipantIds((current) => {
+          const next = new Set(current);
+          next.add(event.inviteeId!);
+          return next;
+        });
       }
     });
     realtime.start();
@@ -359,12 +391,15 @@ export function App() {
   }, [incomingCall]);
 
   const cleanup = useCallback(() => {
+    if (callExitTimer.current) window.clearTimeout(callExitTimer.current);
+    callExitTimer.current = undefined;
     if (joinTimer.current) window.clearTimeout(joinTimer.current);
     joinTimer.current = undefined;
     if (telemetryTimer.current) window.clearInterval(telemetryTimer.current);
     telemetryTimer.current = undefined;
     pendingRoomId.current = undefined;
     joinedRoom.current = false;
+    conversationPeerJoined.current = false;
     awaitingRejoin.current = false;
     signaling.current?.close();
     signaling.current = undefined;
@@ -405,9 +440,17 @@ export function App() {
     setRoomStartedAt(0);
     setReactions([]);
     setRoomChatMessages([]);
+    setDismissedWaitingParticipantIds(new Set());
     setScreenFocusMode(false);
     setRecordingBannerMessage('');
+    setCallExiting(false);
   }, []);
+
+  const leaveCall = useCallback(() => {
+    if (callExitTimer.current) return;
+    setCallExiting(true);
+    callExitTimer.current = window.setTimeout(cleanup, 220);
+  }, [cleanup]);
 
   useEffect(() => {
     remoteAudio.current.setMasterVolume(deafened ? 0 : settings.outputVolume);
@@ -560,6 +603,8 @@ export function App() {
         setRoomDestination(callChatRef.current ? 'chats' : 'room');
         setJoining(false);
         setParticipants(message.participants);
+        if (message.participants.some((participant) => participant.id !== selfId.current))
+          conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
         participantNotifications.current.reset(
@@ -684,6 +729,7 @@ export function App() {
         return;
       }
       if (message.type === 'participant-joined') {
+        if (message.participant.id !== selfId.current) conversationPeerJoined.current = true;
         const shouldNotify = participantNotifications.current.joined(
           message.participant.id,
           selfId.current,
@@ -754,6 +800,8 @@ export function App() {
         return;
       }
       if (message.type === 'participants') {
+        if (message.participants.some((participant) => participant.id !== selfId.current))
+          conversationPeerJoined.current = true;
         setParticipants(message.participants);
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
@@ -775,7 +823,7 @@ export function App() {
       if (message.type === 'force-mute') {
         setMuted(true);
         audio.current?.setMuted(true);
-        setNotice('Создатель комнаты выключил ваш микрофон');
+        setNotice('Вам выключили микрофон');
         return;
       }
       if (message.type === 'owner-changed') {
@@ -785,8 +833,7 @@ export function App() {
             isOwner: participant.id === message.ownerId,
           })),
         );
-        if (message.ownerId === selfId.current)
-          setNotice('Вы стали создателем комнаты и получили управление участниками');
+        if (message.ownerId === selfId.current) setNotice('Вы получили управление участниками');
         return;
       }
       if (
@@ -809,6 +856,7 @@ export function App() {
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
+    conversationPeerJoined.current = false;
     pendingChatRing.current = create && Boolean(options.chatId);
     callChatRef.current = options.chatId;
     setCallChatId(options.chatId);
@@ -831,6 +879,34 @@ export function App() {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
     }
+    const bufferStartedAt = Date.now();
+    const destinationConversation = options.chatId
+      ? roomSidebarState?.chats.find((chat) => chat.id === options.chatId)
+      : undefined;
+    pendingRoomId.current = code;
+    setRoomId(code);
+    setRoomStartedAt(bufferStartedAt);
+    setRoomDestination(options.chatId ? 'chats' : 'room');
+    setCallExiting(false);
+    setDismissedWaitingParticipantIds(new Set());
+    setParticipants([
+      {
+        id: selfId.current,
+        accountId: accountUser?.id,
+        name: cleanName,
+        avatar: accountUser?.avatarUrl ?? (settings.avatarDataUrl || undefined),
+        cardStyle: settings.participantCardStyle,
+        cardDecoration: settings.participantCardDecoration,
+        muted,
+        isOwner:
+          destinationConversation?.type === 'direct'
+            ? false
+            : destinationConversation?.type === 'group'
+              ? destinationConversation.currentUserRole === 'owner'
+              : create,
+        connectedAt: bufferStartedAt,
+      },
+    ]);
     connectionDiagnostics.startSession({
       action: create ? 'create-room' : 'join-room',
       roomId: code,
@@ -871,7 +947,6 @@ export function App() {
       await refreshDevices();
       updateSettings({ displayName: cleanName });
       setName(cleanName);
-      pendingRoomId.current = code;
       joinedRoom.current = false;
       const roomAuthToken =
         options.authToken ?? (accountUser ? await accountClient.realtimeAccessToken() : undefined);
@@ -906,6 +981,8 @@ export function App() {
         avatar: accountUser
           ? (accountUser.avatarUrl ?? undefined)
           : settings.avatarDataUrl || undefined,
+        cardStyle: settings.participantCardStyle,
+        cardDecoration: settings.participantCardDecoration,
       });
       setGuestMode(Boolean(options.guest));
       if (options.guest) {
@@ -952,6 +1029,8 @@ export function App() {
         }>(`/v1/calls/${roomId}/context`);
         if (disposed) return;
         setCallTitle(result.call.title || 'Комната FreeTalk');
+        const authoritativeStartedAt = Date.parse(result.call.startedAt);
+        if (Number.isFinite(authoritativeStartedAt)) setRoomStartedAt(authoritativeStartedAt);
         if (result.call.chatId && result.call.chatId !== callChatRef.current) {
           callChatRef.current = result.call.chatId;
           setCallChatId(result.call.chatId);
@@ -990,6 +1069,25 @@ export function App() {
       clearTimeout(timer);
     };
   }, [roomId, accountUser]);
+
+  useEffect(() => {
+    if (!roomId || !callChatId || !roomStartedAt || conversationPeerJoined.current) return;
+    const remaining = remainingConversationWaitMs(
+      roomStartedAt,
+      EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
+    );
+    const closeEmptyConversationCall = () => {
+      if (conversationPeerJoined.current) return;
+      cleanup();
+      setNotice('Звонок завершён: за 8 минут никто не подключился');
+    };
+    if (remaining <= 0) {
+      closeEmptyConversationCall();
+      return;
+    }
+    const timer = window.setTimeout(closeEmptyConversationCall, remaining);
+    return () => window.clearTimeout(timer);
+  }, [callChatId, cleanup, participants, roomId, roomStartedAt]);
 
   useEffect(() => {
     if (roomId) signaling.current?.send({ type: 'mute-changed', muted });
@@ -1222,6 +1320,11 @@ export function App() {
   const inviteFriendsToCall = async (userIds: string[]) => {
     if (!roomId || !accountUser || !userIds.length) return false;
     try {
+      setDismissedWaitingParticipantIds((current) => {
+        const next = new Set(current);
+        for (const userId of userIds) next.delete(userId);
+        return next;
+      });
       await accountClient.request(`/v1/calls/${roomId}/invitations`, {
         method: 'POST',
         body: JSON.stringify({ userIds }),
@@ -1281,6 +1384,18 @@ export function App() {
   const changeAudioSettings = async (patch: Partial<LocalSettings>, restart: boolean) => {
     const next = { ...settings, ...patch };
     updateSettings(patch);
+    if (patch.participantCardStyle !== undefined || patch.participantCardDecoration !== undefined) {
+      const appearance = {
+        cardStyle: next.participantCardStyle,
+        cardDecoration: next.participantCardDecoration,
+      };
+      if (roomId) signaling.current?.send({ type: 'update-card-appearance', ...appearance });
+      setParticipants((current) =>
+        current.map((participant) =>
+          participant.id === selfId.current ? { ...participant, ...appearance } : participant,
+        ),
+      );
+    }
     if (!audio.current) return;
     try {
       if (restart) {
@@ -1537,6 +1652,21 @@ export function App() {
   ) : null;
 
   const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
+  const waitingCallParticipants: WaitingCallParticipant[] = callConversation
+    ? callConversation.members
+        .filter(
+          (member) =>
+            member.id !== accountUser?.id &&
+            !dismissedWaitingParticipantIds.has(member.id) &&
+            !participants.some((participant) => participant.accountId === member.id),
+        )
+        .slice(0, ROOM_MAX_PARTICIPANTS - 1)
+        .map((member) => ({
+          id: member.id,
+          displayName: member.displayName,
+          avatarUrl: member.avatarUrl,
+        }))
+    : [];
   const callDock: CallDockState = {
     active: Boolean(roomId),
     muted,
@@ -1574,7 +1704,7 @@ export function App() {
     },
     onScreen: () => void runVideoAction('screen'),
     onNoise: () => void changeAudioSettings({ noiseSuppression: !settings.noiseSuppression }, true),
-    onLeave: cleanup,
+    onLeave: leaveCall,
     onOpen: () => {
       setRoomDestination(callChatId ? 'chats' : 'room');
       if (callChatId) void roomSidebarState?.openChat(callChatId);
@@ -1664,6 +1794,7 @@ export function App() {
   const roomView = (
     <RoomView
       conversation={Boolean(callChatId)}
+      conversationType={callConversation?.type}
       conversationHidden={conversationHidden}
       onConversationToggle={() => setConversationHidden((value) => !value)}
       cameraPreviewRequest={cameraPreviewRequest}
@@ -1671,6 +1802,7 @@ export function App() {
       viewerId={accountUser?.id}
       roomId={roomId}
       participants={participants}
+      waitingParticipants={waitingCallParticipants}
       selfId={selfId.current}
       peerState={peerState}
       localSpeaking={localSpeaking}
@@ -1711,7 +1843,7 @@ export function App() {
       onSettings={() => openSettings()}
       onRecording={() => void toggleScreenRecording()}
       onRecordingBannerClose={() => setRecordingBannerMessage('')}
-      onLeave={cleanup}
+      onLeave={leaveCall}
       onPeerVolume={setPeerVolume}
       onScreenVolume={setScreenVolume}
       onPeerMute={togglePeerMute}
@@ -1723,7 +1855,7 @@ export function App() {
     <>
       {accountUser ? (
         <main
-          className={`account-shell account-shell-with-chat-sidebar room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}`}
+          className={`account-shell account-shell-with-chat-sidebar room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}${callExiting ? ' call-transition-leaving' : ''}`}
           style={
             {
               '--account-sidebar-width': `${roomSidebarWidth}px`,
@@ -1791,6 +1923,9 @@ export function App() {
                   tabIndex={0}
                   onPointerDown={(event) => {
                     event.currentTarget.setPointerCapture(event.pointerId);
+                    const workspace = event.currentTarget.parentElement;
+                    workspace?.classList.add('is-resizing-call');
+                    if (workspace) pinConversationToBottom(workspace);
                     event.preventDefault();
                   }}
                   onPointerMove={(event) => {
@@ -1799,12 +1934,17 @@ export function App() {
                     const bounds = workspace.getBoundingClientRect();
                     workspace.style.setProperty(
                       '--conversation-call-height',
-                      `${Math.max(240, Math.min(bounds.height - 180, event.clientY - bounds.top))}px`,
+                      `${clampConversationCallHeight(event.clientY - bounds.top, bounds.height)}px`,
                     );
+                    pinConversationToBottom(workspace);
                   }}
                   onPointerUp={(event) => {
                     if (event.currentTarget.hasPointerCapture(event.pointerId))
                       event.currentTarget.releasePointerCapture(event.pointerId);
+                    event.currentTarget.parentElement?.classList.remove('is-resizing-call');
+                  }}
+                  onPointerCancel={(event) => {
+                    event.currentTarget.parentElement?.classList.remove('is-resizing-call');
                   }}
                   onKeyDown={(event) => {
                     if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
@@ -1813,8 +1953,12 @@ export function App() {
                     const height = workspace.firstElementChild!.getBoundingClientRect().height;
                     workspace.style.setProperty(
                       '--conversation-call-height',
-                      `${Math.max(240, Math.min(workspace.clientHeight - 180, height + (event.key === 'ArrowUp' ? -30 : 30)))}px`,
+                      `${clampConversationCallHeight(
+                        height + (event.key === 'ArrowUp' ? -30 : 30),
+                        workspace.clientHeight,
+                      )}px`,
                     );
+                    pinConversationToBottom(workspace);
                   }}
                 >
                   <span />
@@ -1823,6 +1967,7 @@ export function App() {
             <div className={`account-page-slot ${roomDestination === 'room' ? 'is-hidden' : ''}`}>
               <HomeView
                 initialChatId={callChatId}
+                joinedChatId={callChatId}
                 joinedRoomId={roomId}
                 embedded
                 page={roomDestination === 'room' ? 'home' : (roomDestination as AccountPage)}

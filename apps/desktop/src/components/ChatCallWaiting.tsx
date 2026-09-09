@@ -7,16 +7,21 @@ export interface ChatCallContext {
   roomId: string;
   chatId: string | null;
   title: string;
+  startedAt: string;
   participants: Array<{ userId: string; displayName: string; avatarUrl: string | null }>;
 }
 
 export function ChatCallWaiting({
   chatId,
+  currentUserId,
+  joinedChatId,
   joinedRoomId,
   revision,
   onJoin,
 }: {
   chatId: string;
+  currentUserId?: string;
+  joinedChatId?: string;
   joinedRoomId?: string;
   revision: unknown;
   onJoin(roomId: string): void;
@@ -24,6 +29,10 @@ export function ChatCallWaiting({
   const [snapshot, setSnapshot] = useState<{ chatId: string; call?: ChatCallContext }>();
   const call = snapshot?.chatId === chatId ? snapshot.call : undefined;
   useEffect(() => {
+    if (joinedChatId === chatId) {
+      setSnapshot({ chatId });
+      return;
+    }
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
@@ -42,24 +51,39 @@ export function ChatCallWaiting({
       disposed = true;
       clearTimeout(timer);
     };
-  }, [chatId, revision]);
-  if (!call || call.roomId === joinedRoomId) return null;
+  }, [chatId, joinedChatId, revision]);
+  if (
+    joinedChatId === chatId ||
+    !call ||
+    call.roomId === joinedRoomId ||
+    (Boolean(currentUserId) &&
+      call.participants.length > 0 &&
+      call.participants.every((participant) => participant.userId === currentUserId))
+  )
+    return null;
   return (
     <section className="chat-call-waiting" aria-label="Звонок в чате">
       <div className="chat-call-waiting-cards">
         {call.participants.map((person) => (
-          <div className="chat-call-waiting-card" key={person.userId}>
+          <div
+            className="chat-call-waiting-avatar"
+            key={person.userId}
+            aria-label={`${person.displayName} находится в звонке`}
+          >
             {person.avatarUrl ? (
               <CachedMediaImage src={person.avatarUrl} alt="" />
             ) : (
               <span className="waiting-initial">{person.displayName.slice(0, 1)}</span>
             )}
-            <strong>{person.displayName}</strong>
-            <small>В звонке</small>
           </div>
         ))}
       </div>
-      <p>{call.participants.length === 1 ? 'Собеседник ждёт вас' : 'В чате идёт звонок'}</p>
+      <div className="chat-call-waiting-copy">
+        <strong>
+          {call.participants.length === 1 ? call.participants[0]?.displayName : call.title}
+        </strong>
+        <p>{call.participants.length === 1 ? 'ждёт вас в звонке' : 'В чате идёт звонок'}</p>
+      </div>
       <button className="primary" onClick={() => onJoin(call.roomId)}>
         <PhoneCall size={17} /> Присоединиться
       </button>

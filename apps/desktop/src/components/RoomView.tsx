@@ -50,6 +50,15 @@ import {
 import { cameraConstraints } from '../lib/video-manager';
 import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 import { CallInviteFriendsDialog, type CallInviteFriend } from './CallInviteFriendsDialog';
+import {
+  remainingConversationWaitMs,
+  WAITING_PARTICIPANT_CARD_MS,
+} from '../lib/conversation-call-lifecycle';
+import {
+  leaveWindowFullscreen,
+  toggleMediaFullscreen,
+  type FullscreenMode,
+} from '../lib/fullscreen';
 
 export type PeerUiState = Record<
   string,
@@ -58,10 +67,17 @@ export type PeerUiState = Record<
 
 export type RemoteVideoUiState = Record<string, { camera?: MediaStream; screen?: MediaStream }>;
 
+export interface WaitingCallParticipant {
+  id: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
 const SCREEN_STAGE_BOTTOM_GAP = 10;
 
 interface RoomViewProps {
   conversation?: boolean;
+  conversationType?: 'direct' | 'group';
   conversationHidden?: boolean;
   onConversationToggle?(): void;
   cameraPreviewRequest?: number;
@@ -70,6 +86,7 @@ interface RoomViewProps {
   roomId: string;
   selfId: string;
   participants: Participant[];
+  waitingParticipants?: WaitingCallParticipant[];
   peerState: PeerUiState;
   localSpeaking: boolean;
   localVideo: LocalVideoState;
@@ -119,6 +136,7 @@ interface RoomViewProps {
 
 export function RoomView({
   conversation = false,
+  conversationType,
   conversationHidden = false,
   onConversationToggle,
   cameraPreviewRequest = 0,
@@ -127,6 +145,7 @@ export function RoomView({
   roomId,
   selfId,
   participants,
+  waitingParticipants = [],
   peerState,
   localSpeaking,
   localVideo,
@@ -179,23 +198,30 @@ export function RoomView({
     if (cameraPreviewRequest) setCameraPreviewOpen(true);
   }, [cameraPreviewRequest]);
   const [callFullscreen, setCallFullscreen] = useState(false);
+  const callFullscreenMode = useRef<FullscreenMode | 'detached-window'>('none');
+  const callFullscreenBusy = useRef(false);
   const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
   const [callControlsVisible, setCallControlsVisible] = useState(false);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
+  const [waitingCardsVisible, setWaitingCardsVisible] = useState(false);
   const roomShellRef = useRef<HTMLElement>(null);
+  const participantActionDrawerRef = useRef<HTMLElement>(null);
   const callControlsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
   const chatOpenRef = useRef(chatOpen);
+  const hasConversationPeer = participants.some((participant) => participant.id !== selfId);
+  const conversationBuffering = conversation && !hasConversationPeer;
   const elapsed = useCallDuration(roomStartedAt);
   const ordered = [...participants].sort(
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
   const self = participants.find((participant) => participant.id === selfId);
   const openSlots = Math.max(0, ROOM_MAX_PARTICIPANTS - participants.length);
+  const visibleWaitingParticipants = waitingCardsVisible ? waitingParticipants : [];
   const participantMedia = (participant: Participant) =>
     participant.id === selfId
       ? { camera: localVideo.cameraStream, screen: localVideo.screenStream }
@@ -206,11 +232,24 @@ export function RoomView({
   const screenPresenter = screenPresenters[0];
   const hasCamera = ordered.some((participant) => Boolean(participantMedia(participant).camera));
   const roomMode = screenPresenter ? 'presentation' : hasCamera ? 'camera' : 'audio';
+  const focusedCameraParticipant = fullscreenCameraId
+    ? ordered.find((participant) => participant.id === fullscreenCameraId)
+    : undefined;
+  const focusedCameraStream = focusedCameraParticipant
+    ? participantMedia(focusedCameraParticipant).camera
+    : undefined;
+  const actionParticipant = menuFor
+    ? ordered.find((participant) => participant.id === menuFor)
+    : undefined;
   const revealCallControls = useCallback(() => {
     setCallControlsVisible(true);
     if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
     callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 1000);
   }, []);
+
+  useEffect(() => {
+    if (conversation && (conversationHidden || callFullscreen)) setFriendsInviteOpen(false);
+  }, [callFullscreen, conversation, conversationHidden]);
 
   useEffect(
     () => () => {
@@ -218,6 +257,21 @@ export function RoomView({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!conversation || !roomStartedAt || waitingParticipants.length === 0) {
+      setWaitingCardsVisible(false);
+      return;
+    }
+    const remaining = remainingConversationWaitMs(roomStartedAt, WAITING_PARTICIPANT_CARD_MS);
+    if (remaining <= 0) {
+      setWaitingCardsVisible(false);
+      return;
+    }
+    setWaitingCardsVisible(true);
+    const timer = window.setTimeout(() => setWaitingCardsVisible(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [conversation, roomId, roomStartedAt, waitingParticipants.length]);
 
   useEffect(() => {
     chatOpenRef.current = chatOpen;
@@ -250,6 +304,43 @@ export function RoomView({
     if (!screenPresenter && screenFocusMode) onScreenFocusChange(false);
   }, [onScreenFocusChange, screenFocusMode, screenPresenter]);
 
+  const closeFocusedCamera = useCallback(() => {
+    setFullscreenCameraId(undefined);
+    setMenuFor(undefined);
+  }, []);
+
+  useEffect(() => {
+    if (fullscreenCameraId && !focusedCameraStream) closeFocusedCamera();
+  }, [closeFocusedCamera, focusedCameraStream, fullscreenCameraId]);
+
+  useEffect(() => {
+    if (!fullscreenCameraId && !menuFor) return;
+    const onFocusedCameraKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (menuFor) setMenuFor(undefined);
+      else closeFocusedCamera();
+    };
+    window.addEventListener('keydown', onFocusedCameraKeyDown);
+    return () => window.removeEventListener('keydown', onFocusedCameraKeyDown);
+  }, [closeFocusedCamera, fullscreenCameraId, menuFor]);
+
+  useEffect(() => {
+    if (!menuFor) return;
+    const closeParticipantActionsOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (participantActionDrawerRef.current?.contains(target)) return;
+      if (
+        target instanceof Element &&
+        target.closest('[aria-controls="participant-action-drawer"]')
+      )
+        return;
+      setMenuFor(undefined);
+    };
+    document.addEventListener('mousedown', closeParticipantActionsOutside);
+    return () => document.removeEventListener('mousedown', closeParticipantActionsOutside);
+  }, [menuFor]);
+
   useEffect(() => {
     callDetachedRef.current = callDetached;
     document.documentElement.classList.toggle('call-popout-active', callDetached);
@@ -259,7 +350,13 @@ export function RoomView({
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listen('call-popout-restored', () => setCallDetached(false)).then((dispose) => {
+    void listen('call-popout-restored', () => {
+      if (callFullscreenMode.current === 'detached-window') {
+        callFullscreenMode.current = 'none';
+        setCallFullscreen(false);
+      }
+      setCallDetached(false);
+    }).then((dispose) => {
       if (disposed) dispose();
       else unlisten = dispose;
     });
@@ -271,12 +368,68 @@ export function RoomView({
     };
   }, []);
 
-  const toggleCallFullscreen = () => setCallFullscreen((active) => !active);
+  const toggleCallFullscreen = async () => {
+    if (callFullscreenBusy.current) return;
+    callFullscreenBusy.current = true;
+    try {
+      if (callFullscreen) {
+        if (callFullscreenMode.current === 'detached-window') {
+          await invoke('call_popout_set_fullscreen', { fullscreen: false }).catch(() => undefined);
+        } else if (callFullscreenMode.current === 'element' && document.fullscreenElement) {
+          await document.exitFullscreen().catch(() => undefined);
+        } else if (callFullscreenMode.current === 'window') {
+          await leaveWindowFullscreen(true);
+        }
+        callFullscreenMode.current = 'none';
+        setCallFullscreen(false);
+        return;
+      }
+      if (callDetached) {
+        await invoke('call_popout_set_fullscreen', { fullscreen: true });
+        callFullscreenMode.current = 'detached-window';
+        setCallFullscreen(true);
+        return;
+      }
+      const roomShell = roomShellRef.current;
+      if (!roomShell) return;
+      const mode = await toggleMediaFullscreen(roomShell).catch(() => 'none' as const);
+      callFullscreenMode.current = mode;
+      setCallFullscreen(mode !== 'none');
+    } finally {
+      callFullscreenBusy.current = false;
+    }
+  };
 
-  const toggleCameraFullscreen = (participantId: string) =>
+  useEffect(() => {
+    const syncElementFullscreen = () => {
+      if (callFullscreenMode.current !== 'element' || document.fullscreenElement) return;
+      callFullscreenMode.current = 'none';
+      setCallFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', syncElementFullscreen);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncElementFullscreen);
+      if (callFullscreenMode.current === 'detached-window')
+        void invoke('call_popout_set_fullscreen', { fullscreen: false }).catch(() => undefined);
+      else if (callFullscreenMode.current === 'window') void leaveWindowFullscreen(true);
+      else if (callFullscreenMode.current === 'element' && document.fullscreenElement)
+        void document.exitFullscreen().catch(() => undefined);
+      callFullscreenMode.current = 'none';
+    };
+  }, []);
+
+  const toggleCameraFullscreen = (participantId: string) => {
+    setMenuFor(undefined);
     setFullscreenCameraId((active) => (active === participantId ? undefined : participantId));
+  };
 
   const toggleCallPopout = async () => {
+    if (callFullscreenBusy.current) return;
+    if (callDetached && callFullscreenMode.current === 'detached-window') {
+      await invoke('call_popout_set_fullscreen', { fullscreen: false }).catch(() => undefined);
+      callFullscreenMode.current = 'none';
+      setCallFullscreen(false);
+    }
     const nextDetached = !callDetached;
     setCallDetached(nextDetached);
     await invoke(nextDetached ? 'call_popout_open' : 'call_popout_restore').catch(() => {
@@ -302,9 +455,11 @@ export function RoomView({
     const connection = isSelf ? 'connected' : (peerState[participant.id]?.connection ?? 'new');
     const hasAudio = isSelf || (peerState[participant.id]?.hasAudio ?? false);
     const locallyMuted = settings.mutedPeers[participant.id] ?? false;
-    const canModerate = Boolean(self?.isOwner && !isSelf);
+    const canModerate = Boolean(conversationType !== 'direct' && self?.isOwner && !isSelf);
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
+    const cardStyle = participant.cardStyle ?? 'avatar-glass';
+    const cardDecoration = participant.cardDecoration ?? 'none';
     const status = participant.muted
       ? 'Микрофон выключен'
       : speaking
@@ -313,7 +468,7 @@ export function RoomView({
 
     return (
       <article
-        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? `camera-tile media-surface ${fullscreenCameraId === participant.id ? 'camera-tile-window-fullscreen' : ''}` : `audio-tile ${participant.avatar && settings.participantCardStyle === 'avatar-glass' ? 'avatar-glass' : ''}`} ${!showCamera && (!isSelf || canModerate) ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
+        className={`participant-card ${compact ? 'compact-tile' : ''} ${showCamera ? 'camera-tile media-surface' : `audio-tile ${participant.avatar && cardStyle === 'avatar-glass' ? 'avatar-glass' : ''}`} ${!isSelf || canModerate ? 'has-participant-menu' : ''} ${speaking ? 'speaking' : ''} ${participant.muted ? 'mic-muted' : ''}`}
         data-camera-participant-id={showCamera ? participant.id : undefined}
         role="listitem"
         key={participant.id}
@@ -324,10 +479,18 @@ export function RoomView({
           toggleCameraFullscreen(participant.id);
         }}
       >
-        {!showCamera && participant.avatar && settings.participantCardStyle === 'avatar-glass' && (
+        {!showCamera && participant.avatar && cardStyle === 'avatar-glass' && (
           <span className="participant-card-ambient" aria-hidden="true">
             <CachedMediaImage src={participant.avatar} alt="" />
           </span>
+        )}
+        {!showCamera && cardDecoration !== 'none' && (
+          <img
+            className="participant-card-decoration"
+            src={`/card-decorations/${cardDecoration}.png`}
+            alt=""
+            draggable={false}
+          />
         )}
         {showCamera && (
           <ParticipantVideo
@@ -342,22 +505,20 @@ export function RoomView({
           />
         )}
         <div className="participant-card-top media-overlay-top">
-          {participant.isOwner ? <CreatorBadge compact={showCamera || compact} /> : <span />}
-          {!showCamera && (
-            <ParticipantActions
-              participant={participant}
-              isSelf={isSelf}
-              canModerate={canModerate}
-              locallyMuted={locallyMuted}
-              open={menuFor === participant.id}
-              onToggle={() =>
-                setMenuFor((old) => (old === participant.id ? undefined : participant.id))
-              }
-              onClose={() => setMenuFor(undefined)}
-              onPeerMute={onPeerMute}
-              onModerationMute={onModerationMute}
-            />
+          {participant.isOwner && conversationType !== 'direct' ? (
+            <CreatorBadge compact={showCamera || compact} group={conversationType === 'group'} />
+          ) : (
+            <span />
           )}
+          <ParticipantActions
+            participant={participant}
+            isSelf={isSelf}
+            canModerate={canModerate}
+            open={menuFor === participant.id}
+            onToggle={() =>
+              setMenuFor((old) => (old === participant.id ? undefined : participant.id))
+            }
+          />
         </div>
 
         {!showCamera && (
@@ -420,6 +581,7 @@ export function RoomView({
           state={signalingState}
           attempt={reconnectAttempt}
           strength={signalStrength}
+          buffering={conversationBuffering}
         />
       </div>
 
@@ -430,21 +592,30 @@ export function RoomView({
         >
           <ShieldCheck size={14} /> Приватное соединение
         </span>
-        <span className="call-timer" aria-label={`Длительность звонка ${elapsed}`}>
-          <i /> {elapsed}
+        <span
+          className={`call-timer${conversationBuffering ? ' buffering' : ''}`}
+          aria-label={
+            conversationBuffering ? 'Ожидание подключения' : `Длительность звонка ${elapsed}`
+          }
+        >
+          <i /> {conversationBuffering ? 'Ожидание' : elapsed}
         </span>
       </div>
 
-      {conversation && onInviteFriends && openSlots > 0 && (
-        <button
-          className="conversation-invite"
-          aria-label="Добавить друга в групповой звонок"
-          title="Добавить друга — продолжить в группе"
-          onClick={() => setFriendsInviteOpen(true)}
-        >
-          <UserPlus size={18} />
-        </button>
-      )}
+      {conversation &&
+        !conversationHidden &&
+        !callFullscreen &&
+        onInviteFriends &&
+        openSlots > 0 && (
+          <button
+            className="conversation-invite"
+            aria-label="Добавить друга в групповой звонок"
+            title="Добавить друга — продолжить в группе"
+            onClick={() => setFriendsInviteOpen(true)}
+          >
+            <UserPlus size={18} />
+          </button>
+        )}
       {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
           <span>
@@ -474,6 +645,10 @@ export function RoomView({
                     presenter={presenter}
                     stream={participantMedia(presenter).screen!}
                     selfId={selfId}
+                    constrainFullscreenToWorkspace={Boolean(
+                      embedded && !callFullscreen && !callDetached,
+                    )}
+                    conversationType={conversationType}
                     outputDeviceId={settings.outputDeviceId}
                     volume={settings.screenVolumes[presenter.id] ?? 1}
                     onVolume={onScreenVolume}
@@ -485,7 +660,7 @@ export function RoomView({
               >
                 <div className="participant-strip" role="list" aria-label="Участники комнаты">
                   {ordered.map((participant) => renderParticipant(participant, true))}
-                  {openSlots > 0 && (
+                  {openSlots > 0 && (!conversation || (!conversationHidden && !callFullscreen)) && (
                     <InviteCallout
                       compact
                       openSlots={openSlots}
@@ -498,12 +673,15 @@ export function RoomView({
           ) : (
             <div
               className="participants-grid"
-              data-count={participants.length}
+              data-count={participants.length + visibleWaitingParticipants.length}
               data-mode={roomMode}
               role="list"
             >
               {ordered.map((participant) => renderParticipant(participant))}
-              {openSlots > 0 && (
+              {visibleWaitingParticipants.map((participant) => (
+                <WaitingParticipantCard participant={participant} key={participant.id} />
+              ))}
+              {openSlots > 0 && (!conversation || (!conversationHidden && !callFullscreen)) && (
                 <InviteCallout
                   openSlots={openSlots}
                   onOpen={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
@@ -533,6 +711,137 @@ export function RoomView({
         )}
       </div>
 
+      {focusedCameraParticipant && focusedCameraStream && (
+        <section
+          className={`camera-focus-overlay${embedded && !callFullscreen && !callDetached ? ' media-workspace-fullscreen-shell' : ''}`}
+          aria-label={`Раскрытая камера ${focusedCameraParticipant.name}`}
+          onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('button, input, label')) return;
+            closeFocusedCamera();
+          }}
+        >
+          <ParticipantVideo
+            stream={focusedCameraStream}
+            source="camera"
+            name={focusedCameraParticipant.name}
+            mirrored
+            muted
+            volume={0}
+            outputDeviceId={settings.outputDeviceId}
+            showExpand={false}
+          />
+          <div className="participant-card-top media-overlay-top">
+            {focusedCameraParticipant.isOwner && conversationType !== 'direct' ? (
+              <CreatorBadge compact group={conversationType === 'group'} />
+            ) : (
+              <span />
+            )}
+            <ParticipantActions
+              participant={focusedCameraParticipant}
+              isSelf={focusedCameraParticipant.id === selfId}
+              canModerate={Boolean(
+                conversationType !== 'direct' &&
+                self?.isOwner &&
+                focusedCameraParticipant.id !== selfId,
+              )}
+              open={menuFor === focusedCameraParticipant.id}
+              onToggle={() =>
+                setMenuFor((old) =>
+                  old === focusedCameraParticipant.id ? undefined : focusedCameraParticipant.id,
+                )
+              }
+            />
+          </div>
+          <div className="participant-overlay media-overlay-bottom">
+            <div className="participant-name">
+              <strong>{focusedCameraParticipant.name}</strong>
+              {focusedCameraParticipant.id === selfId && <span>вы</span>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {actionParticipant && (
+        <aside
+          ref={participantActionDrawerRef}
+          id="participant-action-drawer"
+          className="participant-action-drawer"
+          role="dialog"
+          aria-label={`Управление участником ${actionParticipant.name}`}
+        >
+          <header>
+            <span className="participant-action-avatar" aria-hidden="true">
+              {actionParticipant.avatar ? (
+                <CachedMediaImage src={actionParticipant.avatar} alt="" />
+              ) : (
+                actionParticipant.name.slice(0, 1).toUpperCase()
+              )}
+            </span>
+            <span>
+              <small>Управление участником</small>
+              <strong>{actionParticipant.name}</strong>
+            </span>
+            <button
+              type="button"
+              className="icon-button participant-action-close"
+              aria-label="Закрыть управление участником"
+              onClick={() => setMenuFor(undefined)}
+            >
+              <X size={17} />
+            </button>
+          </header>
+          {actionParticipant.id !== selfId && (
+            <button
+              type="button"
+              role="menuitem"
+              aria-label={
+                settings.mutedPeers[actionParticipant.id] ? 'Вернуть звук' : 'Не слышать локально'
+              }
+              onClick={() => {
+                onPeerMute(actionParticipant.id);
+                setMenuFor(undefined);
+              }}
+            >
+              {settings.mutedPeers[actionParticipant.id] ? (
+                <Volume2 size={17} />
+              ) : (
+                <VolumeX size={17} />
+              )}
+              <span>
+                <strong>
+                  {settings.mutedPeers[actionParticipant.id]
+                    ? 'Вернуть звук'
+                    : 'Не слышать локально'}
+                </strong>
+                <small>Изменение действует только для вас</small>
+              </span>
+            </button>
+          )}
+          {conversationType !== 'direct' && self?.isOwner && actionParticipant.id !== selfId && (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger-action"
+              aria-label={actionParticipant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
+              disabled={actionParticipant.muted}
+              onClick={() => {
+                onModerationMute(actionParticipant.id, actionParticipant.name);
+                setMenuFor(undefined);
+              }}
+            >
+              <MicOff size={17} />
+              <span>
+                <strong>
+                  {actionParticipant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
+                </strong>
+                <small>Для всех участников звонка</small>
+              </span>
+            </button>
+          )}
+        </aside>
+      )}
+
       <div className="reaction-burst-layer" aria-live="polite">
         {reactions.map((item) => {
           const participant = participants.find((entry) => entry.id === item.participantId);
@@ -545,17 +854,19 @@ export function RoomView({
         })}
       </div>
 
+      {conversation && !callFullscreen && (
+        <button
+          className="conversation-chat-hide"
+          aria-label={conversationHidden ? 'Показать чат' : 'Скрыть чат'}
+          aria-expanded={!conversationHidden}
+          onClick={onConversationToggle}
+        >
+          <MessageCircle size={14} />
+          <span>{conversationHidden ? 'Показать чат' : 'Скрыть чат'}</span>
+        </button>
+      )}
+
       <div className="call-view-controls" aria-label="Режим отображения звонка">
-        {conversation && !conversationHidden && (
-          <button
-            aria-label="Скрыть чат"
-            aria-expanded="true"
-            data-tooltip="Скрыть чат"
-            onClick={onConversationToggle}
-          >
-            <MessageCircle size={19} />
-          </button>
-        )}
         <button
           aria-label={
             callDetached ? 'Вернуть звонок в основное окно' : 'Открыть звонок в отдельном окне'
@@ -570,7 +881,7 @@ export function RoomView({
             callFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть звонок во весь экран'
           }
           data-tooltip={callFullscreen ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим'}
-          onClick={toggleCallFullscreen}
+          onClick={() => void toggleCallFullscreen()}
         >
           {callFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
         </button>
@@ -690,7 +1001,7 @@ export function RoomView({
               {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
             </span>
           </button>
-          {self?.isOwner && (
+          {(conversationType === 'direct' || self?.isOwner) && (
             <button
               className={`dock-control dock-control-secondary dock-recording-control ${recordingState.phase === 'recording' ? 'active' : ''}`}
               aria-label={
@@ -745,7 +1056,7 @@ export function RoomView({
               </div>
             )}
           </div>
-          {(!conversation || conversationHidden) && (
+          {!conversation && (
             <button
               className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
               aria-label={
@@ -1254,6 +1565,8 @@ function ScreenShareStage({
   presenter,
   stream,
   selfId,
+  constrainFullscreenToWorkspace,
+  conversationType,
   outputDeviceId,
   volume,
   onVolume,
@@ -1261,6 +1574,8 @@ function ScreenShareStage({
   presenter: Participant;
   stream: MediaStream;
   selfId: string;
+  constrainFullscreenToWorkspace: boolean;
+  conversationType?: 'direct' | 'group';
   outputDeviceId: string;
   volume: number;
   onVolume(participantId: string, volume: number): void;
@@ -1270,6 +1585,18 @@ function ScreenShareStage({
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>();
   const [fullscreen, setFullscreen] = useState(false);
+  const [playbackMetrics, setPlaybackMetrics] = useState({ width: 0, height: 0, fps: 0 });
+  const updatePlaybackMetrics = useCallback(
+    (metrics: { width: number; height: number; fps: number }) =>
+      setPlaybackMetrics((current) =>
+        current.width === metrics.width &&
+        current.height === metrics.height &&
+        current.fps === metrics.fps
+          ? current
+          : metrics,
+      ),
+    [],
+  );
 
   useEffect(() => {
     const slot = slotRef.current;
@@ -1310,7 +1637,7 @@ function ScreenShareStage({
   return (
     <div className="presentation-stage-slot" ref={slotRef}>
       <div
-        className={`screen-stage-shell ${fullscreen ? 'media-fullscreen-shell' : ''}`}
+        className={`screen-stage-shell ${fullscreen ? `media-fullscreen-shell${constrainFullscreenToWorkspace ? ' media-workspace-fullscreen-shell' : ''}` : ''}`}
         style={
           {
             '--screen-aspect-ratio': aspectRatio,
@@ -1329,22 +1656,32 @@ function ScreenShareStage({
             </span>
           </span>
           <span className="screen-stage-creator">
-            {presenter.isOwner && <CreatorBadge compact />}
+            {presenter.isOwner && conversationType !== 'direct' && (
+              <CreatorBadge compact group={conversationType === 'group'} />
+            )}
           </span>
-          <button
-            type="button"
-            className="screen-stage-expand"
-            aria-label={
-              fullscreen ? 'Свернуть демонстрацию экрана' : 'Развернуть демонстрацию экрана'
-            }
-            aria-pressed={fullscreen}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleFullscreen();
-            }}
-          >
-            {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
-          </button>
+          <span className="screen-stage-quality">
+            <span aria-label="Параметры демонстрации экрана">
+              {playbackMetrics.width > 0 && playbackMetrics.height > 0
+                ? `${playbackMetrics.width}×${playbackMetrics.height}`
+                : 'Определяем качество'}
+              {playbackMetrics.fps > 0 && ` · ${playbackMetrics.fps} FPS`}
+            </span>
+            <button
+              type="button"
+              className="screen-stage-expand"
+              aria-label={
+                fullscreen ? 'Свернуть демонстрацию экрана' : 'Развернуть демонстрацию экрана'
+              }
+              aria-pressed={fullscreen}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleFullscreen();
+              }}
+            >
+              {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            </button>
+          </span>
         </div>
         <article
           ref={stageRef}
@@ -1365,6 +1702,7 @@ function ScreenShareStage({
             outputDeviceId={outputDeviceId}
             showExpand={false}
             onAspectRatioChange={setAspectRatio}
+            onPlaybackMetrics={updatePlaybackMetrics}
           />
           {presenter.id !== selfId && (
             <label className="screen-stage-volume">
@@ -1399,6 +1737,7 @@ function ParticipantVideo({
   expanded = false,
   showExpand = true,
   onAspectRatioChange,
+  onPlaybackMetrics,
   onExpand,
 }: {
   stream: MediaStream;
@@ -1411,6 +1750,7 @@ function ParticipantVideo({
   expanded?: boolean;
   showExpand?: boolean;
   onAspectRatioChange?(aspectRatio: number): void;
+  onPlaybackMetrics?(metrics: { width: number; height: number; fps: number }): void;
   onExpand?(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
@@ -1431,6 +1771,43 @@ function ParticipantVideo({
         .setSinkId(outputDeviceId)
         .catch(() => undefined);
   }, [element, muted, outputDeviceId, volume]);
+  useEffect(() => {
+    if (!element || !onPlaybackMetrics) return;
+    const mediaStream = stream as MediaStream & {
+      getVideoTracks?(): Array<{ getSettings?(): MediaTrackSettings }>;
+    };
+    const settings = mediaStream.getVideoTracks?.()[0]?.getSettings?.();
+    let width = element.videoWidth || Number(settings?.width) || 0;
+    let height = element.videoHeight || Number(settings?.height) || 0;
+    let fps = Math.round(Number(settings?.frameRate) || 0);
+    let frameCount = 0;
+    let sampleStartedAt = performance.now();
+    let callbackId = 0;
+    const video = element as HTMLVideoElement & {
+      requestVideoFrameCallback?(callback: (now: number) => void): number;
+      cancelVideoFrameCallback?(id: number): void;
+    };
+    const emit = () => onPlaybackMetrics({ width, height, fps });
+    emit();
+
+    const measureFrame = (now: number) => {
+      frameCount += 1;
+      width = element.videoWidth || width;
+      height = element.videoHeight || height;
+      const elapsedMs = now - sampleStartedAt;
+      if (elapsedMs >= 750) {
+        fps = Math.max(1, Math.round((frameCount * 1000) / elapsedMs));
+        frameCount = 0;
+        sampleStartedAt = now;
+        emit();
+      }
+      callbackId = video.requestVideoFrameCallback?.(measureFrame) ?? 0;
+    };
+    callbackId = video.requestVideoFrameCallback?.(measureFrame) ?? 0;
+    return () => {
+      if (callbackId) video.cancelVideoFrameCallback?.(callbackId);
+    };
+  }, [element, onPlaybackMetrics, stream]);
 
   return (
     <div className={`participant-video ${source}`}>
@@ -1445,6 +1822,18 @@ function ParticipantVideo({
           const video = event.currentTarget;
           if (video.videoWidth > 0 && video.videoHeight > 0)
             onAspectRatioChange?.(video.videoWidth / video.videoHeight);
+          const trackSettings = (
+            stream as MediaStream & {
+              getVideoTracks?(): Array<{ getSettings?(): MediaTrackSettings }>;
+            }
+          )
+            .getVideoTracks?.()[0]
+            ?.getSettings?.();
+          onPlaybackMetrics?.({
+            width: video.videoWidth,
+            height: video.videoHeight,
+            fps: Math.round(Number(trackSettings?.frameRate) || 0),
+          });
         }}
         onResize={(event) => {
           const video = event.currentTarget;
@@ -1477,63 +1866,26 @@ function ParticipantActions({
   participant,
   isSelf,
   canModerate,
-  locallyMuted,
   open,
   onToggle,
-  onClose,
-  onPeerMute,
-  onModerationMute,
 }: {
   participant: Participant;
   isSelf: boolean;
   canModerate: boolean;
-  locallyMuted: boolean;
   open: boolean;
   onToggle(): void;
-  onClose(): void;
-  onPeerMute(peerId: string): void;
-  onModerationMute(peerId: string, name: string): void;
 }) {
   if (!canModerate && isSelf) return null;
   return (
-    <>
-      <button
-        className="icon-button participant-menu-button"
-        aria-label={`Действия для ${participant.name}`}
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        <MoreHorizontal size={19} />
-      </button>
-      {open && (
-        <div className="participant-menu" role="menu">
-          <button
-            role="menuitem"
-            onClick={() => {
-              onPeerMute(participant.id);
-              onClose();
-            }}
-          >
-            {locallyMuted ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            {locallyMuted ? 'Вернуть звук' : 'Не слышать локально'}
-          </button>
-          {canModerate && (
-            <button
-              className="danger-action"
-              role="menuitem"
-              disabled={participant.muted}
-              onClick={() => {
-                onModerationMute(participant.id, participant.name);
-                onClose();
-              }}
-            >
-              <MicOff size={16} />
-              {participant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
-            </button>
-          )}
-        </div>
-      )}
-    </>
+    <button
+      className="icon-button participant-menu-button"
+      aria-label={`Действия для ${participant.name}`}
+      aria-expanded={open}
+      aria-controls="participant-action-drawer"
+      onClick={onToggle}
+    >
+      <MoreHorizontal size={19} />
+    </button>
   );
 }
 
@@ -1572,6 +1924,44 @@ function ParticipantVolume({
   );
 }
 
+function WaitingParticipantCard({ participant }: { participant: WaitingCallParticipant }) {
+  const variant = [...participant.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
+  return (
+    <article
+      className="participant-card audio-tile waiting-participant-card"
+      role="listitem"
+      aria-label={`${participant.displayName} — ожидаем подключения`}
+    >
+      <span className="waiting-participant-shade" aria-hidden="true" />
+      <div className="participant-card-top">
+        <span className="waiting-participant-label">Вызов отправлен</span>
+      </div>
+      <div
+        className="participant-avatar waiting-participant-avatar"
+        data-variant={variant}
+        aria-hidden="true"
+      >
+        {participant.avatarUrl ? (
+          <CachedMediaImage src={participant.avatarUrl} alt="" />
+        ) : (
+          <span>{initials(participant.displayName)}</span>
+        )}
+        <i />
+      </div>
+      <div className="participant-info">
+        <div className="participant-name-row">
+          <div className="participant-name">
+            <strong>{participant.displayName}</strong>
+          </div>
+        </div>
+        <div className="participant-status waiting">
+          <i /> Ожидаем подключения
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function InviteCallout({
   compact = false,
   openSlots,
@@ -1599,12 +1989,26 @@ function ConnectionStatus({
   state,
   attempt,
   strength,
+  buffering = false,
 }: {
   state: SignalingState;
   attempt: number;
   strength: number;
+  buffering?: boolean;
 }) {
   void attempt;
+  if (buffering)
+    return (
+      <span
+        className="connection-pill"
+        data-state="connecting"
+        data-quality="connecting"
+        role="status"
+      >
+        <i />
+        <span>Подключение…</span>
+      </span>
+    );
   const score = state === 'connected' ? Math.max(0, Math.min(100, Math.round(strength))) : 0;
   const quality =
     score >= 90
@@ -1634,10 +2038,10 @@ function ConnectionStatus({
   );
 }
 
-function CreatorBadge({ compact = false }: { compact?: boolean }) {
+function CreatorBadge({ compact = false, group = false }: { compact?: boolean; group?: boolean }) {
   return (
     <span className={`creator-badge ${compact ? 'compact' : ''}`}>
-      <Crown size={13} /> {compact ? 'Создатель' : 'Создатель комнаты'}
+      <Crown size={13} /> {group ? 'Создатель группы' : compact ? 'Создатель' : 'Создатель комнаты'}
     </span>
   );
 }

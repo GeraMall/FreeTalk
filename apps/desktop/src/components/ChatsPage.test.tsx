@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ChatsPage, MessageList, type ChatItem, type MessageItem } from './ChatsPage';
 import { accountClient } from '../lib/api-client';
+import { collapseDuplicateCallMessages, extractMessageLinks } from '../lib/chat-call-messages';
 
 const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
 const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
@@ -21,6 +22,31 @@ function message(id: string, senderId: string, body = `Сообщение ${id}`
     expires_at: '2026-08-27T10:00:00.000Z',
   };
 }
+
+describe('call message normalization', () => {
+  it('keeps one original call card when the server also returns a missed-call card', () => {
+    const started = {
+      ...message('1', 'self', 'Гера начал звонок'),
+      kind: 'call',
+      metadata: { roomId: 'ROOM-12345678' },
+    };
+    const missed = {
+      ...message('2', 'self', 'Пропущенный звонок от Гера'),
+      kind: 'call',
+      metadata: { roomId: 'ROOM-12345678', missed: true },
+    };
+    expect(collapseDuplicateCallMessages([started, missed])).toEqual([started]);
+  });
+
+  it('preserves an isolated missed-call card received from an older server', () => {
+    const missed = {
+      ...message('2', 'self', 'Пропущенный звонок от Гера'),
+      kind: 'call',
+      metadata: { roomId: 'ROOM-12345678', missed: true },
+    };
+    expect(collapseDuplicateCallMessages([missed])).toEqual([missed]);
+  });
+});
 
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
@@ -78,6 +104,82 @@ function view(
     />
   );
 }
+
+describe('Message links and selection', () => {
+  it('recognizes links and renders a rich trusted-provider preview', async () => {
+    expect(extractMessageLinks('Смотри https://youtu.be/abcDEF12345.')).toEqual([
+      'https://youtu.be/abcDEF12345',
+    ]);
+    vi.spyOn(accountClient, 'request').mockResolvedValue({
+      preview: {
+        url: 'https://www.youtube.com/watch?v=abcDEF12345',
+        provider: 'YouTube',
+        title: 'Тестовый ролик',
+        description: 'Автор',
+      },
+    });
+    const screen = render(
+      view('chat-links', [message('1', 'friend', 'Смотри https://youtu.be/abcDEF12345')]),
+    );
+    expect(
+      screen.getByRole('link', { name: 'https://youtu.be/abcDEF12345' }).getAttribute('target'),
+    ).toBe('_blank');
+    expect(await screen.findByText('Тестовый ролик')).toBeTruthy();
+  });
+
+  it('selects a range by dragging with the left mouse button and clears it with Escape', () => {
+    const screen = render(view('chat-selection', [message('1', 'friend'), message('2', 'friend')]));
+    const scroller = screen.container.querySelector<HTMLElement>('.message-scroll-container')!;
+    const entries = screen.container.querySelectorAll<HTMLElement>('[data-message-id]');
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => entries[1],
+    });
+    const dispatchPointer = (target: Element, type: string, clientX: number, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        pointerType: { value: 'mouse' },
+        pointerId: { value: 1 },
+        button: { value: 0 },
+        clientX: { value: clientX },
+        clientY: { value: clientY },
+      });
+      fireEvent(target, event);
+    };
+    dispatchPointer(entries[0]!, 'pointerdown', 10, 10);
+    dispatchPointer(scroller, 'pointermove', 30, 40);
+    expect(screen.getByRole('toolbar', { name: 'Выбранные сообщения' }).textContent).toContain('2');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: originalElementFromPoint,
+    });
+  });
+
+  it('keeps native text selection inside a message bubble separate from message selection', () => {
+    const screen = render(view('chat-text-selection', [message('1', 'friend')]));
+    const scroller = screen.container.querySelector<HTMLElement>('.message-scroll-container')!;
+    const bubble = screen.container.querySelector<HTMLElement>('.message-bubble')!;
+    const dispatchPointer = (target: Element, type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, {
+        pointerId: 1,
+        pointerType: 'mouse',
+        button: 0,
+        clientX: x,
+        clientY: y,
+      });
+      fireEvent(target, event);
+    };
+    dispatchPointer(bubble, 'pointerdown', 10, 10);
+    dispatchPointer(scroller, 'pointermove', 40, 40);
+    dispatchPointer(scroller, 'pointerup', 40, 40);
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+    expect(scroller.classList.contains('is-drag-selecting')).toBe(false);
+  });
+});
 
 describe('MessageList scrolling', () => {
   it('opens each chat at the newest message', () => {
@@ -207,6 +309,46 @@ describe('MessageList rendering', () => {
     expect(queryByRole('button', { name: 'Присоединиться' })).toBeNull();
     expect(container.querySelector('.system-call-message.ended')).not.toBeNull();
     expect(onJoinCall).not.toHaveBeenCalled();
+  });
+
+  it('does not keep a live timer on an ended call missing its legacy end timestamp', () => {
+    const call: MessageItem = {
+      ...message('3', 'friend', 'Алексей начал звонок'),
+      kind: 'call',
+      metadata: {
+        roomId: 'ROOM12345678',
+        ended: true,
+        startedAt: '2026-08-26T10:00:00.000Z',
+      },
+    };
+    const { getByText, queryByLabelText } = render(view('chat-a', [call]));
+
+    expect(getByText('Звонок завершён')).toBeTruthy();
+    expect(queryByLabelText(/^Время разговора/)).toBeNull();
+  });
+
+  it('freezes an abandoned single-participant call at the eight-minute timeout', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-08-26T10:12:00.000Z'));
+      const call: MessageItem = {
+        ...message('3', 'friend', 'Алексей начал звонок'),
+        kind: 'call',
+        metadata: {
+          roomId: 'ROOM12345678',
+          startedAt: '2026-08-26T10:00:00.000Z',
+          participants: [{ userId: 'friend', displayName: 'Алексей' }],
+        },
+      };
+      const rendered = render(view('chat-a', [call]));
+
+      expect(rendered.getByText('Звонок завершён')).toBeTruthy();
+      expect(rendered.getByLabelText('Время разговора 8:00')).toBeTruthy();
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(rendered.getByLabelText('Время разговора 8:00')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows overlapping participant avatars and the final call duration', () => {

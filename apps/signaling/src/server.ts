@@ -46,7 +46,7 @@ const upgradeMetadata = new WeakMap<
 const httpServer = createServer(async (request, response) => {
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.1' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.3' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -58,6 +58,20 @@ const sockets = new WebSocketServer({
   maxPayload: MAX_SIGNAL_BYTES,
   perMessageDeflate: false,
 });
+
+async function recordCallEventReliably(input: Parameters<typeof recordCallEvent>[0]) {
+  let lastError: unknown;
+  for (const delay of [0, 300, 1_200]) {
+    if (delay) await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    try {
+      await recordCallEvent(input);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
 
 httpServer.on('upgrade', (request, socket, head) => {
   const origin = request.headers.origin;
@@ -167,6 +181,16 @@ sockets.on('connection', (socket, request) => {
             : authorization.kind === 'development'
               ? message.avatar
               : undefined;
+        const roomAuthority =
+          'callScope' in authorization && authorization.callScope === 'direct'
+            ? ({ scope: 'direct' } as const)
+            : 'callScope' in authorization && authorization.callScope === 'group'
+              ? ({
+                  scope: 'group',
+                  groupOwnerAccountId:
+                    'groupOwnerId' in authorization ? authorization.groupOwnerId : undefined,
+                } as const)
+              : ({ scope: 'standalone' } as const);
         let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
         try {
           iceConfig = await getIceConfig();
@@ -186,6 +210,9 @@ sockets.on('connection', (socket, request) => {
             connection,
             authorizedAvatar,
             'userId' in authorization ? authorization.userId : undefined,
+            roomAuthority,
+            message.cardStyle ?? 'avatar-glass',
+            message.cardDecoration ?? 'none',
           );
         else
           manager.join(
@@ -196,12 +223,15 @@ sockets.on('connection', (socket, request) => {
             connection,
             authorizedAvatar,
             'userId' in authorization ? authorization.userId : undefined,
+            roomAuthority,
+            message.cardStyle ?? 'avatar-glass',
+            message.cardDecoration ?? 'none',
           );
         meta.roomId = message.roomId;
         meta.clientId = message.clientId;
         meta.authorization = authorization;
         meta.displayName = authorizedName;
-        void recordCallEvent({
+        void recordCallEventReliably({
           event: message.type === 'create-room' ? 'start' : 'join',
           roomId: message.roomId,
           displayName: authorizedName,
@@ -281,6 +311,14 @@ sockets.on('connection', (socket, request) => {
             });
           break;
         }
+        case 'update-card-appearance':
+          manager.updateCardAppearance(
+            meta.roomId,
+            meta.clientId,
+            message.cardStyle,
+            message.cardDecoration,
+          );
+          break;
         case 'reaction':
           manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
           break;
@@ -378,7 +416,9 @@ sockets.on('connection', (socket, request) => {
         reason: reason.toString(),
       }),
     );
-    if (meta?.roomId && meta.clientId) {
+    if (meta?.roomId && meta.clientId && code === 1000) {
+      leaveRoom(meta, connection, 'Выход');
+    } else if (meta?.roomId && meta.clientId) {
       // A short grace period lets the same authenticated in-memory session replace
       // this connection. RoomManager ignores this delayed leave after replacement.
       setTimeout(() => leaveRoom(meta, connection, 'Соединение потеряно'), 12_000).unref();
@@ -397,7 +437,7 @@ function leaveRoom(
 ) {
   if (!meta.roomId || !meta.clientId) return;
   if (!manager.leave(meta.roomId, meta.clientId, connection, reason)) return;
-  void recordCallEvent({
+  void recordCallEventReliably({
     event: 'leave',
     roomId: meta.roomId,
     displayName: meta.displayName,
@@ -409,7 +449,7 @@ function leaveRoom(
         : undefined,
   }).catch((error) => logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }));
   if (manager.roomSize(meta.roomId) === 0)
-    void recordCallEvent({ event: 'end', roomId: meta.roomId }).catch((error) =>
+    void recordCallEventReliably({ event: 'end', roomId: meta.roomId }).catch((error) =>
       logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }),
     );
 }

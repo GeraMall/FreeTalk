@@ -114,6 +114,7 @@ interface ProfileDraft {
   username: string;
   bio: string;
   participantCardStyle: LocalSettings['participantCardStyle'];
+  participantCardDecoration: LocalSettings['participantCardDecoration'];
 }
 
 function profileDraftFrom(settings: LocalSettings, accountUser?: AccountUser): ProfileDraft {
@@ -124,6 +125,7 @@ function profileDraftFrom(settings: LocalSettings, accountUser?: AccountUser): P
     username: accountUser?.username ?? '',
     bio: accountUser?.bio ?? '',
     participantCardStyle: settings.participantCardStyle,
+    participantCardDecoration: settings.participantCardDecoration,
   };
 }
 
@@ -134,7 +136,8 @@ function profileDraftsEqual(first: ProfileDraft, second: ProfileDraft) {
     first.cover === second.cover &&
     first.username === second.username &&
     first.bio === second.bio &&
-    first.participantCardStyle === second.participantCardStyle
+    first.participantCardStyle === second.participantCardStyle &&
+    first.participantCardDecoration === second.participantCardDecoration
   );
 }
 
@@ -228,6 +231,8 @@ export function SettingsPanel({
       );
       if (draftProfile.participantCardStyle !== savedProfile.participantCardStyle)
         onSetting({ participantCardStyle: draftProfile.participantCardStyle }, false);
+      if (draftProfile.participantCardDecoration !== savedProfile.participantCardDecoration)
+        onSetting({ participantCardDecoration: draftProfile.participantCardDecoration }, false);
       const committed = { ...draftProfile, displayName };
       setSavedProfile(committed);
       setDraftProfile(committed);
@@ -939,9 +944,11 @@ function ProfileTab({
             name={draft.displayName}
             avatar={cachedDraftAvatar ?? ''}
             glass={draft.participantCardStyle === 'avatar-glass'}
+            decoration={draft.participantCardDecoration}
             onGlass={(value) =>
               onDraft({ participantCardStyle: value ? 'avatar-glass' : 'classic' })
             }
+            onDecoration={(participantCardDecoration) => onDraft({ participantCardDecoration })}
           />
 
           <section className="profile-zone profile-security-zone">

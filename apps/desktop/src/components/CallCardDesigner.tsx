@@ -1,43 +1,34 @@
-import { useRef, type PointerEvent } from 'react';
 import { ChevronDown, Crown, ImagePlus, Sparkles } from 'lucide-react';
+import type { ParticipantCardDecoration } from '@freetalk/protocol';
+
+const decorations: Array<{
+  id: ParticipantCardDecoration;
+  label: string;
+  image?: string;
+}> = [
+  { id: 'none', label: 'Без узора' },
+  { id: 'japan', label: 'Япония', image: '/card-decorations/japan.png' },
+  { id: 'china', label: 'Китай', image: '/card-decorations/china.png' },
+  { id: 'britain', label: 'Британия', image: '/card-decorations/britain.png' },
+  { id: 'kazakhstan', label: 'Казахстан', image: '/card-decorations/kazakhstan.png' },
+  { id: 'russia', label: 'Россия', image: '/card-decorations/russia.png' },
+];
 
 export function CallCardDesigner({
   name,
   avatar,
   glass,
+  decoration,
   onGlass,
+  onDecoration,
 }: {
   name: string;
   avatar: string;
   glass: boolean;
+  decoration: ParticipantCardDecoration;
   onGlass(value: boolean): void;
+  onDecoration(value: ParticipantCardDecoration): void;
 }) {
-  const surface = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
-  const move = (event: PointerEvent<HTMLDivElement>) => {
-    if (
-      event.pointerType !== 'mouse' ||
-      document.documentElement.classList.contains('performance-low') ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    )
-      return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const held = drag.current;
-    const x = held
-      ? (event.clientX - held.x) / 9
-      : ((event.clientX - bounds.left) / bounds.width - 0.5) * 14;
-    const y = held
-      ? (event.clientY - held.y) / 9
-      : ((event.clientY - bounds.top) / bounds.height - 0.5) * 10;
-    surface.current?.style.setProperty('--card-rx', `${Math.max(-20, Math.min(20, -y))}deg`);
-    surface.current?.style.setProperty('--card-ry', `${Math.max(-26, Math.min(26, x))}deg`);
-  };
-  const reset = () => {
-    drag.current = null;
-    surface.current?.style.setProperty('--card-rx', '0deg');
-    surface.current?.style.setProperty('--card-ry', '0deg');
-    surface.current?.removeAttribute('data-dragging');
-  };
   return (
     <section className="profile-zone profile-card-design call-card-designer">
       <div className="profile-card-design-heading">
@@ -47,34 +38,22 @@ export function CallCardDesigner({
         </span>
         <Sparkles aria-hidden="true" />
       </div>
-      <div
-        className="call-card-stage"
-        onPointerMove={move}
-        onPointerDown={(event) => {
-          if (event.button !== 0 || event.pointerType !== 'mouse') return;
-          drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-          event.currentTarget.setPointerCapture(event.pointerId);
-          surface.current?.setAttribute('data-dragging', 'true');
-        }}
-        onPointerUp={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId))
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          reset();
-        }}
-        onLostPointerCapture={reset}
-        onPointerCancel={reset}
-        onPointerLeave={() => {
-          if (!drag.current) reset();
-        }}
-      >
+      <div className="call-card-stage">
         <div
-          ref={surface}
           className={`profile-card-preview participant-card audio-tile call-card-tilt ${glass && avatar ? 'avatar-glass' : ''}`}
         >
           {glass && avatar ? (
             <span className="participant-card-ambient" aria-hidden="true">
               <img src={avatar} alt="" draggable={false} />
             </span>
+          ) : null}
+          {decoration !== 'none' ? (
+            <img
+              className="participant-card-decoration"
+              src={`/card-decorations/${decoration}.png`}
+              alt=""
+              draggable={false}
+            />
           ) : null}
           <div className="participant-card-top media-overlay-top">
             <span className="creator-badge">
@@ -102,9 +81,6 @@ export function CallCardDesigner({
           </div>
         </div>
       </div>
-      <p className="call-card-motion-hint">
-        Наведите мышь, чтобы наклонить · Зажмите и двигайте, чтобы покрутить
-      </p>
       <div className="call-card-glass-control">
         <span>
           <strong>Жидкое стекло</strong>
@@ -136,9 +112,24 @@ export function CallCardDesigner({
         </summary>
         <div>
           <strong>Узоры и украшения</strong>
-          <p>
-            Здесь появится выбор PNG-узоров для карточки, когда они будут добавлены в коллекцию.
-          </p>
+          <p>Выберите узор, который увидят остальные участники звонка.</p>
+          <div className="call-card-decoration-grid" role="radiogroup" aria-label="Узор карточки">
+            {decorations.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={decoration === item.id ? 'selected' : ''}
+                role="radio"
+                aria-checked={decoration === item.id}
+                onClick={() => onDecoration(item.id)}
+              >
+                <span className="call-card-decoration-thumb">
+                  {item.image ? <img src={item.image} alt="" loading="lazy" /> : <i />}
+                </span>
+                <strong>{item.label}</strong>
+              </button>
+            ))}
+          </div>
         </div>
       </details>
     </section>

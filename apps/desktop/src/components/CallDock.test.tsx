@@ -47,6 +47,7 @@ describe('CallDock', () => {
     fireEvent.click(view.getByLabelText('Выключить звук собеседников'));
     expect(props.onMute).toHaveBeenCalledOnce();
     expect(props.onDeafen).toHaveBeenCalledOnce();
+    expect(view.container.querySelectorAll('.profile-audio-device')).toHaveLength(2);
   });
   it('wires camera, screen, noise, hangup and valid reactions to shared call handlers', () => {
     const props = state();
@@ -67,6 +68,11 @@ describe('CallDock', () => {
     expect(props.onReaction).toHaveBeenCalledWith('👍');
     expect(view.queryByLabelText('Реакция 👍')).toBeNull();
     expect(view.getByText('Пинг · 47 мс')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Состояние звонка' })).toBeNull();
+    expect(props.onOpen).not.toHaveBeenCalled();
+    expect(view.getByLabelText('Шумоподавление').getAttribute('data-tooltip')).toBe(
+      'Шумоподавление',
+    );
   });
   it('selects devices and closes the device menu', () => {
     const props = state();
