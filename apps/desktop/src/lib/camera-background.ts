@@ -1,5 +1,3 @@
-import { SelfieSegmentation } from '@mediapipe/selfie_segmentation';
-
 export type CameraBackgroundMode = 'none' | 'blur' | 'custom';
 
 export interface CameraBackgroundSettings {
@@ -13,7 +11,7 @@ export interface CameraEffectCapture {
   dispose(): void;
 }
 
-const ASSET_ROOT = '/mediapipe/selfie-segmentation/';
+const ASSET_ROOT = '/mediapipe/portrait';
 
 export async function createCameraEffectCapture(
   sourceStream: MediaStream,
@@ -70,55 +68,100 @@ export async function createCameraEffectCapture(
     settings.mode === 'custom' && settings.dataUrl
       ? await loadImage(settings.dataUrl).catch(() => undefined)
       : undefined;
-  const segmenter = new SelfieSegmentation({
-    locateFile: (file) => new URL(`${ASSET_ROOT}${file}`, window.location.href).href,
-  });
-  // Mirroring is presentation-only and is already applied by the camera UI.
-  // Flipping here would bake a mirror into the transmitted track and the UI
-  // would flip it a second time.
-  segmenter.setOptions({ modelSelection: 1, selfieMode: false });
+  // Keep the frame immutable while inference runs. Applying an older mask to
+  // live video exposes the room along moving shoulders and hair.
+  const inputCanvas = document.createElement('canvas');
+  inputCanvas.width = width;
+  inputCanvas.height = height;
+  const inputContext = inputCanvas.getContext('2d');
+  if (!inputContext) {
+    stopStream(sourceStream);
+    throw new Error('Не удалось подготовить кадр камеры.');
+  }
+  let segmenter: Worker;
+  try {
+    segmenter = new Worker(new URL('./camera-segmenter.worker.ts', import.meta.url));
+  } catch (error) {
+    stopStream(sourceStream);
+    video.pause();
+    video.srcObject = null;
+    throw error;
+  }
   let running = true;
   let processing = false;
   let animationFrame = 0;
-  let maskReady = false;
-  let lastRenderAt = 0;
   let lastSegmentationAt = 0;
-  const renderInterval = 1_000 / 30;
-  const segmentationInterval = 1_000 / 15;
+  const segmentationInterval = 1_000 / 24;
 
-  segmenter.onResults((results) => {
-    updateSmoothedSegmentationMask(maskContext, maskCanvas, results.segmentationMask);
-    maskReady = true;
+  const ready = new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error('Не удалось загрузить модель фона.')),
+      60000,
+    );
+    segmenter.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error('Не удалось запустить обработку фона камеры.'));
+      processing = false;
+    };
+    segmenter.onmessage = ({ data }) => {
+      if (data.type === 'ready') {
+        window.clearTimeout(timeout);
+        resolve();
+      } else if (data.type === 'error') {
+        window.clearTimeout(timeout);
+        reject(new Error(data.message));
+        processing = false;
+      } else if (data.type === 'mask' && running) {
+        if (maskCanvas.width !== data.width || maskCanvas.height !== data.height) {
+          maskCanvas.width = data.width;
+          maskCanvas.height = data.height;
+        }
+        maskContext.putImageData(new ImageData(data.alpha, data.width, data.height), 0, 0);
+        compositeCameraFrame(
+          context,
+          canvas,
+          { image: inputCanvas, segmentationMask: maskCanvas },
+          settings.mode,
+          customBackground,
+        );
+        processing = false;
+      }
+    };
   });
-  await segmenter.initialize();
+  segmenter.postMessage({
+    type: 'init',
+    assetRoot: new URL(ASSET_ROOT, window.location.href).href,
+  });
+  try {
+    await ready;
+  } catch (error) {
+    running = false;
+    segmenter.terminate();
+    stopStream(sourceStream);
+    video.pause();
+    video.srcObject = null;
+    throw error;
+  }
+  drawEffectWithoutMask(context, canvas, video, settings.mode, customBackground);
 
   const render = (now: number) => {
     if (!running) return;
     animationFrame = requestAnimationFrame(render);
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
-    if (now - lastRenderAt >= renderInterval) {
-      lastRenderAt = now;
-      if (maskReady) {
-        compositeCameraFrame(
-          context,
-          canvas,
-          { image: video, segmentationMask: maskCanvas },
-          settings.mode,
-          customBackground,
-        );
-      } else {
-        drawEffectWithoutMask(context, canvas, video, settings.mode, customBackground);
-      }
-    }
-
     if (!processing && now - lastSegmentationAt >= segmentationInterval) {
       lastSegmentationAt = now;
       processing = true;
-      void segmenter
-        .send({ image: video })
-        .catch(() => undefined)
-        .finally(() => {
+      inputContext.drawImage(video, 0, 0, width, height);
+      void createImageBitmap(inputCanvas)
+        .then((frame) => {
+          if (!running) {
+            frame.close();
+            return;
+          }
+          segmenter.postMessage({ type: 'frame', frame, timestamp: now }, [frame]);
+        })
+        .catch(() => {
           processing = false;
         });
     }
@@ -130,7 +173,7 @@ export async function createCameraEffectCapture(
   if (!processedTrack) {
     running = false;
     cancelAnimationFrame(animationFrame);
-    await segmenter.close();
+    segmenter.terminate();
     stopStream(sourceStream);
     throw new Error('Не удалось создать видеодорожку с выбранным фоном.');
   }
@@ -146,7 +189,7 @@ export async function createCameraEffectCapture(
       stopStream(sourceStream);
       video.pause();
       video.srcObject = null;
-      void segmenter.close();
+      segmenter.terminate();
     }),
   };
 }
@@ -177,7 +220,7 @@ export function compositeCameraFrame(
   const { width, height } = canvas;
   context.save();
   context.clearRect(0, 0, width, height);
-  context.filter = 'blur(1.35px)';
+  context.filter = 'blur(0.65px)';
   context.drawImage(results.segmentationMask, 0, 0, width, height);
   context.globalCompositeOperation = 'source-in';
   context.filter = 'none';
@@ -190,30 +233,6 @@ export function compositeCameraFrame(
     context.drawImage(results.image, -28, -28, width + 56, height + 56);
   }
   context.restore();
-}
-
-export function updateSmoothedSegmentationMask(
-  context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  mask: CanvasImageSource,
-) {
-  const { width, height } = canvas;
-  context.clearRect(0, 0, width, height);
-  context.drawImage(mask, 0, 0, width, height);
-  const image = context.getImageData(0, 0, width, height);
-  const pixels = image.data;
-  const lowConfidence = 0.36;
-  const highConfidence = 0.74;
-  for (let index = 3; index < pixels.length; index += 4) {
-    const confidence = pixels[index]! / 255;
-    const normalized = Math.min(
-      1,
-      Math.max(0, (confidence - lowConfidence) / (highConfidence - lowConfidence)),
-    );
-    const smooth = normalized * normalized * (3 - 2 * normalized);
-    pixels[index] = Math.round(smooth * 255);
-  }
-  context.putImageData(image, 0, 0);
 }
 
 function drawEffectWithoutMask(

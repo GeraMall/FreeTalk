@@ -66,7 +66,7 @@ interface WelcomeScreenProps {
   onVerifyEmail(email: string, code: string): Promise<boolean>;
   onGuestJoin(roomInput: string, captchaToken: string): void;
   onForgotPassword(email: string): void;
-  onResetPassword(token: string, password: string): void;
+  onResetPassword(token: string, password: string, email: string): void;
   onSettings(): void;
 }
 
@@ -284,11 +284,27 @@ export function WelcomeScreen({
                   {resetMode ? (
                     <>
                       <label className="field-label">
+                        Почта аккаунта
+                        <input
+                          type="email"
+                          value={login}
+                          autoComplete="email"
+                          disabled={busy}
+                          onChange={(event) => setLogin(event.target.value)}
+                        />
+                      </label>
+                      <label className="field-label">
                         Код из письма
                         <input
                           autoFocus
                           value={resetToken}
-                          onChange={(event) => setResetToken(event.target.value)}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={6}
+                          placeholder="000000"
+                          onChange={(event) =>
+                            setResetToken(event.target.value.replace(/\D/g, '').slice(0, 6))
+                          }
                         />
                       </label>
                       <label className="field-label">
@@ -302,8 +318,13 @@ export function WelcomeScreen({
                       </label>
                       <button
                         className="primary wide"
-                        disabled={busy || !resetToken || !resetPassword}
-                        onClick={() => onResetPassword(resetToken, resetPassword)}
+                        disabled={
+                          busy ||
+                          !/^\d{6}$/.test(resetToken) ||
+                          !resetPassword ||
+                          !login.includes('@')
+                        }
+                        onClick={() => onResetPassword(resetToken, resetPassword, login)}
                       >
                         Сохранить новый пароль
                       </button>
@@ -563,7 +584,7 @@ export function WelcomeScreen({
               <UserRound size={18} />
               <span>
                 <strong>Гостевой режим</strong>
-                До 5 входов в сутки и до 30 минут за звонок. Камера, экран, друзья и история
+                До 2 входов в сутки и до 3 часов за звонок. Камера, экран, друзья и история
                 недоступны.
               </span>
             </div>

@@ -16,7 +16,8 @@ import {
 } from './auth-service.js';
 import { db, transaction } from './db.js';
 import { env, publicApiUrl, publicAvatarUrl } from './env.js';
-import { sendPasswordReset, sendVerification } from './mailer.js';
+import { sendVerification } from './mailer.js';
+import { registerPasswordResetRoutes } from './password-reset.js';
 import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { registerAndroidPush, startAndroidPush } from './android-push.js';
 import { chatRealtimeHub } from './chat-realtime.js';
@@ -72,6 +73,15 @@ await app.register(multipart, {
 });
 
 app.setErrorHandler((error, _request, reply) => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    error.statusCode === 429
+  )
+    return reply
+      .code(429)
+      .send({ code: 'RATE_LIMITED', message: 'Слишком много попыток. Попробуйте позже.' });
   if (error instanceof ZodError)
     return reply.code(400).send({ code: 'INVALID_INPUT', message: error.issues[0]?.message });
   if (
@@ -422,57 +432,7 @@ app.post(
   },
 );
 
-app.post(
-  '/v1/auth/forgot-password',
-  { config: { rateLimit: { max: 4, timeWindow: '1 hour' } } },
-  async (request) => {
-    const { email } = z.object({ email: emailSchema }).parse(request.body);
-    const result = await db.query<UserRow>(
-      'SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL',
-      [email],
-    );
-    const user = result.rows[0];
-    if (user) {
-      const token = randomToken();
-      await db.query(
-        `INSERT INTO password_resets(user_id,token_hash,expires_at)
-         VALUES($1,$2,now()+interval '20 minutes')`,
-        [user.id, tokenHash(token)],
-      );
-      await sendPasswordReset(user.email, token);
-    }
-    await recordSecurityEvent(request, 'password-reset.requested', user?.id);
-    return { message: 'Если такой аккаунт существует, письмо отправлено.' };
-  },
-);
-
-app.post('/v1/auth/reset-password', async (request, reply) => {
-  const input = z
-    .object({ token: z.string().min(32).max(256), password: passwordSchema })
-    .parse(request.body);
-  const passwordHash = await hashPassword(input.password);
-  const reset = await transaction(async (client) => {
-    const result = await client.query<{ id: string; user_id: string }>(
-      `SELECT id,user_id FROM password_resets
-       WHERE token_hash=$1 AND used_at IS NULL AND expires_at > now() FOR UPDATE`,
-      [tokenHash(input.token)],
-    );
-    const row = result.rows[0];
-    if (!row) return false;
-    await client.query('UPDATE password_resets SET used_at=now() WHERE id=$1', [row.id]);
-    await client.query('UPDATE users SET password_hash=$1,updated_at=now() WHERE id=$2', [
-      passwordHash,
-      row.user_id,
-    ]);
-    await client.query(
-      'UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL',
-      [row.user_id],
-    );
-    return true;
-  });
-  if (!reset) return reply.code(400).send({ code: 'INVALID_TOKEN', message: 'Код недействителен' });
-  return { changed: true };
-});
+registerPasswordResetRoutes(app);
 
 app.get('/v1/me', async (request, reply) => {
   const user = await requireUser(request, reply);

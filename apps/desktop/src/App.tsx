@@ -1773,9 +1773,9 @@ export function App() {
                   ),
                 )
             }
-            onResetPassword={(token, password) =>
+            onResetPassword={(token, password, email) =>
               void accountClient
-                .resetPassword(token, password)
+                .resetPassword(token, password, email)
                 .then(() => setNotice('Пароль изменён. Теперь войдите с новым паролем.'))
                 .catch((caught: unknown) =>
                   setError(caught instanceof Error ? caught.message : 'Не удалось изменить пароль'),

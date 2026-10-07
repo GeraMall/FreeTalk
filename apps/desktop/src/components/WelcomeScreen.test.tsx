@@ -29,6 +29,30 @@ function props() {
 }
 
 describe('account-first welcome screen', () => {
+  it('resets with six digits and an explicit email even without requesting in this session', () => {
+    const handlers = props();
+    const view = render(<WelcomeScreen {...handlers} />);
+    fireEvent.click(view.getByRole('button', { name: 'У меня есть код сброса' }));
+    const submit = view.getByRole('button', {
+      name: 'Сохранить новый пароль',
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(view.getByLabelText('Почта аккаунта'), {
+      target: { value: 'test@example.com' },
+    });
+    fireEvent.change(view.getByLabelText('Новый пароль'), { target: { value: 'Password12345' } });
+    fireEvent.change(view.getByLabelText('Код из письма'), { target: { value: '012' } });
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(view.getByLabelText('Код из письма'), { target: { value: '0a1234567' } });
+    expect((view.getByLabelText('Код из письма') as HTMLInputElement).value).toBe('012345');
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+    expect(handlers.onResetPassword).toHaveBeenCalledWith(
+      '012345',
+      'Password12345',
+      'test@example.com',
+    );
+  });
   it('opens both legal documents without accepting them automatically', () => {
     const view = render(<WelcomeScreen {...props()} />);
     fireEvent.click(view.getByRole('tab', { name: 'Регистрация' }));

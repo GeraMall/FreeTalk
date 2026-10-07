@@ -166,7 +166,7 @@ sockets.on('connection', (socket, request) => {
               authorization.reason === 'REGISTERED_ONLY'
                 ? 'Создавать комнаты могут только зарегистрированные пользователи'
                 : authorization.reason === 'GUEST_DAILY_LIMIT'
-                  ? 'Лимит гостя: 5 подключений в сутки'
+                  ? 'Лимит гостя: 2 подключения в сутки, до 3 часов каждое'
                   : authorization.reason === 'RATE_LIMITED'
                     ? 'Слишком много входов. Попробуйте позже'
                     : authorization.reason === 'AUTH_UNAVAILABLE'

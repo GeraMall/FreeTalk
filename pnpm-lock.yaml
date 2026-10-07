@@ -166,9 +166,9 @@ importers:
       '@freetalk/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@mediapipe/selfie_segmentation':
-        specifier: 0.1.1675465747
-        version: 0.1.1675465747
+      '@mediapipe/tasks-vision':
+        specifier: 0.10.32
+        version: 0.10.32
       '@tauri-apps/api':
         specifier: ^2.8.0
         version: 2.11.1
@@ -1640,10 +1640,10 @@ packages:
       }
     engines: { node: '>=8' }
 
-  '@mediapipe/selfie_segmentation@0.1.1675465747':
+  '@mediapipe/tasks-vision@0.10.32':
     resolution:
       {
-        integrity: sha512-IxYxNhwE5VwOm52L1yoFWYLP7q9Pd+NJjzOC5tlepfvEGaY3o9hslhUrx9BgseqdfZtKSDtd/4NfCSMjNzQalA==,
+        integrity: sha512-3tiAZnmKloYnRXYoO3dKltTUGnqeCwzC4lV03uY0vCsE+aveJTyEVQyZHOlQGQNsjK+gRHzkf9q08C99Qm2K0Q==,
       }
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
@@ -5796,7 +5796,7 @@ snapshots:
 
   '@lukeed/ms@2.0.2': {}
 
-  '@mediapipe/selfie_segmentation@0.1.1675465747': {}
+  '@mediapipe/tasks-vision@0.10.32': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

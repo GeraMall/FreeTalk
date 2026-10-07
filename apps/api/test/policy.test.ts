@@ -9,11 +9,14 @@ import {
 } from '../src/policy.js';
 
 describe('FreeUser and chat policies', () => {
-  it('enforces five joins and a thirty minute session', () => {
-    expect(GUEST_MAX_JOINS_PER_UTC_DAY).toBe(5);
-    expect(GUEST_SESSION_SECONDS).toBe(1800);
-    expect(guestQuotaAvailable(4)).toBe(true);
+  it('allows two three-hour sessions per UTC day', () => {
+    expect(GUEST_MAX_JOINS_PER_UTC_DAY).toBe(2);
+    expect(GUEST_SESSION_SECONDS).toBe(10800);
+    expect(guestQuotaAvailable(0)).toBe(true);
+    expect(guestQuotaAvailable(1)).toBe(true);
+    expect(guestQuotaAvailable(2)).toBe(false);
     expect(guestQuotaAvailable(5)).toBe(false);
+    expect(guestQuotaAvailable(-1)).toBe(false);
   });
 
   it('requires more than half of eligible chat members', () => {

@@ -185,16 +185,17 @@ export class AccountClient {
   }
 
   async forgotPassword(email: string) {
-    return this.publicRequest<{ message: string }>('/v1/auth/forgot-password', {
+    const result = await this.publicRequest<{ message: string }>('/v1/auth/forgot-password', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, codeFormat: 'numeric' }),
     });
+    return result;
   }
 
-  async resetPassword(token: string, password: string) {
+  async resetPassword(token: string, password: string, email: string) {
     return this.publicRequest<{ changed: true }>('/v1/auth/reset-password', {
       method: 'POST',
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ token, password, email: email.trim().toLowerCase() }),
     });
   }
 
