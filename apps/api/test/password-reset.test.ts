@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { createHash } from 'node:crypto';
 import { z, ZodError } from 'zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ beforeEach(() => {
   mocks.hashPassword.mockResolvedValue('hashed-password');
   mocks.query.mockResolvedValue(result());
   app = Fastify();
-  app.setErrorHandler((error, _request, reply) =>
+  app.setErrorHandler((error: FastifyError, _request: FastifyRequest, reply: FastifyReply) =>
     reply.code(error instanceof ZodError ? 400 : 500).send({ error: 'invalid' }),
   );
   registerPasswordResetRoutes(app);
