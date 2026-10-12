@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*-beta.*']
   workflow_dispatch:
+    inputs:
+      include_macos:
+        description: Build and publish macOS installers too
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,6 +46,7 @@ jobs:
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
   macos:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_macos == true }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -88,7 +94,13 @@ jobs:
           path: beta-assets/*
 
   prerelease:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: >-
+      ${{
+        always() &&
+        startsWith(github.ref, 'refs/tags/') &&
+        needs.windows.result == 'success' &&
+        (needs.macos.result == 'success' || needs.macos.result == 'skipped')
+      }}
     needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
@@ -101,33 +113,45 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           windows_file=$(find release-assets -name "FreeTalk_${version}_x64-setup.exe" -print -quit)
-          arm_file=$(find release-assets -name "FreeTalk_${version}_aarch64.app.tar.gz" -print -quit)
-          intel_file=$(find release-assets -name "FreeTalk_${version}_x64.app.tar.gz" -print -quit)
           test -f "$windows_file"
           test -f "$windows_file.sig"
-          test -f "$arm_file"
-          test -f "$arm_file.sig"
-          test -f "$intel_file"
-          test -f "$intel_file.sig"
-          jq -n \
-            --arg version "$version" \
-            --arg notes "FreeTalk ${version}: стабильнее звонки и демонстрация экрана, синхронное оформление карточек, жидкое стекло по умолчанию и новые узоры стран." \
-            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+
+          platforms=$(jq -n \
             --arg windows_signature "$(cat "$windows_file.sig")" \
             --arg windows_url "$base_url/$(basename "$windows_file")" \
-            --arg arm_signature "$(cat "$arm_file.sig")" \
-            --arg arm_url "$base_url/$(basename "$arm_file")" \
-            --arg intel_signature "$(cat "$intel_file.sig")" \
-            --arg intel_url "$base_url/$(basename "$intel_file")" \
+            '{
+              "windows-x86_64": { signature: $windows_signature, url: $windows_url }
+            }')
+
+          arm_file=$(find release-assets -name "FreeTalk_${version}_aarch64.app.tar.gz" -print -quit)
+          intel_file=$(find release-assets -name "FreeTalk_${version}_x64.app.tar.gz" -print -quit)
+          if [[ -n "$arm_file" || -n "$intel_file" ]]; then
+            test -f "$arm_file"
+            test -f "$arm_file.sig"
+            test -f "$intel_file"
+            test -f "$intel_file.sig"
+            platforms=$(jq -n \
+              --argjson platforms "$platforms" \
+              --arg arm_signature "$(cat "$arm_file.sig")" \
+              --arg arm_url "$base_url/$(basename "$arm_file")" \
+              --arg intel_signature "$(cat "$intel_file.sig")" \
+              --arg intel_url "$base_url/$(basename "$intel_file")" \
+              '$platforms + {
+                "darwin-aarch64": { signature: $arm_signature, url: $arm_url },
+                "darwin-x86_64": { signature: $intel_signature, url: $intel_url }
+              }')
+          fi
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "FreeTalk ${version}: кнопка «Текущий звонок» снова возвращает в активную комнату." \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson platforms "$platforms" \
             '{
               version: $version,
               notes: $notes,
               pub_date: $pub_date,
-              platforms: {
-                "windows-x86_64": { signature: $windows_signature, url: $windows_url },
-                "darwin-aarch64": { signature: $arm_signature, url: $arm_url },
-                "darwin-x86_64": { signature: $intel_signature, url: $intel_url }
-              }
+              platforms: $platforms
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:

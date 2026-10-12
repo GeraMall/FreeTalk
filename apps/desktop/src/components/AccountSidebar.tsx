@@ -288,7 +288,7 @@ export function AccountSidebar({
             icon={<PhoneCall />}
             label="Текущий звонок"
             live
-            passive
+            onClick={() => onNavigate('room')}
           />
         </nav>
       ) : null}
@@ -315,7 +315,7 @@ export function AccountSidebar({
             icon={<PhoneCall />}
             label="Текущий звонок"
             live
-            passive
+            onClick={() => onNavigate('room')}
           />
         )}
         <Nav
