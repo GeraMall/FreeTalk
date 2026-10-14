@@ -1587,7 +1587,7 @@ function ProfilePanel({
         </button>
         <section className="chat-profile-identity">
           <h2>{name}</h2>
-          <p>@{profile?.username ?? fallback?.username ?? 'freetalk'}</p>
+          <p>@{profile?.username ?? fallback?.username ?? 'trlka'}</p>
         </section>
         <section className="chat-profile-block">
           <h3>О СЕБЕ</h3>
@@ -1610,7 +1610,7 @@ function ProfilePanel({
         </section>
         {profile?.registeredAt && (
           <footer>
-            В FreeTalk с{' '}
+            В Trlka с{' '}
             {new Date(profile.registeredAt).toLocaleDateString('ru-RU', {
               month: 'long',
               year: 'numeric',
@@ -4280,7 +4280,7 @@ function chatName(chat: ChatItem, userId: string) {
     chat.members
       .filter((member) => member.id !== userId)
       .map((member) => member.displayName)
-      .join(', ') || 'Чат FreeTalk'
+      .join(', ') || 'Чат Trlka'
   );
 }
 

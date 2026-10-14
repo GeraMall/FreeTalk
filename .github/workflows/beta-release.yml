@@ -41,7 +41,7 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*.exe beta-assets/
           Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*.sig beta-assets/
-          Copy-Item apps/desktop/src-tauri/target/release/freetalk.exe "beta-assets/FreeTalk_${version}_portable_x64.exe"
+          Copy-Item apps/desktop/src-tauri/target/release/freetalk.exe "beta-assets/Trlka_${version}_portable_x64.exe"
       - uses: actions/upload-artifact@v4
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
@@ -83,10 +83,10 @@ jobs:
             x86_64-apple-darwin) release_arch=x64 ;;
           esac
           app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" "beta-assets/FreeTalk-${{ matrix.target }}.app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "beta-assets/Trlka-${{ matrix.target }}.app.zip"
           cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg beta-assets/
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz "beta-assets/FreeTalk_${version}_${release_arch}.app.tar.gz"
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig "beta-assets/FreeTalk_${version}_${release_arch}.app.tar.gz.sig"
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz"
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz.sig"
       - uses: actions/upload-artifact@v4
         with:
           name: beta-macos-${{ matrix.target }}
@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
-          windows_file=$(find release-assets -name "FreeTalk_${version}_x64-setup.exe" -print -quit)
+          windows_file=$(find release-assets -name "Trlka_${version}_x64-setup.exe" -print -quit)
           test -f "$windows_file"
           test -f "$windows_file.sig"
 
@@ -123,8 +123,8 @@ jobs:
               "windows-x86_64": { signature: $windows_signature, url: $windows_url }
             }')
 
-          arm_file=$(find release-assets -name "FreeTalk_${version}_aarch64.app.tar.gz" -print -quit)
-          intel_file=$(find release-assets -name "FreeTalk_${version}_x64.app.tar.gz" -print -quit)
+          arm_file=$(find release-assets -name "Trlka_${version}_aarch64.app.tar.gz" -print -quit)
+          intel_file=$(find release-assets -name "Trlka_${version}_x64.app.tar.gz" -print -quit)
           if [[ -n "$arm_file" || -n "$intel_file" ]]; then
             test -f "$arm_file"
             test -f "$arm_file.sig"
@@ -144,7 +144,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "FreeTalk ${version}: кнопка «Текущий звонок» снова возвращает в активную комнату." \
+            --arg notes "Trlka ${version}: новое название приложения и отключение элементов оформления карточек." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{

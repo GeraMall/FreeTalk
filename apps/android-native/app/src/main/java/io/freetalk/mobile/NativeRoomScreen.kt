@@ -95,7 +95,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     Scaffold(containerColor = Color(0xFF04111D), topBar = {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(36.dp))
-            Text("FreeTalk", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
+            Text("Trlka", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
             Text("Голосовая комната", color = secondary, fontSize = 12.sp)
         }
     }, bottomBar = {
@@ -201,7 +201,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 }
                 "invite" -> {
                     Text("Пригласить в звонок", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение FreeTalk", link)); feedback = "Ссылка скопирована"; sheet = null }) { Text("Скопировать ссылку") }
+                    TextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение Trlka", link)); feedback = "Ссылка скопирована"; sheet = null }) { Text("Скопировать ссылку") }
                     TextButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), "Пригласить в звонок")) }) { Text("Поделиться ссылкой…") }
                     LazyColumn(Modifier.heightIn(max = 300.dp)) {
                         item { Text("Друзья", color = secondary) }

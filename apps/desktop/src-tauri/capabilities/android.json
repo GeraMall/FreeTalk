@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/android-schema.json",
   "identifier": "android",
-  "description": "Минимальные разрешения Android-клиента FreeTalk",
+  "description": "Минимальные разрешения Android-клиента Trlka",
   "platforms": ["android"],
   "windows": ["main"],
   "permissions": [

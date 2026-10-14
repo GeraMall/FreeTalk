@@ -39,7 +39,7 @@ function wikipediaArticle(url: URL) {
 
 async function fetchJson(url: string) {
   const response = await fetch(url, {
-    headers: { 'user-agent': 'FreeTalk-LinkPreview/1.0' },
+    headers: { 'user-agent': 'Trlka-LinkPreview/1.0' },
     redirect: 'error',
     signal: AbortSignal.timeout(4_000),
   });

@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>FreeTalk использует микрофон только для передачи вашего голоса участникам текущей комнаты.</string>
+  <string>Trlka использует микрофон только для передачи вашего голоса участникам текущей комнаты.</string>
   <key>NSCameraUsageDescription</key>
-  <string>FreeTalk использует камеру только когда вы сами включаете видео в текущей комнате.</string>
+  <string>Trlka использует камеру только когда вы сами включаете видео в текущей комнате.</string>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>FreeTalk использует запись экрана только когда вы сами включаете демонстрацию в текущей комнате.</string>
+  <string>Trlka использует запись экрана только когда вы сами включаете демонстрацию в текущей комнате.</string>
   <key>NSAudioCaptureUsageDescription</key>
-  <string>FreeTalk захватывает системный звук только по вашему выбору во время демонстрации экрана.</string>
+  <string>Trlka захватывает системный звук только по вашему выбору во время демонстрации экрана.</string>
 </dict>
 </plist>

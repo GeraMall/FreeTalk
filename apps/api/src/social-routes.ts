@@ -132,7 +132,7 @@ async function readActiveCall(roomId: string) {
     title:
       session.title ||
       members.rows.map((member) => member.display_name).join(', ') ||
-      'Комната FreeTalk',
+      'Комната Trlka',
     memberIds: members.rows.map((member) => member.user_id),
     participants: participants.rows.map((person) => ({
       userId: person.user_id,
@@ -1470,7 +1470,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const metadata = {
         ...original.metadata,
         forwardedFrom: existingForward ?? {
-          displayName: original.display_name ?? 'FreeTalk',
+          displayName: original.display_name ?? 'Trlka',
           username: original.username,
         },
       };

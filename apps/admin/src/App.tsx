@@ -130,7 +130,7 @@ function Login({ onAuthenticated }: { onAuthenticated(user: AdminUser): void }) 
       <form onSubmit={submit}>
         <div className="admin-mark">
           <ShieldCheck />
-          <span>FreeTalk</span>
+          <span>Trlka</span>
           <b>Admin</b>
         </div>
         <h1>Внутренняя аналитика</h1>
@@ -771,7 +771,7 @@ export function App() {
             <Wifi />
           </div>
           <span>
-            FreeTalk<b>Admin</b>
+            Trlka<b>Admin</b>
           </span>
         </div>
         <nav>

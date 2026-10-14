@@ -55,7 +55,7 @@ export class RoomManager {
     accountId?: string,
     authority: RoomAuthority = { scope: 'standalone' },
     cardStyle: ParticipantCardStyle = 'avatar-glass',
-    cardDecoration: ParticipantCardDecoration = 'none',
+    _cardDecoration: ParticipantCardDecoration = 'none',
   ) {
     if (this.rooms.has(roomId)) throw new RoomError('ROOM_EXISTS', 'Комната уже существует');
     this.rooms.set(roomId, {
@@ -76,7 +76,7 @@ export class RoomManager {
       accountId,
       authority,
       cardStyle,
-      cardDecoration,
+      'none',
     );
   }
 
@@ -90,7 +90,7 @@ export class RoomManager {
     accountId?: string,
     authority?: RoomAuthority,
     cardStyle: ParticipantCardStyle = 'avatar-glass',
-    cardDecoration: ParticipantCardDecoration = 'none',
+    _cardDecoration: ParticipantCardDecoration = 'none',
   ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
@@ -110,7 +110,7 @@ export class RoomManager {
       name,
       avatar,
       cardStyle,
-      cardDecoration,
+      cardDecoration: 'none',
       muted: false,
       isOwner: false,
       connectedAt: Date.now(),
@@ -120,7 +120,7 @@ export class RoomManager {
     participant.avatar = avatar;
     participant.accountId = accountId;
     participant.cardStyle = cardStyle;
-    participant.cardDecoration = cardDecoration;
+    participant.cardDecoration = 'none';
     const peer: Peer = {
       participant,
       sessionId,
@@ -215,13 +215,13 @@ export class RoomManager {
     roomId: string,
     clientId: string,
     cardStyle: ParticipantCardStyle,
-    cardDecoration: ParticipantCardDecoration,
+    _cardDecoration: ParticipantCardDecoration,
   ) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return false;
     peer.participant.cardStyle = cardStyle;
-    peer.participant.cardDecoration = cardDecoration;
+    peer.participant.cardDecoration = 'none';
     this.broadcast(room, { type: 'participant-updated', participant: peer.participant });
     return true;
   }

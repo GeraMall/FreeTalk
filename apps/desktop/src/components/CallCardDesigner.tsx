@@ -1,40 +1,22 @@
-import { ChevronDown, Crown, ImagePlus, Sparkles } from 'lucide-react';
-import type { ParticipantCardDecoration } from '@freetalk/protocol';
-
-const decorations: Array<{
-  id: ParticipantCardDecoration;
-  label: string;
-  image?: string;
-}> = [
-  { id: 'none', label: 'Без узора' },
-  { id: 'japan', label: 'Япония', image: '/card-decorations/japan.png' },
-  { id: 'china', label: 'Китай', image: '/card-decorations/china.png' },
-  { id: 'britain', label: 'Британия', image: '/card-decorations/britain.png' },
-  { id: 'kazakhstan', label: 'Казахстан', image: '/card-decorations/kazakhstan.png' },
-  { id: 'russia', label: 'Россия', image: '/card-decorations/russia.png' },
-];
+import { Crown, Sparkles } from 'lucide-react';
 
 export function CallCardDesigner({
   name,
   avatar,
   glass,
-  decoration,
   onGlass,
-  onDecoration,
 }: {
   name: string;
   avatar: string;
   glass: boolean;
-  decoration: ParticipantCardDecoration;
   onGlass(value: boolean): void;
-  onDecoration(value: ParticipantCardDecoration): void;
 }) {
   return (
     <section className="profile-zone profile-card-design call-card-designer">
       <div className="profile-card-design-heading">
         <span>
           <strong>Ваша карточка в звонке</strong>
-          <small>Так выглядит карточка участника. Оформление сохранится по кнопке «Готово».</small>
+          <small>Так выглядит карточка участника. Эффект сохранится по кнопке «Готово».</small>
         </span>
         <Sparkles aria-hidden="true" />
       </div>
@@ -46,14 +28,6 @@ export function CallCardDesigner({
             <span className="participant-card-ambient" aria-hidden="true">
               <img src={avatar} alt="" draggable={false} />
             </span>
-          ) : null}
-          {decoration !== 'none' ? (
-            <img
-              className="participant-card-decoration"
-              src={`/card-decorations/${decoration}.png`}
-              alt=""
-              draggable={false}
-            />
           ) : null}
           <div className="participant-card-top media-overlay-top">
             <span className="creator-badge">
@@ -103,35 +77,6 @@ export function CallCardDesigner({
           <span />
         </button>
       </div>
-      <details className="call-card-decoration-options">
-        <summary>
-          <span>
-            <ImagePlus size={18} /> Элементы оформления
-          </span>
-          <ChevronDown size={16} />
-        </summary>
-        <div>
-          <strong>Узоры и украшения</strong>
-          <p>Выберите узор, который увидят остальные участники звонка.</p>
-          <div className="call-card-decoration-grid" role="radiogroup" aria-label="Узор карточки">
-            {decorations.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={decoration === item.id ? 'selected' : ''}
-                role="radio"
-                aria-checked={decoration === item.id}
-                onClick={() => onDecoration(item.id)}
-              >
-                <span className="call-card-decoration-thumb">
-                  {item.image ? <img src={item.image} alt="" loading="lazy" /> : <i />}
-                </span>
-                <strong>{item.label}</strong>
-              </button>
-            ))}
-          </div>
-        </div>
-      </details>
     </section>
   );
 }

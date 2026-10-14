@@ -422,7 +422,7 @@ describe('MessageList rendering', () => {
     vi.spyOn(accountClient, 'request').mockResolvedValue({
       chat: {
         id: 'group-a',
-        title: 'Команда FreeTalk',
+        title: 'Команда Trlka',
         memberCount: 7,
         avatarUrl: null,
         avatarPositionX: 50,
@@ -448,7 +448,7 @@ describe('MessageList rendering', () => {
       />,
     );
 
-    expect(await findByText('Команда FreeTalk')).toBeTruthy();
+    expect(await findByText('Команда Trlka')).toBeTruthy();
     expect(await findByText('7 участников')).toBeTruthy();
     expect(container.querySelector('.invite-message-bubble')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Вступить' }));
@@ -900,7 +900,7 @@ describe('Resizable chat list', () => {
     expect(panel.querySelector('.chat-profile-identity .chat-presence')).toBeNull();
   });
 
-  it('replaces the native composer menu with FreeTalk controls', () => {
+  it('replaces the native composer menu with Trlka controls', () => {
     const { getByRole, queryByRole } = renderPage();
     const textarea = getByRole('textbox', { name: 'Сообщение' });
 
@@ -1039,7 +1039,7 @@ describe('Message interactions', () => {
     );
   });
 
-  it('opens the FreeTalk context menu and accepts a custom emoji reaction', async () => {
+  it('opens the Trlka context menu and accepts a custom emoji reaction', async () => {
     const onReact = vi.fn(async () => true);
     const source = {
       ...message('8', 'friend', 'Выберите реакцию'),
@@ -1168,7 +1168,7 @@ describe('Message interactions', () => {
         sender_id: 'friend',
         display_name: 'Алексей',
       },
-      metadata: { forwardedFrom: { displayName: 'Команда FreeTalk' } },
+      metadata: { forwardedFrom: { displayName: 'Команда Trlka' } },
       reactions: [{ emoji: '🔥', count: 3, userIds: ['self', 'friend'] }],
     };
     const chat: ChatItem = {
@@ -1203,7 +1203,7 @@ describe('Message interactions', () => {
       />,
     );
 
-    expect(getByText('Переслано от Команда FreeTalk')).toBeTruthy();
+    expect(getByText('Переслано от Команда Trlka')).toBeTruthy();
     expect(getByText('Закреплённое сообщение')).toBeTruthy();
     expect(container.querySelector('.message-reactions > button.mine')).not.toBeNull();
     fireEvent.contextMenu(container.querySelector('.message-bubble-row')!, {

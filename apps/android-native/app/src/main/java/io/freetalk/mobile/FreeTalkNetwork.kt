@@ -318,7 +318,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
     private fun parseActiveCall(json: JSONObject) = ActiveCall(
         roomId = json.optString("roomId"),
         chatId = json.nullableString("chatId"),
-        title = json.optString("title", "Звонок FreeTalk"),
+        title = json.optString("title", "Звонок Trlka"),
         memberIds = (json.optJSONArray("memberIds") ?: JSONArray()).let { array ->
             (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
         },
@@ -342,7 +342,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
 
     internal fun parseMessage(json: JSONObject) = ChatMessage(
         json.optString("id"), json.optString("body"), json.nullableString("sender_id"),
-        json.optString("display_name", json.optString("displayName", "FreeTalk")),
+        json.optString("display_name", json.optString("displayName", "Trlka")),
         json.optString("created_at", json.optString("createdAt")),
         json.optString("kind", "text"), json.nullableString("avatar_url"), json.nullableString("expires_at"),
         json.optJSONObject("metadata")?.optInt("width") ?: 0,

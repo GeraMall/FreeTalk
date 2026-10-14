@@ -127,14 +127,7 @@ export function loadSettings(): LocalSettings {
       transmissionMode:
         value.transmissionMode ?? (legacy.pushToTalk ? 'push-to-talk' : 'voice-activation'),
       participantCardStyle: value.participantCardStyle === 'classic' ? 'classic' : 'avatar-glass',
-      participantCardDecoration:
-        value.participantCardDecoration === 'japan' ||
-        value.participantCardDecoration === 'china' ||
-        value.participantCardDecoration === 'britain' ||
-        value.participantCardDecoration === 'kazakhstan' ||
-        value.participantCardDecoration === 'russia'
-          ? value.participantCardDecoration
-          : 'none',
+      participantCardDecoration: 'none',
       peerVolumes: value.peerVolumes ?? {},
       screenVolumes: value.screenVolumes ?? {},
       mutedPeers: value.mutedPeers ?? {},

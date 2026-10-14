@@ -116,7 +116,7 @@ export function startAndroidPush(app: FastifyInstance) {
             created_at: Date;
           }>(
             `SELECT d.token,s.user_id,m.id message_id,m.chat_id,m.sender_id,m.kind,m.body,
-             COALESCE(u.display_name,'FreeTalk') display_name,m.expires_at,m.created_at
+             COALESCE(u.display_name,'Trlka') display_name,m.expires_at,m.created_at
            FROM push_devices d JOIN sessions s ON s.id=d.session_id
            JOIN messages m ON m.id=$1
            JOIN chat_members c ON c.chat_id=m.chat_id AND c.user_id=s.user_id

@@ -430,7 +430,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             AppHeader(user, data?.devices?.size ?: 0, onLogout)
             if (error.isNotBlank()) ErrorCard(error, load)
             when {
-                refreshing && data == null -> LoadingScreen("Загружаем FreeTalk…")
+                refreshing && data == null -> LoadingScreen("Загружаем Trlka…")
                 page == 0 -> HomePage(
                     user = user, data = data, roomId = roomId, status = roomStatus,
                     onCreateRoom = {
@@ -499,7 +499,7 @@ private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(36.dp),
                 )
-                Text("FreeTalk", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(start = 9.dp))
+                Text("Trlka", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(start = 9.dp))
             }
             Box(
                 Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF10354A))

@@ -492,5 +492,5 @@ function logSocketEvent(socket: WebSocket, event: string, details: Record<string
 
 setInterval(() => manager.removeStale(CLIENT_STALE_AFTER_MS), 15_000).unref();
 httpServer.listen(port, '127.0.0.1', () =>
-  console.info(`FreeTalk signaling: ws://127.0.0.1:${port}/ws`),
+  console.info(`Trlka signaling: ws://127.0.0.1:${port}/ws`),
 );

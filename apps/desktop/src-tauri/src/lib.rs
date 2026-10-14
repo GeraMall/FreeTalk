@@ -269,7 +269,7 @@ fn open_call_popout(app: &tauri::AppHandle) -> Result<(), String> {
         window
     } else {
         WindowBuilder::new(app, "call-popout")
-            .title("FreeTalk — звонок")
+            .title("Trlka — звонок")
             .inner_size(1180.0, 760.0)
             .min_inner_size(640.0, 480.0)
             .resizable(true)
@@ -449,7 +449,7 @@ pub fn run() {
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .title("FreeTalk")
+            .title("Trlka")
             .inner_size(1454.0, 903.0)
             .min_inner_size(797.0, 714.0)
             .resizable(true)
@@ -474,7 +474,7 @@ pub fn run() {
                 "notifications",
                 tauri::WebviewUrl::App("index.html?notification-overlay=1".into()),
             )
-            .title("FreeTalk notifications")
+            .title("Trlka notifications")
             .inner_size(390.0, 380.0)
             .resizable(false)
             .maximizable(false)
@@ -495,7 +495,7 @@ pub fn run() {
                 "call-placeholder-window",
                 tauri::WebviewUrl::App("index.html?call-placeholder=1".into()),
             )
-            .title("FreeTalk")
+            .title("Trlka")
             .inner_size(1454.0, 903.0)
             .min_inner_size(797.0, 714.0)
             .resizable(true)
@@ -524,11 +524,11 @@ pub fn run() {
                     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
                 };
 
-                let open = MenuItem::with_id(app, "open", "Открыть FreeTalk", true, None::<&str>)?;
+                let open = MenuItem::with_id(app, "open", "Открыть Trlka", true, None::<&str>)?;
                 let quit = MenuItem::with_id(app, "quit", "Выйти полностью", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&open, &quit])?;
                 let mut tray = TrayIconBuilder::with_id("freetalk-tray")
-                    .tooltip("FreeTalk — работает в фоне")
+                    .tooltip("Trlka — работает в фоне")
                     .menu(&menu)
                     .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id.as_ref() {
@@ -591,7 +591,7 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("failed to run FreeTalk");
+        .expect("failed to run Trlka");
 }
 
 #[cfg(mobile)]
@@ -613,5 +613,5 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(freetalk_secure_session::init())
         .run(tauri::generate_context!())
-        .expect("failed to run FreeTalk on Android");
+        .expect("failed to run Trlka on Android");
 }

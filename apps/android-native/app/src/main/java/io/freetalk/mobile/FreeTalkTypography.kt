@@ -9,7 +9,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 // Bundle every supported weight locally so Cyrillic and Latin use the same
-// FreeTalk typeface without a network request or synthetic bold text.
+// Trlka typeface without a network request or synthetic bold text.
 @OptIn(ExperimentalTextApi::class)
 private val geist = FontFamily(
     *(100..900 step 100).map { weight ->

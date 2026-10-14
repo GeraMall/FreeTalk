@@ -38,7 +38,7 @@ jobs:
       - run: pnpm --filter @freetalk/desktop tauri build --bundles nsis
       - uses: actions/upload-artifact@v4
         with:
-          name: FreeTalk-Windows-x64
+          name: Trlka-Windows-x64
           if-no-files-found: error
           path: |
             apps/desktop/src-tauri/target/release/freetalk.exe
@@ -68,7 +68,7 @@ jobs:
       - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: FreeTalk-macOS-${{ matrix.target }}
+          name: Trlka-macOS-${{ matrix.target }}
           if-no-files-found: error
           path: |
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app

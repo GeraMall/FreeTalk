@@ -50,7 +50,7 @@ pub fn save_connection_diagnostics(
         .path()
         .desktop_dir()
         .map_err(|_| "Не удалось найти рабочий стол")?;
-    let path = directory.join(format!("FreeTalk-diagnostics-{timestamp}.json"));
+    let path = directory.join(format!("Trlka-diagnostics-{timestamp}.json"));
     fs::write(&path, contents).map_err(|_| "Не удалось сохранить журнал на рабочий стол")?;
     Ok(path.to_string_lossy().into_owned())
 }

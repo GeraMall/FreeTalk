@@ -16,7 +16,7 @@ class CallService : Service() {
         val open = PendingIntent.getActivity(this, 80, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val end = PendingIntent.getService(this, 81, Intent(this, CallService::class.java).setAction("end"), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, "active-call").setSmallIcon(R.drawable.notification_message)
-            .setContentTitle("FreeTalk · текущий звонок").setContentText("Нажмите, чтобы вернуться")
+            .setContentTitle("Trlka · текущий звонок").setContentText("Нажмите, чтобы вернуться")
             .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "Завершить", end).build()).build()
         startForeground(80, notification, intent?.getIntExtra("types", ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) ?: ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         afterStart?.also { afterStart = null; it() }

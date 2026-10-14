@@ -459,7 +459,6 @@ export function RoomView({
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
     const cardStyle = participant.cardStyle ?? 'avatar-glass';
-    const cardDecoration = participant.cardDecoration ?? 'none';
     const status = participant.muted
       ? 'Микрофон выключен'
       : speaking
@@ -483,14 +482,6 @@ export function RoomView({
           <span className="participant-card-ambient" aria-hidden="true">
             <CachedMediaImage src={participant.avatar} alt="" />
           </span>
-        )}
-        {!showCamera && cardDecoration !== 'none' && (
-          <img
-            className="participant-card-decoration"
-            src={`/card-decorations/${cardDecoration}.png`}
-            alt=""
-            draggable={false}
-          />
         )}
         {showCamera && (
           <ParticipantVideo

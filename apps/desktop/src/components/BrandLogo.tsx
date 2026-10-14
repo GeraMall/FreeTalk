@@ -11,14 +11,14 @@ function BrandEmblem() {
 function BrandWordmark() {
   return (
     <span className="brand-wordmark" aria-hidden="true">
-      FreeTalk
+      Trlka
     </span>
   );
 }
 
 export function BrandLogo({ variant = 'full' }: { variant?: 'full' | 'compact' }) {
   return (
-    <span className={`brand-logo brand-logo-${variant}`} role="img" aria-label="FreeTalk">
+    <span className={`brand-logo brand-logo-${variant}`} role="img" aria-label="Trlka">
       <BrandEmblem />
       <BrandWordmark />
     </span>

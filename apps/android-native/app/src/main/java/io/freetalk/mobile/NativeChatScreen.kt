@@ -150,7 +150,7 @@ internal fun NativeChatScreen(
                         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.Groups, null, tint = Color(0xFF55EFB7))
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                Text(message.body.ifBlank { "Звонок FreeTalk" }, fontWeight = FontWeight.SemiBold)
+                                Text(message.body.ifBlank { "Звонок Trlka" }, fontWeight = FontWeight.SemiBold)
                                 Text(chatDate(message.createdAt), color = Color(0xFF71859B), fontSize = 10.sp)
                             }
                             if (activeCall != null) TextButton(onClick = { onJoinCall(activeCall!!.roomId) }) { Text("Войти") }

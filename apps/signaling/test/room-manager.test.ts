@@ -65,7 +65,7 @@ describe('RoomManager', () => {
     );
   });
 
-  it('shares only the changed participant card appearance with everyone immediately', () => {
+  it('shares glass changes but retires participant decorations', () => {
     const manager = new RoomManager();
     const first = new FakeConnection();
     const second = new FakeConnection();
@@ -86,14 +86,14 @@ describe('RoomManager', () => {
     const joined = second.messages.find((message) => message.type === 'joined-room');
     expect(joined?.type === 'joined-room' ? joined.participants : []).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: id(1), cardDecoration: 'japan' }),
+        expect.objectContaining({ id: id(1), cardDecoration: 'none' }),
         expect.objectContaining({ id: id(2), cardStyle: 'avatar-glass' }),
       ]),
     );
     expect(manager.updateCardAppearance(room, id(1), 'classic', 'russia')).toBe(true);
     expect(second.messages.at(-1)).toMatchObject({
       type: 'participant-updated',
-      participant: { id: id(1), cardStyle: 'classic', cardDecoration: 'russia' },
+      participant: { id: id(1), cardStyle: 'classic', cardDecoration: 'none' },
     });
   });
 

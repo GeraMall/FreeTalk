@@ -159,7 +159,7 @@ export function App() {
   const [callChatId, setCallChatId] = useState<string>();
   const callChatRef = useRef<string | undefined>(undefined);
   const pendingChatRing = useRef(false);
-  const [callTitle, setCallTitle] = useState('Комната FreeTalk');
+  const [callTitle, setCallTitle] = useState('Комната Trlka');
   const [deafened, setDeafened] = useState(false);
   const [conversationHidden, setConversationHidden] = useState(false);
   const [callExiting, setCallExiting] = useState(false);
@@ -269,7 +269,7 @@ export function App() {
 
   const updateSettings = useCallback((patch: Partial<LocalSettings>) => {
     setSettings((current) => {
-      const next = { ...current, ...patch };
+      const next = { ...current, ...patch, participantCardDecoration: 'none' as const };
       saveSettings(next);
       return next;
     });
@@ -470,7 +470,7 @@ export function App() {
       void checkForUpdate().then((status) => {
         if (status.kind === 'available') {
           setUpdateStatus(status);
-          setNotice(`Доступно обновление FreeTalk ${status.version}`);
+          setNotice(`Доступно обновление Trlka ${status.version}`);
         }
       });
     }, 2500);
@@ -896,7 +896,7 @@ export function App() {
         name: cleanName,
         avatar: accountUser?.avatarUrl ?? (settings.avatarDataUrl || undefined),
         cardStyle: settings.participantCardStyle,
-        cardDecoration: settings.participantCardDecoration,
+        cardDecoration: 'none',
         muted,
         isOwner:
           destinationConversation?.type === 'direct'
@@ -982,7 +982,7 @@ export function App() {
           ? (accountUser.avatarUrl ?? undefined)
           : settings.avatarDataUrl || undefined,
         cardStyle: settings.participantCardStyle,
-        cardDecoration: settings.participantCardDecoration,
+        cardDecoration: 'none',
       });
       setGuestMode(Boolean(options.guest));
       if (options.guest) {
@@ -1028,7 +1028,7 @@ export function App() {
           call: ChatCallContext & { memberIds: string[] };
         }>(`/v1/calls/${roomId}/context`);
         if (disposed) return;
-        setCallTitle(result.call.title || 'Комната FreeTalk');
+        setCallTitle(result.call.title || 'Комната Trlka');
         const authoritativeStartedAt = Date.parse(result.call.startedAt);
         if (Number.isFinite(authoritativeStartedAt)) setRoomStartedAt(authoritativeStartedAt);
         if (result.call.chatId && result.call.chatId !== callChatRef.current) {
@@ -1259,7 +1259,7 @@ export function App() {
       setName(user.displayName);
       updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
       setGuestMode(false);
-      setNotice('Почта подтверждена. Добро пожаловать в FreeTalk!');
+      setNotice('Почта подтверждена. Добро пожаловать в Trlka!');
       return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Код неверный или истёк');
@@ -1384,10 +1384,10 @@ export function App() {
   const changeAudioSettings = async (patch: Partial<LocalSettings>, restart: boolean) => {
     const next = { ...settings, ...patch };
     updateSettings(patch);
-    if (patch.participantCardStyle !== undefined || patch.participantCardDecoration !== undefined) {
+    if (patch.participantCardStyle !== undefined) {
       const appearance = {
         cardStyle: next.participantCardStyle,
-        cardDecoration: next.participantCardDecoration,
+        cardDecoration: 'none' as const,
       };
       if (roomId) signaling.current?.send({ type: 'update-card-appearance', ...appearance });
       setParticipants((current) =>

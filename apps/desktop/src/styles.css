@@ -2075,23 +2075,9 @@ input[type='range']:hover::-webkit-slider-thumb {
   position: relative;
   z-index: 2;
 }
-.participant-card.audio-tile > :not(.participant-card-ambient):not(.participant-card-decoration) {
+.participant-card.audio-tile > :not(.participant-card-ambient) {
   position: relative;
   z-index: 2;
-}
-.participant-card-decoration {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  object-fit: cover;
-  object-position: center;
-  opacity: 0.52;
-  pointer-events: none;
-  user-select: none;
-  filter: saturate(0.88) brightness(0.82);
 }
 .participant-card-ambient {
   position: absolute;
@@ -18134,93 +18120,6 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .call-card-glass-control .switch {
   flex-shrink: 0;
 }
-.call-card-decoration-options {
-  border: 1px solid rgba(99, 170, 214, 0.14);
-  border-radius: 12px;
-  overflow: hidden;
-}
-.call-card-decoration-options summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 16px;
-  list-style: none;
-  cursor: pointer;
-  color: #b7cbd9;
-  font-size: 12px;
-}
-.call-card-decoration-options summary::-webkit-details-marker {
-  display: none;
-}
-.call-card-decoration-options summary > span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.call-card-decoration-options[open] summary > svg {
-  transform: rotate(180deg);
-}
-.call-card-decoration-options > div {
-  padding: 16px;
-  border-top: 1px solid rgba(99, 170, 214, 0.14);
-  font-size: 12px;
-}
-.call-card-decoration-options p {
-  margin: 6px 0 0;
-  color: #8299ad;
-  line-height: 1.6;
-}
-.call-card-decoration-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-.call-card-decoration-grid > button {
-  display: grid;
-  min-width: 0;
-  gap: 7px;
-  padding: 8px;
-  color: #a8bdcc;
-  text-align: left;
-  border: 1px solid rgba(99, 170, 214, 0.14);
-  border-radius: 10px;
-  background: rgba(4, 17, 29, 0.7);
-}
-.call-card-decoration-grid > button:hover {
-  border-color: rgba(78, 243, 242, 0.35);
-}
-.call-card-decoration-grid > button.selected {
-  color: #e5fbff;
-  border-color: rgba(78, 243, 242, 0.7);
-  box-shadow: 0 0 0 1px rgba(78, 243, 242, 0.12);
-}
-.call-card-decoration-thumb {
-  display: grid;
-  height: 55px;
-  overflow: hidden;
-  place-items: center;
-  border-radius: 7px;
-  background: #071522;
-}
-.call-card-decoration-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.call-card-decoration-thumb i {
-  width: 28px;
-  height: 2px;
-  border-radius: 2px;
-  background: #557084;
-}
-.call-card-decoration-grid strong {
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 @media (max-width: 600px) {
   .call-card-designer .call-card-stage {
     padding: 24px 6px;
@@ -18231,9 +18130,6 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   }
   .call-card-toggle-label {
     display: none;
-  }
-  .call-card-decoration-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (prefers-reduced-motion: reduce) {

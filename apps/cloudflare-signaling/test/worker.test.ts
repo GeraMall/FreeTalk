@@ -1,4 +1,8 @@
-import type { ServerMessage } from '@freetalk/protocol';
+import type {
+  ParticipantCardDecoration,
+  ParticipantCardStyle,
+  ServerMessage,
+} from '@freetalk/protocol';
 import { parseDnsIpv4Answers, withCloudflareTurnIpFallbacks } from '@freetalk/config';
 import { describe, expect, it } from 'vitest';
 import worker, { generateIceConfig, VoiceRoom } from '../src/worker';
@@ -9,6 +13,8 @@ interface TestAttachment {
   clientId?: string;
   sessionId?: string;
   name?: string;
+  cardStyle?: ParticipantCardStyle;
+  cardDecoration?: ParticipantCardDecoration;
   muted?: boolean;
   isOwner?: boolean;
   connectedAt?: number;
@@ -77,6 +83,36 @@ function roomWith(sockets: FakeSocket[]) {
 }
 
 describe('Cloudflare voice room reconnects', () => {
+  it('ignores retired card decorations from old clients', async () => {
+    const decorated = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+        sessionId: 'session-123456789',
+        name: 'Gera',
+        cardStyle: 'avatar-glass',
+        cardDecoration: 'japan',
+        connectedAt: 1,
+      }),
+    );
+    const room = roomWith([decorated]);
+
+    await room.webSocketMessage(
+      decorated as unknown as WebSocket,
+      JSON.stringify({
+        type: 'update-card-appearance',
+        cardStyle: 'classic',
+        cardDecoration: 'russia',
+      }),
+    );
+
+    expect(decorated.attachment.cardDecoration).toBe('none');
+    expect(decorated.sent.at(-1)).toMatchObject({
+      type: 'participant-updated',
+      participant: { cardStyle: 'classic', cardDecoration: 'none' },
+    });
+  });
+
   it('removes the replaced socket before creating the participant snapshot', async () => {
     const current = new FakeSocket(
       attachment({

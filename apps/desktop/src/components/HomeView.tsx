@@ -1211,7 +1211,7 @@ export function HomeView({
                 </div>
               </div>
             </section>
-            <div className="home-proof-row" aria-label="Преимущества FreeTalk">
+            <div className="home-proof-row" aria-label="Преимущества Trlka">
               <span>
                 <Users size={17} /> До {ROOM_MAX_PARTICIPANTS} участников
               </span>

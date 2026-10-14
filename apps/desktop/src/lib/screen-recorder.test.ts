@@ -89,7 +89,7 @@ describe('local screen recorder', () => {
     storage.close.mockClear();
     storage.create.mockReset().mockResolvedValue({
       directory: 'D:/Recordings',
-      path: 'D:/Recordings/FreeTalk.mp4',
+      path: 'D:/Recordings/Trlka.mp4',
       file: { write: storage.write, close: storage.close },
     });
     vi.stubGlobal('MediaStream', FakeStream);
@@ -114,17 +114,17 @@ describe('local screen recorder', () => {
       sharedScreenStream: shared,
       participantNames: ['Гера', 'Друг'],
     });
-    expect(destination?.path).toBe('D:/Recordings/FreeTalk.mp4');
+    expect(destination?.path).toBe('D:/Recordings/Trlka.mp4');
     expect(storage.create).toHaveBeenCalledWith(expect.any(String), expect.any(Boolean), 'mp4');
 
-    await expect(recorder.stop()).resolves.toBe('D:/Recordings/FreeTalk.mp4');
+    await expect(recorder.stop()).resolves.toBe('D:/Recordings/Trlka.mp4');
     expect(storage.write).toHaveBeenCalledOnce();
     expect(storage.close).toHaveBeenCalledOnce();
     expect(sourceTrack.stop).not.toHaveBeenCalled();
     expect(states).toHaveBeenCalledWith(expect.objectContaining({ phase: 'recording' }));
     expect(states).toHaveBeenLastCalledWith({
       phase: 'idle',
-      path: 'D:/Recordings/FreeTalk.mp4',
+      path: 'D:/Recordings/Trlka.mp4',
     });
   });
 

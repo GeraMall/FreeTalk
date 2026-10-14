@@ -44,7 +44,7 @@ const chats: ChatItem[] = [
   {
     id: '44444444-4444-4444-8444-444444444444',
     type: 'group',
-    title: 'Команда FreeTalk',
+    title: 'Команда Trlka',
     members: [{ id: self.id, username: self.username, displayName: self.displayName }],
     lastMessage: 'Новая версия готова',
     lastMessageAt: '2026-08-26T11:40:00.000Z',
@@ -270,7 +270,7 @@ export function ChatLayoutPreview() {
               {
                 id: chats[1]!.id,
                 type: 'group',
-                title: 'Команда FreeTalk',
+                title: 'Команда Trlka',
                 avatarUrl: null,
                 lastInteractionAt: '2026-09-04T18:42:00.000Z',
               },

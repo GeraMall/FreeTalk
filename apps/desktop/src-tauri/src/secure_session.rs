@@ -108,7 +108,7 @@ mod platform {
 
     pub fn set(secret: &[u8]) -> Result<(), String> {
         let mut target = target();
-        let mut user: Vec<u16> = std::ffi::OsStr::new("FreeTalk")
+        let mut user: Vec<u16> = std::ffi::OsStr::new("Trlka")
             .encode_wide()
             .chain(Some(0))
             .collect();

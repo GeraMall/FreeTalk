@@ -34,7 +34,7 @@ internal class ChatNotifications(private val context: Context) {
         val text = if (message.optString("kind") == "image") "Фотография" else message.optString("body").take(240)
         manager.notify(id, 1, Notification.Builder(context, "messages")
             .setSmallIcon(R.drawable.notification_message)
-            .setContentTitle(message.optString("display_name", "FreeTalk"))
+            .setContentTitle(message.optString("display_name", "Trlka"))
             .setContentText(text).setContentIntent(pending).setAutoCancel(true)
             .setCategory(Notification.CATEGORY_MESSAGE).setVisibility(Notification.VISIBILITY_PRIVATE).build())
     }

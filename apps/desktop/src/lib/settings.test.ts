@@ -28,7 +28,6 @@ describe('platform-specific settings defaults', () => {
       screenAudioByDefault: true,
       chatWallpaperFit: 'cover',
       participantCardStyle: 'avatar-glass',
-      participantCardDecoration: 'none',
     });
     expect(loadSettings().screenAudioByDefault).toBe(true);
   });
@@ -59,6 +58,14 @@ describe('platform-specific settings defaults', () => {
       JSON.stringify({ participantCardStyle: 'unknown' }),
     );
     expect(loadSettings().participantCardStyle).toBe('avatar-glass');
+  });
+
+  it('retires previously saved participant decorations', () => {
+    localStorage.setItem(
+      'freetalk.settings.v1',
+      JSON.stringify({ participantCardDecoration: 'japan' }),
+    );
+    expect(loadSettings().participantCardDecoration).toBe('none');
   });
 
   it('disables screen audio by default for a new macOS installation', () => {

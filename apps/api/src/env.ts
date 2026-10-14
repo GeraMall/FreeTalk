@@ -24,7 +24,7 @@ const envSchema = z
     SMTP_SECURE: booleanString,
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
-    EMAIL_FROM: z.string().default('FreeTalk <noreply@localhost>'),
+    EMAIL_FROM: z.string().default('Trlka <noreply@localhost>'),
     IP_HASH_SALT: z.string().min(16),
   })
   .superRefine((value, context) => {

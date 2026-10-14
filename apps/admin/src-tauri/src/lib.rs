@@ -34,5 +34,5 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![admin_session_set, admin_session_get, admin_session_clear])
         .run(tauri::generate_context!())
-        .expect("error while running FreeTalk Admin");
+        .expect("error while running Trlka Admin");
 }

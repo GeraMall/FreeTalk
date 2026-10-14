@@ -289,7 +289,7 @@ export class VoiceRoom implements DurableObject {
       }
       if (message.type === 'update-card-appearance') {
         attachment.cardStyle = message.cardStyle;
-        attachment.cardDecoration = message.cardDecoration;
+        attachment.cardDecoration = 'none';
         socket.serializeAttachment(attachment);
         this.broadcast({
           type: 'participant-updated',
@@ -555,7 +555,7 @@ export class VoiceRoom implements DurableObject {
       name: message.name,
       avatar: message.avatar,
       cardStyle: message.cardStyle ?? 'avatar-glass',
-      cardDecoration: message.cardDecoration ?? 'none',
+      cardDecoration: 'none',
       muted: sameAttachment?.muted ?? false,
       profileChanges: sameAttachment?.profileChanges ?? [],
       lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
@@ -647,7 +647,7 @@ export class VoiceRoom implements DurableObject {
       name: value.name!,
       avatar: value.avatar,
       cardStyle: value.cardStyle ?? 'avatar-glass',
-      cardDecoration: value.cardDecoration ?? 'none',
+      cardDecoration: 'none',
       muted: value.muted ?? false,
       isOwner: value.isOwner ?? false,
       connectedAt: value.connectedAt!,

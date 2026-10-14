@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal FreeTalk Admin desktop permissions",
+  "description": "Minimal Trlka Admin desktop permissions",
   "windows": ["main"],
   "permissions": [
     "core:default",

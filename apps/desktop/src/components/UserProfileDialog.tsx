@@ -277,7 +277,7 @@ export function FullProfileView({
     activityItems.push({
       icon: 'presence',
       title: presenceLabel(profile.presence),
-      text: 'Текущий статус в FreeTalk',
+      text: 'Текущий статус в Trlka',
     });
   const run =
     onRun ??
@@ -340,7 +340,7 @@ export function FullProfileView({
           <div className="full-profile-since">
             <CalendarDays />
             <span>
-              <small>В FreeTalk с</small>
+              <small>В Trlka с</small>
               <strong>{formatRegistrationDate(profile.registeredAt)}</strong>
             </span>
           </div>
@@ -591,7 +591,7 @@ function ProfileTabContent({
         <section className="full-profile-section full-profile-joined-section">
           <CalendarDays />
           <span>
-            <h3>В FREETALK С</h3>
+            <h3>В TRLKA С</h3>
             <p>{formatRegistrationDate(profile.registeredAt)}</p>
           </span>
         </section>

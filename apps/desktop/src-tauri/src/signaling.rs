@@ -88,7 +88,7 @@ fn validate_url(raw: &str) -> Result<(), String> {
     let production = url.scheme() == "wss" && host == PRODUCTION_SIGNALING_HOST;
     let local = url.scheme() == "ws" && matches!(host, "127.0.0.1" | "localhost" | "::1");
     if !production && !local {
-        return Err("Нативный сигналинг разрешён только для сервера FreeTalk".to_string());
+        return Err("Нативный сигналинг разрешён только для сервера Trlka".to_string());
     }
     if url.path() != "/ws" {
         return Err("Некорректный путь сигналинга".to_string());
@@ -113,7 +113,7 @@ fn debug_message(direction: &str, message: &str) {
         .ok()
         .and_then(|value| value.get("type")?.as_str().map(ToOwned::to_owned))
         .unwrap_or_else(|| "unknown".into());
-    eprintln!("FreeTalk signaling {direction}: {kind}");
+    eprintln!("Trlka signaling {direction}: {kind}");
 }
 
 #[tauri::command]

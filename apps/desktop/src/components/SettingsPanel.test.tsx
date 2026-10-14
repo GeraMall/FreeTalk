@@ -125,7 +125,7 @@ describe('SettingsPanel profile actions', () => {
     fireEvent.click(getByRole('switch', { name: 'Микрофон выключен' }));
     expect(onVideoSetting).toHaveBeenCalledWith({ microphoneDisabledSound: false });
   });
-  it('keeps card styling in the draft until the single done action', async () => {
+  it('keeps glass styling in the draft until the single done action', async () => {
     const { container, getByRole, onClose, onSaveProfile, onSetting } = renderProfile();
 
     expect(container.querySelector('.profile-card-preview')).toBeTruthy();
@@ -133,13 +133,13 @@ describe('SettingsPanel profile actions', () => {
       'false',
     );
     fireEvent.click(getByRole('switch', { name: 'Жидкое стекло' }));
-    fireEvent.click(getByRole('radio', { name: 'Япония' }));
     expect(onSetting).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Элементы оформления');
+    expect(container.querySelector('[aria-label="Узор карточки"]')).toBeNull();
 
     fireEvent.click(getByRole('button', { name: 'Готово' }));
     await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
     expect(onSetting).toHaveBeenCalledWith({ participantCardStyle: 'avatar-glass' }, false);
-    expect(onSetting).toHaveBeenCalledWith({ participantCardDecoration: 'japan' }, false);
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -253,7 +253,7 @@ describe('SettingsPanel profile actions', () => {
     expect(view.onSetting).toHaveBeenCalledWith({ chatWallpaperFit: 'contain' }, false);
   });
 
-  it('uses the FreeTalk-styled done action outside the profile tab', () => {
+  it('uses the Trlka-styled done action outside the profile tab', () => {
     const { getByRole } = renderProfile();
     fireEvent.click(getByRole('button', { name: 'Аудио' }));
     expect(getByRole('button', { name: 'Готово' }).classList).toContain('settings-done');
@@ -277,9 +277,9 @@ describe('SettingsPanel profile actions', () => {
 
     expect(await findByText('2 устройства')).toBeTruthy();
     fireEvent.click(getByText('Подключённые устройства'));
-    expect(getByText('FreeTalk · Windows')).toBeTruthy();
+    expect(getByText('Trlka · Windows')).toBeTruthy();
     expect(getByText('Это устройство')).toBeTruthy();
-    expect(getByText('FreeTalk Web · macOS')).toBeTruthy();
+    expect(getByText('Trlka Web · macOS')).toBeTruthy();
   });
 
   it('combines video, backgrounds and independently controlled event sounds', () => {

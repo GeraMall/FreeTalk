@@ -30,7 +30,7 @@ private val authGradient = Brush.linearGradient(listOf(authCyan, Color(0xFF59BEF
 
 @Composable
 internal fun BrandedStartupScreen() {
-    val transition = rememberInfiniteTransition(label = "FreeTalk startup")
+    val transition = rememberInfiniteTransition(label = "Trlka startup")
     val pulse by transition.animateFloat(
         initialValue = 0.38f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse),
@@ -38,7 +38,7 @@ internal fun BrandedStartupScreen() {
     )
     Box(
         Modifier.fillMaxSize().background(Color(0xFF030A15)).safeDrawingPadding()
-            .semantics { contentDescription = "FreeTalk загружается" },
+            .semantics { contentDescription = "Trlka загружается" },
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.size(180.dp).graphicsLayer(alpha = pulse).background(
@@ -182,7 +182,7 @@ internal fun BrandedAuthScreen(
     legal?.let { key ->
         AlertDialog(
             onDismissRequest = { legal = null },
-            title = { Text(if (key == "terms") "Пользовательское соглашение FreeTalk" else "Политика конфиденциальности FreeTalk") },
+            title = { Text(if (key == "terms") "Пользовательское соглашение Trlka" else "Политика конфиденциальности Trlka") },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(if (key == "terms") termsText else privacyText) } },
             confirmButton = { TextButton(onClick = { legal = null }) { Text("Закрыть") } },
         )
@@ -193,7 +193,7 @@ internal fun BrandedAuthScreen(
 private fun AuthBrand(iconSize: Int, textSize: Int) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(iconSize.dp))
-        Text("FreeTalk", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
+        Text("Trlka", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
             modifier = Modifier.padding(start = 10.dp))
     }
 }
@@ -246,5 +246,5 @@ private fun LegalAcceptance(checked: Boolean, onChecked: (Boolean) -> Unit, titl
 }
 
 // Same beta documents shown by the desktop WelcomeScreen, not new legal terms.
-private const val termsText = "Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.\n\nFreeTalk предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.\n\nСервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером FreeTalk."
+private const val termsText = "Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.\n\nTrlka предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.\n\nСервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером Trlka."
 private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."

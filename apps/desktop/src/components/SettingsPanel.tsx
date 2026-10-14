@@ -114,7 +114,6 @@ interface ProfileDraft {
   username: string;
   bio: string;
   participantCardStyle: LocalSettings['participantCardStyle'];
-  participantCardDecoration: LocalSettings['participantCardDecoration'];
 }
 
 function profileDraftFrom(settings: LocalSettings, accountUser?: AccountUser): ProfileDraft {
@@ -125,7 +124,6 @@ function profileDraftFrom(settings: LocalSettings, accountUser?: AccountUser): P
     username: accountUser?.username ?? '',
     bio: accountUser?.bio ?? '',
     participantCardStyle: settings.participantCardStyle,
-    participantCardDecoration: settings.participantCardDecoration,
   };
 }
 
@@ -136,8 +134,7 @@ function profileDraftsEqual(first: ProfileDraft, second: ProfileDraft) {
     first.cover === second.cover &&
     first.username === second.username &&
     first.bio === second.bio &&
-    first.participantCardStyle === second.participantCardStyle &&
-    first.participantCardDecoration === second.participantCardDecoration
+    first.participantCardStyle === second.participantCardStyle
   );
 }
 
@@ -231,8 +228,6 @@ export function SettingsPanel({
       );
       if (draftProfile.participantCardStyle !== savedProfile.participantCardStyle)
         onSetting({ participantCardStyle: draftProfile.participantCardStyle }, false);
-      if (draftProfile.participantCardDecoration !== savedProfile.participantCardDecoration)
-        onSetting({ participantCardDecoration: draftProfile.participantCardDecoration }, false);
       const committed = { ...draftProfile, displayName };
       setSavedProfile(committed);
       setDraftProfile(committed);
@@ -412,7 +407,7 @@ export function SettingsPanel({
                             ? 'ЗАПИСЬ'
                             : tab === 'chats'
                               ? 'ЧАТЫ'
-                              : 'FREETALK'}
+                              : 'TRLKA'}
                 </p>
                 <h2 id="settings-title">
                   {tab === 'audio'
@@ -642,7 +637,7 @@ function sessionDevicePlatform(userAgent: string) {
 
 function sessionDeviceName(userAgent: string, current = false) {
   const nativeCurrent = current && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-  const client = /FreeTalk/i.test(userAgent) || nativeCurrent ? 'FreeTalk' : 'FreeTalk Web';
+  const client = /FreeTalk|Trlka/i.test(userAgent) || nativeCurrent ? 'Trlka' : 'Trlka Web';
   return `${client} · ${sessionDevicePlatform(userAgent)}`;
 }
 
@@ -892,8 +887,8 @@ function ProfileTab({
               </div>
             </div>
             <p className="profile-media-help">
-              Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, FreeTalk
-              подготовит изображение 1800×700.
+              Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, Trlka подготовит
+              изображение 1800×700.
             </p>
             <div className="profile-fields-grid">
               <label className="field-label">
@@ -944,11 +939,9 @@ function ProfileTab({
             name={draft.displayName}
             avatar={cachedDraftAvatar ?? ''}
             glass={draft.participantCardStyle === 'avatar-glass'}
-            decoration={draft.participantCardDecoration}
             onGlass={(value) =>
               onDraft({ participantCardStyle: value ? 'avatar-glass' : 'classic' })
             }
-            onDecoration={(participantCardDecoration) => onDraft({ participantCardDecoration })}
           />
 
           <section className="profile-zone profile-security-zone">
@@ -1251,7 +1244,7 @@ function VideoTab({
           <strong>Без остановок на слабой сети</strong>
           <small>
             Каждый собеседник получает индивидуальное качество. После восстановления соединения
-            FreeTalk автоматически возвращает выбранные параметры.
+            Trlka автоматически возвращает выбранные параметры.
           </small>
         </div>
         <small className="video-apply-note">
@@ -1910,7 +1903,7 @@ function AboutTab({
         <img src={mascotUrl} alt="" />
       </div>
       <div>
-        <h3>FreeTalk</h3>
+        <h3>Trlka</h3>
         <p>Бесплатная голосовая связь для небольших закрытых компаний.</p>
       </div>
       <dl>
@@ -1966,11 +1959,11 @@ function AboutTab({
       </div>
       <div className="about-autostart">
         <Toggle
-          label="Запускать FreeTalk при включении компьютера"
+          label="Запускать Trlka при включении компьютера"
           description={
             supported
               ? 'Приложение автоматически запустится вместе с системой.'
-              : 'Настройка доступна в установленной версии FreeTalk.'
+              : 'Настройка доступна в установленной версии Trlka.'
           }
           checked={autostart}
           disabled={!supported || autostartBusy}
@@ -1999,9 +1992,9 @@ function RecordingSettingsTab({
       .catch(() => undefined);
   }, []);
 
-  const directory = settings.recordingDirectory || defaultDirectory || 'Видео/FreeTalk';
+  const directory = settings.recordingDirectory || defaultDirectory || 'Видео/Trlka';
   useEffect(() => {
-    if (!directory || directory === 'Видео/FreeTalk') return;
+    if (!directory || directory === 'Видео/Trlka') return;
     void recordingStorageAvailable(settings.recordingDirectory)
       .then(setAvailableBytes)
       .catch(() => setAvailableBytes(undefined));
@@ -2057,7 +2050,7 @@ function RecordingSettingsTab({
         )}
         <Toggle
           label="Спрашивать папку перед записью"
-          description="Перед началом каждой записи FreeTalk спросит, куда сохранить видео."
+          description="Перед началом каждой записи Trlka спросит, куда сохранить видео."
           checked={settings.recordingAskDirectory}
           onChange={(value) => onSetting({ recordingAskDirectory: value }, false)}
         />

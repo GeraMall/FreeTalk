@@ -59,15 +59,11 @@ describe('account-first welcome screen', () => {
 
     const termsCheckbox = view.getByLabelText('Я принимаю Пользовательское соглашение');
     fireEvent.click(view.getByRole('button', { name: 'Пользовательское соглашение' }));
-    expect(
-      view.getByRole('region', { name: 'Пользовательское соглашение FreeTalk' }),
-    ).not.toBeNull();
+    expect(view.getByRole('region', { name: 'Пользовательское соглашение Trlka' })).not.toBeNull();
     expect((termsCheckbox as HTMLInputElement).checked).toBe(false);
 
     fireEvent.click(view.getByRole('button', { name: 'Политику конфиденциальности' }));
-    expect(
-      view.getByRole('region', { name: 'Политика конфиденциальности FreeTalk' }),
-    ).not.toBeNull();
+    expect(view.getByRole('region', { name: 'Политика конфиденциальности Trlka' })).not.toBeNull();
     expect(
       (view.getByLabelText('Я принимаю Политику конфиденциальности') as HTMLInputElement).checked,
     ).toBe(false);

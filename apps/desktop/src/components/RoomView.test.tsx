@@ -206,7 +206,7 @@ describe('RoomView media layouts', () => {
     expect(queryByText(/TURN резерв/)).toBeNull();
   });
 
-  it('renders each participant card with that participant shared appearance', () => {
+  it('renders shared glass styles but ignores retired participant decorations', () => {
     const styledParticipants: Participant[] = [
       {
         ...participants[0]!,
@@ -229,9 +229,7 @@ describe('RoomView media layouts', () => {
 
     expect(selfCard?.classList.contains('avatar-glass')).toBe(false);
     expect(friendCard?.classList.contains('avatar-glass')).toBe(true);
-    expect(friendCard?.querySelector('.participant-card-decoration')?.getAttribute('src')).toBe(
-      '/card-decorations/japan.png',
-    );
+    expect(friendCard?.querySelector('.participant-card-decoration')).toBeNull();
   });
 
   it('turns a participant card itself into the camera surface', () => {

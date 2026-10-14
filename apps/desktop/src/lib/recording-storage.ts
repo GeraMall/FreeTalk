@@ -3,7 +3,7 @@ import { join, videoDir } from '@tauri-apps/api/path';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { BaseDirectory, create, mkdir, type FileHandle } from '@tauri-apps/plugin-fs';
 
-const DEFAULT_DIRECTORY_NAME = 'FreeTalk';
+const DEFAULT_DIRECTORY_NAME = 'Trlka';
 
 export interface RecordingDestination {
   directory: string;
@@ -20,7 +20,7 @@ export async function chooseRecordingDirectory(current = '') {
     directory: true,
     multiple: false,
     defaultPath: current || (await defaultRecordingDirectory()),
-    title: 'Выберите папку для записей FreeTalk',
+    title: 'Выберите папку для записей Trlka',
   });
   return typeof selected === 'string' ? selected : undefined;
 }
@@ -80,5 +80,5 @@ export function recordingFileName(date: Date, extension: 'webm' | 'mp4' = 'webm'
     .replace('T', '_')
     .replace(/:/g, '-')
     .replace(/\.\d{3}Z$/, '');
-  return `FreeTalk_${stamp}.${extension}`;
+  return `Trlka_${stamp}.${extension}`;
 }
