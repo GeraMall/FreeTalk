@@ -4,9 +4,9 @@ $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $outputDirectory = Join-Path $workspaceRoot 'outputs'
 $version = (Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot 'package.json') | ConvertFrom-Json).version
 $appExecutable = Join-Path $workspaceRoot 'apps\desktop\src-tauri\target\release\freetalk.exe'
-$tauriInstaller = Join-Path $workspaceRoot "apps\desktop\src-tauri\target\release\bundle\nsis\FreeTalk_${version}_x64-setup.exe"
-$installer = Join-Path $outputDirectory "FreeTalk_${version}_x64-setup.exe"
-$portable = Join-Path $outputDirectory "FreeTalk_${version}_portable_x64.exe"
+$tauriInstaller = Join-Path $workspaceRoot "apps\desktop\src-tauri\target\release\bundle\nsis\Trlka_${version}_x64-setup.exe"
+$installer = Join-Path $outputDirectory "Trlka_${version}_x64-setup.exe"
+$portable = Join-Path $outputDirectory "Trlka_${version}_portable_x64.exe"
 $localBundleConfig = '../../scripts/windows/tauri-local-unsigned.json'
 
 # Desktop shells do not always inherit rustup's PATH even when Rust is installed.
