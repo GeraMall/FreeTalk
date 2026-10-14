@@ -311,6 +311,26 @@ export class AccountClient {
     return response.blob();
   }
 
+  async uploadChatFile<T>(chatId: string, file: File, caption = '', replyToMessageId?: string) {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    const query = new URLSearchParams();
+    if (caption.trim()) query.set('caption', caption.trim());
+    if (replyToMessageId) query.set('replyToMessageId', replyToMessageId);
+    const serializedQuery = query.toString();
+    const suffix = serializedQuery ? `?${serializedQuery}` : '';
+    return this.request<{ message: T }>(`/v1/chats/${chatId}/files${suffix}`, {
+      method: 'POST',
+      body: form,
+    });
+  }
+
+  async chatFileBlob(messageId: string) {
+    const response = await this.authenticatedFetch(`/v1/messages/${messageId}/file`);
+    if (!response.ok) return decode<never>(response);
+    return response.blob();
+  }
+
   async deleteAccount(password: string) {
     await this.request('/v1/me', {
       method: 'DELETE',

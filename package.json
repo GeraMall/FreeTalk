@@ -1,6 +1,6 @@
 {
   "name": "freetalk",
-  "version": "0.4.0-beta.169",
+  "version": "0.4.0-beta.170",
   "private": true,
   "description": "Trlka — приватные голосовые комнаты для небольших компаний",
   "packageManager": "pnpm@11.19.0",

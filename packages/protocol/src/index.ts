@@ -358,7 +358,7 @@ export const chatRealtimeClientMessageSchema = z.discriminatedUnion('type', [
 
 export const chatMessageReplySchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(['text', 'system', 'call', 'image']),
+  kind: z.enum(['text', 'system', 'call', 'image', 'file']),
   body: z.string().max(4_000),
   metadata: z.record(z.string(), z.unknown()).optional(),
   sender_id: z.string().uuid().nullable(),
@@ -373,7 +373,7 @@ export const chatMessageReactionSummarySchema = z.object({
 
 export const realtimeChatMessageSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(['text', 'system', 'call', 'image']),
+  kind: z.enum(['text', 'system', 'call', 'image', 'file']),
   body: z.string().max(4000),
   metadata: z.record(z.string(), z.unknown()).optional(),
   sender_id: z.string().uuid().nullable(),

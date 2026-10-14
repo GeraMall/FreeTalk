@@ -642,6 +642,40 @@ export function HomeView({
     }
   };
 
+  const sendFile = async (file: File, caption: string, replyToMessageId?: string) => {
+    if (!activeChat) return false;
+    const chatId = activeChat;
+    const pacing = chatSendPacerRef.current.check(chatId);
+    if (pacing.limited) {
+      setChatSlowMode({ chatId, until: pacing.blockedUntil });
+      return false;
+    }
+    try {
+      const result = await accountClient.uploadChatFile<MessageItem>(
+        chatId,
+        file,
+        caption,
+        replyToMessageId,
+      );
+      if (activeChatRef.current === chatId)
+        setMessages((current) => appendMessage(current, result.message));
+      setChats((current) => promoteChat(current, chatId, result.message));
+      setSentMessageVersion((version) => version + 1);
+      return true;
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === 'CHAT_SLOW_MODE') {
+        const retryAfter = Number(caught.details.retryAfterSeconds);
+        setChatSlowMode({
+          chatId,
+          until: Date.now() + (Number.isFinite(retryAfter) ? Math.max(1, retryAfter) : 30) * 1_000,
+        });
+        return false;
+      }
+      setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить файл');
+      return false;
+    }
+  };
+
   const sendGif = async (gif: GifMessageData, replyToMessageId?: string) => {
     if (!activeChat) return false;
     const chatId = activeChat;
@@ -1351,6 +1385,7 @@ export function HomeView({
             onLoadOlder={loadOlderMessages}
             onSendMessage={sendMessage}
             onSendImage={sendImage}
+            onSendFile={sendFile}
             onSendGif={sendGif}
             onReactMessage={reactToMessage}
             onPinMessage={pinMessage}
@@ -1611,7 +1646,12 @@ function promoteChat(chats: ChatItem[], chatId: string, message: MessageItem) {
   return [
     {
       ...changed,
-      lastMessage: message.kind === 'image' ? message.body || 'Фотография' : message.body,
+      lastMessage:
+        message.kind === 'image'
+          ? message.body || 'Фотография'
+          : message.kind === 'file'
+            ? message.body || String(message.metadata?.filename || 'Файл')
+            : message.body,
       lastMessageAt: message.created_at,
       lastMessageKind: message.kind,
     },
@@ -1623,7 +1663,12 @@ function chatWithLatestMessage(chat: ChatItem, message?: MessageItem | null): Ch
   if (!message) return { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null };
   return {
     ...chat,
-    lastMessage: message.kind === 'image' ? message.body || 'Фотография' : message.body,
+    lastMessage:
+      message.kind === 'image'
+        ? message.body || 'Фотография'
+        : message.kind === 'file'
+          ? message.body || String(message.metadata?.filename || 'Файл')
+          : message.body,
     lastMessageAt: message.created_at,
     lastMessageKind: message.kind,
   };

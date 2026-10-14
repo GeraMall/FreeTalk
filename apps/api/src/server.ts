@@ -67,9 +67,9 @@ await app.register(cors, {
 });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {
-  // The desktop client reduces the original (up to 25 MB) before upload.
-  // Chat images may include a separate lightweight thumbnail.
-  limits: { files: 2, fileSize: 3 * 1024 * 1024, fields: 2 },
+  // Chat images are reduced by the desktop client. Generic chat attachments
+  // are accepted up to 30 MB and are validated again by their route.
+  limits: { files: 2, fileSize: 30 * 1024 * 1024, fields: 2 },
 });
 
 app.setErrorHandler((error, _request, reply) => {

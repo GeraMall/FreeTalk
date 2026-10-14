@@ -293,6 +293,21 @@ describe('protocol validation', () => {
         type: 'message-created',
         chatId: base.clientId,
         message: {
+          id: '486d39ef-61af-4aca-84b8-47f78b0f554c',
+          kind: 'file',
+          body: '',
+          metadata: { filename: 'archive.zip', mime: 'application/zip', size: 2048 },
+          sender_id: base.clientId,
+          created_at: new Date().toISOString(),
+          expires_at: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      chatRealtimeServerMessageSchema.safeParse({
+        type: 'message-created',
+        chatId: base.clientId,
+        message: {
           id: '386d39ef-61af-4aca-84b8-47f78b0f554c',
           kind: 'image',
           body: '',

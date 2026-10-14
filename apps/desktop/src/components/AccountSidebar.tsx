@@ -119,7 +119,7 @@ export function AccountSidebar({
     const realtime = new ChatRealtimeClient((event) => {
       if (
         event.type !== 'message-created' ||
-        !['text', 'image'].includes(event.message.kind) ||
+        !['text', 'image', 'file'].includes(event.message.kind) ||
         !event.message.sender_id ||
         event.message.sender_id === user.id
       )
@@ -139,7 +139,11 @@ export function AccountSidebar({
       if (getPresenceMode() === 'dnd') return;
       const senderName = event.message.display_name || event.message.username || 'Новое сообщение';
       const previewBody =
-        event.message.kind === 'image' ? event.message.body || 'Фотография' : event.message.body;
+        event.message.kind === 'image'
+          ? event.message.body || 'Фотография'
+          : event.message.kind === 'file'
+            ? event.message.body || String(event.message.metadata?.filename || 'Файл')
+            : event.message.body;
       const preview: ChatNotificationPreview = {
         sequence: ++previewSequence.current,
         chatId: event.chatId,

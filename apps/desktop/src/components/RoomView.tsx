@@ -1923,7 +1923,6 @@ function WaitingParticipantCard({ participant }: { participant: WaitingCallParti
       role="listitem"
       aria-label={`${participant.displayName} — ожидаем подключения`}
     >
-      <span className="waiting-participant-shade" aria-hidden="true" />
       <div className="participant-card-top">
         <span className="waiting-participant-label">Вызов отправлен</span>
       </div>

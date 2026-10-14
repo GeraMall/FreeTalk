@@ -125,6 +125,17 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('message_images_thumbnail_pair_check');
   });
 
+  it('adds arbitrary chat files with a hard 30 MB database limit', async () => {
+    const path = fileURLToPath(new URL('../migrations/016_chat_files.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain("kind in ('text','system','call','image','file')");
+    expect(sql).toContain('create table message_files');
+    expect(sql).toContain('on delete cascade');
+    expect(sql).toContain('31457280');
+    expect(sql).toContain('octet_length(data)=size');
+    expect(sql).toContain("new.kind in ('text','image','file')");
+  });
+
   it('adds replies, pins and one persistent reaction per user and message', async () => {
     const path = fileURLToPath(
       new URL('../migrations/011_message_interactions.sql', import.meta.url),

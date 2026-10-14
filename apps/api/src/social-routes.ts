@@ -40,6 +40,24 @@ const callRoomParams = z.object({
 const callInvitationParams = z.object({ invitationId: uuid });
 const CALL_INVITATION_TTL_MS = 30_000;
 const ABANDONED_CONVERSATION_CALL_MS = 8 * 60_000;
+const MAX_CHAT_FILE_BYTES = 30 * 1024 * 1024;
+
+function safeAttachmentName(value: string | undefined) {
+  const cleaned = [...(value ?? 'file')]
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127 || character === '\\' || character === '/' ? '_' : character;
+    })
+    .join('')
+    .trim()
+    .slice(0, 255);
+  return cleaned || 'file';
+}
+
+function attachmentDisposition(filename: string) {
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_').slice(0, 120) || 'file';
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
 
 async function expireAbandonedConversationCalls(chatId: string) {
   const messages = await db.query<{
@@ -157,7 +175,7 @@ function enforceChatSendPacing(reply: FastifyReply, chatId: string, userId: stri
 }
 interface ChatMessageRow {
   id: string;
-  kind: 'text' | 'system' | 'call' | 'image';
+  kind: 'text' | 'system' | 'call' | 'image' | 'file';
   body: string;
   metadata: Record<string, unknown>;
   sender_id: string | null;
@@ -284,7 +302,7 @@ async function insertMessage(
   input: {
     chatId: string;
     senderId: string;
-    kind?: 'text' | 'image';
+    kind?: 'text' | 'image' | 'file';
     body: string;
     metadata?: Record<string, unknown>;
     replyToMessageId?: string;
@@ -1436,7 +1454,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const source = await db.query<{
         id: string;
         chat_id: string;
-        kind: 'text' | 'system' | 'call' | 'image';
+        kind: 'text' | 'system' | 'call' | 'image' | 'file';
         body: string;
         metadata: Record<string, unknown>;
         username: string | null;
@@ -1455,7 +1473,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       if (!original) return reply.code(404).send({ code: 'SOURCE_MESSAGE_NOT_FOUND' });
       if (!(await canInteractInChat(original.chat_id, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
-      if (!['text', 'image'].includes(original.kind))
+      if (!['text', 'image', 'file'].includes(original.kind))
         return reply.code(400).send({ code: 'MESSAGE_NOT_FORWARDABLE' });
       if (enforceChatSendPacing(reply, chatId, user.id)) return;
       const forwardedCandidate = original.metadata?.forwardedFrom;
@@ -1478,7 +1496,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         const createdMessageId = await insertMessage(client, {
           chatId,
           senderId: user.id,
-          kind: original.kind as 'text' | 'image',
+          kind: original.kind as 'text' | 'image' | 'file',
           body: original.body,
           metadata,
         });
@@ -1489,6 +1507,17 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
                message_id,mime,data,width,height,thumbnail_mime,thumbnail_data
              ) SELECT $1,mime,data,width,height,thumbnail_mime,thumbnail_data
                FROM message_images WHERE message_id=$2`,
+            [createdMessageId, original.id],
+          );
+          if (!copied.rowCount) {
+            await client.query('DELETE FROM messages WHERE id=$1', [createdMessageId]);
+            return undefined;
+          }
+        }
+        if (original.kind === 'file') {
+          const copied = await client.query(
+            `INSERT INTO message_files(message_id,filename,mime,size,data)
+             SELECT $1,filename,mime,size,data FROM message_files WHERE message_id=$2`,
             [createdMessageId, original.id],
           );
           if (!copied.rowCount) {
@@ -1594,6 +1623,32 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       .send(image.data);
   });
 
+  app.get('/v1/messages/:messageId/file', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+    const result = await db.query<{ filename: string; mime: string; data: Buffer }>(
+      `SELECT attachment.filename,attachment.mime,attachment.data
+       FROM message_files attachment
+       JOIN messages message ON message.id=attachment.message_id
+       JOIN chat_members member ON member.chat_id=message.chat_id
+          AND member.user_id=$2 AND member.left_at IS NULL
+       WHERE attachment.message_id=$1
+         AND (message.expires_at IS NULL OR message.expires_at>now())`,
+      [messageId, user.id],
+    );
+    const file = result.rows[0];
+    if (!file) return reply.code(404).send({ code: 'FILE_NOT_FOUND' });
+    return reply
+      .header('content-type', file.mime || 'application/octet-stream')
+      .header('content-disposition', attachmentDisposition(file.filename))
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .header('referrer-policy', 'no-referrer')
+      .header('cache-control', 'private,max-age=300')
+      .send(file.data);
+  });
+
   app.post(
     '/v1/chats/:chatId/images',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
@@ -1624,6 +1679,11 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         return reply.code(400).send({
           code: 'INVALID_IMAGE',
           message: 'Для отправки доступны изображения PNG, JPEG и WebP',
+        });
+      if (imageFile.bytes.length > 3 * 1024 * 1024)
+        return reply.code(413).send({
+          code: 'IMAGE_TOO_LARGE',
+          message: 'Размер подготовленного изображения превышает 3 МБ',
         });
       if (
         thumbnailFile &&
@@ -1678,6 +1738,77 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
             dimensions.height,
             thumbnailFile?.mime ?? null,
             thumbnailFile?.bytes ?? null,
+          ],
+        );
+        return createdMessageId;
+      });
+      if (!messageId) return reply.code(404).send({ code: 'REPLY_MESSAGE_NOT_FOUND' });
+      const created = await loadRealtimeMessage(messageId);
+      if (!created) return reply.code(500).send({ code: 'MESSAGE_CREATE_FAILED' });
+      await publishChatEvent(chatId, { type: 'message-created', chatId, message: created });
+      return reply.code(201).send({ message: created });
+    },
+  );
+
+  app.post(
+    '/v1/chats/:chatId/files',
+    { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      const { chatId } = chatIdParams.parse(request.params);
+      const { caption, replyToMessageId } = z
+        .object({
+          caption: z.string().trim().max(1000).optional(),
+          replyToMessageId: uuid.optional(),
+        })
+        .parse(request.query);
+      if (!(await isChatMember(chatId, user.id)))
+        return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
+      if (!(await canInteractInChat(chatId, user.id)))
+        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+      if (enforceChatSendPacing(reply, chatId, user.id)) return;
+
+      let attachment: { filename: string; mime: string; bytes: Buffer } | undefined;
+      for await (const part of request.parts()) {
+        if (part.type !== 'file' || part.fieldname !== 'file') continue;
+        attachment = {
+          filename: safeAttachmentName(part.filename),
+          mime: String(part.mimetype || 'application/octet-stream').slice(0, 255),
+          bytes: await part.toBuffer(),
+        };
+      }
+      if (!attachment || attachment.bytes.length < 1)
+        return reply.code(400).send({ code: 'INVALID_FILE', message: 'Выберите непустой файл' });
+      if (attachment.bytes.length > MAX_CHAT_FILE_BYTES)
+        return reply.code(413).send({
+          code: 'FILE_TOO_LARGE',
+          message: 'Размер файла не должен превышать 30 МБ',
+        });
+
+      const messageId = await transaction(async (client) => {
+        const createdMessageId = await insertMessage(client, {
+          chatId,
+          senderId: user.id,
+          kind: 'file',
+          body: caption ?? '',
+          metadata: {
+            filename: attachment.filename,
+            mime: attachment.mime,
+            size: attachment.bytes.length,
+          },
+          replyToMessageId,
+        });
+        if (!createdMessageId) return undefined;
+        await client.query(
+          `INSERT INTO message_files(message_id,filename,mime,size,data)
+           VALUES($1,$2,$3,$4,$5)`,
+          [
+            createdMessageId,
+            attachment.filename,
+            attachment.mime,
+            attachment.bytes.length,
+            attachment.bytes,
           ],
         );
         return createdMessageId;

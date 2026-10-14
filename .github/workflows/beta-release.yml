@@ -144,7 +144,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "Trlka ${version}: новое название приложения и отключение элементов оформления карточек." \
+            --arg notes "Trlka ${version}: отправка файлов до 30 МБ и исправления интерфейса звонка." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{

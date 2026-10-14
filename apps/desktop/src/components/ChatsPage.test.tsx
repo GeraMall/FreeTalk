@@ -1247,6 +1247,50 @@ describe('Message interactions', () => {
     await waitFor(() => expect(onReveal).toHaveBeenCalledWith('6'));
   });
 
+  it('selects and sends an arbitrary file from the attachment button', async () => {
+    const onSendFile = vi.fn(async () => true);
+    const chat: ChatItem = {
+      id: 'chat-files',
+      type: 'group',
+      title: 'Файлы',
+      members: [{ id: 'self', username: 'gera_1', displayName: 'Гера', role: 'owner' }],
+      currentUserRole: 'owner',
+    };
+    const { container, getByRole, getByText } = render(
+      <ChatsPage
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        activeChatId="chat-files"
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onSendFile={onSendFile}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+    const file = new File(['payload'], 'notes.pdf', { type: 'application/pdf' });
+    const input = container.querySelector<HTMLInputElement>('.composer-image-input')!;
+    expect(input.getAttribute('accept')).toBeNull();
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(getByText('notes.pdf')).toBeTruthy();
+    expect(getByRole('button', { name: 'Добавить файл или фотографию' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Отправить сообщение' }));
+    await waitFor(() => expect(onSendFile).toHaveBeenCalledWith(file, ''));
+  });
+
   it('searches Wikimedia GIFs and sends the chosen result', async () => {
     const onSendGif = vi.fn(async () => true);
     vi.stubGlobal(

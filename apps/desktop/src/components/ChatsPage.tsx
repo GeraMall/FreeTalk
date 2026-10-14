@@ -21,6 +21,8 @@ import {
   Clock3,
   Copy,
   Crown,
+  Download,
+  FileText,
   Forward,
   ImagePlus,
   Link2,
@@ -75,6 +77,8 @@ const CHAT_SIDEBAR_MIN_WIDTH = 190;
 const MOBILE_CHAT_HISTORY_KEY = 'freetalkMobileChatId';
 const RECENT_MESSAGE_REACTIONS_KEY = 'freetalkRecentMessageReactions';
 const OLD_MESSAGES_NOTICE_THRESHOLD = 260;
+const MAX_CHAT_FILE_BYTES = 30 * 1024 * 1024;
+const CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function defaultChatSidebarWidth() {
   if (typeof window === 'undefined') return 330;
@@ -152,6 +156,9 @@ export interface MessageItem {
     roomId?: string;
     width?: number;
     height?: number;
+    filename?: string;
+    mime?: string;
+    size?: number;
     ended?: boolean;
     missed?: boolean;
     invitationId?: string;
@@ -249,6 +256,7 @@ interface ChatsPageProps {
     thumbnailDataUrl: string,
     replyToMessageId?: string,
   ): Promise<boolean>;
+  onSendFile?(file: globalThis.File, caption: string, replyToMessageId?: string): Promise<boolean>;
   onSendGif?(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
   onReactMessage?(messageId: string, emoji: string | null): Promise<boolean>;
   onPinMessage?(messageId: string, pinned: boolean): Promise<boolean>;
@@ -303,6 +311,7 @@ export function ChatsPage({
   onLoadOlder = async () => {},
   onSendMessage,
   onSendImage = async () => false,
+  onSendFile = async () => false,
   onSendGif = async () => false,
   onReactMessage = async () => false,
   onPinMessage = async () => false,
@@ -860,6 +869,7 @@ export function ChatsPage({
               disabled={messagesLoading || slowModeRemainingSeconds > 0}
               onSend={onSendMessage}
               onSendImage={onSendImage}
+              onSendFile={onSendFile}
               onSendGif={onSendGif}
               replyTarget={replyTarget}
               onCancelReply={() => setReplyTarget(undefined)}
@@ -1049,13 +1059,15 @@ function ChatListItem({
   const preview =
     chat.lastMessageKind === 'image'
       ? chat.lastMessage || 'Фотография'
-      : chat.lastMessage
-        ? chat.lastMessageKind === 'call'
-          ? 'Начат голосовой звонок'
-          : chat.lastMessage
-        : chat.type === 'group'
-          ? `${chat.members.length} участников`
-          : 'Откройте беседу';
+      : chat.lastMessageKind === 'file'
+        ? chat.lastMessage || 'Файл'
+        : chat.lastMessage
+          ? chat.lastMessageKind === 'call'
+            ? 'Начат голосовой звонок'
+            : chat.lastMessage
+          : chat.type === 'group'
+            ? `${chat.members.length} участников`
+            : 'Откройте беседу';
   return (
     <button
       className={`conversation-card ${active ? 'active' : ''}`}
@@ -2612,7 +2624,7 @@ function MessageBubble({
           </div>
         ) : null}
         <div
-          className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
+          className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${message.kind === 'file' ? ' file-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
         >
           {showAuthor && !deleted ? (
             <strong className="message-author">
@@ -2644,6 +2656,8 @@ function MessageBubble({
             <GifMessage gif={gif} />
           ) : message.kind === 'image' ? (
             <ChatImageMessage message={message} accountId={accountId} />
+          ) : message.kind === 'file' ? (
+            <ChatFileMessage message={message} />
           ) : inviteToken ? (
             <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
           ) : roomInviteId ? (
@@ -2693,8 +2707,18 @@ function MessageBubble({
 
 function mediaKindLabel(kind: string) {
   if (kind === 'image') return 'Фотография';
+  if (kind === 'file') return 'Файл';
   if (kind === 'call') return 'Звонок';
   return 'Сообщение';
+}
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes < 1) return 'Файл';
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} КБ`;
+  return `${(bytes / (1024 * 1024)).toLocaleString('ru-RU', {
+    maximumFractionDigits: 1,
+  })} МБ`;
 }
 
 function reactionMine(reaction: MessageReaction, userId: string) {
@@ -3238,6 +3262,51 @@ function InviteMessageCard({
   );
 }
 
+function ChatFileMessage({ message }: { message: MessageItem }) {
+  const [downloading, setDownloading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const filename = message.metadata?.filename?.trim() || 'Файл';
+  const size = Number(message.metadata?.size ?? 0);
+
+  const download = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setFailed(false);
+    try {
+      const blob = await accountClient.chatFileBlob(message.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.rel = 'noopener';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch {
+      setFailed(true);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="chat-file-message">
+      <button type="button" onClick={() => void download()} disabled={downloading}>
+        <span className="chat-file-icon">
+          <FileText aria-hidden="true" />
+        </span>
+        <span className="chat-file-copy">
+          <strong>{filename}</strong>
+          <small>{failed ? 'Не удалось скачать — попробуйте ещё раз' : formatFileSize(size)}</small>
+        </span>
+        <Download className="chat-file-download" aria-hidden="true" />
+      </button>
+      {message.body && <p>{message.body}</p>}
+    </div>
+  );
+}
+
 function ChatImageMessage({ message, accountId }: { message: MessageItem; accountId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
@@ -3625,6 +3694,7 @@ function MessageComposer({
   disabled,
   onSend,
   onSendImage,
+  onSendFile,
   onSendGif,
   replyTarget,
   onCancelReply,
@@ -3637,6 +3707,7 @@ function MessageComposer({
     thumbnailDataUrl: string,
     replyToMessageId?: string,
   ): Promise<boolean>;
+  onSendFile(file: globalThis.File, caption: string, replyToMessageId?: string): Promise<boolean>;
   onSendGif(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
   replyTarget?: MessageItem;
   onCancelReply(): void;
@@ -3646,6 +3717,7 @@ function MessageComposer({
   const [processingImage, setProcessingImage] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<globalThis.File>();
   const [imageError, setImageError] = useState('');
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [composerMenu, setComposerMenu] = useState<{
@@ -3683,7 +3755,7 @@ function MessageComposer({
       const end = textarea?.selectionEnd ?? start;
       const next = `${value.slice(0, start)}${pasted}${value.slice(end)}`.slice(
         0,
-        imageDataUrl ? 1000 : 4000,
+        imageDataUrl || attachmentFile ? 1000 : 4000,
       );
       setValue(next);
       window.requestAnimationFrame(() => {
@@ -3703,6 +3775,7 @@ function MessageComposer({
     setImageError('');
     void prepareChatImageUpload(file)
       .then((prepared) => {
+        setAttachmentFile(undefined);
         setImageDataUrl(prepared.imageDataUrl);
         setThumbnailDataUrl(prepared.thumbnailDataUrl);
       })
@@ -3713,22 +3786,45 @@ function MessageComposer({
       )
       .finally(() => setProcessingImage(false));
   };
+  const prepareSelectedAttachment = (file: globalThis.File) => {
+    setImageError('');
+    if (file.size < 1) {
+      setImageError('Нельзя отправить пустой файл.');
+      return;
+    }
+    if (file.size > MAX_CHAT_FILE_BYTES) {
+      setImageError('Размер файла не должен превышать 30 МБ.');
+      return;
+    }
+    if (CHAT_IMAGE_TYPES.has(file.type) && file.size <= 25 * 1024 * 1024) {
+      prepareSelectedImage(file);
+      return;
+    }
+    setImageDataUrl('');
+    setThumbnailDataUrl('');
+    setAttachmentFile(file);
+  };
   const send = async () => {
     const body = value.trim();
-    if ((!body && !imageDataUrl) || sending || processingImage) return;
+    if ((!body && !imageDataUrl && !attachmentFile) || sending || processingImage) return;
     setSending(true);
     try {
-      const sent = imageDataUrl
+      const sent = attachmentFile
         ? replyTarget
-          ? await onSendImage(imageDataUrl, body, thumbnailDataUrl, replyTarget.id)
-          : await onSendImage(imageDataUrl, body, thumbnailDataUrl)
-        : replyTarget
-          ? await onSend(body, replyTarget.id)
-          : await onSend(body);
+          ? await onSendFile(attachmentFile, body, replyTarget.id)
+          : await onSendFile(attachmentFile, body)
+        : imageDataUrl
+          ? replyTarget
+            ? await onSendImage(imageDataUrl, body, thumbnailDataUrl, replyTarget.id)
+            : await onSendImage(imageDataUrl, body, thumbnailDataUrl)
+          : replyTarget
+            ? await onSend(body, replyTarget.id)
+            : await onSend(body);
       if (sent) {
         setValue('');
         setImageDataUrl('');
         setThumbnailDataUrl('');
+        setAttachmentFile(undefined);
         setImageError('');
         onCancelReply();
       }
@@ -3773,25 +3869,40 @@ function MessageComposer({
           </button>
         </div>
       )}
+      {attachmentFile && (
+        <div className="composer-file-preview">
+          <FileText aria-hidden="true" />
+          <span>
+            <strong>{attachmentFile.name}</strong>
+            <small>{formatFileSize(attachmentFile.size)}</small>
+          </span>
+          <button
+            type="button"
+            aria-label="Убрать файл"
+            onClick={() => setAttachmentFile(undefined)}
+          >
+            <X />
+          </button>
+        </div>
+      )}
       {imageError && <p className="composer-image-error">{imageError}</p>}
       <input
         ref={imageInputRef}
         className="composer-image-input"
         type="file"
-        accept="image/jpeg,image/png,image/webp"
         tabIndex={-1}
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = '';
           if (!file) return;
-          prepareSelectedImage(file);
+          prepareSelectedAttachment(file);
         }}
       />
       <button
         type="button"
         className="composer-add-button"
-        title="Отправить фотографию"
-        aria-label="Добавить фотографию"
+        title="Отправить файл или фотографию (до 30 МБ)"
+        aria-label="Добавить файл или фотографию"
         disabled={disabled || sending || processingImage}
         onClick={() => imageInputRef.current?.click()}
       >
@@ -3813,7 +3924,7 @@ function MessageComposer({
         ref={textareaRef}
         value={value}
         rows={1}
-        maxLength={imageDataUrl ? 1000 : 4000}
+        maxLength={imageDataUrl || attachmentFile ? 1000 : 4000}
         disabled={disabled}
         spellCheck={spellCheckEnabled}
         lang={composerLanguage === 'auto' ? undefined : composerLanguage}
@@ -3834,7 +3945,7 @@ function MessageComposer({
             ?.getAsFile();
           if (!image) return;
           event.preventDefault();
-          prepareSelectedImage(image);
+          prepareSelectedAttachment(image);
         }}
       />
       {showSendButton ? (
@@ -3842,7 +3953,12 @@ function MessageComposer({
           className="send-message-button"
           title="Отправить"
           aria-label="Отправить сообщение"
-          disabled={disabled || sending || processingImage || (!value.trim() && !imageDataUrl)}
+          disabled={
+            disabled ||
+            sending ||
+            processingImage ||
+            (!value.trim() && !imageDataUrl && !attachmentFile)
+          }
           onClick={() => void send()}
         >
           <Send />
