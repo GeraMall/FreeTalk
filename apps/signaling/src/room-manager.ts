@@ -57,6 +57,7 @@ export class RoomManager {
     cardStyle: ParticipantCardStyle = 'avatar-glass',
     _cardDecoration: ParticipantCardDecoration = 'none',
   ) {
+    void _cardDecoration;
     if (this.rooms.has(roomId)) throw new RoomError('ROOM_EXISTS', 'Комната уже существует');
     this.rooms.set(roomId, {
       id: roomId,
@@ -92,6 +93,7 @@ export class RoomManager {
     cardStyle: ParticipantCardStyle = 'avatar-glass',
     _cardDecoration: ParticipantCardDecoration = 'none',
   ) {
+    void _cardDecoration;
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
 
@@ -217,6 +219,7 @@ export class RoomManager {
     cardStyle: ParticipantCardStyle,
     _cardDecoration: ParticipantCardDecoration,
   ) {
+    void _cardDecoration;
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return false;

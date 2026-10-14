@@ -46,7 +46,7 @@ const upgradeMetadata = new WeakMap<
 const httpServer = createServer(async (request, response) => {
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.3' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.4' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
