@@ -144,7 +144,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "Trlka ${version}: исправлено повторное обновление со старых установок FreeTalk." \
+            --arg notes "Trlka ${version}: корректное отображение камеры и исправление фона в веб-версии." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{
