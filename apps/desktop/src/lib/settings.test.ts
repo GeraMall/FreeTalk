@@ -28,8 +28,16 @@ describe('platform-specific settings defaults', () => {
       screenAudioByDefault: true,
       chatWallpaperFit: 'cover',
       participantCardStyle: 'avatar-glass',
+      mirrorSelfVideo: true,
     });
     expect(loadSettings().screenAudioByDefault).toBe(true);
+  });
+
+  it('keeps self-view mirroring enabled by default and preserves an explicit opt-out', () => {
+    expect(loadSettings().mirrorSelfVideo).toBe(true);
+
+    localStorage.setItem('freetalk.settings.v1', JSON.stringify({ mirrorSelfVideo: false }));
+    expect(loadSettings().mirrorSelfVideo).toBe(false);
   });
 
   it('loads a supported wallpaper fit and normalizes an invalid value', () => {

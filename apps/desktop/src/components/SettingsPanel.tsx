@@ -1427,7 +1427,14 @@ function CameraSettingsEditor({
   return (
     <div className="settings-camera-editor">
       <div className={`settings-camera-preview${previewing ? ' active' : ''}`}>
-        {previewing && <video ref={videoRef} muted playsInline />}
+        {previewing && (
+          <video
+            ref={videoRef}
+            className={settings.mirrorSelfVideo ? 'mirrored' : undefined}
+            muted
+            playsInline
+          />
+        )}
         {!previewing && (
           <button type="button" className="primary" onClick={() => setPreviewing(true)}>
             <Camera /> Проверить видео
@@ -1450,6 +1457,12 @@ function CameraSettingsEditor({
         description="Показывать окно подготовки каждый раз перед включением камеры."
         checked={settings.cameraPreviewAlways}
         onChange={(value) => onVideoSetting({ cameraPreviewAlways: value })}
+      />
+      <Toggle
+        label="Отражать моё видео"
+        description="Показывать своё изображение как в зеркале. Собеседники всегда видят обычное изображение."
+        checked={settings.mirrorSelfVideo}
+        onChange={(value) => onVideoSetting({ mirrorSelfVideo: value })}
       />
       <label className="field-label">
         Камера

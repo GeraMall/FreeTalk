@@ -39,6 +39,7 @@ export interface LocalSettings extends VideoPreferences {
   cameraBackgroundMode: 'none' | 'blur' | 'custom';
   cameraBackgroundDataUrl: string;
   cameraPreviewAlways: boolean;
+  mirrorSelfVideo: boolean;
   participantJoinedSound: boolean;
   participantDisconnectedSound: boolean;
   recordingStartSound: boolean;
@@ -85,6 +86,7 @@ const defaults: LocalSettings = {
   cameraBackgroundMode: 'none',
   cameraBackgroundDataUrl: '',
   cameraPreviewAlways: true,
+  mirrorSelfVideo: true,
   participantJoinedSound: true,
   participantDisconnectedSound: true,
   recordingStartSound: true,
@@ -162,6 +164,8 @@ export function loadSettings(): LocalSettings {
         typeof value.cameraBackgroundDataUrl === 'string' ? value.cameraBackgroundDataUrl : '',
       cameraPreviewAlways:
         typeof value.cameraPreviewAlways === 'boolean' ? value.cameraPreviewAlways : true,
+      mirrorSelfVideo:
+        typeof value.mirrorSelfVideo === 'boolean' ? value.mirrorSelfVideo : true,
       participantJoinedSound:
         typeof value.participantJoinedSound === 'boolean' ? value.participantJoinedSound : true,
       participantDisconnectedSound:

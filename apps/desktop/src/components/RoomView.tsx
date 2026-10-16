@@ -488,7 +488,7 @@ export function RoomView({
             stream={media.camera!}
             source="camera"
             name={participant.name}
-            mirrored
+            mirrored={isSelf && settings.mirrorSelfVideo}
             muted
             volume={0}
             outputDeviceId={settings.outputDeviceId}
@@ -716,7 +716,9 @@ export function RoomView({
             stream={focusedCameraStream}
             source="camera"
             name={focusedCameraParticipant.name}
-            mirrored
+            mirrored={
+              focusedCameraParticipant.id === selfId && settings.mirrorSelfVideo
+            }
             muted
             volume={0}
             outputDeviceId={settings.outputDeviceId}
@@ -1399,7 +1401,12 @@ function CameraPreviewDialog({
           </button>
         </header>
         <div className="camera-preview-stage">
-          <video ref={videoRef} muted playsInline />
+          <video
+            ref={videoRef}
+            className={settings.mirrorSelfVideo ? 'mirrored' : undefined}
+            muted
+            playsInline
+          />
           {previewBusy && <span>Подготавливаем камеру…</span>}
           {previewError && <span className="camera-preview-error">{previewError}</span>}
         </div>

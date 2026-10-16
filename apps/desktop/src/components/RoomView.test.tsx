@@ -99,6 +99,7 @@ function view(
     onConversationToggle?: () => void;
     waitingParticipants?: WaitingCallParticipant[];
     roomStartedAt?: number;
+    mirrorSelfVideo?: boolean;
   } = {},
 ) {
   return (
@@ -138,6 +139,7 @@ function view(
       settings={{
         ...defaultSettings(),
         participantCardStyle: handlers.participantCardStyle ?? 'classic',
+        mirrorSelfVideo: handlers.mirrorSelfVideo ?? true,
       }}
       inviteCopied={false}
       turnAvailable
@@ -840,9 +842,16 @@ describe('RoomView media layouts', () => {
     expect(container.querySelectorAll('video.mirrored')).toHaveLength(1);
   });
 
-  it('mirrors a remote participant camera too', () => {
+  it('does not mirror a remote participant camera', () => {
     const { getByLabelText } = render(view('none', { [peerId]: { camera: stream } }));
-    expect(getByLabelText('Камера Друг').classList.contains('mirrored')).toBe(true);
+    expect(getByLabelText('Камера Друг').classList.contains('mirrored')).toBe(false);
+  });
+
+  it('can disable mirroring for the local camera preview', () => {
+    const { getByLabelText } = render(
+      view('camera', {}, false, vi.fn(), vi.fn(), vi.fn(), { mirrorSelfVideo: false }),
+    );
+    expect(getByLabelText('Камера Гера').classList.contains('mirrored')).toBe(false);
   });
 
   it('splits the stage when two screens are shared', () => {
