@@ -11,7 +11,14 @@ export interface CameraEffectCapture {
   dispose(): void;
 }
 
-const ASSET_ROOT = '/mediapipe/portrait';
+const ASSET_DIRECTORY = 'mediapipe/portrait/';
+
+export function cameraBackgroundAssetRoot(
+  baseUrl = import.meta.env.BASE_URL,
+  pageUrl = window.location.href,
+) {
+  return new URL(`${baseUrl}${ASSET_DIRECTORY}`, pageUrl).href.replace(/\/$/, '');
+}
 
 export async function createCameraEffectCapture(
   sourceStream: MediaStream,
@@ -130,7 +137,7 @@ export async function createCameraEffectCapture(
   });
   segmenter.postMessage({
     type: 'init',
-    assetRoot: new URL(ASSET_ROOT, window.location.href).href,
+    assetRoot: cameraBackgroundAssetRoot(),
   });
   try {
     await ready;

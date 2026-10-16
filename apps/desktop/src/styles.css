@@ -932,8 +932,7 @@ body {
   color: #eef6ff;
   background:
     radial-gradient(circle at 14% 10%, rgba(61, 216, 211, 0.19), transparent 34rem),
-    radial-gradient(circle at 92% 16%, rgba(75, 127, 255, 0.2), transparent 32rem),
-    #050d18;
+    radial-gradient(circle at 92% 16%, rgba(75, 127, 255, 0.2), transparent 32rem), #050d18;
 }
 
 .browser-platform-card {

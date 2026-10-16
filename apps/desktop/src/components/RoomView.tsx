@@ -716,9 +716,7 @@ export function RoomView({
             stream={focusedCameraStream}
             source="camera"
             name={focusedCameraParticipant.name}
-            mirrored={
-              focusedCameraParticipant.id === selfId && settings.mirrorSelfVideo
-            }
+            mirrored={focusedCameraParticipant.id === selfId && settings.mirrorSelfVideo}
             muted
             volume={0}
             outputDeviceId={settings.outputDeviceId}

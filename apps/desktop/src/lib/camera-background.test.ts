@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { compositeCameraFrame, createCameraEffectCapture } from './camera-background';
+import {
+  cameraBackgroundAssetRoot,
+  compositeCameraFrame,
+  createCameraEffectCapture,
+} from './camera-background';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('camera background assets', () => {
+  it('keeps the web application base path when resolving the portrait model', () => {
+    expect(cameraBackgroundAssetRoot('/app/', 'https://trlka.com/app/')).toBe(
+      'https://trlka.com/app/mediapipe/portrait',
+    );
+    expect(cameraBackgroundAssetRoot('/', 'https://trlka.com/app/')).toBe(
+      'https://trlka.com/mediapipe/portrait',
+    );
+  });
+});
 
 describe('camera background contour', () => {
   it('clips the captured frame to its mask before drawing the replacement behind it', () => {

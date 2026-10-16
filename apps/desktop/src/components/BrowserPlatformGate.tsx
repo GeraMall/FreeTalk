@@ -41,8 +41,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
         <p className="browser-platform-kicker">Trlka в браузере</p>
         <h1 id="browser-platform-title">Откройте с компьютера</h1>
         <p>
-          Веб-версия Trlka сейчас работает только в браузерах на ПК. Для звонков и
-          демонстрации экрана откройте эту страницу на компьютере.
+          Веб-версия Trlka сейчас работает только в браузерах на ПК. Для звонков и демонстрации
+          экрана откройте эту страницу на компьютере.
         </p>
         <a href="/">Вернуться на сайт</a>
       </section>

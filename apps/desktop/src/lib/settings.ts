@@ -164,8 +164,7 @@ export function loadSettings(): LocalSettings {
         typeof value.cameraBackgroundDataUrl === 'string' ? value.cameraBackgroundDataUrl : '',
       cameraPreviewAlways:
         typeof value.cameraPreviewAlways === 'boolean' ? value.cameraPreviewAlways : true,
-      mirrorSelfVideo:
-        typeof value.mirrorSelfVideo === 'boolean' ? value.mirrorSelfVideo : true,
+      mirrorSelfVideo: typeof value.mirrorSelfVideo === 'boolean' ? value.mirrorSelfVideo : true,
       participantJoinedSound:
         typeof value.participantJoinedSound === 'boolean' ? value.participantJoinedSound : true,
       participantDisconnectedSound:
