@@ -11,7 +11,7 @@ function BrandEmblem() {
 function BrandWordmark() {
   return (
     <span className="brand-wordmark" aria-hidden="true">
-      Trlka
+      TRLKA
     </span>
   );
 }
