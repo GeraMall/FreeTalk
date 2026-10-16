@@ -915,6 +915,78 @@ body {
   }
 }
 
+/* The hosted client is intentionally desktop-browser only for the first release. */
+.browser-client-document,
+.browser-client-document body,
+.browser-client-document #root {
+  min-width: 900px;
+  min-height: 100%;
+}
+
+.browser-platform-gate {
+  display: grid;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 28px;
+  place-items: center;
+  color: #eef6ff;
+  background:
+    radial-gradient(circle at 14% 10%, rgba(61, 216, 211, 0.19), transparent 34rem),
+    radial-gradient(circle at 92% 16%, rgba(75, 127, 255, 0.2), transparent 32rem),
+    #050d18;
+}
+
+.browser-platform-card {
+  width: min(100%, 520px);
+  padding: 40px 30px;
+  border: 1px solid rgba(78, 218, 255, 0.28);
+  border-radius: 28px;
+  background: rgba(8, 20, 34, 0.88);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+  text-align: center;
+}
+
+.browser-platform-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  object-fit: cover;
+}
+
+.browser-platform-kicker {
+  margin: 22px 0 8px !important;
+  color: #59e5e9 !important;
+  font-size: 12px !important;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.browser-platform-card h1 {
+  margin: 0;
+  font-size: clamp(32px, 8vw, 48px);
+  letter-spacing: -0.05em;
+}
+
+.browser-platform-card > p:not(.browser-platform-kicker) {
+  margin: 18px auto 26px;
+  color: #a9b9cd;
+  line-height: 1.65;
+}
+
+.browser-platform-card a {
+  display: inline-flex;
+  min-height: 48px;
+  padding: 0 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #06111d;
+  background: linear-gradient(105deg, #4ee7ef, #58c9fa 48%, #4b7fff);
+  font-weight: 800;
+  text-decoration: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .profile-confirm-dialog,
   .full-profile-dialog,

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { BrowserPlatformGate } from './components/BrowserPlatformGate';
 import { ChatLayoutPreview } from './components/ChatLayoutPreview';
 import { CallPopoutPlaceholder } from './components/CallPopoutPlaceholder';
 import { CustomTitleBar } from './components/CustomTitleBar';
@@ -32,7 +33,9 @@ const content = notificationOverlay ? (
 ) : preview ? (
   <ChatLayoutPreview />
 ) : (
-  <App />
+  <BrowserPlatformGate>
+    <App />
+  </BrowserPlatformGate>
 );
 const customWindowChrome = usesCustomWindowChrome();
 

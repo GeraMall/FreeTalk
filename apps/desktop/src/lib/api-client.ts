@@ -55,7 +55,7 @@ export class ApiError extends Error {
   }
 }
 
-let browserRefreshToken: string | undefined;
+const BROWSER_REFRESH_TOKEN_KEY = 'trlka.browser.refresh-token';
 let refreshInFlight: Promise<void> | undefined;
 
 function isTauri() {
@@ -67,14 +67,23 @@ async function storeRefreshToken(token?: string) {
     if (token) await invoke('secure_session_set', { refreshToken: token });
     else await invoke('secure_session_clear');
   } else {
-    browserRefreshToken = token;
+    try {
+      if (token) window.sessionStorage.setItem(BROWSER_REFRESH_TOKEN_KEY, token);
+      else window.sessionStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+    } catch {
+      // Private browsing modes can deny storage. The active access token still works
+      // until this page is reloaded.
+    }
   }
 }
 
 async function readRefreshToken() {
-  return isTauri()
-    ? await invoke<string | null>('secure_session_get')
-    : (browserRefreshToken ?? null);
+  if (isTauri()) return await invoke<string | null>('secure_session_get');
+  try {
+    return window.sessionStorage.getItem(BROWSER_REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 async function decode<T>(response: Response): Promise<T> {
