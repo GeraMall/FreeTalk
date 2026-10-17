@@ -71,6 +71,11 @@ import {
   EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
   remainingConversationWaitMs,
 } from './lib/conversation-call-lifecycle';
+import {
+  clearBrowserActiveCall,
+  readBrowserActiveCall,
+  saveBrowserActiveCall,
+} from './lib/active-call-resume';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -91,6 +96,7 @@ interface EnterRoomOptions {
   authToken?: string;
   displayName?: string;
   guest?: boolean;
+  resume?: boolean;
 }
 
 function processingSettings(settings: LocalSettings) {
@@ -246,6 +252,7 @@ export function App() {
     async () => undefined,
   );
   const joinedRoom = useRef(false);
+  const browserResumeAttempted = useRef(false);
   const conversationPeerJoined = useRef(false);
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
@@ -449,6 +456,7 @@ export function App() {
 
   const leaveCall = useCallback(() => {
     if (callExitTimer.current) return;
+    clearBrowserActiveCall();
     setCallExiting(true);
     callExitTimer.current = window.setTimeout(cleanup, 220);
   }, [cleanup]);
@@ -633,7 +641,10 @@ export function App() {
           return;
         }
         setJoining(false);
-        if (message.fatal) cleanup();
+        if (message.fatal) {
+          clearBrowserActiveCall();
+          cleanup();
+        }
         setError(
           message.code === 'ROOM_NOT_FOUND' ? 'Комнаты больше не существует' : message.message,
         );
@@ -661,6 +672,14 @@ export function App() {
           conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
+        if (accountUser && pendingRoomId.current) {
+          saveBrowserActiveCall({
+            roomId: pendingRoomId.current,
+            chatId: callChatRef.current,
+            accountId: accountUser.id,
+            savedAt: Date.now(),
+          });
+        }
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
         );
@@ -903,10 +922,11 @@ export function App() {
       }
       if (message.type === 'room-closed' || message.type === 'participant-disconnected') {
         setError(message.reason);
+        clearBrowserActiveCall();
         cleanup();
       }
     },
-    [cleanup, settings],
+    [accountUser, cleanup, settings],
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
@@ -980,10 +1000,16 @@ export function App() {
         audio.current = manager;
       } catch (microphoneError) {
         manager.stop();
-        if (telemetryPlatform() !== 'android') throw microphoneError;
+        const canResumeWithoutMicrophone = options.resume && telemetryPlatform() === 'ios';
+        if (telemetryPlatform() !== 'android' && !canResumeWithoutMicrophone)
+          throw microphoneError;
         audio.current = undefined;
         setMuted(true);
-        setNotice('Комната откроется без микрофона. Разрешите доступ при его включении.');
+        setNotice(
+          options.resume
+            ? 'Звонок восстановлен без микрофона. Нажмите микрофон, чтобы включить его.'
+            : 'Комната откроется без микрофона. Разрешите доступ при его включении.',
+        );
       }
       video.current = new VideoManager(
         async (track, source, stream) => {
@@ -1047,16 +1073,39 @@ export function App() {
       }
       joinTimer.current = window.setTimeout(() => {
         if (joinedRoom.current) return;
+        if (options.resume) clearBrowserActiveCall();
         cleanup();
         setError('Сервер голосовых комнат недоступен. Проверьте интернет или адрес сигналинга.');
       }, 20_000);
     } catch (caught) {
       setJoining(false);
       setError(caught instanceof Error ? caught.message : 'Не удалось войти в комнату');
+      if (options.resume) clearBrowserActiveCall();
       cleanup();
     }
   };
   enterRoomRef.current = enterRoom;
+
+  useEffect(() => {
+    if (
+      browserResumeAttempted.current ||
+      !accountReady ||
+      !accountUser ||
+      roomId ||
+      joining ||
+      pendingInviteRoom
+    )
+      return;
+    browserResumeAttempted.current = true;
+    const activeCall = readBrowserActiveCall(accountUser.id);
+    if (!activeCall) return;
+    setNotice('Возвращаем вас в звонок…');
+    void enterRoomRef.current(false, {
+      room: activeCall.roomId,
+      chatId: activeCall.chatId,
+      resume: true,
+    });
+  }, [accountReady, accountUser, joining, pendingInviteRoom, roomId]);
 
   useEffect(() => {
     if (!pendingInviteRoom || !accountReady || joining) return;
@@ -1132,6 +1181,7 @@ export function App() {
     );
     const closeEmptyConversationCall = () => {
       if (conversationPeerJoined.current) return;
+      clearBrowserActiveCall();
       cleanup();
       setNotice('Звонок завершён: за 8 минут никто не подключился');
     };
@@ -1347,6 +1397,7 @@ export function App() {
   };
 
   const logoutAccount = async () => {
+    clearBrowserActiveCall();
     cleanup();
     callChatRef.current = undefined;
     setCallChatId(undefined);
