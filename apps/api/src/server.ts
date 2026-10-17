@@ -27,6 +27,7 @@ import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
 import { API_VERSION } from './app-version.js';
+import { registerMobileBetaRoutes } from './mobile-beta.js';
 import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
 import {
   displayNameSchema,
@@ -1022,6 +1023,7 @@ app.get('/v1/legal/privacy', async () => ({
 }));
 
 registerSocialRoutes(app, requireUser);
+registerMobileBetaRoutes(app);
 registerAndroidPush(app, requireUser);
 startAndroidPush(app);
 registerAdminRoutes(app);

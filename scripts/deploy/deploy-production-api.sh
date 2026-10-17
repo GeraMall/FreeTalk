@@ -23,6 +23,14 @@ mkdir -p "$stage/node_modules/@freetalk"
 ln -sfn ../../vendor/config "$stage/node_modules/@freetalk/config"
 chown -R freetalk:freetalk "$stage"
 /opt/node-v22/bin/node --check "$stage/dist/server.js"
+/opt/node-v22/bin/node --check "$stage/dist/migrate.js"
+
+systemd-run --quiet --wait --pipe --unit="$rehearsal_unit-migrate" \
+  -p User=freetalk \
+  -p Group=freetalk \
+  -p WorkingDirectory="$stage" \
+  -p EnvironmentFile=/etc/freetalk/api.env \
+  /opt/node-v22/bin/node "$stage/dist/migrate.js"
 
 systemd-run --quiet --unit="$rehearsal_unit" \
   -p User=freetalk \

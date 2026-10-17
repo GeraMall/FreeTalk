@@ -185,6 +185,16 @@ export class AccountClient {
     return result.user;
   }
 
+  async mobileBetaLogin(login: string, password: string, key?: string) {
+    const result = await this.publicRequest<{ user: AccountUser; session: SessionPayload }>(
+      '/v1/mobile-beta/login',
+      { method: 'POST', body: JSON.stringify({ login, password, key: key || undefined }) },
+    );
+    await this.acceptSession(result.session);
+    this.user = result.user;
+    return result.user;
+  }
+
   async logout() {
     try {
       if (this.accessToken) await this.request('/v1/auth/logout', { method: 'POST' });

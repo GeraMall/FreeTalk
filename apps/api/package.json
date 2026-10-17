@@ -1,6 +1,6 @@
 {
   "name": "@freetalk/api",
-  "version": "0.4.0-beta.34",
+  "version": "0.4.0-beta.35",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "migrate": "tsx src/migrate.ts",
     "admin:grant": "tsx src/grant-admin.ts",
+    "mobile-beta:generate": "tsx src/generate-mobile-beta-keys.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

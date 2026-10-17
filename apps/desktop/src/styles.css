@@ -915,7 +915,8 @@ body {
   }
 }
 
-/* The hosted client is intentionally desktop-browser only for the first release. */
+/* The hosted client keeps its desktop canvas on PCs. Invited mobile beta accounts
+   use the responsive rules below without forcing the 900px desktop width. */
 .browser-client-document,
 .browser-client-document body,
 .browser-client-document #root {
@@ -973,6 +974,112 @@ body {
   line-height: 1.65;
 }
 
+.browser-platform-status {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+}
+
+.browser-platform-form {
+  display: grid;
+  gap: 16px;
+  margin: 22px 0 18px;
+  text-align: left;
+}
+
+.browser-platform-form > label {
+  display: grid;
+  gap: 8px;
+  color: #dce9f7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.browser-platform-form > label > span {
+  color: #8296ad;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.browser-platform-form input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid rgba(104, 163, 206, 0.34);
+  border-radius: 14px;
+  outline: 0;
+  color: #f4f9ff;
+  background: rgba(2, 11, 21, 0.76);
+  font: inherit;
+}
+
+.browser-platform-form input:focus {
+  border-color: #59e5e9;
+  box-shadow: 0 0 0 3px rgba(89, 229, 233, 0.12);
+}
+
+.browser-platform-key-input {
+  position: relative;
+}
+
+.browser-platform-key-input > svg {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  color: #59e5e9;
+  transform: translateY(-50%);
+}
+
+.browser-platform-key-input input {
+  padding-right: 48px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.browser-platform-form > button {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 15px;
+  color: #06111d;
+  background: linear-gradient(105deg, #4ee7ef, #58c9fa 48%, #4b7fff);
+  font-weight: 850;
+}
+
+.browser-platform-form > button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.4);
+  opacity: 0.58;
+}
+
+.browser-platform-error {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 93, 122, 0.42);
+  border-radius: 13px;
+  color: #ffb6c4;
+  background: rgba(102, 16, 38, 0.24);
+  font-size: 13px;
+}
+
+.browser-platform-note {
+  display: flex;
+  margin: 0 0 20px;
+  align-items: flex-start;
+  gap: 10px;
+  color: #8fa5bb;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.browser-platform-note svg {
+  flex: 0 0 auto;
+  color: #59e5e9;
+}
+
 .browser-platform-card a {
   display: inline-flex;
   min-height: 48px;
@@ -984,6 +1091,30 @@ body {
   background: linear-gradient(105deg, #4ee7ef, #58c9fa 48%, #4b7fff);
   font-weight: 800;
   text-decoration: none;
+}
+
+@media (max-width: 560px) {
+  .browser-platform-gate {
+    padding: 14px;
+  }
+
+  .browser-platform-card {
+    padding: 30px 20px;
+    border-radius: 24px;
+  }
+
+  .browser-platform-card h1 {
+    font-size: 34px;
+  }
+
+  .browser-mobile-client-document,
+  .browser-mobile-client-document body,
+  .browser-mobile-client-document #root {
+    min-width: 0;
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

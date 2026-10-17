@@ -136,6 +136,18 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain("new.kind in ('text','image','file')");
   });
 
+  it('adds one-time mobile beta invitations bound to accounts', async () => {
+    const path = fileURLToPath(
+      new URL('../migrations/017_mobile_beta_invites.sql', import.meta.url),
+    );
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('create table mobile_beta_invites');
+    expect(sql).toContain('code_hash bytea not null unique');
+    expect(sql).toContain('claimed_by uuid unique references users(id)');
+    expect(sql).toContain('claimed_ip_hash bytea');
+    expect(sql).toContain('where claimed_by is null');
+  });
+
   it('adds replies, pins and one persistent reaction per user and message', async () => {
     const path = fileURLToPath(
       new URL('../migrations/011_message_interactions.sql', import.meta.url),
