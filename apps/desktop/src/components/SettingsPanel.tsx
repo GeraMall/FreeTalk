@@ -321,7 +321,10 @@ export function SettingsPanel({
             <BrandLogo variant="compact" />
           </div>
           <div className="settings-sidebar-title">
-            <span>Настройки</span>
+            <span>
+              Настройки
+              {mobileLayout && <small>Выберите раздел</small>}
+            </span>
             {mobileLayout && (
               <button
                 className="icon-button quiet"
