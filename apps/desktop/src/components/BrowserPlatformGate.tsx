@@ -3,8 +3,6 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import brandMark from '../assets/freetalk-mascot.png';
 import { accountClient } from '../lib/api-client';
 
-const MIN_DESKTOP_WIDTH = 900;
-
 function isTauri() {
   return '__TAURI_INTERNALS__' in window;
 }
@@ -13,7 +11,7 @@ function isMobileBrowser() {
   const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(
     navigator.userAgent,
   );
-  return mobileUserAgent || window.innerWidth < MIN_DESKTOP_WIDTH;
+  return mobileUserAgent;
 }
 
 export function BrowserPlatformGate({ children }: { children: ReactNode }) {
