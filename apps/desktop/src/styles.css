@@ -11498,8 +11498,7 @@ html.notification-overlay-document #root {
     transform 240ms cubic-bezier(0.22, 0.78, 0.24, 1),
     visibility 0s linear 240ms;
 }
-.swipe-chat-row.actions-visible .conversation-swipe-actions,
-.swipe-chat-row.is-dragging .conversation-swipe-actions {
+.swipe-chat-row.actions-visible .conversation-swipe-actions {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;

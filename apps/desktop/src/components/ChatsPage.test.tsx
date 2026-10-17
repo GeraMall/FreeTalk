@@ -937,9 +937,24 @@ describe('Resizable chat list', () => {
 
     expect(row.classList.contains('actions-visible')).toBe(false);
     pointer('pointerdown', 260, 100);
+    pointer('pointermove', 160, 102);
+    expect(row.classList.contains('actions-visible')).toBe(false);
+    pointer('pointerup', 160, 102);
+    expect(row.classList.contains('actions-visible')).toBe(false);
+
+    pointer('pointerdown', 260, 100);
     pointer('pointermove', 100, 104);
     pointer('pointerup', 100, 104);
     expect(row.classList.contains('actions-visible')).toBe(true);
+
+    pointer('pointerdown', 100, 104);
+    pointer('pointermove', 180, 105);
+    pointer('pointerup', 180, 105);
+    expect(row.classList.contains('actions-visible')).toBe(false);
+
+    pointer('pointerdown', 260, 100);
+    pointer('pointermove', 100, 104);
+    pointer('pointerup', 100, 104);
 
     fireEvent.click(view.getByRole('button', { name: 'Без звука' }));
     expect(localStorage.getItem('trlka:muted-chats:self')).toContain(chat.id);
