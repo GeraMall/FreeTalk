@@ -889,6 +889,40 @@ describe('Resizable chat list', () => {
       />,
     );
 
+  it('scrolls the mobile chat list vertically with a touch drag', () => {
+    const view = render(
+      <ChatsPage
+        mobile
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+    const list = view.container.querySelector<HTMLElement>('.conversation-list')!;
+    list.scrollTop = 120;
+
+    fireEvent.touchStart(list, { touches: [{ clientX: 120, clientY: 300 }] });
+    fireEvent.touchMove(list, { touches: [{ clientX: 124, clientY: 220 }] });
+
+    expect(list.scrollTop).toBe(200);
+  });
+
   it('renders the direct profile as a separate island', async () => {
     const { getByRole } = renderPage();
     const panel = getByRole('complementary', { name: 'Профиль собеседника' });

@@ -361,6 +361,7 @@ export function ChatsPage({
     storedChatSidebarWidth,
   );
   const conversationSidebarRef = useRef<HTMLElement>(null);
+  const conversationListRef = useRef<HTMLDivElement>(null);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const resizeStateRef = useRef<
     | {
@@ -461,6 +462,48 @@ export function ChatsPage({
     setMessageSearch('');
     setMessageSearchIndex(0);
   }, [activeChatId]);
+  useEffect(() => {
+    const list = conversationListRef.current;
+    if (!mobile || !list) return;
+    let gesture: { startX: number; startY: number; scrollTop: number; moved: boolean } | undefined;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0]!;
+      gesture = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        scrollTop: list.scrollTop,
+        moved: false,
+      };
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!gesture || event.touches.length !== 1) return;
+      const touch = event.touches[0]!;
+      const deltaX = touch.clientX - gesture.startX;
+      const deltaY = touch.clientY - gesture.startY;
+      if (!gesture.moved && Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 4) return;
+      gesture.moved = true;
+      event.preventDefault();
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+        list.scrollTop = gesture.scrollTop - deltaY;
+      }
+    };
+    const handleTouchEnd = () => {
+      gesture = undefined;
+    };
+
+    list.addEventListener('touchstart', handleTouchStart, { passive: true });
+    list.addEventListener('touchmove', handleTouchMove, { passive: false });
+    list.addEventListener('touchend', handleTouchEnd, { passive: true });
+    list.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    return () => {
+      list.removeEventListener('touchstart', handleTouchStart);
+      list.removeEventListener('touchmove', handleTouchMove);
+      list.removeEventListener('touchend', handleTouchEnd);
+      list.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [mobile]);
   useEffect(() => {
     setMessageSearchIndex(Math.max(0, messageSearchMatches.length - 1));
   }, [messageSearch, messageSearchMatches.length]);
@@ -661,7 +704,7 @@ export function ChatsPage({
             </div>
           )}
 
-          <div className="conversation-list">
+          <div className="conversation-list" ref={conversationListRef}>
             {chatsLoading ? (
               <ChatListSkeleton />
             ) : visibleChats.length > 0 ? (
