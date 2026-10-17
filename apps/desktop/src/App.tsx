@@ -66,6 +66,7 @@ import { calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
 import { BrowserNotificationPrompt } from './components/BrowserNotificationPrompt';
+import { MobileNavigation } from './components/MobileNavigation';
 import {
   clampConversationCallHeight,
   EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
@@ -2201,6 +2202,15 @@ export function App() {
               />
             </div>
           </section>
+          {mobileDirectCall && mobileCallMinimized ? (
+            <MobileNavigation
+              activePage={roomDestination === 'room' ? 'home' : roomDestination}
+              onNavigate={(page) => {
+                setRoomDestination(page);
+                if (page !== 'chats') setRoomActiveChatId(undefined);
+              }}
+            />
+          ) : null}
         </main>
       ) : (
         roomView
