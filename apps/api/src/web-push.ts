@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import webPush from 'web-push';
+import { createRequire } from 'node:module';
+import type webPushType from 'web-push';
 import { z } from 'zod';
 import type { AuthenticatedUser } from './auth-service.js';
 import { db, transaction } from './db.js';
 import { env } from './env.js';
+
+const webPush = createRequire(import.meta.url)('../vendor/web-push.cjs') as typeof webPushType;
 
 type RequireUser = (
   request: FastifyRequest,

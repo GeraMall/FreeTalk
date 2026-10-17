@@ -24,6 +24,7 @@ ln -sfn ../../vendor/config "$stage/node_modules/@freetalk/config"
 chown -R freetalk:freetalk "$stage"
 /opt/node-v22/bin/node --check "$stage/dist/server.js"
 /opt/node-v22/bin/node --check "$stage/dist/migrate.js"
+/opt/node-v22/bin/node --check "$stage/vendor/web-push.cjs"
 
 systemd-run --quiet --wait --pipe --unit="$rehearsal_unit-migrate" \
   -p User=freetalk \

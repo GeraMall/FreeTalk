@@ -18,6 +18,7 @@ coverage/
 .wrangler/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/
+apps/api/vendor/
 work/
 outputs/
 output/
