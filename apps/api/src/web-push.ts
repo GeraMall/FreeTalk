@@ -7,8 +7,7 @@ import { db, transaction } from './db.js';
 import { env } from './env.js';
 
 const bundledWebPush = createRequire(import.meta.url)('../vendor/web-push.cjs') as
-  | typeof webPushType
-  | { default: typeof webPushType };
+  typeof webPushType | { default: typeof webPushType };
 const webPush = 'default' in bundledWebPush ? bundledWebPush.default : bundledWebPush;
 
 type RequireUser = (
@@ -27,6 +26,77 @@ const subscriptionSchema = z.object({
 
 function configured() {
   return Boolean(env.WEB_PUSH_VAPID_PUBLIC_KEY && env.WEB_PUSH_VAPID_PRIVATE_KEY);
+}
+
+let vapidConfigured = false;
+
+function configureVapid() {
+  if (!configured() || vapidConfigured) return configured();
+  webPush.setVapidDetails(
+    env.WEB_PUSH_SUBJECT,
+    env.WEB_PUSH_VAPID_PUBLIC_KEY!,
+    env.WEB_PUSH_VAPID_PRIVATE_KEY!,
+  );
+  vapidConfigured = true;
+  return true;
+}
+
+export async function sendIncomingCallPush(input: {
+  inviteeId: string;
+  invitationId: string;
+  inviterName: string;
+  roomId: string;
+  expiresAt: Date;
+}) {
+  if (!configureVapid()) return;
+  const subscriptions = await db.query<{
+    id: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+  }>(
+    `SELECT subscription.id,subscription.endpoint,subscription.p256dh,subscription.auth
+     FROM web_push_subscriptions subscription
+     JOIN sessions session ON session.id=subscription.session_id
+     WHERE session.user_id=$1 AND session.revoked_at IS NULL
+       AND session.refresh_expires_at>now()`,
+    [input.inviteeId],
+  );
+  const ttl = Math.max(1, Math.min(60, Math.ceil((input.expiresAt.getTime() - Date.now()) / 1000)));
+  await Promise.allSettled(
+    subscriptions.rows.map(async (subscription) => {
+      try {
+        await webPush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          },
+          JSON.stringify({
+            type: 'incoming-call',
+            title: `${input.inviterName} звонит`,
+            body: 'Откройте Trlka, чтобы принять или отклонить звонок',
+            invitationId: input.invitationId,
+            roomId: input.roomId,
+            url: '/app/',
+            icon: '/app/icons/trlka-192.png',
+            badge: '/app/icons/trlka-192.png',
+          }),
+          {
+            TTL: ttl,
+            urgency: 'high',
+            topic: `call-${input.invitationId}`.slice(0, 32),
+          },
+        );
+      } catch (error) {
+        const statusCode =
+          typeof error === 'object' && error !== null && 'statusCode' in error
+            ? Number(error.statusCode)
+            : 0;
+        if (statusCode === 404 || statusCode === 410)
+          await db.query('DELETE FROM web_push_subscriptions WHERE id=$1', [subscription.id]);
+      }
+    }),
+  );
 }
 
 export function registerWebPush(app: FastifyInstance, requireUser: RequireUser) {
@@ -74,12 +144,7 @@ export function registerWebPush(app: FastifyInstance, requireUser: RequireUser) 
 }
 
 export function startWebPush(app: FastifyInstance) {
-  if (!configured()) return;
-  webPush.setVapidDetails(
-    env.WEB_PUSH_SUBJECT,
-    env.WEB_PUSH_VAPID_PUBLIC_KEY!,
-    env.WEB_PUSH_VAPID_PRIVATE_KEY!,
-  );
+  if (!configureVapid()) return;
   let busy = false;
   const tick = async () => {
     if (busy) return;

@@ -10,6 +10,7 @@ import { safeImageDimensions } from './image-dimensions.js';
 import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
 import { verifyRemoteGif } from './remote-gif.js';
 import { resolveLinkPreview } from './link-preview.js';
+import { sendIncomingCallPush } from './web-push.js';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import {
   ChatSendPacer,
@@ -2369,7 +2370,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const avatarUrl = user.avatar_data
       ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
       : null;
-    for (const invitation of result.invitations)
+    for (const invitation of result.invitations) {
       chatRealtimeHub.publish([invitation.inviteeId], {
         type: 'incoming-call',
         invitationId: invitation.id,
@@ -2377,6 +2378,14 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         inviter: { id: user.id, displayName: user.display_name, avatarUrl },
         expiresAt: invitation.expiresAt.toISOString(),
       });
+      void sendIncomingCallPush({
+        inviteeId: invitation.inviteeId,
+        invitationId: invitation.id,
+        inviterName: user.display_name,
+        roomId,
+        expiresAt: invitation.expiresAt,
+      });
+    }
     return reply.code(201).send({
       chatId: result.chatId,
       invitations: result.invitations.map((invitation) => ({

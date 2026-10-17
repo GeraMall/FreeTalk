@@ -92,6 +92,13 @@ function pinConversationToBottom(workspace: HTMLElement) {
   if (messages) messages.scrollTop = messages.scrollHeight;
 }
 
+function closeIncomingCallNotification(invitationId: string) {
+  navigator.serviceWorker?.controller?.postMessage({
+    type: 'trlka-incoming-call-resolved',
+    invitationId,
+  });
+}
+
 interface EnterRoomOptions {
   chatId?: string;
   room?: string;
@@ -259,8 +266,7 @@ export function App() {
   const joinedRoom = useRef(false);
   const browserResumeAttempted = useRef(false);
   const browserResume = useRef<
-    | { roomId: string; chatId?: string; recreateAttempted: boolean }
-    | undefined
+    { roomId: string; chatId?: string; recreateAttempted: boolean } | undefined
   >(undefined);
   const conversationPeerJoined = useRef(false);
   const awaitingRejoin = useRef(false);
@@ -371,6 +377,7 @@ export function App() {
         incomingCallRef.current?.invitationId === event.invitationId
       ) {
         ringtone.stop();
+        closeIncomingCallNotification(event.invitationId);
         setIncomingCall(undefined);
         setIncomingCallBusy(false);
       } else if (
@@ -1043,8 +1050,7 @@ export function App() {
       } catch (microphoneError) {
         manager.stop();
         const canResumeWithoutMicrophone = options.resume && telemetryPlatform() === 'ios';
-        if (telemetryPlatform() !== 'android' && !canResumeWithoutMicrophone)
-          throw microphoneError;
+        if (telemetryPlatform() !== 'android' && !canResumeWithoutMicrophone) throw microphoneError;
         audio.current = undefined;
         setMuted(true);
         setNotice(
@@ -1507,6 +1513,7 @@ export function App() {
         body: JSON.stringify({ action }),
       });
       incomingCallRingtone.current.stop();
+      closeIncomingCallNotification(invitation.invitationId);
       setIncomingCall(undefined);
       if (action === 'accept') {
         if (roomId) {
@@ -2037,7 +2044,7 @@ export function App() {
     <>
       {accountUser ? (
         <main
-          className={`account-shell account-shell-with-chat-sidebar room-account-shell ${screenFocusMode ? 'screen-focus-active' : ''}${callExiting ? ' call-transition-leaving' : ''}`}
+          className={`account-shell account-shell-with-chat-sidebar room-account-shell${mobileLayout ? ' mobile-account-shell' : ''} ${screenFocusMode ? 'screen-focus-active' : ''}${callExiting ? ' call-transition-leaving' : ''}`}
           style={
             {
               '--account-sidebar-width': `${roomSidebarWidth}px`,

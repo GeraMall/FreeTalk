@@ -2,6 +2,17 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
 self.addEventListener('message', (event) => {
+  if (
+    event.data?.type === 'trlka-incoming-call-resolved' &&
+    typeof event.data.invitationId === 'string'
+  ) {
+    event.waitUntil(
+      self.registration
+        .getNotifications({ tag: `trlka-call-${event.data.invitationId}` })
+        .then((notifications) => notifications.forEach((notification) => notification.close())),
+    );
+    return;
+  }
   if (event.data?.type !== 'trlka-muted-chats' || !Array.isArray(event.data.chatIds)) return;
   event.waitUntil(
     caches
@@ -34,9 +45,20 @@ self.addEventListener('push', (event) => {
         body: payload.body || 'Новое сообщение',
         icon: payload.icon || '/app/icons/trlka-192.png',
         badge: payload.badge || '/app/icons/trlka-192.png',
-        tag: payload.chatId ? `trlka-chat-${payload.chatId}` : 'trlka-message',
+        tag:
+          payload.type === 'incoming-call'
+            ? `trlka-call-${payload.invitationId || payload.roomId}`
+            : payload.chatId
+              ? `trlka-chat-${payload.chatId}`
+              : 'trlka-message',
         renotify: true,
-        data: { url: payload.url || '/app/', chatId: payload.chatId || null },
+        requireInteraction: payload.type === 'incoming-call',
+        vibrate: payload.type === 'incoming-call' ? [300, 180, 300, 180, 500] : [180],
+        data: {
+          url: payload.url || '/app/',
+          chatId: payload.chatId || null,
+          invitationId: payload.invitationId || null,
+        },
       });
     }),
   );

@@ -32,4 +32,22 @@ describe('BrowserPlatformGate', () => {
     fireEvent.click(view.getByRole('button', { name: 'Скрыть пароль' }));
     expect(password.type).toBe('password');
   });
+
+  it('offers mobile registration with a beta key and password recovery', async () => {
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile',
+    );
+    vi.spyOn(accountClient, 'restore').mockResolvedValue(null);
+    const view = render(
+      <BrowserPlatformGate>
+        <div>Приложение</div>
+      </BrowserPlatformGate>,
+    );
+
+    await waitFor(() => expect(view.getByRole('tab', { name: 'Регистрация' })).toBeTruthy());
+    expect(view.getByRole('button', { name: 'Забыли пароль?' })).toBeTruthy();
+    fireEvent.click(view.getByRole('tab', { name: 'Регистрация' }));
+    expect(view.getByLabelText('Ключ мобильной беты')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Зарегистрироваться' })).toBeTruthy();
+  });
 });
