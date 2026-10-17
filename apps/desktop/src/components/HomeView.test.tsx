@@ -84,6 +84,65 @@ describe('HomeView chat navigation', () => {
     }
   });
 
+  it('keeps the mobile chat list loaded when browser history only closes a chat', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation(mobileMatchMedia);
+    window.history.replaceState({ freetalkAccountPage: 'chats' }, '');
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats') {
+        return {
+          chats: [
+            {
+              id: 'chat-1',
+              type: 'direct',
+              title: null,
+              members: [
+                { id: 'self', username: 'german', displayName: 'Гера' },
+                { id: 'friend-1', username: 'anna', displayName: 'Анна' },
+              ],
+              lastMessage: 'До встречи',
+            },
+          ],
+        };
+      }
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const user: AccountUser = {
+      id: 'self',
+      email: 'gera@example.com',
+      username: 'german',
+      displayName: 'Гера',
+      emailVerified: true,
+      avatarUrl: null,
+      registeredAt: '2026-08-26T00:00:00.000Z',
+    };
+
+    try {
+      const view = render(
+        <HomeView
+          user={user}
+          busy={false}
+          error=""
+          page="chats"
+          onCreateRoom={vi.fn()}
+          onJoinRoom={vi.fn()}
+          onSettings={vi.fn()}
+          onLogout={vi.fn()}
+        />,
+      );
+      expect(await view.findByRole('button', { name: /Анна/ })).toBeTruthy();
+
+      fireEvent.popState(window, { state: { freetalkAccountPage: 'chats' } });
+
+      expect(view.queryByLabelText('Загрузка чатов')).toBeNull();
+      expect(view.getByRole('button', { name: /Анна/ })).toBeTruthy();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it('loads chats for the shared sidebar while the home page is open', async () => {
     const user: AccountUser = {
       id: 'self',

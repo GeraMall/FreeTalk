@@ -183,6 +183,11 @@ export function HomeView({
     const handleHistoryNavigation = (event: PopStateEvent) => {
       const next = event.state?.[NAVIGATION_STATE_KEY];
       if (!isAccountPage(next)) return;
+      // Opening a mobile chat adds a history entry without changing the account
+      // page. Returning from that entry must only close the chat; marking the
+      // already active chat page as loading leaves its list in a permanent
+      // skeleton because the page itself did not change and will not reload.
+      if (next === page) return;
       if (next === 'friends') setFriendsLoading(true);
       if (next === 'chats') setChatsLoading(true);
       setInternalPage(next);
@@ -1198,11 +1203,7 @@ export function HomeView({
       {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
         <header className="mobile-app-header">
           <BrandLogo variant="compact" />
-          <button
-            type="button"
-            aria-label="Открыть настройки"
-            onClick={() => onSettings()}
-          >
+          <button type="button" aria-label="Открыть настройки" onClick={() => onSettings()}>
             {user.avatarUrl ? (
               <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
             ) : (

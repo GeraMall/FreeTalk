@@ -20137,4 +20137,13 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     top: calc(100lvh - 66px - env(safe-area-inset-bottom));
     bottom: auto;
   }
+
+  .mobile-messenger:not(.has-active-chat),
+  .mobile-messenger:not(.has-active-chat) .conversation-sidebar,
+  .mobile-messenger:not(.has-active-chat) .conversation-list {
+    max-width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+    touch-action: pan-y;
+  }
 }
