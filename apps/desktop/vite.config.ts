@@ -18,6 +18,9 @@ const buildCommit = (() => {
 })();
 
 export default defineConfig({
+  // Keep generated asset URLs relative so the same build works inside the
+  // desktop WebView and when the web app is hosted below /app/.
+  base: './',
   cacheDir: 'node_modules/.vite-freetalk',
   plugins: [react()],
   define: {
