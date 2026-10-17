@@ -1198,7 +1198,16 @@ export function HomeView({
       {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
         <header className="mobile-app-header">
           <BrandLogo variant="compact" />
-          <button type="button" aria-label="Открыть профиль" onClick={() => onSettings('profile')}>
+          <button
+            type="button"
+            aria-label="Открыть профиль"
+            onPointerDown={(event) => {
+              if (event.pointerType !== 'touch') return;
+              event.preventDefault();
+              onSettings('profile');
+            }}
+            onClick={() => onSettings('profile')}
+          >
             {user.avatarUrl ? (
               <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
             ) : (

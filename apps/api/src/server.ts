@@ -28,6 +28,7 @@ import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
 import { API_VERSION } from './app-version.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
+import { registerWebPush, startWebPush } from './web-push.js';
 import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
 import {
   displayNameSchema,
@@ -1026,6 +1027,8 @@ registerSocialRoutes(app, requireUser);
 registerMobileBetaRoutes(app);
 registerAndroidPush(app, requireUser);
 startAndroidPush(app);
+registerWebPush(app, requireUser);
+startWebPush(app);
 registerAdminRoutes(app);
 startInfrastructureSampler();
 

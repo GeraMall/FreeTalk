@@ -36,6 +36,12 @@ export interface AccountSession {
   expiresAt: string;
 }
 
+export interface BrowserPushSubscription {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: { p256dh: string; auth: string };
+}
+
 interface SessionPayload {
   accessToken: string;
   refreshToken: string;
@@ -57,6 +63,7 @@ export class ApiError extends Error {
 
 const BROWSER_REFRESH_TOKEN_KEY = 'trlka.browser.refresh-token';
 let refreshInFlight: Promise<void> | undefined;
+let restoreInFlight: Promise<AccountUser | null> | undefined;
 
 function isTauri() {
   return '__TAURI_INTERNALS__' in window;
@@ -68,8 +75,13 @@ async function storeRefreshToken(token?: string) {
     else await invoke('secure_session_clear');
   } else {
     try {
-      if (token) window.sessionStorage.setItem(BROWSER_REFRESH_TOKEN_KEY, token);
-      else window.sessionStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+      if (token) {
+        window.localStorage.setItem(BROWSER_REFRESH_TOKEN_KEY, token);
+        window.sessionStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+      } else {
+        window.localStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+        window.sessionStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+      }
     } catch {
       // Private browsing modes can deny storage. The active access token still works
       // until this page is reloaded.
@@ -80,7 +92,14 @@ async function storeRefreshToken(token?: string) {
 async function readRefreshToken() {
   if (isTauri()) return await invoke<string | null>('secure_session_get');
   try {
-    return window.sessionStorage.getItem(BROWSER_REFRESH_TOKEN_KEY);
+    const persisted = window.localStorage.getItem(BROWSER_REFRESH_TOKEN_KEY);
+    if (persisted) return persisted;
+    const legacy = window.sessionStorage.getItem(BROWSER_REFRESH_TOKEN_KEY);
+    if (legacy) {
+      window.localStorage.setItem(BROWSER_REFRESH_TOKEN_KEY, legacy);
+      window.sessionStorage.removeItem(BROWSER_REFRESH_TOKEN_KEY);
+    }
+    return legacy;
   } catch {
     return null;
   }
@@ -126,6 +145,13 @@ export class AccountClient {
   }
 
   async restore() {
+    restoreInFlight ??= this.restoreStoredSession().finally(() => {
+      restoreInFlight = undefined;
+    });
+    return restoreInFlight;
+  }
+
+  private async restoreStoredSession() {
     const refreshToken = await readRefreshToken();
     if (!refreshToken) return null;
     try {
@@ -137,6 +163,17 @@ export class AccountClient {
       await this.clear();
       return null;
     }
+  }
+
+  async webPushPublicKey() {
+    return this.request<{ publicKey: string }>('/v1/me/web-push-key');
+  }
+
+  async registerWebPushSubscription(subscription: BrowserPushSubscription) {
+    return this.request<{ ok: true }>('/v1/me/web-push-subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    });
   }
 
   async register(input: {

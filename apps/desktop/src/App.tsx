@@ -65,6 +65,7 @@ import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder
 import { calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
+import { BrowserNotificationPrompt } from './components/BrowserNotificationPrompt';
 import {
   clampConversationCallHeight,
   EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
@@ -1650,6 +1651,9 @@ export function App() {
       }}
     />
   ) : null;
+  const browserNotificationPrompt = accountUser ? (
+    <BrowserNotificationPrompt key={accountUser.id} />
+  ) : null;
 
   const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
   const waitingCallParticipants: WaitingCallParticipant[] = callConversation
@@ -1785,6 +1789,7 @@ export function App() {
           />
         )}
         {settingsPanel}
+        {browserNotificationPrompt}
         {incomingCallOverlay}
         <AppToast message={notice} onClose={() => setNotice('')} />
       </>
@@ -1996,6 +2001,7 @@ export function App() {
         roomView
       )}
       {settingsPanel}
+      {browserNotificationPrompt}
       {incomingCallOverlay}
       <AppToast
         message={error || notice}

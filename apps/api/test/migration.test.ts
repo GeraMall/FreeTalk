@@ -148,6 +148,18 @@ describe('PostgreSQL migration', () => {
     expect(sql).toContain('where claimed_by is null');
   });
 
+  it('adds durable web push subscriptions and transactional deliveries', async () => {
+    const path = fileURLToPath(new URL('../migrations/018_web_push.sql', import.meta.url));
+    const sql = (await readFile(path, 'utf8')).toLowerCase();
+    expect(sql).toContain('create table if not exists web_push_subscriptions');
+    expect(sql).toContain('endpoint text not null unique');
+    expect(sql).toContain('create table if not exists web_push_deliveries');
+    expect(sql).toContain('primary key(message_id, subscription_id)');
+    expect(sql).toContain('after insert on messages');
+    expect(sql).toContain("new.kind in ('text','image','file')");
+    expect(sql).toContain('session.user_id is distinct from new.sender_id');
+  });
+
   it('adds replies, pins and one persistent reaction per user and message', async () => {
     const path = fileURLToPath(
       new URL('../migrations/011_message_interactions.sql', import.meta.url),

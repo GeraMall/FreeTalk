@@ -1093,6 +1093,126 @@ body {
   text-decoration: none;
 }
 
+.browser-notification-backdrop {
+  position: fixed;
+  z-index: 5000;
+  inset: 0;
+  display: grid;
+  padding: 18px;
+  place-items: center;
+  background: rgba(0, 6, 14, 0.76);
+  backdrop-filter: blur(16px);
+}
+
+.browser-notification-prompt {
+  position: relative;
+  width: min(100%, 420px);
+  padding: 30px 24px 22px;
+  border: 1px solid rgba(78, 218, 255, 0.3);
+  border-radius: 26px;
+  color: #eef7ff;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(78, 231, 239, 0.17), transparent 46%),
+    linear-gradient(145deg, #0c1c2c, #07111f);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+  text-align: center;
+}
+
+.browser-notification-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  color: #8fa5bb;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.browser-notification-close svg {
+  width: 19px;
+}
+
+.browser-notification-icon {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  margin: 0 auto 18px;
+  place-items: center;
+  border: 1px solid rgba(78, 231, 239, 0.4);
+  border-radius: 21px;
+  color: #5aebef;
+  background: linear-gradient(145deg, rgba(78, 231, 239, 0.16), rgba(75, 127, 255, 0.15));
+  box-shadow: 0 0 34px rgba(78, 231, 239, 0.12);
+}
+
+.browser-notification-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.browser-notification-prompt h2 {
+  margin: 0;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+}
+
+.browser-notification-prompt p {
+  margin: 13px 0 22px;
+  color: #9eb1c6;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.browser-notification-enable,
+.browser-notification-later {
+  width: 100%;
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 15px;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.browser-notification-enable {
+  color: #06111d;
+  background: linear-gradient(105deg, #4ee7ef, #58c9fa 48%, #4b7fff);
+}
+
+.browser-notification-enable svg {
+  width: 18px;
+}
+
+.browser-notification-enable:disabled {
+  opacity: 0.62;
+}
+
+.browser-notification-later {
+  min-height: 44px;
+  margin-top: 8px;
+  color: #8298ae;
+  background: transparent;
+}
+
+.browser-notification-error {
+  margin: -8px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 93, 122, 0.38);
+  border-radius: 12px;
+  color: #ffbdc9;
+  background: rgba(104, 14, 36, 0.24);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 @media (max-width: 560px) {
   .browser-platform-gate {
     padding: 14px;
@@ -15412,6 +15532,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     background: linear-gradient(145deg, #153b55, #172448);
     font-size: 15px;
     font-weight: 800;
+    touch-action: manipulation;
   }
 
   .mobile-app-header > button img {

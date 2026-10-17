@@ -26,6 +26,9 @@ const envSchema = z
     SMTP_PASSWORD: z.string().optional(),
     EMAIL_FROM: z.string().default('Trlka <noreply@localhost>'),
     IP_HASH_SALT: z.string().min(16),
+    WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(40).optional(),
+    WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(20).optional(),
+    WEB_PUSH_SUBJECT: z.string().default('mailto:support@trlka.com'),
   })
   .superRefine((value, context) => {
     if (value.NODE_ENV === 'production' && value.EMAIL_DELIVERY_MODE !== 'smtp') {
@@ -40,6 +43,13 @@ const envSchema = z
         code: 'custom',
         path: ['SMTP_HOST'],
         message: 'SMTP_HOST and SMTP_USER are required in smtp mode',
+      });
+    }
+    if (Boolean(value.WEB_PUSH_VAPID_PUBLIC_KEY) !== Boolean(value.WEB_PUSH_VAPID_PRIVATE_KEY)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['WEB_PUSH_VAPID_PUBLIC_KEY'],
+        message: 'Both WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY are required',
       });
     }
   });
