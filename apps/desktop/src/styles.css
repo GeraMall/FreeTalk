@@ -11505,6 +11505,9 @@ html.notification-overlay-document #root {
   transform: translateX(0);
   transition-delay: 0s;
 }
+.swipe-chat-row.is-dragging .conversation-swipe-actions {
+  transition: none;
+}
 .conversation-swipe-actions button {
   min-width: 0;
   display: flex;

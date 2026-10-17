@@ -941,8 +941,12 @@ describe('Resizable chat list', () => {
     pointer('pointerdown', 260, 100);
     pointer('pointermove', 160, 102);
     expect(row.classList.contains('actions-visible')).toBe(false);
+    const actions = row.querySelector<HTMLElement>('.conversation-swipe-actions')!;
+    expect(Number(actions.style.opacity)).toBeGreaterThan(0);
+    expect(Number(actions.style.opacity)).toBeLessThan(1);
     pointer('pointerup', 160, 102);
     expect(row.classList.contains('actions-visible')).toBe(false);
+    expect(actions.style.visibility).toBe('hidden');
 
     pointer('pointerdown', 260, 100);
     pointer('pointermove', 100, 104);

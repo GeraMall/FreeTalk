@@ -1307,7 +1307,10 @@ function ChatListItem({
   const startedOpen = dragging && (dragRef.current?.startOffset ?? 0) < 0;
   const closingToRight =
     startedOpen && offset > (dragRef.current?.startOffset ?? 0);
-  const actionsRevealed = offset <= -revealThreshold && !closingToRight;
+  const swipeProgress = closingToRight
+    ? 0
+    : Math.max(0, Math.min(1, -offset / actionsWidth));
+  const actionsRevealed = offset === -actionsWidth && !closingToRight;
   return (
     <div
       className={`swipe-chat-row${actionsRevealed ? ' actions-visible' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -1343,7 +1346,15 @@ function ChatListItem({
       onPointerCancel={finishSwipe}
     >
       {mobile && (
-        <div className="conversation-swipe-actions" aria-hidden={!actionsRevealed}>
+        <div
+          className="conversation-swipe-actions"
+          aria-hidden={!actionsRevealed}
+          style={{
+            opacity: swipeProgress,
+            visibility: swipeProgress > 0 ? 'visible' : 'hidden',
+            transform: `translate3d(${Math.round((1 - swipeProgress) * 18)}px, 0, 0)`,
+          }}
+        >
           <button type="button" className="mute" onClick={() => { onMute(); moveTo(0); }}>
             <BellOff />
             <span>{muted ? 'Со звуком' : 'Без звука'}</span>
