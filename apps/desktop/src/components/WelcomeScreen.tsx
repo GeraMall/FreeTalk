@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEventHandler } from 'react';
 import {
   ArrowLeft,
   Clock3,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   LogIn,
   MailCheck,
@@ -68,6 +70,56 @@ interface WelcomeScreenProps {
   onForgotPassword(email: string): void;
   onResetPassword(token: string, password: string, email: string): void;
   onSettings(): void;
+}
+
+function PasswordField({
+  id,
+  label,
+  value,
+  autoComplete,
+  disabled = false,
+  invalid = false,
+  onChange,
+  onKeyDown,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  autoComplete: 'current-password' | 'new-password';
+  disabled?: boolean;
+  invalid?: boolean;
+  onChange(value: string): void;
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+}) {
+  const [visible, setVisible] = useState(false);
+  const action = visible ? 'Скрыть пароль' : 'Показать пароль';
+  return (
+    <div className="field-label">
+      <label htmlFor={id}>{label}</label>
+      <div className="password-field">
+        <input
+          id={id}
+          className="password-entry"
+          type={visible ? 'text' : 'password'}
+          value={value}
+          disabled={disabled}
+          aria-invalid={invalid || undefined}
+          autoComplete={autoComplete}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <button
+          type="button"
+          className="password-visibility-toggle"
+          aria-label={action}
+          title={action}
+          onClick={() => setVisible((current) => !current)}
+        >
+          {visible ? <EyeOff size={19} /> : <Eye size={19} />}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function WelcomeScreen({
@@ -307,15 +359,13 @@ export function WelcomeScreen({
                           }
                         />
                       </label>
-                      <label className="field-label">
-                        Новый пароль
-                        <input
-                          type="password"
-                          value={resetPassword}
-                          autoComplete="new-password"
-                          onChange={(event) => setResetPassword(event.target.value)}
-                        />
-                      </label>
+                      <PasswordField
+                        id="reset-password"
+                        label="Новый пароль"
+                        value={resetPassword}
+                        autoComplete="new-password"
+                        onChange={setResetPassword}
+                      />
                       <button
                         className="primary wide"
                         disabled={
@@ -344,17 +394,15 @@ export function WelcomeScreen({
                           onChange={(event) => setLogin(event.target.value)}
                         />
                       </label>
-                      <label className="field-label">
-                        Пароль
-                        <input
-                          type="password"
-                          value={password}
-                          disabled={busy}
-                          autoComplete="current-password"
-                          onChange={(event) => setPassword(event.target.value)}
-                          onKeyDown={(event) => event.key === 'Enter' && submit()}
-                        />
-                      </label>
+                      <PasswordField
+                        id="login-password"
+                        label="Пароль"
+                        value={password}
+                        disabled={busy}
+                        autoComplete="current-password"
+                        onChange={setPassword}
+                        onKeyDown={(event) => event.key === 'Enter' && submit()}
+                      />
                       {captchaRequired && <CaptchaBox onToken={setCaptchaToken} />}
                       <button
                         className="primary wide"
@@ -427,27 +475,21 @@ export function WelcomeScreen({
                     />
                   </label>
                   <div className="auth-grid">
-                    <label className="field-label">
-                      Пароль
-                      <input
-                        type="password"
-                        value={password}
-                        autoComplete="new-password"
-                        onChange={(event) => setPassword(event.target.value)}
-                      />
-                    </label>
-                    <label className="field-label">
-                      Повторите пароль
-                      <input
-                        type="password"
-                        value={confirmation}
-                        aria-invalid={Boolean(
-                          password && confirmation && password !== confirmation,
-                        )}
-                        autoComplete="new-password"
-                        onChange={(event) => setConfirmation(event.target.value)}
-                      />
-                    </label>
+                    <PasswordField
+                      id="registration-password"
+                      label="Пароль"
+                      value={password}
+                      autoComplete="new-password"
+                      onChange={setPassword}
+                    />
+                    <PasswordField
+                      id="registration-password-confirmation"
+                      label="Повторите пароль"
+                      value={confirmation}
+                      invalid={Boolean(password && confirmation && password !== confirmation)}
+                      autoComplete="new-password"
+                      onChange={setConfirmation}
+                    />
                   </div>
                   {password && confirmation && password !== confirmation && (
                     <small className="validation-error">Пароли не совпадают</small>

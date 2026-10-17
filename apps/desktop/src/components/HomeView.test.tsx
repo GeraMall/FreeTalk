@@ -30,7 +30,60 @@ afterEach(() => {
   localStorage.clear();
 });
 
+function mobileMatchMedia() {
+  return {
+    matches: true,
+    media: '(max-width: 760px)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as unknown as MediaQueryList;
+}
+
 describe('HomeView chat navigation', () => {
+  it('opens the mobile settings menu with one avatar click', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation(mobileMatchMedia);
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats') return { chats: [] };
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const onSettings = vi.fn();
+    const user: AccountUser = {
+      id: 'self',
+      email: 'gera@example.com',
+      username: 'german',
+      displayName: 'Гера',
+      emailVerified: true,
+      avatarUrl: null,
+      registeredAt: '2026-08-26T00:00:00.000Z',
+    };
+
+    try {
+      const view = render(
+        <HomeView
+          user={user}
+          busy={false}
+          error=""
+          onCreateRoom={vi.fn()}
+          onJoinRoom={vi.fn()}
+          onSettings={onSettings}
+          onLogout={vi.fn()}
+        />,
+      );
+      fireEvent.click(await view.findByRole('button', { name: 'Открыть настройки' }));
+      expect(onSettings).toHaveBeenCalledOnce();
+      expect(onSettings).toHaveBeenCalledWith();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it('loads chats for the shared sidebar while the home page is open', async () => {
     const user: AccountUser = {
       id: 'self',

@@ -987,7 +987,8 @@ body {
   text-align: left;
 }
 
-.browser-platform-form > label {
+.browser-platform-form > label,
+.browser-platform-password-field {
   display: grid;
   gap: 8px;
   color: #dce9f7;
@@ -1016,6 +1017,46 @@ body {
 .browser-platform-form input:focus {
   border-color: #59e5e9;
   box-shadow: 0 0 0 3px rgba(89, 229, 233, 0.12);
+}
+
+.browser-platform-password {
+  position: relative;
+}
+
+.browser-platform-password input {
+  padding-right: 52px;
+}
+
+.browser-platform-password input[type='password'] {
+  font-family: Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+
+.browser-platform-password button {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  color: #8296ad;
+  background: transparent;
+  transform: translateY(-50%);
+  touch-action: manipulation;
+}
+
+.browser-platform-password button:hover,
+.browser-platform-password button:focus-visible {
+  color: #59e5e9;
+  background: rgba(89, 229, 233, 0.09);
 }
 
 .browser-platform-key-input {
@@ -8215,6 +8256,42 @@ input[type='range']:hover::-webkit-slider-thumb {
 .account-card input[aria-invalid='true'] {
   border-color: var(--ft-error);
   box-shadow: 0 0 0 3px rgba(255, 100, 124, 0.1);
+}
+.password-field {
+  position: relative;
+}
+.account-card .password-field input {
+  width: 100%;
+  padding-right: 52px;
+}
+.account-card .password-field input[type='password'] {
+  font-family: Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 42px;
+  min-width: 42px;
+  height: 40px;
+  min-height: 40px;
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: var(--ft-text-muted);
+  background: transparent;
+  transform: translateY(-50%);
+  touch-action: manipulation;
+}
+.password-visibility-toggle:hover,
+.password-visibility-toggle:focus-visible {
+  color: var(--ft-cyan);
+  background: rgba(78, 243, 242, 0.08);
 }
 .account-card .field-label,
 .verification-code-label {

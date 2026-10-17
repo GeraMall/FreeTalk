@@ -1,4 +1,4 @@
-import { KeyRound, LogIn, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LogIn, ShieldCheck } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import brandMark from '../assets/freetalk-mascot.png';
 import { accountClient } from '../lib/api-client';
@@ -22,6 +22,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
   );
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -87,16 +88,27 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   onChange={(event) => setLogin(event.target.value)}
                 />
               </label>
-              <label>
-                Пароль
-                <input
-                  type="password"
-                  value={password}
-                  autoComplete="current-password"
-                  disabled={busy}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
+              <div className="browser-platform-password-field">
+                <label htmlFor="mobile-beta-password">Пароль</label>
+                <div className="browser-platform-password">
+                  <input
+                    id="mobile-beta-password"
+                    type={passwordVisible ? 'text' : 'password'}
+                    value={password}
+                    autoComplete="current-password"
+                    disabled={busy}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                    title={passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                    onClick={() => setPasswordVisible((current) => !current)}
+                  >
+                    {passwordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
               <label>
                 Ключ мобильной беты
                 <span>Не нужен, если доступ уже привязан к аккаунту</span>

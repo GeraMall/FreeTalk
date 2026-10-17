@@ -1200,13 +1200,8 @@ export function HomeView({
           <BrandLogo variant="compact" />
           <button
             type="button"
-            aria-label="Открыть профиль"
-            onPointerDown={(event) => {
-              if (event.pointerType !== 'touch') return;
-              event.preventDefault();
-              onSettings('profile');
-            }}
-            onClick={() => onSettings('profile')}
+            aria-label="Открыть настройки"
+            onClick={() => onSettings()}
           >
             {user.avatarUrl ? (
               <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />

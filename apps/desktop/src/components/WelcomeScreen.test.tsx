@@ -29,6 +29,19 @@ function props() {
 }
 
 describe('account-first welcome screen', () => {
+  it('shows and hides the entered login password', () => {
+    const view = render(<WelcomeScreen {...props()} />);
+    const password = view.getByLabelText('Пароль') as HTMLInputElement;
+
+    fireEvent.change(password, { target: { value: 'secret-password' } });
+    expect(password.type).toBe('password');
+    fireEvent.click(view.getByRole('button', { name: 'Показать пароль' }));
+    expect(password.type).toBe('text');
+    expect(password.value).toBe('secret-password');
+    fireEvent.click(view.getByRole('button', { name: 'Скрыть пароль' }));
+    expect(password.type).toBe('password');
+  });
+
   it('resets with six digits and an explicit email even without requesting in this session', () => {
     const handlers = props();
     const view = render(<WelcomeScreen {...handlers} />);
