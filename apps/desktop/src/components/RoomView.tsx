@@ -189,6 +189,7 @@ export function RoomView({
 }: RoomViewProps) {
   const [menuFor, setMenuFor] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatClosing, setChatClosing] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -564,7 +565,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${conversation ? 'conversation-room' : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? 'conversation-room' : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -878,7 +879,10 @@ export function RoomView({
         </button>
       </div>
 
-      <footer className="voice-dock" aria-label="Управление звонком">
+      <footer
+        className={`voice-dock ${mobileActionsOpen ? 'mobile-actions-open' : ''}`}
+        aria-label="Управление звонком"
+      >
         {screenPresenter && (
           <button
             className={`presentation-participants-dock-toggle ${presentationParticipantsVisible ? 'active' : ''}`}
@@ -976,6 +980,15 @@ export function RoomView({
             )}
           </div>
         </div>
+        <button
+          className={`mobile-call-more-toggle ${mobileActionsOpen ? 'active' : ''}`}
+          aria-label={mobileActionsOpen ? 'Скрыть дополнительные действия' : 'Показать ещё'}
+          aria-expanded={mobileActionsOpen}
+          onClick={() => setMobileActionsOpen((open) => !open)}
+        >
+          <MoreHorizontal aria-hidden="true" />
+          <span className="dock-mobile-label">Ещё</span>
+        </button>
         <div className="dock-island dock-secondary-actions">
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
@@ -1084,9 +1097,10 @@ export function RoomView({
             onClick={onSettings}
           >
             <span className="dock-icon">
-              <MoreHorizontal />
+              <MoreHorizontal className="dock-desktop-more-icon" />
+              <SlidersHorizontal className="dock-mobile-settings-icon" />
             </span>
-            <span className="dock-mobile-label">Ещё</span>
+            <span className="dock-mobile-label">Настройки</span>
           </button>
         </div>
         <button

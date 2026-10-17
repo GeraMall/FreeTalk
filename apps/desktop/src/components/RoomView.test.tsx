@@ -620,7 +620,7 @@ describe('RoomView media layouts', () => {
   });
 
   it('provides concise phone labels for every visible call action', () => {
-    const { container } = render(view());
+    const { container, getByRole } = render(view());
     const labels = Array.from(container.querySelectorAll('.dock-mobile-label')).map((label) =>
       label.textContent?.trim(),
     );
@@ -628,13 +628,25 @@ describe('RoomView media layouts', () => {
     expect(labels).toEqual([
       'Микрофон',
       'Камера',
+      'Ещё',
       'Экран',
       'Запись',
       'Реакции',
       'Чат',
-      'Ещё',
+      'Настройки',
       'Выйти',
     ]);
+
+    const more = getByRole('button', { name: 'Показать ещё' });
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.voice-dock')?.classList.contains('mobile-actions-open')).toBe(
+      true,
+    );
+    fireEvent.click(getByRole('button', { name: 'Скрыть дополнительные действия' }));
+    expect(container.querySelector('.voice-dock')?.classList.contains('mobile-actions-open')).toBe(
+      false,
+    );
   });
 
   it('opens the ephemeral room chat and sends a message', () => {
