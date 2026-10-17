@@ -1,6 +1,20 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'trlka-muted-chats' || !Array.isArray(event.data.chatIds)) return;
+  event.waitUntil(
+    caches
+      .open('trlka-preferences')
+      .then((cache) =>
+        cache.put(
+          '/app/__muted_chats__',
+          new Response(JSON.stringify(event.data.chatIds.filter((id) => typeof id === 'string'))),
+        ),
+      ),
+  );
+});
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -10,7 +24,11 @@ self.addEventListener('push', (event) => {
   }
   const title = payload.title || 'Trlka';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    caches.open('trlka-preferences').then(async (cache) => {
+      const stored = await cache.match('/app/__muted_chats__');
+      const mutedChatIds = stored ? await stored.json().catch(() => []) : [];
+      if (payload.chatId && mutedChatIds.includes(payload.chatId)) return;
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       if (clients.some((client) => client.visibilityState === 'visible')) return;
       return self.registration.showNotification(title, {
         body: payload.body || 'Новое сообщение',

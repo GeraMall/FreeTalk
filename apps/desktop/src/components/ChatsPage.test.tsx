@@ -900,6 +900,50 @@ describe('Resizable chat list', () => {
     expect(panel.querySelector('.chat-profile-identity .chat-presence')).toBeNull();
   });
 
+  it('reveals chat actions with a horizontal mobile swipe and persists mute', () => {
+    const view = render(
+      <ChatsPage
+        mobile
+        userId="self"
+        chats={[chat]}
+        friends={[]}
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+    const row = view.container.querySelector<HTMLElement>('.swipe-chat-row')!;
+    const pointer = (type: string, clientX: number, clientY: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY });
+      Object.defineProperties(event, {
+        pointerId: { value: 4 },
+        pointerType: { value: 'touch' },
+      });
+      fireEvent(row, event);
+    };
+
+    pointer('pointerdown', 260, 100);
+    pointer('pointermove', 100, 104);
+    pointer('pointerup', 100, 104);
+    expect(row.classList.contains('actions-visible')).toBe(true);
+
+    fireEvent.click(view.getByRole('button', { name: 'Без звука' }));
+    expect(localStorage.getItem('trlka:muted-chats:self')).toContain(chat.id);
+  });
+
   it('replaces the native composer menu with Trlka controls', () => {
     const { getByRole, queryByRole } = renderPage();
     const textarea = getByRole('textbox', { name: 'Сообщение' });

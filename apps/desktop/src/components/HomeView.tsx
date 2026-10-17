@@ -1151,6 +1151,19 @@ export function HomeView({
     setLocalError('Личный чат удалён у обоих');
   };
 
+  const deleteChat = async (chatId: string) => {
+    const chat = chats.find((item) => item.id === chatId);
+    if (!chat) return;
+    if (chat.type === 'group') {
+      await leaveGroup(chatId);
+      return;
+    }
+    await accountClient.request(`/v1/chats/${chatId}`, { method: 'DELETE' });
+    await clearChatImageCache(user.id);
+    removeChatLocally(chatId);
+    setLocalError('Личный чат удалён у обоих');
+  };
+
   return (
     <main
       className={`${embedded ? 'account-view-embedded' : 'account-shell account-shell-with-chat-sidebar'} ${
@@ -1407,6 +1420,7 @@ export function HomeView({
             onClearHistory={clearChatHistory}
             onBlockUser={blockChatUser}
             onDeleteDirectChat={deleteDirectChat}
+            onDeleteChat={deleteChat}
             onLeaveGroup={() => leaveGroup()}
             onAddMember={addChatMember}
             onJoinCall={(code) => onJoinRoom(code, activeChat)}

@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowLeft,
   Ban,
@@ -26,6 +28,7 @@ import {
   Forward,
   ImagePlus,
   Link2,
+  BellOff,
   MessageCircle,
   MoreHorizontal,
   Pencil,
@@ -79,6 +82,16 @@ const RECENT_MESSAGE_REACTIONS_KEY = 'freetalkRecentMessageReactions';
 const OLD_MESSAGES_NOTICE_THRESHOLD = 260;
 const MAX_CHAT_FILE_BYTES = 30 * 1024 * 1024;
 const CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function storedChatIds(userId: string, kind: 'archived' | 'muted') {
+  if (typeof window === 'undefined') return new Set<string>();
+  try {
+    const value = JSON.parse(window.localStorage.getItem(`trlka:${kind}-chats:${userId}`) ?? '[]');
+    return new Set<string>(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+}
 
 function defaultChatSidebarWidth() {
   if (typeof window === 'undefined') return 330;
@@ -272,6 +285,7 @@ interface ChatsPageProps {
   onClearHistory(): Promise<void>;
   onBlockUser?(userId: string): Promise<void>;
   onDeleteDirectChat?(): Promise<void>;
+  onDeleteChat?(chatId: string): Promise<void>;
   onLeaveGroup?(): Promise<void>;
   onUpdateGroupAvatar?(
     chatId: string,
@@ -327,6 +341,7 @@ export function ChatsPage({
   onClearHistory,
   onBlockUser = async () => {},
   onDeleteDirectChat = async () => {},
+  onDeleteChat = async () => {},
   onLeaveGroup = async () => {},
   onUpdateGroupAvatar = async () => false,
   onAddMember,
@@ -355,6 +370,9 @@ export function ChatsPage({
   const [profileLoading, setProfileLoading] = useState(false);
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [groupProfileTarget, setGroupProfileTarget] = useState<ChatMember>();
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedChatIds, setArchivedChatIds] = useState(() => storedChatIds(userId, 'archived'));
+  const [mutedChatIds, setMutedChatIds] = useState(() => storedChatIds(userId, 'muted'));
   const [slowModeClock, setSlowModeClock] = useState(() => Date.now());
   const [dismissedSlowModeUntil, setDismissedSlowModeUntil] = useState(0);
   const [chatSidebarWidth, setChatSidebarWidth] = useState<number | undefined>(
@@ -549,11 +567,31 @@ export function ChatsPage({
   }, [profileRevision, profileTargetId, userId]);
   const visibleChats = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
-    if (!query) return chats;
-    return chats.filter((chat) =>
-      chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query),
+    return chats.filter(
+      (chat) =>
+        archivedChatIds.has(chat.id) === showArchived &&
+        (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
     );
-  }, [chats, search, userId]);
+  }, [archivedChatIds, chats, search, showArchived, userId]);
+  const archivedCount = chats.filter((chat) => archivedChatIds.has(chat.id)).length;
+
+  const updateStoredChatIds = (
+    kind: 'archived' | 'muted',
+    current: Set<string>,
+    chatId: string,
+  ) => {
+    const next = new Set(current);
+    if (next.has(chatId)) next.delete(chatId);
+    else next.add(chatId);
+    window.localStorage.setItem(`trlka:${kind}-chats:${userId}`, JSON.stringify([...next]));
+    if (kind === 'muted' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.controller?.postMessage({
+        type: 'trlka-muted-chats',
+        chatIds: [...next],
+      });
+    }
+    return next;
+  };
 
   const runAction = async (key: string, action: () => Promise<boolean | void>) => {
     if (actionBusyRef.current) return false;
@@ -665,6 +703,19 @@ export function ChatsPage({
             </div>
           )}
 
+          {archivedCount > 0 && (
+            <button
+              type="button"
+              className={`archived-chats-toggle${showArchived ? ' active' : ''}`}
+              onClick={() => setShowArchived((visible) => !visible)}
+            >
+              <Archive />
+              <span>{showArchived ? 'Вернуться к чатам' : 'Архив'}</span>
+              <b>{archivedCount}</b>
+              <ChevronRight />
+            </button>
+          )}
+
           <div className="conversation-list">
             {chatsLoading ? (
               <ChatListSkeleton />
@@ -675,7 +726,19 @@ export function ChatsPage({
                   chat={chat}
                   userId={userId}
                   active={chat.id === activeChatId}
+                  mobile={mobile}
+                  archived={archivedChatIds.has(chat.id)}
+                  muted={mutedChatIds.has(chat.id)}
                   onClick={() => void onOpenChat(chat.id)}
+                  onArchive={() =>
+                    setArchivedChatIds((current) =>
+                      updateStoredChatIds('archived', current, chat.id),
+                    )
+                  }
+                  onMute={() =>
+                    setMutedChatIds((current) => updateStoredChatIds('muted', current, chat.id))
+                  }
+                  onDelete={() => void onDeleteChat(chat.id)}
                 />
               ))
             ) : chats.length > 0 ? (
@@ -1051,13 +1114,33 @@ function ChatListItem({
   chat,
   userId,
   active,
+  mobile,
+  archived,
+  muted,
   onClick,
+  onArchive,
+  onMute,
+  onDelete,
 }: {
   chat: ChatItem;
   userId: string;
   active: boolean;
+  mobile: boolean;
+  archived: boolean;
+  muted: boolean;
   onClick(): void;
+  onArchive(): void;
+  onMute(): void;
+  onDelete(): void;
 }) {
+  const actionsWidth = 210;
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const offsetRef = useRef(0);
+  const dragRef = useRef<
+    { pointerId: number; startX: number; startY: number; startOffset: number; horizontal: boolean }
+  >(undefined);
+  const suppressClickRef = useRef(false);
   const name = chatName(chat, userId);
   const other = chat.members.find((member) => member.id !== userId);
   const preview =
@@ -1072,13 +1155,85 @@ function ChatListItem({
           : chat.type === 'group'
             ? `${chat.members.length} участников`
             : 'Откройте беседу';
+  const moveTo = (value: number) => {
+    offsetRef.current = value;
+    setOffset(value);
+  };
+  const finishSwipe = () => {
+    const drag = dragRef.current;
+    dragRef.current = undefined;
+    setDragging(false);
+    if (!drag?.horizontal) return;
+    suppressClickRef.current = true;
+    moveTo(offsetRef.current < -58 ? -actionsWidth : 0);
+  };
   return (
-    <button
-      className={`conversation-card ${active ? 'active' : ''}`}
-      aria-label={`${name}. ${preview}`}
-      aria-current={active ? 'true' : undefined}
-      onClick={onClick}
+    <div
+      className={`swipe-chat-row${offset < 0 ? ' actions-visible' : ''}${dragging ? ' is-dragging' : ''}`}
+      onPointerDown={(event) => {
+        if (!mobile || event.pointerType === 'mouse') return;
+        dragRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          startOffset: offsetRef.current,
+          horizontal: false,
+        };
+      }}
+      onPointerMove={(event) => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - drag.startX;
+        const deltaY = event.clientY - drag.startY;
+        if (!drag.horizontal) {
+          if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 7) return;
+          if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+            dragRef.current = undefined;
+            return;
+          }
+          drag.horizontal = true;
+          setDragging(true);
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        }
+        event.preventDefault();
+        moveTo(Math.max(-actionsWidth, Math.min(0, drag.startOffset + deltaX)));
+      }}
+      onPointerUp={finishSwipe}
+      onPointerCancel={finishSwipe}
     >
+      {mobile && (
+        <div className="conversation-swipe-actions" aria-hidden={offset === 0}>
+          <button type="button" className="mute" onClick={() => { onMute(); moveTo(0); }}>
+            <BellOff />
+            <span>{muted ? 'Со звуком' : 'Без звука'}</span>
+          </button>
+          <button type="button" className="delete" onClick={() => { moveTo(0); onDelete(); }}>
+            <Trash2 />
+            <span>Удалить</span>
+          </button>
+          <button type="button" className="archive" onClick={() => { moveTo(0); onArchive(); }}>
+            {archived ? <ArchiveRestore /> : <Archive />}
+            <span>{archived ? 'Вернуть' : 'Архив'}</span>
+          </button>
+        </div>
+      )}
+      <button
+        className={`conversation-card ${active ? 'active' : ''}`}
+        style={{ transform: `translate3d(${offset}px, 0, 0)` }}
+        aria-label={`${name}. ${preview}`}
+        aria-current={active ? 'true' : undefined}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          if (offsetRef.current < 0) {
+            moveTo(0);
+            return;
+          }
+          onClick();
+        }}
+      >
       <ChatAvatar
         name={name}
         group={chat.type === 'group'}
@@ -1097,10 +1252,12 @@ function ChatListItem({
         </small>
       </span>
       <span className="conversation-meta">
+        {muted && <BellOff className="conversation-muted-icon" aria-label="Уведомления отключены" />}
         {chat.lastMessageAt && <time>{formatConversationTime(chat.lastMessageAt)}</time>}
-        {Boolean(chat.unreadCount) && <b>{Math.min(chat.unreadCount ?? 0, 99)}</b>}
+        {Boolean(chat.unreadCount) && !muted && <b>{Math.min(chat.unreadCount ?? 0, 99)}</b>}
       </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

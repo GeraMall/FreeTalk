@@ -11455,6 +11455,104 @@ html.notification-overlay-document #root {
   overflow-y: auto;
   scrollbar-width: none;
 }
+.swipe-chat-row {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 13px;
+}
+.swipe-chat-row .conversation-card {
+  position: relative;
+  z-index: 2;
+  background: #030a15;
+  transition:
+    transform 240ms cubic-bezier(0.22, 0.78, 0.24, 1),
+    border-color 160ms ease,
+    background 160ms ease;
+  will-change: transform;
+}
+.swipe-chat-row.is-dragging .conversation-card {
+  transition: none;
+}
+.conversation-swipe-actions {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 210px;
+  display: grid;
+  grid-template-columns: repeat(3, 70px);
+}
+.conversation-swipe-actions button {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 0;
+  color: #f5fbff;
+  font-size: 8px;
+  font-weight: 720;
+}
+.conversation-swipe-actions button svg {
+  width: 19px;
+  height: 19px;
+}
+.conversation-swipe-actions .mute {
+  background: linear-gradient(145deg, #c57a08, #e79612);
+}
+.conversation-swipe-actions .delete {
+  background: linear-gradient(145deg, #d72a48, #ef3e5c);
+}
+.conversation-swipe-actions .archive {
+  background: linear-gradient(145deg, #526274, #6d7d8d);
+}
+.conversation-muted-icon {
+  width: 13px;
+  height: 13px;
+  color: #93a6b7;
+}
+.archived-chats-toggle {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding: 0 11px;
+  border: 1px solid rgba(89, 190, 249, 0.12);
+  border-radius: 12px;
+  color: var(--ft-text-secondary);
+  background: rgba(5, 18, 32, 0.58);
+  text-align: left;
+  font-size: 11px;
+  font-weight: 720;
+}
+.archived-chats-toggle > svg:first-child {
+  width: 17px;
+  color: var(--ft-cyan);
+}
+.archived-chats-toggle > svg:last-child {
+  width: 15px;
+  color: var(--ft-text-muted);
+}
+.archived-chats-toggle b {
+  min-width: 22px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #07111d;
+  background: var(--ft-cyan);
+  text-align: center;
+  font-size: 9px;
+}
+.archived-chats-toggle.active > svg:last-child {
+  transform: rotate(180deg);
+}
 .conversation-list::-webkit-scrollbar,
 .message-scroll-container::-webkit-scrollbar,
 .chat-profile-panel::-webkit-scrollbar,
@@ -15845,6 +15943,11 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   .mobile-messenger .conversation-search input,
   .mobile-messenger .conversation-card {
     min-height: 48px;
+  }
+
+  .mobile-messenger .swipe-chat-row {
+    flex: 0 0 auto;
+    touch-action: pan-y;
   }
 
   .mobile-messenger .new-chat-button {
