@@ -97,6 +97,7 @@ interface EnterRoomOptions {
   displayName?: string;
   guest?: boolean;
   resume?: boolean;
+  resumeRecreateAttempted?: boolean;
 }
 
 function processingSettings(settings: LocalSettings) {
@@ -253,6 +254,10 @@ export function App() {
   );
   const joinedRoom = useRef(false);
   const browserResumeAttempted = useRef(false);
+  const browserResume = useRef<
+    | { roomId: string; chatId?: string; recreateAttempted: boolean }
+    | undefined
+  >(undefined);
   const conversationPeerJoined = useRef(false);
   const awaitingRejoin = useRef(false);
   const joinTimer = useRef<number | undefined>(undefined);
@@ -456,6 +461,7 @@ export function App() {
 
   const leaveCall = useCallback(() => {
     if (callExitTimer.current) return;
+    browserResume.current = undefined;
     clearBrowserActiveCall();
     setCallExiting(true);
     callExitTimer.current = window.setTimeout(cleanup, 220);
@@ -641,7 +647,26 @@ export function App() {
           return;
         }
         setJoining(false);
+        const interruptedResume = browserResume.current;
+        if (
+          message.fatal &&
+          message.code === 'ROOM_NOT_FOUND' &&
+          interruptedResume &&
+          !interruptedResume.recreateAttempted
+        ) {
+          browserResume.current = { ...interruptedResume, recreateAttempted: true };
+          cleanup();
+          setNotice('Восстанавливаем комнату…');
+          void enterRoomRef.current(true, {
+            room: interruptedResume.roomId,
+            chatId: interruptedResume.chatId,
+            resume: true,
+            resumeRecreateAttempted: true,
+          });
+          return;
+        }
         if (message.fatal) {
+          browserResume.current = undefined;
           clearBrowserActiveCall();
           cleanup();
         }
@@ -680,6 +705,7 @@ export function App() {
             savedAt: Date.now(),
           });
         }
+        browserResume.current = undefined;
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
         );
@@ -922,6 +948,7 @@ export function App() {
       }
       if (message.type === 'room-closed' || message.type === 'participant-disconnected') {
         setError(message.reason);
+        browserResume.current = undefined;
         clearBrowserActiveCall();
         cleanup();
       }
@@ -930,6 +957,13 @@ export function App() {
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
+    if (options.resume && options.room) {
+      browserResume.current = {
+        roomId: options.room,
+        chatId: options.chatId,
+        recreateAttempted: Boolean(options.resumeRecreateAttempted),
+      };
+    }
     conversationPeerJoined.current = false;
     pendingChatRing.current = create && Boolean(options.chatId);
     callChatRef.current = options.chatId;
@@ -1073,14 +1107,20 @@ export function App() {
       }
       joinTimer.current = window.setTimeout(() => {
         if (joinedRoom.current) return;
-        if (options.resume) clearBrowserActiveCall();
+        if (options.resume) {
+          browserResume.current = undefined;
+          clearBrowserActiveCall();
+        }
         cleanup();
         setError('Сервер голосовых комнат недоступен. Проверьте интернет или адрес сигналинга.');
       }, 20_000);
     } catch (caught) {
       setJoining(false);
       setError(caught instanceof Error ? caught.message : 'Не удалось войти в комнату');
-      if (options.resume) clearBrowserActiveCall();
+      if (options.resume) {
+        browserResume.current = undefined;
+        clearBrowserActiveCall();
+      }
       cleanup();
     }
   };
@@ -1397,6 +1437,7 @@ export function App() {
   };
 
   const logoutAccount = async () => {
+    browserResume.current = undefined;
     clearBrowserActiveCall();
     cleanup();
     callChatRef.current = undefined;
@@ -1461,6 +1502,7 @@ export function App() {
       setIncomingCall(undefined);
       if (action === 'accept') {
         if (roomId) {
+          browserResume.current = undefined;
           clearBrowserActiveCall();
           cleanup();
         }
@@ -1738,6 +1780,7 @@ export function App() {
             clearChatImageCache(accountUser.id),
             clearAccountMediaCache(accountUser.id),
           ]);
+        browserResume.current = undefined;
         clearBrowserActiveCall();
         setActiveAccountMediaScope(undefined);
         cleanup();
