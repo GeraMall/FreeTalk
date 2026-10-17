@@ -935,6 +935,7 @@ describe('Resizable chat list', () => {
       fireEvent(row, event);
     };
 
+    expect(row.classList.contains('actions-visible')).toBe(false);
     pointer('pointerdown', 260, 100);
     pointer('pointermove', 100, 104);
     pointer('pointerup', 100, 104);

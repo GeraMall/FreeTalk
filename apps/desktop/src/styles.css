@@ -11458,12 +11458,16 @@ html.notification-overlay-document #root {
 .swipe-chat-row {
   position: relative;
   min-width: 0;
+  margin-bottom: 5px;
   overflow: hidden;
   border-radius: 13px;
+  background: #030a15;
+  isolation: isolate;
 }
 .swipe-chat-row .conversation-card {
   position: relative;
   z-index: 2;
+  margin-bottom: 0;
   background: #030a15;
   transition:
     transform 240ms cubic-bezier(0.22, 0.78, 0.24, 1),
@@ -11483,6 +11487,24 @@ html.notification-overlay-document #root {
   width: 210px;
   display: grid;
   grid-template-columns: repeat(3, 70px);
+  overflow: hidden;
+  border-radius: 0 12px 12px 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(18px);
+  transition:
+    opacity 120ms ease,
+    transform 240ms cubic-bezier(0.22, 0.78, 0.24, 1),
+    visibility 0s linear 240ms;
+}
+.swipe-chat-row.actions-visible .conversation-swipe-actions,
+.swipe-chat-row.is-dragging .conversation-swipe-actions {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+  transition-delay: 0s;
 }
 .conversation-swipe-actions button {
   min-width: 0;
