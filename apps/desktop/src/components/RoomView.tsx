@@ -626,6 +626,17 @@ export function RoomView({
                 {participants.length} из {ROOM_MAX_PARTICIPANTS}
               </p>
             </div>
+            {openSlots > 0 && (!conversation || (!conversationHidden && !callFullscreen)) && (
+              <button
+                className="mobile-participants-invite"
+                aria-label="Добавить друзей в звонок"
+                title="Добавить друзей"
+                onClick={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
+              >
+                <UserPlus aria-hidden="true" />
+                <span>Добавить</span>
+              </button>
+            )}
           </div>
 
           {screenPresenter ? (
