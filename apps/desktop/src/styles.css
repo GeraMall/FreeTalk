@@ -19025,6 +19025,230 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   background: #07111e;
 }
 
+/* Phone call controls use a deliberate two-row tray instead of shrinking the
+   desktop islands into a single crowded strip. */
+.dock-mobile-label {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    touch-action: manipulation;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .room-shell-embedded .room-main,
+  .room-main {
+    padding-bottom: calc(156px + env(safe-area-inset-bottom));
+  }
+
+  .voice-dock,
+  .room-shell-embedded .voice-dock,
+  .room-account-shell.screen-focus-active .room-shell-embedded .voice-dock,
+  .room-account-shell.account-shell-with-chat-sidebar:not(.screen-focus-active)
+    .room-shell-embedded
+    .voice-dock,
+  .room-account-shell.account-shell-with-chat-sidebar
+    .room-shell.conversation-call-compact:not(.call-fullscreen)
+    .voice-dock {
+    position: fixed;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+    display: grid;
+    width: auto;
+    max-width: none;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) 64px;
+    gap: 7px;
+    padding: 7px;
+    transform: none;
+    border: 1px solid rgba(89, 190, 249, 0.22);
+    border-radius: 20px;
+    background: rgba(3, 10, 21, 0.96);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  .voice-dock .dock-island,
+  .conversation-call-compact:not(.call-fullscreen) .dock-island {
+    display: flex;
+    min-width: 0;
+    min-height: 54px;
+    padding: 3px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+
+  .voice-dock .dock-primary-actions {
+    grid-column: 1;
+    grid-row: 1;
+    gap: 4px;
+  }
+
+  .voice-dock .dock-primary-actions .dock-split-control {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .voice-dock .dock-split-control .dock-control,
+  .conversation-call-compact:not(.call-fullscreen) .dock-split-control .dock-control {
+    width: auto;
+    min-width: 0;
+    min-height: 48px;
+    flex: 1 1 auto;
+    gap: 5px;
+    padding: 0 5px;
+    flex-direction: column;
+    border-radius: 11px 4px 4px 11px;
+  }
+
+  .voice-dock .dock-device-arrow {
+    width: 30px;
+    min-width: 30px;
+    min-height: 48px;
+  }
+
+  .voice-dock .dock-secondary-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 3px;
+    width: 100%;
+  }
+
+  .conversation-call-compact:not(.call-fullscreen) .dock-device-arrow,
+  .conversation-call-compact:not(.call-fullscreen) .dock-recording-control,
+  .conversation-call-compact:not(.call-fullscreen) .room-chat-control,
+  .conversation-call-compact:not(.call-fullscreen)
+    .dock-secondary-actions
+    > .dock-control:not(.screen-control) {
+    display: flex;
+  }
+
+  .conversation-call-compact:not(.call-fullscreen) .reaction-control {
+    display: block;
+  }
+
+  .voice-dock .dock-secondary-actions .dock-control,
+  .conversation-call-compact:not(.call-fullscreen) .dock-secondary-actions .screen-control {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    gap: 3px;
+    padding: 2px;
+    flex-direction: column;
+    border-radius: 11px;
+    box-shadow: none;
+  }
+
+  .voice-dock .dock-icon,
+  .voice-dock .dock-control-secondary .dock-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .voice-dock .dock-icon svg,
+  .voice-dock .dock-control-secondary .dock-icon svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .voice-dock .dock-mobile-label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    color: #b7c7d6;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .voice-dock .leave-button,
+  .conversation-call-compact:not(.call-fullscreen) .leave-button {
+    width: 64px;
+    min-width: 64px;
+    min-height: 54px;
+    grid-column: 2;
+    grid-row: 1;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 14px;
+    box-shadow: 0 10px 24px rgba(174, 24, 52, 0.28);
+  }
+
+  .voice-dock .leave-button .dock-mobile-label {
+    color: #fff;
+  }
+
+  .voice-dock .reaction-control {
+    min-width: 0;
+  }
+
+  .voice-dock .reaction-menu {
+    position: fixed;
+    right: 12px;
+    bottom: calc(142px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    justify-content: space-between;
+    transform: none;
+  }
+
+  .voice-dock .reaction-menu button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .voice-dock .dock-device-menu {
+    position: fixed;
+    right: 12px;
+    bottom: calc(142px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    max-height: min(52dvh, 420px);
+  }
+
+  .voice-dock .dock-device-menu > button {
+    min-height: 46px;
+  }
+
+  .call-view-controls,
+  .conversation-call-compact:not(.call-fullscreen) .call-view-controls {
+    right: 10px;
+    bottom: calc(150px + env(safe-area-inset-bottom));
+  }
+
+  .call-view-controls button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .presentation-participants-dock-toggle {
+    top: -29px;
+  }
+}
+
+@media (max-width: 360px) {
+  .voice-dock .dock-mobile-label {
+    font-size: 8px;
+  }
+
+  .voice-dock .dock-secondary-actions .dock-control {
+    min-height: 46px;
+  }
+}
+
 .waiting-participant-card {
   isolation: isolate;
   overflow: hidden;

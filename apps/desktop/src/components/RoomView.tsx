@@ -911,6 +911,7 @@ export function RoomView({
               onClick={onMute}
             >
               <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
+              <span className="dock-mobile-label">Микрофон</span>
             </button>
             <button
               className="dock-device-arrow"
@@ -950,6 +951,7 @@ export function RoomView({
               <span className="dock-icon">
                 {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
               </span>
+              <span className="dock-mobile-label">Камера</span>
             </button>
             <button
               className="dock-device-arrow"
@@ -991,6 +993,7 @@ export function RoomView({
             <span className="dock-icon">
               {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
             </span>
+            <span className="dock-mobile-label">Экран</span>
           </button>
           {(conversationType === 'direct' || self?.isOwner) && (
             <button
@@ -1015,6 +1018,7 @@ export function RoomView({
               <span className="dock-icon">
                 {recordingState.phase === 'recording' ? <Square /> : <CircleDot />}
               </span>
+              <span className="dock-mobile-label">Запись</span>
             </button>
           )}
           <div className="reaction-control">
@@ -1028,6 +1032,7 @@ export function RoomView({
               <span className="dock-icon">
                 <SmilePlus />
               </span>
+              <span className="dock-mobile-label">Реакции</span>
             </button>
             {reactionMenuOpen && (
               <div className="reaction-menu" role="menu" aria-label="Реакции">
@@ -1069,6 +1074,7 @@ export function RoomView({
                   </b>
                 )}
               </span>
+              <span className="dock-mobile-label">Чат</span>
             </button>
           )}
           <button
@@ -1080,6 +1086,7 @@ export function RoomView({
             <span className="dock-icon">
               <MoreHorizontal />
             </span>
+            <span className="dock-mobile-label">Ещё</span>
           </button>
         </div>
         <button
@@ -1089,6 +1096,7 @@ export function RoomView({
           onClick={onLeave}
         >
           <LogOut size={18} />
+          <span className="dock-mobile-label">Выйти</span>
         </button>
       </footer>
       {cameraPreviewOpen && (

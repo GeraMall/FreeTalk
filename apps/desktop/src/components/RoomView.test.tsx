@@ -619,6 +619,24 @@ describe('RoomView media layouts', () => {
     expect(handlers.onLeave).toHaveBeenCalledOnce();
   });
 
+  it('provides concise phone labels for every visible call action', () => {
+    const { container } = render(view());
+    const labels = Array.from(container.querySelectorAll('.dock-mobile-label')).map((label) =>
+      label.textContent?.trim(),
+    );
+
+    expect(labels).toEqual([
+      'Микрофон',
+      'Камера',
+      'Экран',
+      'Запись',
+      'Реакции',
+      'Чат',
+      'Ещё',
+      'Выйти',
+    ]);
+  });
+
   it('opens the ephemeral room chat and sends a message', () => {
     const onRoomChatSend = vi.fn(() => true);
     const { container, getByRole, getByLabelText, queryByLabelText } = render(
