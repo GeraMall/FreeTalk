@@ -1,4 +1,5 @@
 import { DoorOpen, History, MessageCircle, Users } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import type { AccountPage } from './AccountSidebar';
 
 const ITEMS = [
@@ -15,7 +16,7 @@ export function MobileNavigation({
   activePage: AccountPage;
   onNavigate(page: AccountPage): void;
 }) {
-  return (
+  const navigation = (
     <nav className="mobile-bottom-navigation" aria-label="Основная навигация">
       {ITEMS.map(({ page, label, icon: Icon }) => (
         <button
@@ -31,4 +32,9 @@ export function MobileNavigation({
       ))}
     </nav>
   );
+
+  // WebKit can retain Safari's toolbar-reduced containing block after the site
+  // is launched from the iOS home screen. Portaling the fixed navigation out of
+  // the application grid makes its bottom edge relative to the real window.
+  return createPortal(navigation, document.body);
 }
