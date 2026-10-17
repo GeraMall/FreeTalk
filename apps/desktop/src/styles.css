@@ -11532,6 +11532,90 @@ html.notification-overlay-document #root {
 .conversation-swipe-actions .archive {
   background: linear-gradient(145deg, #526274, #6d7d8d);
 }
+.mobile-chat-delete-backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px 14px calc(14px + env(safe-area-inset-bottom));
+  background: rgba(0, 4, 10, 0.72);
+  backdrop-filter: blur(8px);
+  animation: mobile-delete-backdrop-in 160ms ease-out;
+}
+.mobile-chat-delete-sheet {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 10px;
+  animation: mobile-delete-sheet-in 260ms cubic-bezier(0.22, 0.78, 0.24, 1);
+}
+.mobile-chat-delete-sheet > section,
+.mobile-chat-delete-sheet > .cancel {
+  overflow: hidden;
+  border: 1px solid rgba(126, 177, 214, 0.16);
+  border-radius: 22px;
+  background: rgba(12, 21, 33, 0.97);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.4);
+}
+.mobile-chat-delete-sheet header {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  text-align: center;
+}
+.mobile-chat-delete-sheet header .chat-avatar {
+  width: 60px;
+  height: 60px;
+}
+.mobile-chat-delete-sheet header p {
+  margin: 0;
+  color: var(--ft-text-muted);
+  font-size: 15px;
+  line-height: 1.4;
+}
+.mobile-chat-delete-sheet header strong {
+  color: var(--ft-text);
+}
+.mobile-chat-delete-sheet section > small {
+  display: block;
+  padding: 0 18px 12px;
+  color: #ff718a;
+  text-align: center;
+}
+.mobile-chat-delete-sheet button {
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-radius: 0;
+  font-size: 17px;
+  font-weight: 680;
+}
+.mobile-chat-delete-sheet section > button {
+  border-top: 1px solid rgba(126, 177, 214, 0.12);
+  background: transparent;
+}
+.mobile-chat-delete-sheet button.danger {
+  color: #ff5673;
+}
+.mobile-chat-delete-sheet button.primary,
+.mobile-chat-delete-sheet button.cancel {
+  color: #55b9ff;
+}
+.mobile-chat-delete-sheet > .cancel {
+  background: rgba(12, 21, 33, 0.98);
+}
+.mobile-chat-delete-sheet button:disabled {
+  opacity: 0.55;
+}
+@keyframes mobile-delete-backdrop-in {
+  from { opacity: 0; }
+}
+@keyframes mobile-delete-sheet-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .conversation-muted-icon {
   width: 13px;
   height: 13px;

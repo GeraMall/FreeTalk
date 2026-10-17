@@ -282,7 +282,7 @@ interface ChatsPageProps {
   onStartCall(): Promise<void>;
   onCreateInvite(): Promise<void>;
   onUpdateRetention(retentionHours: 24 | 168 | 720 | null): Promise<void>;
-  onClearHistory(): Promise<void>;
+  onClearHistory(chatId?: string): Promise<void>;
   onBlockUser?(userId: string): Promise<void>;
   onDeleteDirectChat?(): Promise<void>;
   onDeleteChat?(chatId: string): Promise<void>;
@@ -371,6 +371,9 @@ export function ChatsPage({
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [groupProfileTarget, setGroupProfileTarget] = useState<ChatMember>();
   const [showArchived, setShowArchived] = useState(false);
+  const [deleteSheetChat, setDeleteSheetChat] = useState<ChatItem>();
+  const [deleteSheetBusy, setDeleteSheetBusy] = useState<'delete' | 'block' | 'clear'>();
+  const [deleteSheetError, setDeleteSheetError] = useState('');
   const [archivedChatIds, setArchivedChatIds] = useState(() => storedChatIds(userId, 'archived'));
   const [mutedChatIds, setMutedChatIds] = useState(() => storedChatIds(userId, 'muted'));
   const [slowModeClock, setSlowModeClock] = useState(() => Date.now());
@@ -738,7 +741,10 @@ export function ChatsPage({
                   onMute={() =>
                     setMutedChatIds((current) => updateStoredChatIds('muted', current, chat.id))
                   }
-                  onDelete={() => void onDeleteChat(chat.id)}
+                  onDelete={() => {
+                    setDeleteSheetError('');
+                    setDeleteSheetChat(chat);
+                  }}
                 />
               ))
             ) : chats.length > 0 ? (
@@ -1018,6 +1024,49 @@ export function ChatsPage({
           onClose={() => setDismissedSlowModeUntil(slowModeUntil)}
         />
       ) : null}
+      {mobile && deleteSheetChat ? (
+        <MobileChatDeleteSheet
+          chat={deleteSheetChat}
+          userId={userId}
+          busy={deleteSheetBusy}
+          error={deleteSheetError}
+          onCancel={() => {
+            if (deleteSheetBusy) return;
+            setDeleteSheetChat(undefined);
+            setDeleteSheetError('');
+          }}
+          onDelete={(block) => {
+            if (deleteSheetBusy) return;
+            const chat = deleteSheetChat;
+            const other = chat.members.find((member) => member.id !== userId);
+            setDeleteSheetBusy(block ? 'block' : 'delete');
+            setDeleteSheetError('');
+            void onDeleteChat(chat.id)
+              .then(() => (block && other ? onBlockUser(other.id) : undefined))
+              .then(() => setDeleteSheetChat(undefined))
+              .catch((caught) =>
+                setDeleteSheetError(
+                  caught instanceof Error ? caught.message : 'Не удалось удалить чат',
+                ),
+              )
+              .finally(() => setDeleteSheetBusy(undefined));
+          }}
+          onClear={() => {
+            if (deleteSheetBusy) return;
+            const chat = deleteSheetChat;
+            setDeleteSheetBusy('clear');
+            setDeleteSheetError('');
+            void onClearHistory(chat.id)
+              .then(() => setDeleteSheetChat(undefined))
+              .catch((caught) =>
+                setDeleteSheetError(
+                  caught instanceof Error ? caught.message : 'Не удалось очистить историю',
+                ),
+              )
+              .finally(() => setDeleteSheetBusy(undefined));
+          }}
+        />
+      ) : null}
       <CreateGroupDialog
         open={showGroup}
         friends={friends}
@@ -1105,6 +1154,89 @@ function ChatSlowModeDialog({
           <span>{remainingSeconds} с</span>
         </button>
       </section>
+    </div>,
+    document.body,
+  );
+}
+
+function MobileChatDeleteSheet({
+  chat,
+  userId,
+  busy,
+  error,
+  onCancel,
+  onDelete,
+  onClear,
+}: {
+  chat: ChatItem;
+  userId: string;
+  busy?: 'delete' | 'block' | 'clear';
+  error: string;
+  onCancel(): void;
+  onDelete(block: boolean): void;
+  onClear(): void;
+}) {
+  const name = chatName(chat, userId);
+  const other = chat.members.find((member) => member.id !== userId);
+  const canClear = chat.type === 'group' && chat.currentUserRole === 'owner';
+
+  useEffect(() => {
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onCancel();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [busy, onCancel]);
+
+  return createPortal(
+    <div
+      className="mobile-chat-delete-backdrop"
+      onPointerDown={(event) => event.target === event.currentTarget && !busy && onCancel()}
+    >
+      <div className="mobile-chat-delete-sheet" role="alertdialog" aria-modal="true">
+        <section>
+          <header>
+            <ChatAvatar
+              name={name}
+              group={chat.type === 'group'}
+              avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+              positionX={chat.avatarPositionX}
+              positionY={chat.avatarPositionY}
+              scale={chat.avatarScale}
+            />
+            <p>
+              {chat.type === 'direct'
+                ? <>Удалить чат с <strong>{name}</strong>?</>
+                : <>Удалить «<strong>{name}</strong>»?</>}
+            </p>
+          </header>
+          {error ? <small>{error}</small> : null}
+          {chat.type === 'direct' ? (
+            <button className="danger" disabled={Boolean(busy)} onClick={() => onDelete(true)}>
+              {busy === 'block' ? 'Удаляем…' : 'Удалить и заблокировать'}
+            </button>
+          ) : null}
+          <button
+            className={chat.type === 'direct' ? 'primary' : 'danger'}
+            disabled={Boolean(busy)}
+            onClick={() => onDelete(false)}
+          >
+            {busy === 'delete'
+              ? 'Удаляем…'
+              : chat.type === 'group'
+                ? 'Покинуть и удалить чат'
+                : 'Удалить чат'}
+          </button>
+          {canClear ? (
+            <button className="primary" disabled={Boolean(busy)} onClick={onClear}>
+              {busy === 'clear' ? 'Очищаем…' : 'Очистить историю'}
+            </button>
+          ) : null}
+        </section>
+        <button className="cancel" disabled={Boolean(busy)} onClick={onCancel}>
+          Отмена
+        </button>
+      </div>
     </div>,
     document.body,
   );

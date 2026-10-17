@@ -900,7 +900,8 @@ describe('Resizable chat list', () => {
     expect(panel.querySelector('.chat-profile-identity .chat-presence')).toBeNull();
   });
 
-  it('reveals chat actions with a horizontal mobile swipe and persists mute', () => {
+  it('reveals chat actions with a horizontal mobile swipe and confirms deletion', async () => {
+    const onDeleteChat = vi.fn(async () => undefined);
     const view = render(
       <ChatsPage
         mobile
@@ -921,6 +922,7 @@ describe('Resizable chat list', () => {
         onCreateInvite={vi.fn(async () => undefined)}
         onUpdateRetention={vi.fn(async () => undefined)}
         onClearHistory={vi.fn(async () => undefined)}
+        onDeleteChat={onDeleteChat}
         onAddMember={vi.fn(async () => true)}
         onJoinCall={vi.fn()}
       />,
@@ -959,6 +961,14 @@ describe('Resizable chat list', () => {
 
     fireEvent.click(view.getByRole('button', { name: 'Без звука' }));
     expect(localStorage.getItem('trlka:muted-chats:self')).toContain(chat.id);
+
+    pointer('pointerdown', 260, 100);
+    pointer('pointermove', 100, 104);
+    pointer('pointerup', 100, 104);
+    fireEvent.click(view.getByRole('button', { name: 'Удалить' }));
+    expect(view.getByRole('alertdialog')).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Удалить чат' }));
+    await waitFor(() => expect(onDeleteChat).toHaveBeenCalledWith(chat.id));
   });
 
   it('replaces the native composer menu with Trlka controls', () => {

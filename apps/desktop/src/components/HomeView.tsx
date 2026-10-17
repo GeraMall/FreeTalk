@@ -1083,18 +1083,20 @@ export function HomeView({
     }
   };
 
-  const clearChatHistory = async () => {
-    if (!activeChat) return;
+  const clearChatHistory = async (chatId = activeChat) => {
+    if (!chatId) return;
     try {
-      await accountClient.request(`/v1/chats/${activeChat}/messages`, { method: 'DELETE' });
+      await accountClient.request(`/v1/chats/${chatId}/messages`, { method: 'DELETE' });
       await clearChatImageCache(user.id);
-      messagesPageStartRef.current = { chatId: activeChat };
-      setMessages([]);
-      setPinnedMessage(undefined);
-      setHasMoreMessages(false);
+      if (activeChatRef.current === chatId) {
+        messagesPageStartRef.current = { chatId };
+        setMessages([]);
+        setPinnedMessage(undefined);
+        setHasMoreMessages(false);
+      }
       setChats((current) =>
         current.map((chat) =>
-          chat.id === activeChat
+          chat.id === chatId
             ? { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null }
             : chat,
         ),
