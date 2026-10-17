@@ -615,28 +615,32 @@ export function ChatsPage({
             </button>
           </header>
 
-          <label className="conversation-search">
-            <Search aria-hidden="true" />
-            <span className="sr-only">Поиск по чатам</span>
-            <input
-              value={search}
-              placeholder="Поиск по чатам"
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {search && (
-              <button aria-label="Очистить поиск" onClick={() => setSearch('')}>
-                <X />
-              </button>
-            )}
-          </label>
+          <div className="conversation-top-actions">
+            <label className="conversation-search">
+              <Search aria-hidden="true" />
+              <span className="sr-only">Поиск по чатам</span>
+              <input
+                value={search}
+                placeholder="Поиск по чатам"
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              {search && (
+                <button aria-label="Очистить поиск" onClick={() => setSearch('')}>
+                  <X />
+                </button>
+              )}
+            </label>
 
-          <button
-            className="join-chat-button"
-            aria-expanded={showInvite}
-            onClick={() => setShowInvite((visible) => !visible)}
-          >
-            <Link2 /> Войти по приглашению
-          </button>
+            <button
+              className="join-chat-button"
+              title="Войти по приглашению"
+              aria-label="Войти по приглашению"
+              aria-expanded={showInvite}
+              onClick={() => setShowInvite((visible) => !visible)}
+            >
+              <Link2 /> <span>Войти по приглашению</span>
+            </button>
+          </div>
 
           {showInvite && (
             <div className="compact-chat-form chat-popover-card">
