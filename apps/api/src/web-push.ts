@@ -6,7 +6,10 @@ import type { AuthenticatedUser } from './auth-service.js';
 import { db, transaction } from './db.js';
 import { env } from './env.js';
 
-const webPush = createRequire(import.meta.url)('../vendor/web-push.cjs') as typeof webPushType;
+const bundledWebPush = createRequire(import.meta.url)('../vendor/web-push.cjs') as
+  | typeof webPushType
+  | { default: typeof webPushType };
+const webPush = 'default' in bundledWebPush ? bundledWebPush.default : bundledWebPush;
 
 type RequireUser = (
   request: FastifyRequest,
