@@ -721,7 +721,7 @@ function ProfileTab({
     void accountClient
       .request<{ sessions: AccountSession[] }>('/v1/me/sessions')
       .then((result) => {
-        if (active) setSessions(result.sessions);
+        if (active) setSessions(Array.isArray(result.sessions) ? result.sessions : []);
       })
       .catch(() => {
         if (active) setSessionsError(true);

@@ -25,39 +25,39 @@ const user: AccountUser = {
   registeredAt: '2026-08-26T00:00:00.000Z',
 };
 
-function renderProfile() {
+function renderProfile(sessionsResponse: unknown = {
+  sessions: [
+    {
+      id: 'session-current',
+      current: true,
+      userAgent: 'FreeTalk/0.4 Windows NT 10.0',
+      createdAt: '2026-08-26T00:00:00.000Z',
+      lastActiveAt: '2026-09-03T10:00:00.000Z',
+      expiresAt: '2026-10-03T10:00:00.000Z',
+    },
+    {
+      id: 'session-mac',
+      current: false,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)',
+      createdAt: '2026-08-30T00:00:00.000Z',
+      lastActiveAt: '2026-09-02T10:00:00.000Z',
+      expiresAt: '2026-10-02T10:00:00.000Z',
+    },
+    {
+      id: 'session-windows-old',
+      current: false,
+      userAgent: 'FreeTalk/0.3 Windows NT 10.0',
+      createdAt: '2026-08-20T00:00:00.000Z',
+      lastActiveAt: '2026-08-29T10:00:00.000Z',
+      expiresAt: '2026-09-29T10:00:00.000Z',
+    },
+  ],
+}) {
   const onClose = vi.fn();
   const onSaveProfile = vi.fn().mockResolvedValue(undefined);
   const onSetting = vi.fn();
   const onVideoSetting = vi.fn();
-  vi.spyOn(accountClient, 'request').mockResolvedValue({
-    sessions: [
-      {
-        id: 'session-current',
-        current: true,
-        userAgent: 'FreeTalk/0.4 Windows NT 10.0',
-        createdAt: '2026-08-26T00:00:00.000Z',
-        lastActiveAt: '2026-09-03T10:00:00.000Z',
-        expiresAt: '2026-10-03T10:00:00.000Z',
-      },
-      {
-        id: 'session-mac',
-        current: false,
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)',
-        createdAt: '2026-08-30T00:00:00.000Z',
-        lastActiveAt: '2026-09-02T10:00:00.000Z',
-        expiresAt: '2026-10-02T10:00:00.000Z',
-      },
-      {
-        id: 'session-windows-old',
-        current: false,
-        userAgent: 'FreeTalk/0.3 Windows NT 10.0',
-        createdAt: '2026-08-20T00:00:00.000Z',
-        lastActiveAt: '2026-08-29T10:00:00.000Z',
-        expiresAt: '2026-09-29T10:00:00.000Z',
-      },
-    ],
-  });
+  vi.spyOn(accountClient, 'request').mockResolvedValue(sessionsResponse);
   const view = render(
     <SettingsPanel
       initialTab="profile"
@@ -280,6 +280,15 @@ describe('SettingsPanel profile actions', () => {
     expect(getByText('Trlka · Windows')).toBeTruthy();
     expect(getByText('Это устройство')).toBeTruthy();
     expect(getByText('Trlka Web · macOS')).toBeTruthy();
+  });
+
+  it('keeps the profile available when the sessions response is malformed', async () => {
+    const { findByText, getByRole, getByText } = renderProfile({ sessions: null });
+
+    expect(await findByText('0 устройств')).toBeTruthy();
+    fireEvent.click(getByText('Подключённые устройства'));
+    expect(getByText('Активных устройств нет.')).toBeTruthy();
+    expect(getByRole('button', { name: 'Готово' })).toBeTruthy();
   });
 
   it('combines video, backgrounds and independently controlled event sounds', () => {
