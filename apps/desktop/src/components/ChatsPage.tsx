@@ -1135,7 +1135,6 @@ function ChatListItem({
 }) {
   const actionsWidth = 210;
   const revealThreshold = actionsWidth * 0.7;
-  const closeThreshold = actionsWidth * 0.3;
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const offsetRef = useRef(0);
@@ -1168,14 +1167,15 @@ function ChatListItem({
     if (!drag?.horizontal) return;
     suppressClickRef.current = true;
     if (drag.startOffset < 0) {
-      moveTo(offsetRef.current >= -(actionsWidth - closeThreshold) ? 0 : -actionsWidth);
+      moveTo(offsetRef.current > drag.startOffset ? 0 : -actionsWidth);
       return;
     }
     moveTo(offsetRef.current <= -revealThreshold ? -actionsWidth : 0);
   };
   const startedOpen = dragging && (dragRef.current?.startOffset ?? 0) < 0;
-  const actionsRevealed =
-    offset <= -revealThreshold || (startedOpen && offset < -closeThreshold);
+  const closingToRight =
+    startedOpen && offset > (dragRef.current?.startOffset ?? 0);
+  const actionsRevealed = offset <= -revealThreshold && !closingToRight;
   return (
     <div
       className={`swipe-chat-row${actionsRevealed ? ' actions-visible' : ''}${dragging ? ' is-dragging' : ''}`}

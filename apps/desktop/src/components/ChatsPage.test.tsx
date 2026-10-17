@@ -948,8 +948,9 @@ describe('Resizable chat list', () => {
     expect(row.classList.contains('actions-visible')).toBe(true);
 
     pointer('pointerdown', 100, 104);
-    pointer('pointermove', 180, 105);
-    pointer('pointerup', 180, 105);
+    pointer('pointermove', 110, 105);
+    expect(row.classList.contains('actions-visible')).toBe(false);
+    pointer('pointerup', 110, 105);
     expect(row.classList.contains('actions-visible')).toBe(false);
 
     pointer('pointerdown', 260, 100);
