@@ -114,6 +114,7 @@
     place-items: center;
   }
 }
+
 @font-face {
   font-family: 'Geist';
   font-style: normal;
@@ -125,6 +126,7 @@
     U+0000-00ff, U+0131, U+0152-0153, U+02bb-02bc, U+02c6, U+02da, U+02dc, U+0304, U+0308, U+0329,
     U+2000-206f, U+20ac, U+2122, U+2191, U+2193, U+2212, U+2215, U+feff, U+fffd;
 }
+
 :root {
   --ft-bg-deep: #01050d;
   --ft-bg: #030a15;
@@ -20112,5 +20114,27 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     border-radius: 14px;
     background: rgba(7, 22, 36, 0.72);
     font-size: 11px;
+  }
+}
+
+/* iOS can keep the former Safari toolbar height as 100dvh after an installed
+   web app starts. In standalone mode, use the large screen viewport as the
+   application canvas and anchor the unchanged navigation to that canvas. */
+@media (max-width: 760px) {
+  .standalone-web-app,
+  .standalone-web-app body,
+  .standalone-web-app #root {
+    height: 100lvh;
+    min-height: 100lvh;
+  }
+
+  .standalone-web-app .mobile-account-shell.account-shell-with-chat-sidebar {
+    height: 100lvh;
+  }
+
+  .standalone-web-app .mobile-bottom-navigation {
+    position: absolute;
+    top: calc(100lvh - 66px - env(safe-area-inset-bottom));
+    bottom: auto;
   }
 }

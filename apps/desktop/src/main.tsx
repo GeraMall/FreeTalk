@@ -12,6 +12,11 @@ import './styles.css';
 
 installInteractionGuards();
 
+const standaloneWebApp =
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true;
+document.documentElement.classList.toggle('standalone-web-app', standaloneWebApp);
+
 const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
 const lowPerformanceDevice =
   window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
