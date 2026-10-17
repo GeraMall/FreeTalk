@@ -1266,7 +1266,7 @@ function ChatListItem({
   onDelete(): void;
 }) {
   const actionsWidth = 210;
-  const revealThreshold = actionsWidth * 0.7;
+  const revealThreshold = actionsWidth * 0.45;
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const offsetRef = useRef(0);

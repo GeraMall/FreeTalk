@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { X } from 'lucide-react';
+import { ChevronLeft, PhoneCall, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import type {
@@ -76,6 +76,7 @@ import {
   readBrowserActiveCall,
   saveBrowserActiveCall,
 } from './lib/active-call-resume';
+import { useMobileLayout } from './lib/mobile-layout';
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://127.0.0.1:8787/ws';
 const inviteBaseUrl = import.meta.env.VITE_INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
 const NO_LOCAL_VIDEO: LocalVideoState = {
@@ -155,6 +156,7 @@ async function warmInitialAccountMedia(user: AccountUser) {
 }
 
 export function App() {
+  const mobileLayout = useMobileLayout();
   const [settings, setSettings] = useState(loadSettings);
   const [accountUser, setAccountUser] = useState<AccountUser>();
   const [accountReady, setAccountReady] = useState(false);
@@ -170,6 +172,7 @@ export function App() {
   const [callTitle, setCallTitle] = useState('Комната Trlka');
   const [deafened, setDeafened] = useState(false);
   const [conversationHidden, setConversationHidden] = useState(false);
+  const [mobileCallMinimized, setMobileCallMinimized] = useState(false);
   const [callExiting, setCallExiting] = useState(false);
   const [dismissedWaitingParticipantIds, setDismissedWaitingParticipantIds] = useState<Set<string>>(
     () => new Set(),
@@ -289,6 +292,10 @@ export function App() {
   }, []);
   settingsRef.current = settings;
   incomingCallRef.current = incomingCall;
+
+  useEffect(() => {
+    if (!roomId || !callChatId) setMobileCallMinimized(false);
+  }, [callChatId, roomId]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1807,6 +1814,20 @@ export function App() {
   ) : null;
 
   const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
+  const mobileDirectCall = mobileLayout && callConversation?.type === 'direct';
+  const mobileCallQuality =
+    signalState === 'offline'
+      ? 'bad'
+      : signalState !== 'connected'
+        ? 'fair'
+        : signalStrength < 35
+          ? 'bad'
+          : signalStrength < 70
+            ? 'fair'
+            : 'good';
+  const conversationWorkspaceActive = Boolean(
+    callChatId && roomDestination === 'chats' && roomActiveChatId === callChatId,
+  );
   const waitingCallParticipants: WaitingCallParticipant[] = callConversation
     ? callConversation.members
         .filter(
@@ -1861,6 +1882,10 @@ export function App() {
     onNoise: () => void changeAudioSettings({ noiseSuppression: !settings.noiseSuppression }, true),
     onLeave: leaveCall,
     onOpen: () => {
+      if (mobileDirectCall) {
+        setMobileCallMinimized(false);
+        return;
+      }
       setRoomDestination(callChatId ? 'chats' : 'room');
       if (callChatId) void roomSidebarState?.openChat(callChatId);
     },
@@ -1951,7 +1976,7 @@ export function App() {
     <RoomView
       conversation={Boolean(callChatId)}
       conversationType={callConversation?.type}
-      conversationHidden={conversationHidden}
+      conversationHidden={conversationHidden || mobileDirectCall}
       onConversationToggle={() => setConversationHidden((value) => !value)}
       cameraPreviewRequest={cameraPreviewRequest}
       embedded={Boolean(accountUser)}
@@ -2060,16 +2085,43 @@ export function App() {
             onKeyDown={resizeRoomSidebarWithKeyboard}
           />
           <section
-            className={`account-room-workspace${callChatId && roomDestination === 'chats' && roomActiveChatId === callChatId ? ` conversation-call-workspace${conversationHidden ? ' conversation-hidden' : ''}` : ''}`}
+            className={`account-room-workspace${conversationWorkspaceActive && !mobileDirectCall ? ` conversation-call-workspace${conversationHidden ? ' conversation-hidden' : ''}` : ''}${mobileDirectCall ? ` mobile-direct-call-workspace ${mobileCallMinimized ? 'call-minimized' : 'call-expanded'}` : ''}`}
           >
+            {mobileDirectCall && mobileCallMinimized ? (
+              <button
+                type="button"
+                className="mobile-call-return-button"
+                data-quality={mobileCallQuality}
+                aria-label={`Перейти к звонку. Качество связи: ${mobileCallQuality === 'good' ? 'хорошее' : mobileCallQuality === 'fair' ? 'среднее' : 'плохое'}`}
+                onClick={() => setMobileCallMinimized(false)}
+              >
+                <PhoneCall />
+                <span>Перейти к звонку</span>
+              </button>
+            ) : null}
             <div
-              className={`room-view-slot ${roomDestination === 'room' || (callChatId && roomDestination === 'chats' && roomActiveChatId === callChatId) ? '' : 'is-hidden'}`}
+              className={`room-view-slot ${mobileDirectCall ? (mobileCallMinimized ? 'is-hidden' : '') : roomDestination === 'room' || conversationWorkspaceActive ? '' : 'is-hidden'}`}
             >
+              {mobileDirectCall && !mobileCallMinimized ? (
+                <button
+                  type="button"
+                  className="mobile-call-minimize-button"
+                  aria-label="Свернуть звонок"
+                  onClick={() => {
+                    setMobileCallMinimized(true);
+                    setRoomDestination('chats');
+                    if (callChatId) void roomSidebarState?.openChat(callChatId);
+                  }}
+                >
+                  <ChevronLeft />
+                </button>
+              ) : null}
               {roomView}
             </div>
             {callChatId &&
               roomDestination === 'chats' &&
               roomActiveChatId === callChatId &&
+              !mobileDirectCall &&
               !conversationHidden && (
                 <div
                   className="conversation-call-resizer"
@@ -2120,7 +2172,9 @@ export function App() {
                   <span />
                 </div>
               )}
-            <div className={`account-page-slot ${roomDestination === 'room' ? 'is-hidden' : ''}`}>
+            <div
+              className={`account-page-slot ${roomDestination === 'room' || (mobileDirectCall && !mobileCallMinimized) ? 'is-hidden' : ''}`}
+            >
               <HomeView
                 initialChatId={callChatId}
                 joinedChatId={callChatId}

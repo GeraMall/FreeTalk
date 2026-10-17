@@ -16238,6 +16238,102 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     grid-column: 1;
   }
 
+  .mobile-direct-call-workspace {
+    display: block;
+  }
+
+  .mobile-direct-call-workspace.call-expanded > .room-view-slot,
+  .mobile-direct-call-workspace.call-expanded .room-shell-embedded {
+    width: 100%;
+    height: 100%;
+  }
+
+  .mobile-direct-call-workspace.call-expanded > .account-page-slot,
+  .mobile-direct-call-workspace > .conversation-call-resizer,
+  .mobile-direct-call-workspace .conversation-chat-hide {
+    display: none;
+  }
+
+  .mobile-direct-call-workspace.call-expanded .room-shell-embedded .room-main {
+    padding-top: calc(64px + env(safe-area-inset-top));
+  }
+
+  .mobile-call-minimize-button {
+    position: absolute;
+    z-index: 160;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 12px;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(126, 177, 214, 0.24);
+    border-radius: 14px;
+    color: #edf8ff;
+    background: rgba(5, 15, 27, 0.82);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-call-minimize-button svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-call-return-button {
+    position: absolute;
+    z-index: 220;
+    top: calc(9px + env(safe-area-inset-top));
+    left: 50%;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    color: #f7fffb;
+    font-size: 13px;
+    font-weight: 760;
+    transform: translateX(-50%);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(14px);
+    animation: mobile-call-indicator-in 220ms cubic-bezier(0.22, 0.78, 0.24, 1);
+  }
+
+  .mobile-call-return-button[data-quality='good'] {
+    background: rgba(14, 151, 91, 0.94);
+    box-shadow: 0 0 0 1px rgba(69, 255, 166, 0.24), 0 10px 26px rgba(0, 0, 0, 0.25);
+  }
+
+  .mobile-call-return-button[data-quality='fair'] {
+    background: rgba(194, 131, 10, 0.96);
+    box-shadow: 0 0 0 1px rgba(255, 213, 74, 0.25), 0 10px 26px rgba(0, 0, 0, 0.25);
+  }
+
+  .mobile-call-return-button[data-quality='bad'] {
+    background: rgba(194, 42, 68, 0.96);
+    box-shadow: 0 0 0 1px rgba(255, 86, 115, 0.28), 0 10px 26px rgba(0, 0, 0, 0.25);
+  }
+
+  .mobile-call-return-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  @keyframes mobile-call-indicator-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -10px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0) scale(1);
+    }
+  }
+
   .room-shell-embedded .room-main {
     padding: calc(12px + env(safe-area-inset-top)) 10px calc(92px + env(safe-area-inset-bottom));
   }
