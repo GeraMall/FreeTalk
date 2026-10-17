@@ -20000,7 +20000,33 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     left: 0;
     grid-row: auto;
     width: 100%;
+    align-items: end;
+    border-top: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  .mobile-bottom-navigation::before {
+    position: absolute;
+    z-index: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: calc(66px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(89, 190, 249, 0.13);
+    content: '';
+    background: rgba(2, 9, 19, 0.96);
     box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(20px);
+  }
+
+  .mobile-bottom-navigation button {
+    position: relative;
+    z-index: 1;
+    align-self: end;
+    pointer-events: auto;
   }
 
   .modal-backdrop:has(.mobile-settings-modal) {
