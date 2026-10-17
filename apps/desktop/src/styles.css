@@ -20138,12 +20138,26 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     bottom: auto;
   }
 
-  .mobile-messenger:not(.has-active-chat),
-  .mobile-messenger:not(.has-active-chat) .conversation-sidebar,
-  .mobile-messenger:not(.has-active-chat) .conversation-list {
+  .mobile-messenger:not(.has-active-chat) {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
     overscroll-behavior-x: none;
     touch-action: pan-y;
+  }
+
+  .mobile-messenger:not(.has-active-chat) .conversation-sidebar {
+    max-width: 100%;
+    min-height: 0;
+  }
+
+  .mobile-messenger:not(.has-active-chat) .conversation-list {
+    max-width: 100%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 }
