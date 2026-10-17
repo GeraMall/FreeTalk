@@ -1460,7 +1460,10 @@ export function App() {
       incomingCallRingtone.current.stop();
       setIncomingCall(undefined);
       if (action === 'accept') {
-        if (roomId) cleanup();
+        if (roomId) {
+          clearBrowserActiveCall();
+          cleanup();
+        }
         await enterRoomRef.current(false, {
           room: result.invitation.roomId,
           chatId: result.invitation.chatId,
@@ -1735,6 +1738,7 @@ export function App() {
             clearChatImageCache(accountUser.id),
             clearAccountMediaCache(accountUser.id),
           ]);
+        clearBrowserActiveCall();
         setActiveAccountMediaScope(undefined);
         cleanup();
         setAccountUser(undefined);
