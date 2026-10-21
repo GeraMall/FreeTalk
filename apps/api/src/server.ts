@@ -802,6 +802,7 @@ async function refreshCallMessage(roomId: string) {
     started_at: Date;
     ended_at: Date | null;
     alone_since: Date | null;
+    established: boolean;
   }>(
     `SELECT session.id,session.started_at,session.ended_at,
        CASE WHEN (
@@ -813,7 +814,11 @@ async function refreshCallMessage(roomId: string) {
            SELECT max(recent.left_at) FROM call_participants recent
            WHERE recent.call_id=session.id
          ),session.started_at)
-       ) ELSE NULL END AS alone_since
+       ) ELSE NULL END AS alone_since,
+       (
+         SELECT count(DISTINCT COALESCE(participant.user_id::text,participant.anonymous_user_id::text))
+         FROM call_participants participant WHERE participant.call_id=session.id
+       )>=2 AS established
      FROM call_sessions session
      WHERE session.room_id=$1 ORDER BY session.started_at DESC LIMIT 1`,
     [roomId],
@@ -844,6 +849,7 @@ async function refreshCallMessage(roomId: string) {
     startedAt: new Date(session.started_at).toISOString(),
     endedAt: session.ended_at ? new Date(session.ended_at).toISOString() : null,
     aloneSince: session.alone_since ? new Date(session.alone_since).toISOString() : null,
+    established: session.established,
     participants: participants.rows.map((participant) => ({
       userId: participant.user_id,
       displayName: participant.display_name,

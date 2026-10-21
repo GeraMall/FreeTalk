@@ -1826,8 +1826,8 @@ export function App() {
   const mobileCallQuality =
     signalState === 'offline'
       ? 'bad'
-      : signalState !== 'connected'
-        ? 'fair'
+      : signalState !== 'connected' || signalStrength <= 0
+        ? 'connecting'
         : signalStrength < 35
           ? 'bad'
           : signalStrength < 70
@@ -2100,7 +2100,11 @@ export function App() {
                 type="button"
                 className="mobile-call-return-button"
                 data-quality={mobileCallQuality}
-                aria-label={`Перейти к звонку. Качество связи: ${mobileCallQuality === 'good' ? 'хорошее' : mobileCallQuality === 'fair' ? 'среднее' : 'плохое'}`}
+                aria-label={
+                  mobileCallQuality === 'connecting'
+                    ? 'Перейти к звонку. Подключение'
+                    : `Перейти к звонку. Качество связи: ${mobileCallQuality === 'good' ? 'хорошее' : mobileCallQuality === 'fair' ? 'среднее' : 'плохое'}`
+                }
                 onClick={() => setMobileCallMinimized(false)}
               >
                 <PhoneCall />

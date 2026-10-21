@@ -82,6 +82,11 @@ async function expireAbandonedConversationCalls(chatId: string) {
            FROM call_participants participant
            WHERE participant.call_id=session.id AND participant.left_at IS NULL
          )<=1
+         AND (
+           SELECT count(DISTINCT COALESCE(participant.user_id::text,participant.anonymous_user_id::text))
+           FROM call_participants participant
+           WHERE participant.call_id=session.id
+         )<=1
        RETURNING session.id,session.room_id,session.ended_at
      ), left_participants AS (
        UPDATE call_participants participant SET left_at=COALESCE(participant.left_at,stale.ended_at)

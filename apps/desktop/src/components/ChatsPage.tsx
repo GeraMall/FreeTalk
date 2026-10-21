@@ -178,6 +178,7 @@ export interface MessageItem {
     startedAt?: string;
     endedAt?: string | null;
     aloneSince?: string | null;
+    established?: boolean;
     participants?: Array<{
       userId?: string | null;
       displayName: string;
@@ -3904,10 +3905,17 @@ function SystemCallMessage({
   const startedAt = message.metadata?.startedAt;
   const endedAt = message.metadata?.endedAt;
   const aloneSince = message.metadata?.aloneSince;
+  const established = message.metadata?.established === true;
   const [now, setNow] = useState(() => Date.now());
   const abandoned =
     !serverEnded &&
-    isAbandonedConversationCall(startedAt, participants.length, now, aloneSince ?? undefined);
+    isAbandonedConversationCall(
+      startedAt,
+      participants.length,
+      now,
+      aloneSince ?? undefined,
+      established,
+    );
   useEffect(() => {
     if (serverEnded || abandoned || !startedAt) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);

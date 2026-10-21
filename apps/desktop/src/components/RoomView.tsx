@@ -2025,7 +2025,12 @@ function ConnectionStatus({
   buffering?: boolean;
 }) {
   void attempt;
-  if (buffering)
+  if (
+    buffering ||
+    state === 'connecting' ||
+    state === 'reconnecting' ||
+    (state === 'connected' && strength <= 0)
+  )
     return (
       <span
         className="connection-pill"

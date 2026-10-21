@@ -31,7 +31,7 @@ describe('conversation call lifecycle', () => {
     expect(isAbandonedConversationCall(startedAt, 2, atTimeout)).toBe(false);
   });
 
-  it('restarts the eight-minute grace period when the other participant leaves', () => {
+  it('keeps an established call joinable after the other participant leaves', () => {
     const startedAt = '2026-09-08T10:00:00.000Z';
     const aloneSince = '2026-09-08T10:20:00.000Z';
     expect(
@@ -43,8 +43,9 @@ describe('conversation call lifecycle', () => {
         1,
         Date.parse(aloneSince) + EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
         aloneSince,
+        true,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('does not extend a timeout when the local clock is behind the start time', () => {

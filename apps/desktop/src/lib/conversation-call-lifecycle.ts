@@ -18,8 +18,9 @@ export function isAbandonedConversationCall(
   participantCount: number,
   now = Date.now(),
   aloneSince?: string,
+  established = false,
 ) {
-  if (!startedAt || participantCount > 1) return false;
+  if (!startedAt || participantCount > 1 || established) return false;
   const abandonmentStartedAt = Date.parse(aloneSince || startedAt);
   return (
     Number.isFinite(abandonmentStartedAt) &&

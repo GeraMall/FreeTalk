@@ -83,6 +83,9 @@ describe('conversation calls', () => {
     expect(query.mock.calls.find(([sql]) => sql.includes('stale_sessions'))?.[0]).toContain(
       'participant.left_at IS NULL',
     );
+    expect(query.mock.calls.find(([sql]) => sql.includes('stale_sessions'))?.[0]).toContain(
+      'WHERE participant.call_id=session.id\n         )<=1',
+    );
   });
   it('returns current participants to chat members after the ringing invitation expires', async () => {
     query.mockImplementation(async (sql: string) => {

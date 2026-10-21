@@ -8,6 +8,7 @@ class FakeSender {
     this.track = track;
   });
   setParameters = vi.fn(async () => undefined);
+  setStreams = vi.fn();
   constructor(public track: MediaStreamTrack | null) {}
   getParameters() {
     return { encodings: [] } as unknown as RTCRtpSendParameters;
@@ -439,6 +440,20 @@ describe('PeerManager video sender lifecycle', () => {
     await manager.setVideoTrack(null, 'screen');
     expect(connection.transceivers[0]!.sender.track).toBeNull();
     expect(connection.transceivers[1]!.sender.track).toBeNull();
+
+    const restartedScreen = track('video', 'screen-restarted');
+    const restartedAudio = track('audio', 'system-audio-restarted');
+    const restartedStream = new FakeStream([
+      restartedScreen,
+      restartedAudio,
+    ]) as unknown as MediaStream;
+    await manager.setVideoTrack(restartedScreen, 'screen', restartedStream);
+
+    expect(connection.transceivers).toHaveLength(2);
+    expect(connection.transceivers[0]!.sender.track).toBe(restartedScreen);
+    expect(connection.transceivers[1]!.sender.track).toBe(restartedAudio);
+    expect(connection.transceivers[0]!.sender.setStreams).toHaveBeenLastCalledWith(restartedStream);
+    expect(connection.transceivers[1]!.sender.setStreams).toHaveBeenLastCalledWith(restartedStream);
   });
 
   it('keeps microphone replacement bound to the voice sender while screen audio is active', async () => {

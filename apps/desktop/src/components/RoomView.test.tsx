@@ -100,6 +100,8 @@ function view(
     waitingParticipants?: WaitingCallParticipant[];
     roomStartedAt?: number;
     mirrorSelfVideo?: boolean;
+    signalingState?: 'connecting' | 'connected' | 'reconnecting' | 'offline';
+    signalStrength?: number;
   } = {},
 ) {
   return (
@@ -134,7 +136,8 @@ function view(
       reactions={[]}
       roomChatMessages={handlers.roomChatMessages ?? []}
       screenFocusMode={handlers.screenFocusMode ?? false}
-      signalingState="connected"
+      signalingState={handlers.signalingState ?? 'connected'}
+      signalStrength={handlers.signalStrength}
       reconnectAttempt={0}
       settings={{
         ...defaultSettings(),
@@ -315,6 +318,18 @@ describe('RoomView media layouts', () => {
     expect(getByRole('button', { name: 'Открыть звонок в отдельном окне' })).not.toBeNull();
     expect(container.querySelector('.connection-pill')?.textContent).toContain('Сигнал отличный');
     expect(container.querySelector('.connection-pill b')).toBeNull();
+  });
+
+  it('shows a neutral connecting state until the first connection-quality sample arrives', () => {
+    const { container } = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        signalingState: 'connected',
+        signalStrength: 0,
+      }),
+    );
+    const status = container.querySelector('.connection-pill');
+    expect(status?.textContent).toContain('Подключение');
+    expect(status?.getAttribute('data-quality')).toBe('connecting');
   });
 
   it('uses compact call actions beside chat and restores standard controls when chat is hidden', () => {

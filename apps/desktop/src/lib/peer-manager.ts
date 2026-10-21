@@ -494,14 +494,19 @@ export class PeerManager {
           const existing = context.videoSenders[source];
           if (existing) {
             await existing.sender.replaceTrack(track);
+            if (track && stream) existing.sender.setStreams?.(stream);
           } else if (track) {
             this.createVideoSender(peerId, context, source, track, stream);
           }
           if (source === 'screen') {
             const audioTrack = stream?.getAudioTracks()[0] ?? null;
             if (context.screenAudioSender) {
+              context.screenAudioSender.transceiver.direction = 'sendonly';
               await context.screenAudioSender.sender.replaceTrack(audioTrack);
-              if (audioTrack) this.configureScreenAudioSender(peerId, context.screenAudioSender);
+              if (audioTrack) {
+                if (stream) context.screenAudioSender.sender.setStreams?.(stream);
+                this.configureScreenAudioSender(peerId, context.screenAudioSender);
+              }
             } else if (audioTrack && stream) {
               this.createScreenAudioSender(peerId, context, audioTrack, stream);
             }
