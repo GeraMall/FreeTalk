@@ -1822,7 +1822,11 @@ export function App() {
   ) : null;
 
   const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
-  const mobileDirectCall = mobileLayout && callConversation?.type === 'direct';
+  // Every account call uses the same focused mobile experience. Previously
+  // this depended on chat metadata and only covered direct calls, which left
+  // group chats and standalone rooms in the desktop split layout on phones.
+  const mobileFocusedCall = mobileLayout && Boolean(roomId) && Boolean(accountUser);
+  const mobileGroupCall = mobileFocusedCall && callConversation?.type !== 'direct';
   const mobileCallQuality =
     signalState === 'offline'
       ? 'bad'
@@ -1890,7 +1894,7 @@ export function App() {
     onNoise: () => void changeAudioSettings({ noiseSuppression: !settings.noiseSuppression }, true),
     onLeave: leaveCall,
     onOpen: () => {
-      if (mobileDirectCall) {
+      if (mobileFocusedCall) {
         setMobileCallMinimized(false);
         return;
       }
@@ -1984,7 +1988,7 @@ export function App() {
     <RoomView
       conversation={Boolean(callChatId)}
       conversationType={callConversation?.type}
-      conversationHidden={conversationHidden || mobileDirectCall}
+      conversationHidden={conversationHidden || mobileFocusedCall}
       onConversationToggle={() => setConversationHidden((value) => !value)}
       cameraPreviewRequest={cameraPreviewRequest}
       embedded={Boolean(accountUser)}
@@ -2093,9 +2097,9 @@ export function App() {
             onKeyDown={resizeRoomSidebarWithKeyboard}
           />
           <section
-            className={`account-room-workspace${conversationWorkspaceActive && !mobileDirectCall ? ` conversation-call-workspace${conversationHidden ? ' conversation-hidden' : ''}` : ''}${mobileDirectCall ? ` mobile-direct-call-workspace ${mobileCallMinimized ? 'call-minimized' : 'call-expanded'}` : ''}`}
+            className={`account-room-workspace${conversationWorkspaceActive && !mobileFocusedCall ? ` conversation-call-workspace${conversationHidden ? ' conversation-hidden' : ''}` : ''}${mobileFocusedCall ? ` mobile-conversation-call-workspace${mobileGroupCall ? ' mobile-group-call-workspace' : ' mobile-direct-call-workspace'} ${mobileCallMinimized ? 'call-minimized' : 'call-expanded'}` : ''}`}
           >
-            {mobileDirectCall && mobileCallMinimized ? (
+            {mobileFocusedCall && mobileCallMinimized ? (
               <button
                 type="button"
                 className="mobile-call-return-button"
@@ -2112,16 +2116,16 @@ export function App() {
               </button>
             ) : null}
             <div
-              className={`room-view-slot ${mobileDirectCall ? (mobileCallMinimized ? 'is-hidden' : '') : roomDestination === 'room' || conversationWorkspaceActive ? '' : 'is-hidden'}`}
+              className={`room-view-slot ${mobileFocusedCall ? (mobileCallMinimized ? 'is-hidden' : '') : roomDestination === 'room' || conversationWorkspaceActive ? '' : 'is-hidden'}`}
             >
-              {mobileDirectCall && !mobileCallMinimized ? (
+              {mobileFocusedCall && !mobileCallMinimized ? (
                 <button
                   type="button"
                   className="mobile-call-minimize-button"
                   aria-label="Свернуть звонок"
                   onClick={() => {
                     setMobileCallMinimized(true);
-                    setRoomDestination('chats');
+                    setRoomDestination(callChatId ? 'chats' : 'home');
                     if (callChatId) void roomSidebarState?.openChat(callChatId);
                   }}
                 >
@@ -2133,7 +2137,7 @@ export function App() {
             {callChatId &&
               roomDestination === 'chats' &&
               roomActiveChatId === callChatId &&
-              !mobileDirectCall &&
+              !mobileFocusedCall &&
               !conversationHidden && (
                 <div
                   className="conversation-call-resizer"
@@ -2185,7 +2189,7 @@ export function App() {
                 </div>
               )}
             <div
-              className={`account-page-slot ${roomDestination === 'room' || (mobileDirectCall && !mobileCallMinimized) ? 'is-hidden' : ''}`}
+              className={`account-page-slot ${roomDestination === 'room' || (mobileFocusedCall && !mobileCallMinimized) ? 'is-hidden' : ''}`}
             >
               <HomeView
                 initialChatId={callChatId}
@@ -2213,7 +2217,7 @@ export function App() {
               />
             </div>
           </section>
-          {mobileDirectCall && mobileCallMinimized ? (
+          {mobileFocusedCall && mobileCallMinimized ? (
             <MobileNavigation
               activePage={roomDestination === 'room' ? 'home' : roomDestination}
               onNavigate={(page) => {

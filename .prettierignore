@@ -5,3 +5,6 @@
 apps/desktop/public/mediapipe/**
 outputs/**
 .playwright-cli/**
+.build-tmp/**
+**/build/**
+pnpm-lock.yaml

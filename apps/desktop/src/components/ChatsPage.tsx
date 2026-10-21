@@ -87,7 +87,9 @@ function storedChatIds(userId: string, kind: 'archived' | 'muted') {
   if (typeof window === 'undefined') return new Set<string>();
   try {
     const value = JSON.parse(window.localStorage.getItem(`trlka:${kind}-chats:${userId}`) ?? '[]');
-    return new Set<string>(Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []);
+    return new Set<string>(
+      Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [],
+    );
   } catch {
     return new Set<string>();
   }
@@ -1206,9 +1208,15 @@ function MobileChatDeleteSheet({
               scale={chat.avatarScale}
             />
             <p>
-              {chat.type === 'direct'
-                ? <>Удалить чат с <strong>{name}</strong>?</>
-                : <>Удалить «<strong>{name}</strong>»?</>}
+              {chat.type === 'direct' ? (
+                <>
+                  Удалить чат с <strong>{name}</strong>?
+                </>
+              ) : (
+                <>
+                  Удалить «<strong>{name}</strong>»?
+                </>
+              )}
             </p>
           </header>
           {error ? <small>{error}</small> : null}
@@ -1271,9 +1279,13 @@ function ChatListItem({
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const offsetRef = useRef(0);
-  const dragRef = useRef<
-    { pointerId: number; startX: number; startY: number; startOffset: number; horizontal: boolean }
-  >(undefined);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    horizontal: boolean;
+  }>(undefined);
   const suppressClickRef = useRef(false);
   const name = chatName(chat, userId);
   const other = chat.members.find((member) => member.id !== userId);
@@ -1306,11 +1318,8 @@ function ChatListItem({
     moveTo(offsetRef.current <= -revealThreshold ? -actionsWidth : 0);
   };
   const startedOpen = dragging && (dragRef.current?.startOffset ?? 0) < 0;
-  const closingToRight =
-    startedOpen && offset > (dragRef.current?.startOffset ?? 0);
-  const swipeProgress = closingToRight
-    ? 0
-    : Math.max(0, Math.min(1, -offset / actionsWidth));
+  const closingToRight = startedOpen && offset > (dragRef.current?.startOffset ?? 0);
+  const swipeProgress = closingToRight ? 0 : Math.max(0, Math.min(1, -offset / actionsWidth));
   const actionsRevealed = offset === -actionsWidth && !closingToRight;
   return (
     <div
@@ -1356,15 +1365,36 @@ function ChatListItem({
             transform: `translate3d(${Math.round((1 - swipeProgress) * 18)}px, 0, 0)`,
           }}
         >
-          <button type="button" className="mute" onClick={() => { onMute(); moveTo(0); }}>
+          <button
+            type="button"
+            className="mute"
+            onClick={() => {
+              onMute();
+              moveTo(0);
+            }}
+          >
             <BellOff />
             <span>{muted ? 'Со звуком' : 'Без звука'}</span>
           </button>
-          <button type="button" className="delete" onClick={() => { moveTo(0); onDelete(); }}>
+          <button
+            type="button"
+            className="delete"
+            onClick={() => {
+              moveTo(0);
+              onDelete();
+            }}
+          >
             <Trash2 />
             <span>Удалить</span>
           </button>
-          <button type="button" className="archive" onClick={() => { moveTo(0); onArchive(); }}>
+          <button
+            type="button"
+            className="archive"
+            onClick={() => {
+              moveTo(0);
+              onArchive();
+            }}
+          >
             {archived ? <ArchiveRestore /> : <Archive />}
             <span>{archived ? 'Вернуть' : 'Архив'}</span>
           </button>
@@ -1387,28 +1417,30 @@ function ChatListItem({
           onClick();
         }}
       >
-      <ChatAvatar
-        name={name}
-        group={chat.type === 'group'}
-        avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
-        presence={chat.type === 'direct' ? other?.presence : undefined}
-        positionX={chat.avatarPositionX}
-        positionY={chat.avatarPositionY}
-        scale={chat.avatarScale}
-      />
-      <span className="conversation-card-copy">
-        <strong>{name}</strong>
-        <small>
-          {chat.type === 'direct' && other
-            ? `${presenceLabel(other.presence)} · ${preview}`
-            : preview}
-        </small>
-      </span>
-      <span className="conversation-meta">
-        {muted && <BellOff className="conversation-muted-icon" aria-label="Уведомления отключены" />}
-        {chat.lastMessageAt && <time>{formatConversationTime(chat.lastMessageAt)}</time>}
-        {Boolean(chat.unreadCount) && !muted && <b>{Math.min(chat.unreadCount ?? 0, 99)}</b>}
-      </span>
+        <ChatAvatar
+          name={name}
+          group={chat.type === 'group'}
+          avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+          presence={chat.type === 'direct' ? other?.presence : undefined}
+          positionX={chat.avatarPositionX}
+          positionY={chat.avatarPositionY}
+          scale={chat.avatarScale}
+        />
+        <span className="conversation-card-copy">
+          <strong>{name}</strong>
+          <small>
+            {chat.type === 'direct' && other
+              ? `${presenceLabel(other.presence)} · ${preview}`
+              : preview}
+          </small>
+        </span>
+        <span className="conversation-meta">
+          {muted && (
+            <BellOff className="conversation-muted-icon" aria-label="Уведомления отключены" />
+          )}
+          {chat.lastMessageAt && <time>{formatConversationTime(chat.lastMessageAt)}</time>}
+          {Boolean(chat.unreadCount) && !muted && <b>{Math.min(chat.unreadCount ?? 0, 99)}</b>}
+        </span>
       </button>
     </div>
   );

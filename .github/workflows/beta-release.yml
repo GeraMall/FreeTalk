@@ -144,7 +144,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "Trlka ${version}: корректное отображение камеры и исправление фона в веб-версии." \
+            --arg notes "Trlka ${version}: стабильные повторные демонстрации экрана, бессрочные активные комнаты и единый адаптивный интерфейс звонков на телефонах." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{

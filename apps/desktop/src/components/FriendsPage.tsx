@@ -172,6 +172,7 @@ export function FriendsPage({
         <FilterButton
           active={filter === 'blocked'}
           label="Заблокированные"
+          compactLabel="Блок"
           count={blocked.length}
           onClick={() => setFilter('blocked')}
         />
@@ -358,11 +359,13 @@ export function FriendsPage({
 function FilterButton({
   active,
   label,
+  compactLabel,
   count,
   onClick,
 }: {
   active: boolean;
   label: string;
+  compactLabel?: string;
   count: number;
   onClick(): void;
 }) {
@@ -373,7 +376,9 @@ function FilterButton({
       className={active ? 'active' : ''}
       onClick={onClick}
     >
-      {label} <span>{count}</span>
+      <span className="friends-filter-label">{label}</span>
+      {compactLabel ? <span className="friends-filter-label-compact">{compactLabel}</span> : null}
+      <span className="friends-filter-count">{count}</span>
     </button>
   );
 }

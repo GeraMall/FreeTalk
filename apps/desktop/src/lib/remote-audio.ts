@@ -1,6 +1,24 @@
 import { monitorRemoteSpeaking } from './audio-manager';
 import { connectionDiagnostics } from './connection-diagnostics';
 
+type AudioSessionNavigator = Navigator & {
+  audioSession?: {
+    type: 'auto' | 'playback' | 'transient' | 'transient-solo' | 'ambient' | 'play-and-record';
+  };
+};
+
+function setConferenceAudioSession(active: boolean) {
+  const audioSession = (navigator as AudioSessionNavigator).audioSession;
+  if (!audioSession) return;
+  try {
+    // Safari controls the physical iPhone route itself, but explicitly marking
+    // the session prevents it from drifting into a low-volume ambient mode.
+    audioSession.type = active ? 'play-and-record' : 'auto';
+  } catch {
+    // Older WebKit builds expose a read-only/partial implementation.
+  }
+}
+
 export class RemoteAudio {
   private readonly elements = new Map<string, HTMLAudioElement>();
   private readonly monitors = new Map<string, () => void>();
@@ -18,6 +36,7 @@ export class RemoteAudio {
     muted: boolean,
     outputDeviceId: string,
   ) {
+    setConferenceAudioSession(true);
     let audio = this.elements.get(peerId);
     if (!audio) {
       audio = new Audio();
@@ -90,6 +109,7 @@ export class RemoteAudio {
   }
   closeAll() {
     for (const peerId of [...this.elements.keys()]) this.remove(peerId);
+    setConferenceAudioSession(false);
   }
 
   private async setSink(audio: HTMLAudioElement, deviceId: string) {

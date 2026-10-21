@@ -60,4 +60,3 @@ export function clearBrowserActiveCall() {
   if (!isBrowserApp()) return;
   localStorage.removeItem(ACTIVE_CALL_STORAGE_KEY);
 }
-
