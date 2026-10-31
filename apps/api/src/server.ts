@@ -1044,9 +1044,8 @@ startWebPush(app);
 registerAdminRoutes(app);
 startInfrastructureSampler();
 
-let stopCallReconciliation: (() => void) | undefined;
-app.addHook('onClose', async () => stopCallReconciliation?.());
-await app.listen({ host: env.API_HOST, port: env.API_PORT });
-stopCallReconciliation = startCallReconciliation((error) =>
+const stopCallReconciliation = startCallReconciliation((error) =>
   app.log.error(error, 'Call reconciliation failed'),
 );
+app.addHook('onClose', async () => stopCallReconciliation());
+await app.listen({ host: env.API_HOST, port: env.API_PORT });

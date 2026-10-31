@@ -11,8 +11,9 @@ export function NativeScreenSourcePicker() {
   useEffect(() => {
     if (!request) return;
     setTab('screen');
-    dialog.current?.showModal();
-    return () => dialog.current?.close();
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
   }, [request]);
   if (!request) return null;
   return createPortal(
