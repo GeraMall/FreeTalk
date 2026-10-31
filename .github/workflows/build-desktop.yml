@@ -16,8 +16,6 @@ permissions:
 env:
   VITE_SIGNALING_URL: ${{ inputs.signaling_url || vars.FREETALK_SIGNALING_URL }}
   VITE_INVITE_BASE_URL: https://freetalk.191-44-38-60.sslip.io
-  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
 
 jobs:
   windows:
@@ -36,6 +34,9 @@ jobs:
       - run: pnpm check
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
       - run: pnpm --filter @freetalk/desktop tauri build --bundles nsis
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
           name: Trlka-Windows-x64
@@ -66,6 +67,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
           name: Trlka-macOS-${{ matrix.target }}

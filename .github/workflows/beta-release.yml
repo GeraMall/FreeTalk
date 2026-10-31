@@ -11,15 +11,13 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   VITE_SIGNALING_URL: ${{ vars.FREETALK_BETA_SIGNALING_URL }}
   VITE_API_URL: ${{ vars.FREETALK_BETA_API_URL }}
   VITE_INVITE_BASE_URL: https://freetalk.191-44-38-60.sslip.io
   VITE_TURNSTILE_SITE_KEY: ${{ vars.FREETALK_TURNSTILE_SITE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
 
 jobs:
   windows:
@@ -35,6 +33,9 @@ jobs:
       - run: pnpm check
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
       - run: pnpm --filter @freetalk/desktop tauri build --bundles nsis
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
       - shell: pwsh
         run: |
           New-Item -ItemType Directory -Force beta-assets | Out-Null
@@ -64,6 +65,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
       - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
       - name: Verify macOS runtime paths
         run: |
           app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
@@ -94,6 +98,8 @@ jobs:
           path: beta-assets/*
 
   prerelease:
+    permissions:
+      contents: write
     if: >-
       ${{
         always() &&
