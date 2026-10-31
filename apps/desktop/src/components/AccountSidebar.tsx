@@ -500,7 +500,6 @@ export function AccountSidebar({
                 <PresenceModeIcon mode={presenceMode} />
                 <span>
                   <strong>{presenceModeLabel(presenceMode)}</strong>
-                  <small>{presenceModeDescription(presenceMode)}</small>
                 </span>
                 <ChevronDown
                   className={statusOpen ? 'expanded' : ''}
@@ -553,14 +552,17 @@ export function AccountSidebar({
           >
             <ProfileAvatar user={user} />
           </button>
-          <span className="account-profile-identity">
+          <span
+            className="account-profile-identity"
+            title={`${user.displayName} · @${user.username}`}
+          >
             <strong>{user.displayName}</strong>
             <small>
               <i
                 className={`profile-online-indicator ${presence}`}
                 aria-label={presenceText(presence)}
               />
-              @{user.username} · {presenceText(presence)}
+              {inlinePresence.label}
             </small>
           </span>
           <button
