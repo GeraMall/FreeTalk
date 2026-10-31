@@ -21,7 +21,7 @@ beforeEach(() => {
     id: 'challenge',
     user_id: 'account',
     attempts: 0,
-    token_hash: hash('account:012345'),
+    token_hash: hash('challenge:012345'),
   };
   mocks.query.mockImplementation(async (sql: string) => {
     if (sql.startsWith('SELECT ev.')) return { rows: [{ ...challenge }] };

@@ -1,5 +1,5 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
@@ -292,6 +292,7 @@ app.post(
     }
     const passwordHash = await hashPassword(input.password);
     const verificationToken = randomVerificationCode();
+    const verificationId = randomUUID();
     const user = await transaction(async (client) => {
       const created = await client.query<UserRow>(
         `INSERT INTO users(email,username,display_name,password_hash)
@@ -304,9 +305,9 @@ app.post(
         [row.id, TERMS_VERSION, PRIVACY_VERSION],
       );
       await client.query(
-        `INSERT INTO email_verifications(user_id,token_hash,expires_at)
-         VALUES($1,$2,now()+interval '30 minutes')`,
-        [row.id, tokenHash(`${row.id}:${verificationToken}`)],
+        `INSERT INTO email_verifications(id,user_id,token_hash,expires_at)
+         VALUES($1,$2,$3,now()+interval '30 minutes')`,
+        [verificationId, row.id, tokenHash(`${verificationId}:${verificationToken}`)],
       );
       return row;
     });
@@ -383,6 +384,7 @@ app.post(
     const user = result.rows[0];
     if (user) {
       const token = randomVerificationCode();
+      const verificationId = randomUUID();
       const issued = await transaction(async (client) => {
         await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.id]);
         const recent = await client.query<{ count: string }>(
@@ -397,9 +399,9 @@ app.post(
           [user.id],
         );
         await client.query(
-          `INSERT INTO email_verifications(user_id,token_hash,expires_at)
-           VALUES($1,$2,now()+interval '30 minutes')`,
-          [user.id, tokenHash(`${user.id}:${token}`)],
+          `INSERT INTO email_verifications(id,user_id,token_hash,expires_at)
+           VALUES($1,$2,$3,now()+interval '30 minutes')`,
+          [verificationId, user.id, tokenHash(`${verificationId}:${token}`)],
         );
         return true;
       });

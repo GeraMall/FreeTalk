@@ -29,10 +29,15 @@ export async function completeEmailVerification(
     if (!row || row.attempts >= 5) return null;
     await client.query('UPDATE email_verifications SET attempts=attempts+1 WHERE id=$1', [row.id]);
     const token = numeric ? input.code : input.token;
-    const expected = tokenHash(numeric ? `${row.user_id}:${token}` : token);
+    const expected = tokenHash(numeric ? `${row.id}:${token}` : token);
     // Existing emailed codes remain usable during rollout, with the same attempt cap.
     const legacy = tokenHash(token);
-    if (!timingSafeEqual(row.token_hash, expected) && !timingSafeEqual(row.token_hash, legacy))
+    const previousAccountBound = tokenHash(`${row.user_id}:${token}`);
+    if (
+      !timingSafeEqual(row.token_hash, expected) &&
+      !timingSafeEqual(row.token_hash, legacy) &&
+      !(numeric && timingSafeEqual(row.token_hash, previousAccountBound))
+    )
       return null;
     await client.query(
       'UPDATE email_verifications SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
