@@ -1,6 +1,6 @@
 [package]
 name = "freetalk"
-version = "0.4.0-beta.173"
+version = "0.4.0-beta.174"
 description = "Trlka desktop voice chat"
 authors = ["Trlka contributors"]
 license = "MIT"
@@ -43,4 +43,6 @@ base64 = "0.22"
 screencapturekit = { version = "8.0.1", features = ["macos_13_0"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+libwebrtc = "=0.3.51"
+wasapi = "0.22"
 windows = { version = "0.61.3", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

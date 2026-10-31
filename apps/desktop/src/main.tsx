@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { NativeScreenSourcePicker } from './components/NativeScreenSourcePicker';
 import { BrowserPlatformGate } from './components/BrowserPlatformGate';
 import { ChatLayoutPreview } from './components/ChatLayoutPreview';
 import { CallPopoutPlaceholder } from './components/CallPopoutPlaceholder';
@@ -46,6 +47,7 @@ const customWindowChrome = usesCustomWindowChrome();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <NativeScreenSourcePicker />
     {customWindowChrome && !notificationOverlay ? (
       <div className="desktop-app-frame">
         <CustomTitleBar />

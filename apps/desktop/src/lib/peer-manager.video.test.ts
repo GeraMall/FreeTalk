@@ -2,6 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PeerManager } from './peer-manager';
+import { attachNativeScreenSender, isNativeScreenTrack } from './windows-screen';
+vi.mock('./windows-screen', () => ({
+  NATIVE_SCREEN_CHANNEL: 'trlka-native-screen-v1',
+  attachNativeScreenSender: vi.fn(() => vi.fn()),
+  isNativeScreenTrack: vi.fn(() => false),
+  receiveNativeScreen: vi.fn(() => vi.fn()),
+  updateNativeScreenIceServers: vi.fn(),
+}));
 
 class FakeSender {
   replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
@@ -119,6 +127,8 @@ class FakeStream {
 describe('PeerManager video sender lifecycle', () => {
   beforeEach(() => {
     VideoPeerConnection.instances = [];
+    vi.mocked(isNativeScreenTrack).mockReturnValue(false);
+    vi.mocked(attachNativeScreenSender).mockClear();
     vi.stubGlobal('RTCPeerConnection', VideoPeerConnection);
     vi.stubGlobal('RTCRtpReceiver', { getCapabilities: () => ({ codecs: [] }) });
     vi.stubGlobal('MediaStream', FakeStream);
@@ -126,6 +136,33 @@ describe('PeerManager video sender lifecycle', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('sends native screens directly without re-encoding their preview in the WebView', async () => {
+    const audio = track('audio', 'voice');
+    const manager = new PeerManager(
+      'self',
+      [],
+      new FakeStream([audio]) as unknown as MediaStream,
+      vi.fn(),
+      { onTrack: vi.fn(), onState: vi.fn() },
+    );
+    manager.ensure('peer');
+    const screen = track('video', 'native-preview');
+    vi.mocked(isNativeScreenTrack).mockImplementation((candidate) => candidate === screen);
+    const stream = new FakeStream([
+      screen,
+      track('audio', 'native-screen-audio'),
+    ]) as unknown as MediaStream;
+    await manager.setVideoTrack(screen, 'screen', stream);
+    expect(attachNativeScreenSender).toHaveBeenCalledOnce();
+    expect(VideoPeerConnection.instances[0]!.senders.map((sender) => sender.track)).toEqual([
+      audio,
+    ]);
+    await manager.setVideoTrack(null, 'screen');
+    const close = vi.mocked(attachNativeScreenSender).mock.results[0]!.value;
+    expect(close).toHaveBeenCalledOnce();
+    manager.closeAll();
   });
 
   it('preserves audio and reuses one camera transceiver across repeated toggles', async () => {

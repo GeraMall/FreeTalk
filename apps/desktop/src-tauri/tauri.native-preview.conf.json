@@ -1,0 +1,22 @@
+{
+  "productName": "Trlka Native Preview",
+  "identifier": "io.trlka.native-preview",
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installerHooks": null
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": []
+      }
+    },
+    "updater": {
+      "endpoints": []
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# The installed Windows 10 SDK predates this SDK constant used by libwebrtc.
+# Target-scoped so Linux/macOS compilers never receive MSVC options.
+[env]
+CXXFLAGS_x86_64_pc_windows_msvc = { value = "/DNTDDI_WIN11_GE=0x0A000010", force = false }
+
+[target.x86_64-pc-windows-msvc]
+# libwebrtc's distributed Windows binaries use the static release CRT.
+rustflags = ["-C", "target-feature=+crt-static"]

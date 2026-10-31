@@ -2,6 +2,13 @@ import type { ServerMessage, TelemetryConnectionSample } from '@freetalk/protoco
 import { connectionDiagnostics } from './connection-diagnostics';
 import type { VideoMediaSource } from './video-manager';
 import {
+  NATIVE_SCREEN_CHANNEL,
+  attachNativeScreenSender,
+  isNativeScreenTrack,
+  receiveNativeScreen,
+  updateNativeScreenIceServers,
+} from './windows-screen';
+import {
   DEFAULT_VIDEO_PREFERENCES,
   nextAdaptiveQualityLevel,
   normalizeVideoPreferences,
@@ -57,6 +64,8 @@ interface PeerContext {
   screenAudioSender?: VideoSenderContext;
   videoStateChannel?: RTCDataChannel;
   remoteVideoStateChannel?: RTCDataChannel;
+  nativeScreenSender?: { channel: RTCDataChannel; close: () => void };
+  nativeScreenReceiver?: () => void;
   remoteVideoState: Record<VideoMediaSource, RemoteVideoSourceState>;
   remoteVideoTracksByMid: Map<string, { stream: MediaStream; track: MediaStreamTrack }>;
   remoteVideoTracksById: Map<string, { stream: MediaStream; track: MediaStreamTrack }>;
@@ -193,7 +202,9 @@ export class PeerManager {
 
     for (const source of ['camera', 'screen'] as const) {
       const track = this.localVideoTracks[source];
-      if (track)
+      if (track && source === 'screen' && isNativeScreenTrack(track)) {
+        this.ensureNativeScreenSender(peerId, context);
+      } else if (track)
         this.createVideoSender(
           peerId,
           context,
@@ -203,7 +214,7 @@ export class PeerManager {
         );
     }
     const screenAudioTrack = this.localScreenStream?.getAudioTracks()[0];
-    if (screenAudioTrack)
+    if (screenAudioTrack && !isNativeScreenTrack(this.localVideoTracks.screen))
       this.createScreenAudioSender(peerId, context, screenAudioTrack, this.localScreenStream!);
     if (this.localVideoTracks.camera || this.localVideoTracks.screen)
       this.ensureVideoStateChannel(peerId, context);
@@ -289,6 +300,21 @@ export class PeerManager {
       }
     };
     connection.ondatachannel = ({ channel }) => {
+      if (channel.label === NATIVE_SCREEN_CHANNEL) {
+        context.nativeScreenReceiver?.();
+        context.nativeScreenReceiver = receiveNativeScreen(
+          channel,
+          this.iceServers,
+          (stream, track) => {
+            if (track.kind === 'video') {
+              this.events.onVideoState?.(peerId, 'screen', true);
+              this.events.onVideoTrack?.(peerId, 'screen', stream, track);
+            } else this.events.onScreenAudioTrack?.(peerId, new MediaStream([track]));
+          },
+          () => this.events.onVideoState?.(peerId, 'screen', false),
+        );
+        return;
+      }
       if (channel.label !== VIDEO_STATE_CHANNEL) return;
       context.remoteVideoStateChannel?.close();
       context.remoteVideoStateChannel = channel;
@@ -491,6 +517,19 @@ export class PeerManager {
       [...this.peers.entries()].map(([peerId, context]) =>
         this.enqueue(context, async () => {
           if (track) this.ensureVideoStateChannel(peerId, context);
+          if (source === 'screen') {
+            context.nativeScreenSender?.close();
+            context.nativeScreenSender = undefined;
+            if (track && isNativeScreenTrack(track)) {
+              // Media is sent directly by the native engine; never re-encode
+              // its local preview through the WebView's RTP sender.
+              await context.videoSenders.screen?.sender.replaceTrack(null);
+              await context.screenAudioSender?.sender.replaceTrack(null);
+              this.ensureNativeScreenSender(peerId, context);
+              this.sendVideoState(peerId, context);
+              return;
+            }
+          }
           const existing = context.videoSenders[source];
           if (existing) {
             await existing.sender.replaceTrack(track);
@@ -553,6 +592,7 @@ export class PeerManager {
   updateIceServers(iceServers: RTCIceServer[]) {
     if (JSON.stringify(this.iceServers) === JSON.stringify(iceServers)) return;
     this.iceServers = iceServers;
+    updateNativeScreenIceServers(iceServers);
     for (const [peerId, context] of this.peers) {
       const { connection } = context;
       if (connection.signalingState === 'closed') continue;
@@ -575,6 +615,8 @@ export class PeerManager {
     this.clearQualityTimer(context);
     context.videoStateChannel?.close();
     context.remoteVideoStateChannel?.close();
+    context.nativeScreenSender?.close();
+    context.nativeScreenReceiver?.();
     context.connection.close();
     this.peers.delete(peerId);
     this.events.onVideoState?.(peerId, 'camera', false);
@@ -728,6 +770,30 @@ export class PeerManager {
     this.configureVideoStateChannel(peerId, context, channel, false);
   }
 
+  private ensureNativeScreenSender(peerId: string, context: PeerContext) {
+    if (context.nativeScreenSender) return;
+    const channel = context.connection.createDataChannel(NATIVE_SCREEN_CHANNEL, { ordered: true });
+    const close = attachNativeScreenSender(peerId, channel, this.iceServers, () => {
+      // Old clients cannot negotiate the native transport. Keep their screen
+      // compatible using the decoded local preview, while capture stays native.
+      const track = this.localVideoTracks.screen;
+      if (!track || !isNativeScreenTrack(track) || this.peers.get(peerId) !== context) return;
+      void this.enqueue(context, async () => {
+        const existing = context.videoSenders.screen;
+        if (existing) await existing.sender.replaceTrack(track);
+        else this.createVideoSender(peerId, context, 'screen', track, this.localScreenStream);
+        const audio = this.localScreenStream?.getAudioTracks()[0];
+        if (audio && this.localScreenStream) {
+          if (context.screenAudioSender) await context.screenAudioSender.sender.replaceTrack(audio);
+          else this.createScreenAudioSender(peerId, context, audio, this.localScreenStream);
+        }
+        this.sendVideoState(peerId, context);
+        this.requestNegotiation(peerId, context);
+      });
+    });
+    context.nativeScreenSender = { channel, close };
+  }
+
   private sendVideoState(peerId: string, context: PeerContext) {
     const channels = new Set([context.videoStateChannel, context.remoteVideoStateChannel]);
     for (const channel of channels)
@@ -739,12 +805,16 @@ export class PeerManager {
       (['camera', 'screen'] as const).map((source) => {
         const sender = context.videoSenders[source];
         const track = this.localVideoTracks[source];
+        const native =
+          source === 'screen' &&
+          Boolean(context.nativeScreenSender) &&
+          context.nativeScreenSender?.channel.readyState !== 'closed';
         return [
           source,
           {
             active: Boolean(track),
-            mid: sender?.transceiver.mid ?? null,
-            trackId: track?.id ?? null,
+            mid: native ? null : (sender?.transceiver.mid ?? null),
+            trackId: native ? null : (track?.id ?? null),
           },
         ];
       }),

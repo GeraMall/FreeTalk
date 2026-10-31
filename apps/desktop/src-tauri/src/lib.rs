@@ -4,6 +4,8 @@ mod diagnostics;
 mod macos_screen_audio;
 mod secure_session;
 mod signaling;
+#[cfg(desktop)]
+mod windows_screen;
 
 #[cfg(desktop)]
 #[derive(Default)]
@@ -405,6 +407,7 @@ pub fn run() {
         )
         .manage(signaling::NativeSignalingState::default())
         .manage(macos_screen_audio::MacosScreenAudioState::default())
+        .manage(windows_screen::State::default())
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
             diagnostics::save_connection_diagnostics,
@@ -417,6 +420,14 @@ pub fn run() {
             secure_session::secure_session_clear,
             macos_screen_audio_start,
             macos_screen_audio_stop,
+            windows_screen::windows_screen_sources,
+            windows_screen::windows_screen_start,
+            windows_screen::windows_screen_stop,
+            windows_screen::windows_screen_offer,
+            windows_screen::windows_screen_answer,
+            windows_screen::windows_screen_ice,
+            windows_screen::windows_screen_close_peer,
+            windows_screen::windows_screen_restart_peer,
             open_recordings_directory,
             recording_storage_available,
             notification_overlay_show,

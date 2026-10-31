@@ -7,6 +7,12 @@ import {
 } from './video-quality';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import {
+  startNativeWindowsScreen,
+  usesNativeWindowsCapture,
+  type NativeScreenCapture,
+  cancelNativeScreenSelection,
+} from './windows-screen';
+import {
   createCameraEffectCapture,
   type CameraBackgroundSettings,
   type CameraEffectCapture,
@@ -48,6 +54,7 @@ export class VideoManager {
   private screenTrack?: MediaStreamTrack;
   private screenStream?: MediaStream;
   private nativeScreenAudio = false;
+  private nativeWindowsScreen?: NativeScreenCapture;
   private operationQueue = Promise.resolve();
   private disposed = false;
   private preferences: VideoPreferences;
@@ -109,6 +116,9 @@ export class VideoManager {
 
   dispose() {
     this.disposed = true;
+    cancelNativeScreenSelection();
+    void this.nativeWindowsScreen?.stop();
+    this.nativeWindowsScreen = undefined;
     this.stopStream(this.screenStream);
     this.cameraCapture?.dispose();
     this.screenTrack = undefined;
@@ -251,23 +261,31 @@ export class VideoManager {
     const macOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        audio: includeAudio
-          ? macOS
-            ? true
-            : {
-                autoGainControl: false,
-                echoCancellation: false,
-                noiseSuppression: false,
-                channelCount: { ideal: 2 },
-                restrictOwnAudio: true,
-              }
-          : false,
-        video: screenCaptureConstraints(this.preferences),
-        selfBrowserSurface: 'exclude',
-        systemAudio: includeAudio ? 'include' : 'exclude',
-        windowAudio: includeAudio ? 'window' : 'exclude',
-      } as DisplayMediaStreamOptions);
+      if (usesNativeWindowsCapture()) {
+        this.nativeWindowsScreen = await startNativeWindowsScreen(
+          this.preferences,
+          includeAudio,
+          this.onNotice,
+        );
+        stream = this.nativeWindowsScreen.stream;
+      } else
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          audio: includeAudio
+            ? macOS
+              ? true
+              : {
+                  autoGainControl: false,
+                  echoCancellation: false,
+                  noiseSuppression: false,
+                  channelCount: { ideal: 2 },
+                  restrictOwnAudio: true,
+                }
+            : false,
+          video: screenCaptureConstraints(this.preferences),
+          selfBrowserSurface: 'exclude',
+          systemAudio: includeAudio ? 'include' : 'exclude',
+          windowAudio: includeAudio ? 'window' : 'exclude',
+        } as DisplayMediaStreamOptions);
     } catch (error) {
       connectionDiagnostics.record('screen-capture:error', undefined, {
         errorName: error instanceof DOMException ? error.name : 'unknown',
@@ -280,6 +298,8 @@ export class VideoManager {
       throw new Error('Не удалось получить изображение выбранного экрана или окна.');
     }
     if (this.disposed) {
+      await this.nativeWindowsScreen?.stop();
+      this.nativeWindowsScreen = undefined;
       stream.getTracks().forEach((item) => item.stop());
       return;
     }
@@ -291,6 +311,9 @@ export class VideoManager {
     }
     this.screenTrack = track;
     this.screenStream = stream;
+    stream.onremovetrack = () => {
+      if (this.screenStream === stream) this.emitState();
+    };
     track.contentHint =
       this.preferences.screenContentMode === 'text'
         ? 'detail'
@@ -314,6 +337,7 @@ export class VideoManager {
       void this.enqueue(() => this.finishScreen(track, false));
     };
     connectionDiagnostics.record('screen-capture:ready', undefined, {
+      captureBackend: this.nativeWindowsScreen ? 'windows-native' : 'browser',
       ...videoTrackDetails(track),
       audioIncluded: Boolean(audioTrack),
       audioTrackId: audioTrack?.id ?? 'none',
@@ -326,7 +350,12 @@ export class VideoManager {
           : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
       );
     }
-    await this.publish(track, 'screen', stream);
+    try {
+      await this.publish(track, 'screen', stream);
+    } catch (error) {
+      await this.finishScreen(track, true).catch(() => undefined);
+      throw error;
+    }
     this.emitState();
   }
 
@@ -337,20 +366,26 @@ export class VideoManager {
   private async finishScreen(track: MediaStreamTrack | undefined, stopTrack: boolean) {
     if (!track || this.screenTrack !== track) return;
     const stream = this.screenStream;
+    const nativeWindowsScreen = this.nativeWindowsScreen;
+    this.nativeWindowsScreen = undefined;
     const nativeScreenAudio = this.nativeScreenAudio;
     this.screenTrack = undefined;
     this.screenStream = undefined;
     this.nativeScreenAudio = false;
     track.onended = null;
-    await this.publish(null, 'screen');
-    if (stopTrack) this.stopStream(stream);
-    else stream?.getAudioTracks().forEach((item) => item.stop());
-    if (nativeScreenAudio) await stopNativeMacScreenAudio();
+    try {
+      await this.publish(null, 'screen');
+    } finally {
+      await nativeWindowsScreen?.stop();
+      if (stopTrack) this.stopStream(stream);
+      else stream?.getAudioTracks().forEach((item) => item.stop());
+      if (nativeScreenAudio) await stopNativeMacScreenAudio();
+      this.emitState();
+    }
     connectionDiagnostics.record('screen-capture:stopped', undefined, {
       initiatedBy: stopTrack ? 'app' : 'system',
       cameraPreserved: Boolean(this.cameraTrack),
     });
-    this.emitState();
   }
 
   private source(): LocalVideoSource {

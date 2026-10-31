@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import { VideoManager } from './video-manager';
 import { DEFAULT_VIDEO_PREFERENCES } from './video-quality';
+import { startNativeWindowsScreen, usesNativeWindowsCapture } from './windows-screen';
+
+vi.mock('./windows-screen', () => ({
+  usesNativeWindowsCapture: vi.fn(() => false),
+  startNativeWindowsScreen: vi.fn(),
+  cancelNativeScreenSelection: vi.fn(),
+}));
 
 vi.mock('./macos-screen-audio', () => ({
   startNativeMacScreenAudio: vi.fn(),
@@ -51,6 +58,7 @@ describe('VideoManager', () => {
     screenTracks.length = 0;
     screenAudioTracks.length = 0;
     screenStreams.length = 0;
+    vi.mocked(usesNativeWindowsCapture).mockReturnValue(false);
     vi.mocked(startNativeMacScreenAudio).mockReset();
     vi.mocked(stopNativeMacScreenAudio).mockClear();
     vi.stubGlobal('MediaStream', FakeStream);
@@ -76,6 +84,49 @@ describe('VideoManager', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it('captures Windows screens natively and disposes each session before restarting', async () => {
+    vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
+    const stopped = vi.fn(async () => undefined);
+    vi.mocked(startNativeWindowsScreen).mockImplementation(async () => ({
+      stream: new FakeStream([new FakeTrack(), new FakeTrack('audio')]) as unknown as MediaStream,
+      stop: stopped,
+    }));
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+    );
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await manager.toggleScreen();
+      expect(manager.getCurrent().source).toBe('screen');
+      await manager.toggleScreen();
+      expect(stopped).toHaveBeenCalledTimes(attempt + 1);
+    }
+    expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
+  });
+
+  it('stops native Windows capture when the call closes during startup', async () => {
+    vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
+    let finish!: (value: Awaited<ReturnType<typeof startNativeWindowsScreen>>) => void;
+    vi.mocked(startNativeWindowsScreen).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const manager = new VideoManager(
+      vi.fn(async () => undefined),
+      vi.fn(),
+    );
+    const starting = manager.toggleScreen();
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    manager.dispose();
+    const stop = vi.fn(async () => undefined);
+    finish({ stream: new FakeStream([new FakeTrack()]) as unknown as MediaStream, stop });
+    await starting;
+    expect(stop).toHaveBeenCalledOnce();
+    expect(manager.getCurrent().source).toBe('none');
+  });
 
   it('toggles the camera five times without leaking tracks', async () => {
     const publish = vi.fn(async () => undefined);
