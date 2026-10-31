@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AudioLines,
   Camera,
@@ -123,9 +123,29 @@ export function CallDock({ state }: { state: CallDockState }) {
 
 export function ProfileAudioControls({ state }: { state: CallDockState }) {
   const [deviceMenu, setDeviceMenu] = useState<'input' | 'output'>();
+  const controlsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!deviceMenu) return;
+    const dismissOutside = (event: Event) => {
+      if (!controlsRef.current?.contains(event.target as Node)) setDeviceMenu(undefined);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDeviceMenu(undefined);
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [deviceMenu]);
   return (
-    <div className="profile-audio-controls">
-      <span className="profile-audio-device">
+    <div className="profile-audio-controls" ref={controlsRef}>
+      <span
+        className={`profile-audio-device${state.muted ? ' is-muted' : ''}${deviceMenu === 'input' ? ' is-open' : ''}`}
+      >
         <button
           aria-label={state.muted ? 'Включить микрофон' : 'Выключить микрофон'}
           aria-pressed={state.muted}
@@ -145,7 +165,9 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
           <ChevronDown />
         </button>
       </span>
-      <span className="profile-audio-device">
+      <span
+        className={`profile-audio-device${state.deafened ? ' is-muted' : ''}${deviceMenu === 'output' ? ' is-open' : ''}`}
+      >
         <button
           aria-label={state.deafened ? 'Включить звук собеседников' : 'Выключить звук собеседников'}
           aria-pressed={state.deafened}
