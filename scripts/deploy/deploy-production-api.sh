@@ -18,13 +18,10 @@ test ! -e "$rollback"
 
 mkdir -p "$stage"
 tar -xzf "$artifact" -C "$stage"
-# Resolve a fresh Linux dependency tree when the artifact carries its lockfile.
+# Resolve a fresh Linux dependency tree from the artifact's mandatory lockfile.
 # Copying the previous node_modules would silently preserve vulnerable versions.
-if test -f "$stage/package-lock.json"; then
-  (cd "$stage" && PATH="/opt/node-v22/bin:$PATH" npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
-else
-  cp -a "$current/node_modules" "$stage/node_modules"
-fi
+test -f "$stage/package-lock.json"
+(cd "$stage" && PATH="/opt/node-v22/bin:$PATH" npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
 test -f "$stage/vendor/web-push.cjs"
 mkdir -p "$stage/node_modules/@freetalk"
 ln -sfn ../../vendor/config "$stage/node_modules/@freetalk/config"
