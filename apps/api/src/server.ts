@@ -27,6 +27,7 @@ import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
 import { API_VERSION } from './app-version.js';
+import { startCallReconciliation } from './call-reconciliation.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
 import { registerWebPush, startWebPush } from './web-push.js';
 import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
@@ -949,10 +950,15 @@ app.post('/v1/internal/call-event', { config: { rateLimit: false } }, async (req
     );
     await refreshCallMessage(input.roomId);
   } else {
-    await db.query(
-      `UPDATE call_sessions SET ended_at=now() WHERE room_id=$1 AND ended_at IS NULL`,
-      [input.roomId],
-    );
+    await transaction(async (client) => {
+      await client.query(
+        `WITH ended AS (
+           UPDATE call_sessions SET ended_at=now() WHERE room_id=$1 AND ended_at IS NULL RETURNING id,ended_at
+         ) UPDATE call_participants p SET left_at=ended.ended_at FROM ended
+           WHERE p.call_id=ended.id AND p.left_at IS NULL`,
+        [input.roomId],
+      );
+    });
     await refreshCallMessage(input.roomId);
   }
   return { ok: true };
@@ -1038,4 +1044,9 @@ startWebPush(app);
 registerAdminRoutes(app);
 startInfrastructureSampler();
 
+let stopCallReconciliation: (() => void) | undefined;
+app.addHook('onClose', async () => stopCallReconciliation?.());
 await app.listen({ host: env.API_HOST, port: env.API_PORT });
+stopCallReconciliation = startCallReconciliation((error) =>
+  app.log.error(error, 'Call reconciliation failed'),
+);

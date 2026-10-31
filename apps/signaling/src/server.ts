@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   CLIENT_STALE_AFTER_MS,
   MAX_SIGNAL_BYTES,
@@ -44,6 +44,23 @@ const upgradeMetadata = new WeakMap<
 >();
 
 const httpServer = createServer(async (request, response) => {
+  if (request.url === '/internal/active-rooms') {
+    const supplied = request.headers['x-freetalk-internal-secret'];
+    const expected = process.env.INTERNAL_SIGNALING_SECRET;
+    if (
+      typeof supplied !== 'string' ||
+      !expected ||
+      Buffer.byteLength(supplied) !== Buffer.byteLength(expected) ||
+      !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))
+    ) {
+      response.writeHead(401);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    response.end(JSON.stringify({ roomIds: manager.activeRoomIds() }));
+    return;
+  }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.4' }));
@@ -490,7 +507,13 @@ function logSocketEvent(socket: WebSocket, event: string, details: Record<string
   );
 }
 
-setInterval(() => manager.removeStale(CLIENT_STALE_AFTER_MS), 15_000).unref();
+setInterval(() => {
+  for (const roomId of manager.removeStale(CLIENT_STALE_AFTER_MS)) {
+    void recordCallEventReliably({ event: 'end', roomId }).catch((error) =>
+      console.error('Failed to end stale call', { roomId, error: String(error) }),
+    );
+  }
+}, 15_000).unref();
 httpServer.listen(port, '127.0.0.1', () =>
   console.info(`Trlka signaling: ws://127.0.0.1:${port}/ws`),
 );

@@ -294,6 +294,7 @@ export class RoomManager {
   }
 
   removeStale(maxAgeMs: number, now = Date.now()) {
+    const endedRooms: string[] = [];
     for (const room of [...this.rooms.values()]) {
       for (const [clientId, peer] of [...room.peers]) {
         if (now - peer.lastSeen > maxAgeMs) {
@@ -301,11 +302,16 @@ export class RoomManager {
           this.leave(room.id, clientId, peer.connection, 'Соединение потеряно');
         }
       }
+      if (!this.rooms.has(room.id)) endedRooms.push(room.id);
     }
+    return endedRooms;
   }
 
   hasRoom(roomId: string) {
     return this.rooms.has(roomId);
+  }
+  activeRoomIds() {
+    return [...this.rooms.values()].filter((room) => room.peers.size > 0).map((room) => room.id);
   }
   roomSize(roomId: string) {
     return this.rooms.get(roomId)?.peers.size ?? 0;
