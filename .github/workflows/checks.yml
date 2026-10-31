@@ -49,3 +49,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @freetalk/desktop build
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
+      - run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib malformed_screen_sdp_returns_error_without_aborting --locked

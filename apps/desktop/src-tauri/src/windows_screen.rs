@@ -716,6 +716,11 @@ mod native {
             video_stream::native::NativeVideoStream,
         };
 
+        #[test]
+        fn malformed_screen_sdp_returns_error_without_aborting() {
+            assert!(SessionDescription::parse("invalid SDP", SdpType::Answer).is_err());
+        }
+
         #[tokio::test]
         #[ignore = "Uses the local Windows audio endpoint and plays a quiet test tone"]
         async fn native_system_audio_restarts() {

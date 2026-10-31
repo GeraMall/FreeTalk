@@ -45,4 +45,4 @@ screencapturekit = { version = "8.0.1", features = ["macos_13_0"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 libwebrtc = "=0.3.51"
 wasapi = "0.25"
-windows = { version = "0.61.3", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62.2", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

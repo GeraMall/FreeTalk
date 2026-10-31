@@ -22,8 +22,8 @@ Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\vendor\web-push.cjs')
 $apiPackage = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot 'apps\api\package.json') | ConvertFrom-Json
 $apiPackage.PSObject.Properties.Remove('devDependencies')
 $apiPackage | Add-Member -NotePropertyName overrides -NotePropertyValue ([ordered]@{
-  'glob@>=9 <14.0.2' = '^14.0.2'
-  'minimatch@>=9 <11' = '^11.0.1'
+  'glob' = '^14.0.2'
+  'minimatch' = '^11.0.1'
 })
 $apiPackage.dependencies.'@freetalk/protocol' = 'file:./vendor/protocol'
 $apiPackage.dependencies.'@freetalk/config' = 'file:./vendor/config'
