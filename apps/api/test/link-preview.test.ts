@@ -4,6 +4,26 @@ import { isSupportedPreviewUrl, resolveLinkPreview } from '../src/link-preview.j
 afterEach(() => vi.unstubAllGlobals());
 
 describe('link previews', () => {
+  it('stops an oversized chunked response without trusting content-length', async () => {
+    let cancelled = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(128 * 1024));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+      ),
+    );
+    await expect(resolveLinkPreview('https://youtu.be/chunked1234')).resolves.toBeNull();
+    expect(cancelled).toBe(true);
+  });
   it('only sends supported public providers to the preview service', () => {
     expect(isSupportedPreviewUrl('https://youtu.be/dQw4w9WgXcQ')).toBe(true);
     expect(isSupportedPreviewUrl('https://ru.wikipedia.org/wiki/Москва')).toBe(true);

@@ -101,7 +101,10 @@ export class RoomManager {
     if (!existing && room.peers.size >= ROOM_MAX_PARTICIPANTS) {
       throw new RoomError('ROOM_FULL', 'В комнате уже восемь участников');
     }
-    if (existing && existing.sessionId !== sessionId) {
+    if (
+      existing &&
+      (existing.sessionId !== sessionId || existing.participant.accountId !== accountId)
+    ) {
       throw new RoomError('ROOM_FULL', 'Этот идентификатор участника уже используется');
     }
 

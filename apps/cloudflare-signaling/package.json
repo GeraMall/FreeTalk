@@ -14,9 +14,9 @@
     "@freetalk/protocol": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250830.0",
-    "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.33.1"
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.156.0"
   }
 }

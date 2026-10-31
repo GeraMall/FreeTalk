@@ -17,8 +17,14 @@ New-Item -ItemType Directory -Force -Path $protocolStaging | Out-Null
 New-Item -ItemType Directory -Force -Path $configStaging | Out-Null
 Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\dist') -Destination $apiStaging -Recurse
 Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\migrations') -Destination $apiStaging -Recurse
+Copy-Item -LiteralPath (Join-Path $workspaceRoot 'apps\api\vendor\web-push.cjs') -Destination (Join-Path $apiStaging 'vendor\web-push.cjs')
 
 $apiPackage = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot 'apps\api\package.json') | ConvertFrom-Json
+$apiPackage.PSObject.Properties.Remove('devDependencies')
+$apiPackage | Add-Member -NotePropertyName overrides -NotePropertyValue ([ordered]@{
+  'glob@>=9 <14.0.2' = '^14.0.2'
+  'minimatch@>=9 <11' = '^11.0.1'
+})
 $apiPackage.dependencies.'@freetalk/protocol' = 'file:./vendor/protocol'
 $apiPackage.dependencies.'@freetalk/config' = 'file:./vendor/config'
 $apiPackageJson = $apiPackage | ConvertTo-Json -Depth 20
@@ -30,7 +36,7 @@ $protocolPackage = [ordered]@{
   private = $true
   type = 'module'
   exports = './index.js'
-  dependencies = [ordered]@{ zod = '^4.1.5' }
+  dependencies = [ordered]@{ zod = (Get-Content -Raw (Join-Path $workspaceRoot 'packages\protocol\package.json') | ConvertFrom-Json).dependencies.zod }
 }
 $protocolPackageJson = $protocolPackage | ConvertTo-Json -Depth 10
 [System.IO.File]::WriteAllText((Join-Path $protocolStaging 'package.json'), $protocolPackageJson, $utf8NoBom)
@@ -59,6 +65,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Config deployment bundle failed' }
 if ($LASTEXITCODE -ne 0) { throw 'API server syntax check failed' }
 & node --check (Join-Path $apiStaging 'dist\migrate.js')
 if ($LASTEXITCODE -ne 0) { throw 'API migrator syntax check failed' }
+
+Push-Location $apiStaging
+try {
+  & npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) { throw 'Production dependency lock generation failed' }
+} finally {
+  Pop-Location
+}
 
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 & tar -czf $apiArtifact -C $apiStaging .

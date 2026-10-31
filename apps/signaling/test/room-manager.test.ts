@@ -17,6 +17,24 @@ const room = 'ABCDEFGH2345';
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 
 describe('RoomManager', () => {
+  it('does not replace an authenticated participant with a different account', () => {
+    const manager = new RoomManager();
+    const original = new FakeConnection();
+    manager.create(room, id(1), 'same-session-secret', 'Owner', original, undefined, 'account-1');
+    expect(() =>
+      manager.join(
+        room,
+        id(1),
+        'same-session-secret',
+        'Other',
+        new FakeConnection(),
+        undefined,
+        'account-2',
+      ),
+    ).toThrow();
+    expect(original.closed).toBe(false);
+    expect(manager.roomSize(room)).toBe(1);
+  });
   it('reports timed-out rooms for persistent call cleanup, once, without ending live rooms', () => {
     const manager = new RoomManager();
     const first = new FakeConnection();

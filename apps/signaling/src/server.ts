@@ -36,6 +36,7 @@ const metadata = new WeakMap<
     authorization?: Extract<RoomAuthorization, { allowed: true }>;
     displayName?: string;
     lastTelemetryAt?: number;
+    joining?: boolean;
   }
 >();
 const upgradeMetadata = new WeakMap<
@@ -43,7 +44,7 @@ const upgradeMetadata = new WeakMap<
   { clientConnectionId: string; serverConnectionId: string }
 >();
 
-const httpServer = createServer(async (request, response) => {
+export const httpServer = createServer(async (request, response) => {
   if (request.url === '/internal/active-rooms') {
     const supplied = request.headers['x-freetalk-internal-secret'];
     const expected = process.env.INTERNAL_SIGNALING_SECRET;
@@ -63,7 +64,7 @@ const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.4' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.5' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -135,6 +136,10 @@ sockets.on('connection', (socket, request) => {
     send: (message) => send(socket, message),
     close: (code, reason) => socket.close(code, reason),
   };
+  const joinDeadline = setTimeout(() => {
+    if (!metadata.get(socket)?.roomId) socket.terminate();
+  }, 30_000);
+  joinDeadline.unref();
 
   socket.on('message', async (data, isBinary) => {
     const meta = metadata.get(socket)!;
@@ -155,125 +160,134 @@ sockets.on('connection', (socket, request) => {
       const message = parseClientMessage(data.toString());
       logSocketEvent(socket, 'message.received', { messageType: message.type });
       if (message.type === 'create-room' || message.type === 'join-room') {
-        if (meta.roomId)
+        if (meta.roomId || meta.joining)
           return send(socket, {
             type: 'error',
             code: 'INVALID_MESSAGE',
             message: 'Вы уже находитесь в комнате',
           });
-        const authorization = await authorizeRoom(
-          message.type === 'create-room' ? 'create' : 'join',
-          message.roomId,
-          message.authToken,
-        );
-        if (!authorization.allowed)
-          return send(socket, {
-            type: 'error',
-            code:
-              authorization.reason === 'REGISTERED_ONLY'
-                ? 'REGISTERED_ONLY'
-                : authorization.reason === 'GUEST_DAILY_LIMIT'
-                  ? 'GUEST_DAILY_LIMIT'
-                  : authorization.reason === 'RATE_LIMITED'
-                    ? 'RATE_LIMITED'
-                    : authorization.reason === 'AUTH_UNAVAILABLE'
-                      ? 'INTERNAL_ERROR'
-                      : 'AUTH_REQUIRED',
-            message:
-              authorization.reason === 'REGISTERED_ONLY'
-                ? 'Создавать комнаты могут только зарегистрированные пользователи'
-                : authorization.reason === 'GUEST_DAILY_LIMIT'
-                  ? 'Лимит гостя: 2 подключения в сутки, до 3 часов каждое'
-                  : authorization.reason === 'RATE_LIMITED'
-                    ? 'Слишком много входов. Попробуйте позже'
-                    : authorization.reason === 'AUTH_UNAVAILABLE'
-                      ? 'Сервер авторизации временно недоступен'
-                      : 'Требуется авторизация',
-            fatal: true,
-          });
-        const authorizedName = authorization.displayName ?? message.name;
-        const authorizedAvatar =
-          authorization.kind === 'registered'
-            ? authorization.avatar
-            : authorization.kind === 'development'
-              ? message.avatar
-              : undefined;
-        const roomAuthority =
-          'callScope' in authorization && authorization.callScope === 'direct'
-            ? ({ scope: 'direct' } as const)
-            : 'callScope' in authorization && authorization.callScope === 'group'
-              ? ({
-                  scope: 'group',
-                  groupOwnerAccountId:
-                    'groupOwnerId' in authorization ? authorization.groupOwnerId : undefined,
-                } as const)
-              : ({ scope: 'standalone' } as const);
-        let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
+        meta.joining = true;
         try {
-          iceConfig = await getIceConfig();
-        } catch {
-          iceConfig = {
-            type: 'ice-config',
-            iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
-          };
-        }
-        send(socket, iceConfig);
-        if (message.type === 'create-room')
-          manager.create(
+          const authorization = await authorizeRoom(
+            message.type === 'create-room' ? 'create' : 'join',
             message.roomId,
-            message.clientId,
-            message.sessionId,
-            authorizedName,
-            connection,
-            authorizedAvatar,
-            'userId' in authorization ? authorization.userId : undefined,
-            roomAuthority,
-            message.cardStyle ?? 'avatar-glass',
-            message.cardDecoration ?? 'none',
+            message.authToken,
           );
-        else
-          manager.join(
-            message.roomId,
-            message.clientId,
-            message.sessionId,
-            authorizedName,
-            connection,
-            authorizedAvatar,
-            'userId' in authorization ? authorization.userId : undefined,
-            roomAuthority,
-            message.cardStyle ?? 'avatar-glass',
-            message.cardDecoration ?? 'none',
-          );
-        meta.roomId = message.roomId;
-        meta.clientId = message.clientId;
-        meta.authorization = authorization;
-        meta.displayName = authorizedName;
-        void recordCallEventReliably({
-          event: message.type === 'create-room' ? 'start' : 'join',
-          roomId: message.roomId,
-          displayName: authorizedName,
-          userId: 'userId' in authorization ? authorization.userId : undefined,
-          anonymousUserId:
-            'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
-        }).catch((error) => logSocketEvent(socket, 'call-event.error', { error: String(error) }));
-        if (authorization.kind === 'guest' && authorization.disconnectAt) {
-          const delay = Math.max(0, new Date(authorization.disconnectAt).getTime() - Date.now());
-          meta.guestExpiryTimer = setTimeout(() => {
-            send(socket, {
+          if (!authorization.allowed)
+            return send(socket, {
               type: 'error',
-              code: 'GUEST_SESSION_EXPIRED',
+              code:
+                authorization.reason === 'REGISTERED_ONLY'
+                  ? 'REGISTERED_ONLY'
+                  : authorization.reason === 'GUEST_DAILY_LIMIT'
+                    ? 'GUEST_DAILY_LIMIT'
+                    : authorization.reason === 'RATE_LIMITED'
+                      ? 'RATE_LIMITED'
+                      : authorization.reason === 'AUTH_UNAVAILABLE'
+                        ? 'INTERNAL_ERROR'
+                        : 'AUTH_REQUIRED',
               message:
-                'Гостевая сессия завершена. Зарегистрируйтесь, чтобы общаться без ограничений.',
+                authorization.reason === 'REGISTERED_ONLY'
+                  ? 'Создавать комнаты могут только зарегистрированные пользователи'
+                  : authorization.reason === 'GUEST_DAILY_LIMIT'
+                    ? 'Лимит гостя: 2 подключения в сутки, до 3 часов каждое'
+                    : authorization.reason === 'RATE_LIMITED'
+                      ? 'Слишком много входов. Попробуйте позже'
+                      : authorization.reason === 'AUTH_UNAVAILABLE'
+                        ? 'Сервер авторизации временно недоступен'
+                        : 'Требуется авторизация',
               fatal: true,
             });
-            socket.close(4003, 'Guest session expired');
-          }, delay);
-          meta.guestExpiryTimer.unref();
+          const authorizedName = authorization.displayName ?? message.name;
+          const authorizedAvatar =
+            authorization.kind === 'registered'
+              ? authorization.avatar
+              : authorization.kind === 'development'
+                ? message.avatar
+                : undefined;
+          const roomAuthority =
+            'callScope' in authorization && authorization.callScope === 'direct'
+              ? ({ scope: 'direct' } as const)
+              : 'callScope' in authorization && authorization.callScope === 'group'
+                ? ({
+                    scope: 'group',
+                    groupOwnerAccountId:
+                      'groupOwnerId' in authorization ? authorization.groupOwnerId : undefined,
+                  } as const)
+                : ({ scope: 'standalone' } as const);
+          let iceConfig: Extract<ServerMessage, { type: 'ice-config' }>;
+          try {
+            iceConfig = await getIceConfig();
+          } catch {
+            iceConfig = {
+              type: 'ice-config',
+              iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+            };
+          }
+          // The socket may have closed during either network request. Never add
+          // a dead connection to a room after its close handler has already run.
+          if (socket.readyState !== socket.OPEN) return;
+          send(socket, iceConfig);
+          if (message.type === 'create-room')
+            manager.create(
+              message.roomId,
+              message.clientId,
+              message.sessionId,
+              authorizedName,
+              connection,
+              authorizedAvatar,
+              'userId' in authorization ? authorization.userId : undefined,
+              roomAuthority,
+              message.cardStyle ?? 'avatar-glass',
+              message.cardDecoration ?? 'none',
+            );
+          else
+            manager.join(
+              message.roomId,
+              message.clientId,
+              message.sessionId,
+              authorizedName,
+              connection,
+              authorizedAvatar,
+              'userId' in authorization ? authorization.userId : undefined,
+              roomAuthority,
+              message.cardStyle ?? 'avatar-glass',
+              message.cardDecoration ?? 'none',
+            );
+          meta.roomId = message.roomId;
+          clearTimeout(joinDeadline);
+          meta.clientId = message.clientId;
+          meta.authorization = authorization;
+          meta.displayName = authorizedName;
+          void recordCallEventReliably({
+            event: message.type === 'create-room' ? 'start' : 'join',
+            roomId: message.roomId,
+            displayName: authorizedName,
+            userId: 'userId' in authorization ? authorization.userId : undefined,
+            anonymousUserId:
+              'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
+          }).catch((error) => logSocketEvent(socket, 'call-event.error', { error: String(error) }));
+          if (authorization.kind === 'guest' && authorization.disconnectAt) {
+            const delay = Math.max(0, new Date(authorization.disconnectAt).getTime() - Date.now());
+            meta.guestExpiryTimer = setTimeout(() => {
+              send(socket, {
+                type: 'error',
+                code: 'GUEST_SESSION_EXPIRED',
+                message:
+                  'Гостевая сессия завершена. Зарегистрируйтесь, чтобы общаться без ограничений.',
+                fatal: true,
+              });
+              socket.close(4003, 'Guest session expired');
+            }, delay);
+            meta.guestExpiryTimer.unref();
+          }
+          if (message.type === 'create-room')
+            send(socket, { type: 'room-created', roomId: message.roomId });
+          send(socket, iceConfig);
+          return;
+        } finally {
+          meta.joining = false;
         }
-        if (message.type === 'create-room')
-          send(socket, { type: 'room-created', roomId: message.roomId });
-        send(socket, iceConfig);
-        return;
       }
       // Heartbeats can arrive while authorization/ICE configuration is still pending.
       // Answer them without pretending the user attempted a room action.
@@ -421,6 +435,7 @@ sockets.on('connection', (socket, request) => {
   });
 
   socket.on('close', (code, reason) => {
+    clearTimeout(joinDeadline);
     const meta = metadata.get(socket);
     if (meta?.guestExpiryTimer) clearTimeout(meta.guestExpiryTimer);
     console.info(
@@ -507,13 +522,14 @@ function logSocketEvent(socket: WebSocket, event: string, details: Record<string
   );
 }
 
-setInterval(() => {
+const staleRoomTimer = setInterval(() => {
   for (const roomId of manager.removeStale(CLIENT_STALE_AFTER_MS)) {
     void recordCallEventReliably({ event: 'end', roomId }).catch((error) =>
       console.error('Failed to end stale call', { roomId, error: String(error) }),
     );
   }
 }, 15_000).unref();
+httpServer.on('close', () => clearInterval(staleRoomTimer));
 httpServer.listen(port, '127.0.0.1', () =>
   console.info(`Trlka signaling: ws://127.0.0.1:${port}/ws`),
 );

@@ -1,6 +1,6 @@
 {
   "name": "freetalk",
-  "version": "0.4.0-beta.174",
+  "version": "0.4.0-beta.175",
   "private": true,
   "description": "Trlka — приватные голосовые комнаты для небольших компаний",
   "packageManager": "pnpm@11.19.0",
@@ -31,13 +31,13 @@
     "load:analytics:500": "node scripts/load/analytics-telemetry-load.mjs 500"
   },
   "devDependencies": {
-    "@eslint/js": "^9.35.0",
-    "eslint": "^9.35.0",
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.3.0",
-    "prettier": "^3.6.2",
-    "typescript-eslint": "^8.41.0"
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.10",
+    "typescript-eslint": "^8.72.1"
   },
   "license": "MIT"
 }

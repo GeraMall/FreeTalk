@@ -18,6 +18,8 @@ import { db, transaction } from './db.js';
 import { env, publicApiUrl, publicAvatarUrl } from './env.js';
 import { sendVerification } from './mailer.js';
 import { registerPasswordResetRoutes } from './password-reset.js';
+import { completeEmailVerification } from './email-verification.js';
+import { accountLoginLimited } from './login-throttle.js';
 import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { registerAndroidPush, startAndroidPush } from './android-push.js';
 import { chatRealtimeHub } from './chat-realtime.js';
@@ -51,12 +53,18 @@ const PRIVACY_VERSION = '2026-08-25';
 const app = Fastify({
   logger: {
     redact: {
-      paths: ['req.remoteAddress', 'req.remotePort'],
+      paths: [
+        'req.remoteAddress',
+        'req.remotePort',
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'req.headers["x-freetalk-internal-secret"]',
+      ],
       censor: '[REDACTED]',
     },
   },
   bodyLimit: 64 * 1024,
-  trustProxy: true,
+  trustProxy: ['127.0.0.1', '::1'],
 });
 registerApiMetrics(app);
 await app.register(websocket, {
@@ -298,7 +306,7 @@ app.post(
       await client.query(
         `INSERT INTO email_verifications(user_id,token_hash,expires_at)
          VALUES($1,$2,now()+interval '30 minutes')`,
-        [row.id, tokenHash(verificationToken)],
+        [row.id, tokenHash(`${row.id}:${verificationToken}`)],
       );
       return row;
     });
@@ -322,7 +330,8 @@ app.post(
     const login = input.login.replace(/^@/, '').toLowerCase();
     const failed = await db.query<{ count: string }>(
       `SELECT count(*) FROM security_events
-       WHERE event_type='login.failed' AND ip_hash=$1 AND created_at > now()-interval '15 minutes'`,
+       WHERE event_type IN ('login.failed','mobile_beta.login_failed')
+         AND ip_hash=$1 AND created_at > now()-interval '15 minutes'`,
       [hashIp(request.ip)],
     );
     const failedCount = Number(failed.rows[0]?.count ?? 0);
@@ -338,6 +347,8 @@ app.post(
       [login],
     );
     const user = found.rows[0];
+    if (user && (await accountLoginLimited(user.id)))
+      return reply.code(429).send({ code: 'LOGIN_RATE_LIMITED', message: 'Попробуйте позже' });
     if (!user || !(await verifyPassword(user.password_hash, input.password))) {
       await recordSecurityEvent(request, 'login.failed', user?.id);
       return reply.code(401).send({ code: 'INVALID_CREDENTIALS', message: 'Неверные данные' });
@@ -372,7 +383,14 @@ app.post(
     const user = result.rows[0];
     if (user) {
       const token = randomVerificationCode();
-      await transaction(async (client) => {
+      const issued = await transaction(async (client) => {
+        await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.id]);
+        const recent = await client.query<{ count: string }>(
+          `SELECT count(*) FROM email_verifications WHERE user_id=$1
+           AND created_at>now()-interval '1 hour'`,
+          [user.id],
+        );
+        if (Number(recent.rows[0]?.count ?? 0) >= 4) return false;
         await client.query(
           `UPDATE email_verifications SET used_at=now()
            WHERE user_id=$1 AND used_at IS NULL`,
@@ -381,10 +399,11 @@ app.post(
         await client.query(
           `INSERT INTO email_verifications(user_id,token_hash,expires_at)
            VALUES($1,$2,now()+interval '30 minutes')`,
-          [user.id, tokenHash(token)],
+          [user.id, tokenHash(`${user.id}:${token}`)],
         );
+        return true;
       });
-      await sendVerification(user.email, token);
+      if (issued) await sendVerification(user.email, token);
     }
     return { message: 'Если подтверждение требуется, новое письмо отправлено.' };
   },
@@ -406,29 +425,7 @@ app.post(
         z.object({ token: z.string().min(32).max(256) }),
       ])
       .parse(request.body);
-    const token = 'code' in input ? input.code : input.token;
-    const verified = await transaction(async (client) => {
-      const parameters: unknown[] = [tokenHash(token)];
-      const emailFilter = 'email' in input ? 'AND u.email=$2' : '';
-      if ('email' in input) parameters.push(input.email);
-      const result = await client.query<{ id: string; user_id: string }>(
-        `SELECT ev.id,ev.user_id FROM email_verifications ev
-         JOIN users u ON u.id=ev.user_id
-         WHERE ev.token_hash=$1 ${emailFilter}
-         AND ev.used_at IS NULL AND ev.expires_at > now() FOR UPDATE OF ev`,
-        parameters,
-      );
-      const row = result.rows[0];
-      if (!row) return null;
-      await client.query('UPDATE email_verifications SET used_at=now() WHERE id=$1', [row.id]);
-      const user = await client.query<UserRow>(
-        `UPDATE users SET email_verified_at=COALESCE(email_verified_at,now()),updated_at=now()
-         WHERE id=$1 RETURNING *`,
-        [row.user_id],
-      );
-      const session = await issueSession(client, row.user_id, request);
-      return { user: user.rows[0]!, session };
-    });
+    const verified = await completeEmailVerification(input, request);
     if (!verified)
       return reply.code(400).send({ code: 'INVALID_TOKEN', message: 'Код неверный или истёк' });
     return { verified: true, user: publicUser(verified.user), session: verified.session };

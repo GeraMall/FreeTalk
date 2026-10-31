@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   issueSession: vi.fn(),
   recordSecurityEvent: vi.fn(),
   verifyPassword: vi.fn(),
+  limited: vi.fn(),
 }));
+vi.mock('../src/login-throttle.js', () => ({ accountLoginLimited: mocks.limited }));
 
 vi.mock('../src/db.js', () => ({
   db: { query: mocks.query },
@@ -43,12 +45,29 @@ const mobileHeaders = { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) 
 describe('mobile beta access', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.limited.mockResolvedValue(false);
     mocks.verifyPassword.mockResolvedValue(true);
     mocks.issueSession.mockResolvedValue({ accessToken: 'a', refreshToken: 'b' });
   });
 
   it('normalizes a readable invitation key', () => {
     expect(normalizeMobileBetaKey(' trlka-abcd-2345-efgh-6789 ')).toBe('ABCD2345EFGH6789');
+  });
+  it('rejects account-wide password throttling before checking a password or claiming a key', async () => {
+    mocks.query.mockResolvedValueOnce(rows([user]));
+    mocks.limited.mockResolvedValueOnce(true);
+    const app = Fastify();
+    registerMobileBetaRoutes(app);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/mobile-beta/login',
+      headers: mobileHeaders,
+      payload: { login: user.email, password: 'Password123' },
+    });
+    expect(response.statusCode).toBe(429);
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+    expect(mocks.issueSession).not.toHaveBeenCalled();
+    await app.close();
   });
 
   it('claims a valid key once and issues a session for the account', async () => {

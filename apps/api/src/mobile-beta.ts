@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { issueSession, publicUser, recordSecurityEvent, type UserRow } from './auth-service.js';
 import { db, transaction } from './db.js';
 import { hashIp, tokenHash, verifyPassword } from './security.js';
+import { accountLoginLimited } from './login-throttle.js';
 
 export const MOBILE_BETA_KEY_REQUIRED = 'MOBILE_BETA_KEY_REQUIRED';
 
@@ -45,6 +46,8 @@ export function registerMobileBetaRoutes(app: FastifyInstance) {
         [login],
       );
       const user = found.rows[0];
+      if (user && (await accountLoginLimited(user.id)))
+        return reply.code(429).send({ code: 'LOGIN_RATE_LIMITED', message: 'Попробуйте позже' });
       if (!user || !(await verifyPassword(user.password_hash, input.password))) {
         await recordSecurityEvent(request, 'mobile_beta.login_failed', user?.id);
         return reply

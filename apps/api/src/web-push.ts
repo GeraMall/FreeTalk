@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { AuthenticatedUser } from './auth-service.js';
 import { db, transaction } from './db.js';
 import { env } from './env.js';
+import { isTrustedPushEndpoint } from './push-endpoint.js';
 
 const bundledWebPush = createRequire(import.meta.url)('../vendor/web-push.cjs') as
   typeof webPushType | { default: typeof webPushType };
@@ -16,7 +17,7 @@ type RequireUser = (
 ) => Promise<AuthenticatedUser | null>;
 
 const subscriptionSchema = z.object({
-  endpoint: z.string().url().max(4096),
+  endpoint: z.string().url().max(4096).refine(isTrustedPushEndpoint, 'Unsupported push service'),
   expirationTime: z.number().int().nonnegative().nullable().optional(),
   keys: z.object({
     p256dh: z.string().min(20).max(1024),
@@ -65,6 +66,10 @@ export async function sendIncomingCallPush(input: {
   const ttl = Math.max(1, Math.min(60, Math.ceil((input.expiresAt.getTime() - Date.now()) / 1000)));
   await Promise.allSettled(
     subscriptions.rows.map(async (subscription) => {
+      if (!isTrustedPushEndpoint(subscription.endpoint)) {
+        await db.query('DELETE FROM web_push_subscriptions WHERE id=$1', [subscription.id]);
+        return;
+      }
       try {
         await webPush.sendNotification(
           {
@@ -83,6 +88,7 @@ export async function sendIncomingCallPush(input: {
           }),
           {
             TTL: ttl,
+            timeout: 10_000,
             urgency: 'high',
             topic: `call-${input.invitationId}`.slice(0, 32),
           },
@@ -212,6 +218,11 @@ export function startWebPush(app: FastifyInstance) {
             await removeJob();
             return;
           }
+          if (!isTrustedPushEndpoint(row.endpoint)) {
+            await db.query('DELETE FROM web_push_subscriptions WHERE id=$1', [job.subscription_id]);
+            await removeJob();
+            return;
+          }
           const body =
             row.kind === 'image'
               ? 'Фотография'
@@ -243,6 +254,7 @@ export function startWebPush(app: FastifyInstance) {
                   ),
                 ),
                 urgency: 'high',
+                timeout: 10_000,
                 topic: `chat-${row.chat_id}`.slice(0, 32),
               },
             );

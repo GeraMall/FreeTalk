@@ -127,7 +127,7 @@ export async function authenticateAccessToken(token: string): Promise<Authentica
   );
   const row = result.rows[0];
   if (!row) return null;
-  void db.query('UPDATE sessions SET last_used_at=now() WHERE id=$1', [row.session_id]);
+  await db.query('UPDATE sessions SET last_used_at=now() WHERE id=$1', [row.session_id]);
   return { ...row, sessionId: row.session_id };
 }
 

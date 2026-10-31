@@ -10,7 +10,7 @@
 ## Реализованные контроли 0.4 beta
 
 - Argon2id (64 MiB, 3 прохода), одноразовые verification/reset tokens, 15-минутный access token и 30-дневный rotating refresh token;
-- refresh token хранится в Windows Credential Manager/macOS Keychain; browser development держит его только в памяти;
+- desktop refresh token хранится в Windows Credential Manager/macOS Keychain; браузерная версия сохраняет refresh token в localStorage для повторного входа. Это не HttpOnly-хранилище: код своего origin может прочитать токен;
 - server-side Turnstile, login throttling, общие и route-specific rate limits;
 - параметризованные SQL-запросы, Zod validation, API body limit 64 KiB, avatar limit 1 MiB, magic bytes и dimensions;
 - membership/role checks для сообщений, голосований и invite lifecycle; direct chat блокируется при block relationship; в новый чат можно добавить только принятых друзей;

@@ -46,9 +46,23 @@ async function fetchJson(url: string) {
   if (!response.ok) throw new Error(`Preview provider returned ${response.status}`);
   const length = Number(response.headers.get('content-length') ?? 0);
   if (length > 256 * 1024) throw new Error('Preview response is too large');
-  const text = await response.text();
-  if (text.length > 256 * 1024) throw new Error('Preview response is too large');
-  return JSON.parse(text) as Record<string, unknown>;
+  if (!response.body) throw new Error('Empty preview response');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 256 * 1024) throw new Error('Preview response is too large');
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
 }
 
 export async function resolveLinkPreview(input: string): Promise<LinkPreview | null> {
