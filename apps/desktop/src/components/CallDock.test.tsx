@@ -83,4 +83,14 @@ describe('CallDock', () => {
     expect(props.onInput).toHaveBeenCalledWith('mic-2');
     expect(view.queryByRole('combobox')).toBeNull();
   });
+  it('dismisses a device chooser when opening another control or pressing Escape', () => {
+    const view = render(<ProfileAudioControls state={state()} />);
+    fireEvent.click(view.getByLabelText('Выбор микрофона'));
+    expect(view.getByRole('combobox')).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(view.queryByRole('combobox')).toBeNull();
+    fireEvent.click(view.getByLabelText('Выбор наушников'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(view.queryByRole('combobox')).toBeNull();
+  });
 });

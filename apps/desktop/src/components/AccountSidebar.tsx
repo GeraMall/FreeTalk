@@ -539,7 +539,15 @@ export function AccountSidebar({
             </button>
           </div>
         )}
-        <div className={`account-profile-mini${callDock ? ' with-audio-controls' : ''}`}>
+        <div
+          className={`account-profile-mini${callDock ? ' with-audio-controls' : ''}`}
+          onClickCapture={(event) => {
+            if ((event.target as Element).closest('.profile-audio-controls')) {
+              setMenuOpen(false);
+              setStatusOpen(false);
+            }
+          }}
+        >
           <button
             type="button"
             className="account-profile-avatar-trigger"
@@ -562,7 +570,7 @@ export function AccountSidebar({
                 className={`profile-online-indicator ${presence}`}
                 aria-label={presenceText(presence)}
               />
-              {inlinePresence.label}
+              @{user.username}
             </small>
           </span>
           <button
