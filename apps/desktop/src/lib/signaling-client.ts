@@ -30,6 +30,7 @@ export class SignalingClient {
   private readonly clientClosing = new WeakSet<SignalSocket>();
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
+  private roomJoined = false;
   private readonly schedule = new ReconnectSchedule();
 
   constructor(
@@ -42,6 +43,7 @@ export class SignalingClient {
 
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
     this.joined = join;
+    this.roomJoined = false;
     this.closedByUser = false;
     this.schedule.reset();
     this.open(false);
@@ -77,6 +79,21 @@ export class SignalingClient {
     if (previous) this.clientClosing.add(previous);
     previous?.close(4001, 'Network changed');
     this.open(true);
+  }
+
+  recoverAfterResume() {
+    if (this.closedByUser || !this.joined) return;
+    // A page becoming visible is not evidence of a broken connection. Preserve
+    // both an in-flight initial handshake and an otherwise healthy call.
+    if (this.socket?.readyState === WebSocket.CONNECTING) return;
+    if (
+      this.socket?.readyState === SIGNAL_SOCKET_OPEN &&
+      (!this.roomJoined || Date.now() - this.lastServerActivity < SERVER_ACTIVITY_TIMEOUT_MS)
+    ) {
+      this.send({ type: 'ping', timestamp: Date.now() });
+      return;
+    }
+    this.reconnectNow('resume-stale');
   }
 
   private open(reconnecting: boolean, authorizationReady = false) {
@@ -142,7 +159,10 @@ export class SignalingClient {
         cfRay: handshake?.cfRay ?? null,
       });
       this.onState('connected');
-      const message = reconnecting ? { ...this.joined!, type: 'join-room' as const } : this.joined!;
+      const message =
+        reconnecting && this.roomJoined
+          ? { ...this.joined!, type: 'join-room' as const }
+          : this.joined!;
       this.send(message);
       this.lastServerActivity = Date.now();
       this.startHeartbeat(socket);
@@ -152,6 +172,7 @@ export class SignalingClient {
       if (this.socket !== socket || typeof data !== 'string') return;
       try {
         const message = parseServerMessage(data);
+        if (message.type === 'joined-room') this.roomJoined = true;
         connectionDiagnostics.record(`signal-received:${message.type}`, undefined, {
           socketId: socket.correlationId,
         });
