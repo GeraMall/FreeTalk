@@ -6,12 +6,12 @@ cd "$ROOT"
 command -v xcodegen >/dev/null || { echo 'Install XcodeGen: brew install xcodegen' >&2; exit 1; }
 PLATFORM="${1:-macos}"
 MODE="${2:-run}"
-BUILD_SETTINGS=()
+BUILD_SETTINGS=('CODE_SIGNING_ALLOWED=NO')
 case "$PLATFORM" in
   macos)
     SCHEME=TRLKA-macOS
     DESTINATION='generic/platform=macOS'
-    BUILD_SETTINGS=('ARCHS=arm64 x86_64' 'ONLY_ACTIVE_ARCH=NO')
+    BUILD_SETTINGS+=('ARCHS=arm64 x86_64' 'ONLY_ACTIVE_ARCH=NO')
     ;;
   ios) SCHEME=TRLKA-iOS; DESTINATION="platform=iOS Simulator,id=${SIMULATOR_UDID:?Set SIMULATOR_UDID using xcrun simctl list devices available}" ;;
   *) echo 'usage: build_and_run.sh [macos|ios] [run|--build-only|--verify|--logs|--debug]' >&2; exit 2 ;;
@@ -19,7 +19,7 @@ esac
 case "$MODE" in run|--build-only|--verify|--logs|--debug) ;; *) echo 'Unknown mode' >&2; exit 2 ;; esac
 xcodegen generate --spec project.yml
 xcodebuild -project TRLKA.xcodeproj -scheme "$SCHEME" -destination "$DESTINATION" \
-  -derivedDataPath "build/$PLATFORM" "${BUILD_SETTINGS[@]}" CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath "build/$PLATFORM" "${BUILD_SETTINGS[@]}" build
 [[ "$MODE" != --build-only ]] || exit 0
 if [[ "$PLATFORM" == macos ]]; then
   APP="$ROOT/build/macos/Build/Products/Debug/TRLKA.app"
