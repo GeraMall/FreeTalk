@@ -7,3 +7,4 @@ build/
 *.p12
 *.p8
 *.cer
+__pycache__/
