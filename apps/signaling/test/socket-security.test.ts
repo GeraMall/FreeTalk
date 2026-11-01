@@ -1,7 +1,7 @@
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import { WebSocket } from 'ws';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
@@ -19,6 +19,7 @@ vi.mock('../src/turn.js', () => ({
 }));
 let server: Server;
 let url: string;
+afterEach(() => mocks.authorize.mockClear());
 beforeAll(async () => {
   vi.stubEnv('PORT', '0');
   vi.stubEnv('ALLOWED_ORIGIN', '*');
@@ -41,6 +42,17 @@ const join = (roomId: string) =>
     name: 'Person',
   });
 describe('socket authorization races', () => {
+  it('keeps temporary API failure recoverable instead of terminating the user call', async () => {
+    mocks.authorize.mockResolvedValueOnce({ allowed: false, reason: 'AUTH_UNAVAILABLE' });
+    const socket = new WebSocket(url),
+      messages: unknown[] = [];
+    socket.on('message', (data) => messages.push(JSON.parse(String(data))));
+    await once(socket, 'open');
+    const closed = once(socket, 'close');
+    socket.send(join('ABCDEFGH2359'));
+    expect((await closed)[0]).toBe(1013);
+    expect(messages).toEqual([]);
+  });
   it('rejects a concurrent room request while authorization is pending', async () => {
     let release!: (value: object) => void;
     mocks.authorize.mockImplementationOnce(

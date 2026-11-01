@@ -47,6 +47,8 @@ export async function authorizeRoom(
       body: JSON.stringify({ action, roomId, token }),
       signal: AbortSignal.timeout(5_000),
     });
+    if (response.status >= 500 || response.status === 408)
+      return { allowed: false, reason: 'AUTH_UNAVAILABLE' };
     const result = (await response.json()) as RoomAuthorization;
     if (!response.ok)
       return { allowed: false, reason: 'reason' in result ? result.reason : 'AUTH_REQUIRED' };

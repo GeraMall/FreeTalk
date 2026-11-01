@@ -7,6 +7,24 @@ afterEach(() => {
 });
 
 describe('signaling account authorization adapter', () => {
+  it.each([503, 408, 401])(
+    'distinguishes temporary API status %s from invalid credentials',
+    async (status) => {
+      vi.stubEnv('ACCOUNT_API_URL', 'http://127.0.0.1:8790');
+      vi.stubEnv('INTERNAL_SIGNALING_SECRET', 'internal-secret-value');
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(new Response(JSON.stringify({ code: 'UNAVAILABLE' }), { status })),
+      );
+      const { authorizeRoom } = await import('../src/authorization.js');
+      await expect(authorizeRoom('join', 'ABCDEFGH2345', 'a'.repeat(43))).resolves.toEqual({
+        allowed: false,
+        reason: status === 401 ? 'AUTH_REQUIRED' : 'AUTH_UNAVAILABLE',
+      });
+    },
+  );
   it('fails closed when no account API or explicit development bypass is configured', async () => {
     vi.stubEnv('ACCOUNT_API_URL', '');
     vi.stubEnv('SIGNALING_ALLOW_INSECURE_DEVELOPMENT', 'false');

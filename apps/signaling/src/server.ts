@@ -209,6 +209,12 @@ sockets.on('connection', (socket, request) => {
             message.roomId,
             message.authToken,
           );
+          if (!authorization.allowed && authorization.reason === 'AUTH_UNAVAILABLE') {
+            // A standby promotion is a transport retry, never an invalid-account verdict.
+            // Do not emit a fatal error that would make the client discard its active call.
+            socket.close(1013, 'Authorization temporarily unavailable; reconnect');
+            return;
+          }
           if (!authorization.allowed)
             return send(socket, {
               type: 'error',
