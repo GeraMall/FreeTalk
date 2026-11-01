@@ -25,7 +25,7 @@ if [[ "$PLATFORM" == macos ]]; then
   APP="$ROOT/build/macos/Build/Products/Debug/TRLKA.app"
   pkill -x TRLKA >/dev/null 2>&1 || true
   # Local ad-hoc signature gives the preview its declared sandbox entitlements.
-  codesign --force --sign - --entitlements Configuration/macOS.entitlements "$APP"
+  bash script/sign_preview.sh
   if [[ "$MODE" == --debug ]]; then lldb -- "$APP/Contents/MacOS/TRLKA"; exit; fi
   /usr/bin/open -n "$APP"
   if [[ "$MODE" == --verify ]]; then sleep 2; pgrep -x TRLKA >/dev/null; fi
