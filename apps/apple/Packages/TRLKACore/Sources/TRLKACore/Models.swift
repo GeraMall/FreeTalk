@@ -85,5 +85,8 @@ public struct APIError: Error, LocalizedError, Sendable, Equatable {
     public let status: Int
     public let code: String
     public let message: String
+    public init(status: Int, code: String, message: String) {
+        self.status = status; self.code = code; self.message = message
+    }
     public var errorDescription: String? { message }
 }

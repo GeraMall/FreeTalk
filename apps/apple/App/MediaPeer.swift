@@ -7,6 +7,10 @@ final class MediaPeer: NSObject {
     let id: String
     let localID: String
     let connection: RTCPeerConnection
+    private let factory: RTCPeerConnectionFactory
+    private var ice: [RTCIceServer]
+    private let passive: Bool
+    private var screenPeer: MediaPeer?
     var sendSignal: (([String: Any]) -> Void)?
     var changed: (() -> Void)?
     var failed: ((String) -> Void)?
@@ -22,9 +26,10 @@ final class MediaPeer: NSObject {
     private var ignoreOffer = false
     private var closed = false
 
-    init(id: String, localID: String, factory: RTCPeerConnectionFactory, audio: RTCAudioTrack,
-         ice: [RTCIceServer], camera: RTCVideoTrack?) throws {
+    init(id: String, localID: String, factory: RTCPeerConnectionFactory, audio: RTCAudioTrack?,
+         ice: [RTCIceServer], camera: RTCVideoTrack?, passive: Bool = false) throws {
         self.id = id; self.localID = localID
+        self.factory = factory; self.ice = ice; self.passive = passive
         let configuration = RTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
         configuration.iceServers = ice
@@ -34,9 +39,9 @@ final class MediaPeer: NSObject {
         connection = pc
         super.init()
         connection.delegate = self
-        connection.add(audio, streamIds: ["audio"])
+        if let audio { connection.add(audio, streamIds: ["audio"]) }
         if let camera { setCamera(camera) }
-        if localID < id, let channel = connection.dataChannel(forLabel: "freetalk-video-state-v1", configuration: RTCDataChannelConfiguration()) {
+        if !passive, localID < id, let channel = connection.dataChannel(forLabel: "freetalk-video-state-v1", configuration: RTCDataChannelConfiguration()) {
             attach(channel)
         }
     }
@@ -52,12 +57,15 @@ final class MediaPeer: NSObject {
     }
 
     func updateICE(_ servers: [RTCIceServer]) {
+        ice = servers
+        screenPeer?.updateICE(servers)
         let config = connection.configuration
         config.iceServers = servers
         connection.setConfiguration(config)
     }
 
     func negotiate() {
+        guard !passive else { return }
         pendingNegotiation = true
         enqueue { [weak self] in
             guard let self, !closed, pendingNegotiation, connection.signalingState == .stable else { return }
@@ -136,14 +144,36 @@ final class MediaPeer: NSObject {
     }
 
     func close() {
+        screenPeer?.close(); screenPeer = nil
         closed = true; operation?.cancel(); operation = nil
         channels.forEach { $0.delegate = nil; $0.close() }; channels.removeAll()
         connection.delegate = nil; connection.close(); tracks.removeAll()
     }
 
     private func attach(_ channel: RTCDataChannel) {
+        guard ["freetalk-video-state-v1", "trlka-native-screen-v1"].contains(channel.label) else { channel.close(); return }
+        channels.removeAll { $0.readyState == .closed }
+        guard channels.count < 8 else { channel.close(); return }
         channels.append(channel); channel.delegate = self
-        if channel.readyState == .open { publishVideo() }
+        if channel.label == "trlka-native-screen-v1" {
+            screenPeer?.close()
+            screenPeer = try? MediaPeer(id: id, localID: localID, factory: factory, audio: nil, ice: ice, camera: nil, passive: true)
+            screenPeer?.changed = { [weak self] in self?.changed?() }
+            screenPeer?.sendSignal = { [weak self, weak channel] message in
+                guard let self, let channel, channel.readyState == .open else { return }
+                if message["type"] as? String == "ice-candidate", let candidate = message["candidate"] {
+                    self.sendData(["kind": "ice", "candidate": candidate], channel: channel)
+                } else if let description = message["description"] as? [String: Any], let sdp = description["sdp"] {
+                    self.sendData(["kind": "answer", "sdp": sdp], channel: channel)
+                } else if message["type"] as? String == "restart" { self.sendData(["kind": "restart"], channel: channel) }
+            }
+        }
+        if channel.readyState == .open { opened(channel) }
+    }
+
+    private func opened(_ channel: RTCDataChannel) {
+        if channel.label == "trlka-native-screen-v1" { sendData(["kind": "ready"], channel: channel) }
+        else { sendData(["version": 2, "request": "video-state"], channel: channel); publishVideo() }
     }
     private func sendData(_ json: [String: Any], channel: RTCDataChannel) {
         guard let data = try? JSONSerialization.data(withJSONObject: json) else { return }
@@ -155,9 +185,10 @@ final class MediaPeer: NSObject {
             "camera": ["active": localCamera != nil, "trackId": localCamera?.trackId as Any? ?? NSNull(), "mid": mid as Any? ?? NSNull()],
             "screen": ["active": false, "trackId": NSNull(), "mid": NSNull()]
         ]]
-        for channel in channels where channel.readyState == .open { sendData(message, channel: channel) }
+        for channel in channels where channel.readyState == .open && channel.label == "freetalk-video-state-v1" { sendData(message, channel: channel) }
     }
     func video(source: String) -> RTCVideoTrack? {
+        if source == "screen", let native = screenPeer?.tracks.values.first { return native }
         if let sources {
             guard let value = sources[source] as? [String: Any], value["active"] as? Bool == true,
                   let trackID = value["trackId"] as? String else { return nil }
@@ -176,7 +207,9 @@ extension MediaPeer: RTCPeerConnectionDelegate, RTCDataChannelDelegate {
         Task { @MainActor [weak self] in
             guard let self, !closed else { return }
             state = newState
-            if newState == .failed { connection.restartIce() }
+            if newState == .failed {
+                if passive { sendSignal?(["type": "restart"]) } else { connection.restartIce() }
+            }
             if newState == .connected || newState == .completed { publishVideo() }
             changed?()
         }
@@ -203,14 +236,22 @@ extension MediaPeer: RTCPeerConnectionDelegate, RTCDataChannelDelegate {
     nonisolated func dataChannelDidChangeState(_ channel: RTCDataChannel) {
         Task { @MainActor [weak self] in
             guard let self, !closed, channel.readyState == .open else { return }
-            sendData(["version": 2, "request": "video-state"], channel: channel); publishVideo()
+            opened(channel)
         }
     }
     nonisolated func dataChannel(_ channel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
-        guard !buffer.isBinary, buffer.data.count < 16384,
+        guard !buffer.isBinary, buffer.data.count < (channel.label == "trlka-native-screen-v1" ? 128000 : 16384),
               let json = try? JSONSerialization.jsonObject(with: buffer.data) as? [String: Any] else { return }
         Task { @MainActor [weak self] in
             guard let self, !closed else { return }
+            if channel.label == "trlka-native-screen-v1" {
+                if json["kind"] as? String == "stop" { screenPeer?.close(); screenPeer = nil; changed?() }
+                else if json["kind"] as? String == "offer", let sdp = json["sdp"] as? String { screenPeer?.description(type: "offer", sdp: sdp) }
+                else if json["kind"] as? String == "ice", let value = json["candidate"] as? [String: Any], let sdp = value["candidate"] as? String {
+                    screenPeer?.candidate(RTCIceCandidate(sdp: sdp, sdpMLineIndex: Int32(value["sdpMLineIndex"] as? Int ?? 0), sdpMid: value["sdpMid"] as? String))
+                }
+                return
+            }
             if json["request"] as? String == "video-state" { publishVideo() }
             if let value = json["sources"] as? [String: Any] { sources = value; changed?() }
         }

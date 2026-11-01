@@ -1,0 +1,26 @@
+name: Native Apple media checks
+
+on:
+  push:
+    branches: [feat/apple-native]
+    paths:
+      [
+        'apps/apple/App/MediaPeer.swift',
+        'apps/apple/App/SocketChannel.swift',
+        'apps/apple/Package.swift',
+        'apps/apple/MediaTests/**',
+        '.github/workflows/apple-media.yml',
+      ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  media:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real native peer negotiation, glare, video and camera restart
+        run: swift test --package-path apps/apple --scratch-path apps/apple/build/media-tests

@@ -274,9 +274,9 @@ final class CallController {
         interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
             let began = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
             Task { @MainActor in
-                guard let self, active else { return }
-                if began { setMuted(true); error = "Микрофон выключен из-за другого звонка. Включите его после завершения." }
-                else { applySpeaker() }
+                guard let self, self.active else { return }
+                if began { self.setMuted(true); self.error = "Микрофон выключен из-за другого звонка. Включите его после завершения." }
+                else { self.applySpeaker() }
             }
         }
         #endif
