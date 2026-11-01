@@ -109,7 +109,7 @@ describe('HomeView chat navigation', () => {
         onLogout={vi.fn()}
       />,
     );
-    fireEvent.click(await view.findByRole('button', { name: 'Команда', exact: true }));
+    fireEvent.click(await view.findByRole('button', { name: 'Команда' }));
     expect(await view.findByRole('button', { name: 'Присоединиться' })).toBeTruthy();
     const input = view.getByPlaceholderText('Написать сообщение…') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: 'Черновик остаётся' } });
