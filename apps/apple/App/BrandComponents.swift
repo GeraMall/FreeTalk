@@ -64,3 +64,24 @@ struct SectionCaption: View {
     let text: String
     var body: some View { Text(text).font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(Brand.cyan) }
 }
+
+struct ProfileCover: View {
+    let url: String?
+    let client: AccountClient
+    @State private var image: Image?
+    var body: some View {
+        ZStack {
+            Brand.gradient.opacity(0.25)
+            if let image { image.resizable().scaledToFill() }
+        }
+        .frame(height: 90).clipped().clipShape(RoundedRectangle(cornerRadius: 18))
+        .task(id: url) {
+            guard let url, let address = URL(string: url), let data = try? await client.avatarData(url: address) else { return }
+            #if os(iOS)
+            if let decoded = UIImage(data: data) { image = Image(uiImage: decoded) }
+            #else
+            if let decoded = NSImage(data: data) { image = Image(nsImage: decoded) }
+            #endif
+        }
+    }
+}

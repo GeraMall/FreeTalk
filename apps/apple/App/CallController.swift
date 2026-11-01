@@ -13,6 +13,7 @@ final class CallController {
     var participants: [RoomParticipant] = []
     var muted = false
     var cameraOn = false
+    var cameraBusy = false
     var speaker = true
     var presented = false
     var error: String?
@@ -55,6 +56,9 @@ final class CallController {
     }
 
     func start(user: AccountUser, chat: Chat? = nil, join code: String? = nil) async {
+        #if DEBUG
+        if PreviewFixtures.mode != nil { error = "В снимке интерфейса звонки отключены."; return }
+        #endif
         if active { presented = true; return }
         generation += 1
         let expected = generation
@@ -78,6 +82,7 @@ final class CallController {
             let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: ["googEchoCancellation": "true", "googNoiseSuppression": "true"]))
             audioSource = source
             audio = factory.audioTrack(with: source, trackId: "microphone")
+            audio?.isEnabled = !muted
             roomID = room; title = chat?.name(currentUserID: user.id) ?? "Комната TRLKA"
             chatID = chat?.id
             ringMembers = create ? (chat?.members.filter { $0.id != user.id }.map(\.id) ?? []) : []
@@ -215,7 +220,9 @@ final class CallController {
     }
 
     func toggleCamera() async {
-        guard active, let factory else { return }
+        guard active, !cameraBusy, let factory else { return }
+        cameraBusy = true
+        defer { cameraBusy = false }
         if cameraOn { stopCamera(); return }
         cameraGeneration += 1
         let expected = cameraGeneration
@@ -283,6 +290,7 @@ final class CallController {
     }
     private func applySpeaker() {
         #if os(iOS)
+        guard previousAudio != nil else { return }
         let session = AVAudioSession.sharedInstance()
         let external = session.currentRoute.outputs.contains { [.bluetoothA2DP, .bluetoothHFP, .headphones, .airPlay, .usbAudio].contains($0.portType) }
         if !external { try? session.overrideOutputAudioPort(speaker ? .speaker : .none) }

@@ -6,6 +6,16 @@ struct AppShell: View {
     @State private var page: Page = .home
     @State private var path: [Chat] = []
     @State private var profile = false
+    @State private var keyboardVisible = false
+    init(account: AccountStore) {
+        self.account = account
+        #if DEBUG
+        let mode = PreviewFixtures.mode
+        _page = State(initialValue: mode == "chats" || mode == "conversation" ? .chats : mode == "friends" ? .friends : mode == "history" ? .history : .home)
+        _path = State(initialValue: mode == "conversation" ? [PreviewFixtures.chat] : [])
+        _profile = State(initialValue: mode == "settings")
+        #endif
+    }
     enum Page: String, CaseIterable {
         case home = "Главная", chats = "Чаты", friends = "Друзья", history = "История"
         var icon: String {
@@ -58,6 +68,7 @@ struct AppShell: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !keyboardVisible {
             HStack(spacing: 4) {
                 ForEach(Page.allCases, id: \.self) { item in
                     Button {
@@ -75,7 +86,12 @@ struct AppShell: View {
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 3)
                 .background(Brand.background.opacity(0.98))
                 .overlay(alignment: .top) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
+            }
         }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
+        #endif
         .sheet(isPresented: $profile) { ProfileView(account: account) }
         #if os(iOS)
         .fullScreenCover(isPresented: $call.presented) { CallScreen(account: account) }
@@ -97,7 +113,7 @@ struct AppShell: View {
                 }.padding(24).frame(maxWidth: 400).trlkaPanel(24).shadow(radius: 24).padding()
             }
         }
-        .alert("TRLKA", isPresented: Binding(get: { call.error != nil || account.error != nil }, set: { if !$0 { call.error = nil; account.error = nil } })) {
+        .alert("TRLKA", isPresented: Binding(get: { (!call.presented && call.error != nil) || account.error != nil }, set: { if !$0 { call.error = nil; account.error = nil } })) {
             Button("Понятно") { call.error = nil; account.error = nil }
         } message: { Text(call.error ?? account.error ?? "") }
     }

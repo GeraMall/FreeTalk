@@ -57,9 +57,12 @@ jobs:
               subprocess.run(['xcrun','simctl','boot',uid], check=False)
               subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
               subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
-              subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios'],check=True)
-              time.sleep(4)
-              subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}.png'],check=True)
+              modes = ['home','chats','conversation','call','settings'] if family == 'iPhone' else ['home','call']
+              for mode in modes:
+                  subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
+                  subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode],check=True)
+                  time.sleep(6)
+                  subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
               subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
           PY
       - name: Package local Mac preview

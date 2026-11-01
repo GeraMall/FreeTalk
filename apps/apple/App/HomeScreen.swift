@@ -11,7 +11,7 @@ struct HomeScreen: View {
                 VStack(alignment: .leading, spacing: 20) {
                     SectionCaption(text: "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!")
                     Text("\(greeting),\n\(account.user?.displayName ?? "друг")")
-                        .font(.system(size: 31, weight: .bold)).tracking(-0.8).fixedSize(horizontal: false, vertical: true)
+                        .font(.system(size: 31, weight: .bold)).tracking(-0.8).lineLimit(3).minimumScaleFactor(0.7)
                     Text("Создайте приватную комнату или войдите по приглашению.")
                         .font(.system(size: 15)).foregroundStyle(Brand.muted).lineSpacing(4)
                     Button {

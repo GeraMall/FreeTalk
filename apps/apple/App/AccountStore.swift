@@ -20,7 +20,17 @@ final class AccountStore {
     init() {
         // Build configuration only; never accept server addresses from deep links.
         let endpoint = Bundle.main.object(forInfoDictionaryKey: "TRLKAAPIBaseURL") as? String
+        #if DEBUG
+        if PreviewFixtures.mode != nil {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [PreviewProtocol.self]
+            client = try! AccountClient(transport: URLSession(configuration: configuration), vault: PreviewVault())
+        } else {
+            client = try! AccountClient(baseURL: URL(string: endpoint ?? "https://freetalk.191-44-38-60.sslip.io/api")!)
+        }
+        #else
         client = try! AccountClient(baseURL: URL(string: endpoint ?? "https://freetalk.191-44-38-60.sslip.io/api")!)
+        #endif
         calls = CallController(client: client)
         realtime.onMessage = { [weak self] in self?.receive($0) }
     }
@@ -64,6 +74,15 @@ final class AccountStore {
     }
 
     private func startRealtime() async {
+        #if DEBUG
+        if PreviewFixtures.mode != nil {
+            if PreviewFixtures.mode == "call" {
+                calls.roomID = "ABCDEFGHJKLM"; calls.selfID = PreviewFixtures.userID; calls.title = "Комната с друзьями"
+                calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = true
+            }
+            return
+        }
+        #endif
         let url = await client.realtimeURL()
         realtime.start(url: url, roomHeartbeat: false) { [client] in
             ["type": "authenticate", "token": try await client.realtimeToken()]

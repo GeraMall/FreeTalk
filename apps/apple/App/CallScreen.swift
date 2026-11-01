@@ -40,6 +40,7 @@ struct CallScreen: View {
             HStack(spacing: 10) {
                 CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.cyan) { call.setMuted(!call.muted) }
                 CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.cyan : .pink) { Task { await call.toggleCamera() } }
+                    .disabled(call.cameraBusy)
                 CallButton(title: "Ещё", icon: "ellipsis", color: .white) { more = true }
                 CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
             }

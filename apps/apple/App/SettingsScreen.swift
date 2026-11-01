@@ -15,7 +15,7 @@ struct ProfileView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 14) {
-                        RoundedRectangle(cornerRadius: 18).fill(Brand.gradient.opacity(0.25)).frame(height: 90)
+                        ProfileCover(url: account.user?.coverUrl, client: account.client)
                             .overlay(alignment: .bottomLeading) {
                                 ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 72).offset(x: 16, y: 24)
                             }.padding(.bottom, 24)
