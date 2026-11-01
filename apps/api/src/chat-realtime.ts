@@ -78,6 +78,12 @@ export class ChatRealtimeHub {
     for (const sockets of this.socketsByUser.values()) count += sockets.size;
     return count;
   }
+
+  disconnectAll() {
+    for (const sockets of this.socketsByUser.values()) {
+      for (const socket of sockets) socket.close(1012, 'API moving to a healthy server');
+    }
+  }
 }
 
 export const chatRealtimeHub = new ChatRealtimeHub();

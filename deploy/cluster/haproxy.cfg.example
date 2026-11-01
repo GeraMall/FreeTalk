@@ -1,0 +1,43 @@
+# One copy on EACH edge machine. Replace private addresses with the encrypted overlay network.
+global
+    maxconn 12000
+    log stdout format raw local0
+defaults
+    mode http
+    log global
+    timeout connect 3s
+    timeout client 65s
+    timeout server 65s
+    timeout tunnel 1h
+    timeout http-request 10s
+
+frontend trlka_local
+    bind 127.0.0.1:8800
+    acl internal path_beg /api/v1/internal/ /internal/
+    http-request deny deny_status 404 if internal
+    acl account_api path_beg /api/
+    use_backend account_api if account_api
+    default_backend room_gateways
+
+# Signaling authorization uses a separate loopback-only listener.
+frontend trlka_internal_api
+    bind 127.0.0.1:8801
+    default_backend account_api
+
+backend account_api
+    option httpchk
+    http-check send meth GET uri /health
+    http-check expect status 200
+    http-request set-path %[path,regsub(^/api/,/)]
+    # API_HIGH_AVAILABILITY=true elects exactly one ready API through PostgreSQL.
+    # All nodes are checked; only the elected API returns 200.
+    server api_a 10.60.0.11:8790 check inter 2s fall 2 rise 1 on-marked-down shutdown-sessions
+    server api_b 10.60.0.12:8790 check inter 2s fall 2 rise 1 on-marked-down shutdown-sessions
+
+backend room_gateways
+    balance leastconn
+    option httpchk
+    http-check send meth GET uri /ready
+    http-check expect status 200
+    server gateway_a 10.60.0.11:8786 check inter 2s fall 2 rise 1 on-marked-down shutdown-sessions
+    server gateway_b 10.60.0.12:8786 check inter 2s fall 2 rise 1 on-marked-down shutdown-sessions

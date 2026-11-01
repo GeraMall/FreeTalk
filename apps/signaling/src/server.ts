@@ -1,3 +1,6 @@
+import { configuredClusterStore } from './cluster-config.js';
+import { RoomCluster } from './room-cluster.js';
+import { ClusterUnavailable } from './cluster-store.js';
 import { createServer, type IncomingMessage } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import {
@@ -24,6 +27,16 @@ assertAuthorizationConfigured();
 const port = Number(process.env.PORT ?? 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? '*';
 const manager = new RoomManager();
+const clusterStore = configuredClusterStore();
+const cluster = clusterStore ? new RoomCluster(clusterStore, manager) : undefined;
+if (cluster) await cluster.start();
+function inRoom<T>(
+  roomId: string,
+  create: boolean | undefined,
+  work: () => T | Promise<T>,
+): Promise<T> {
+  return cluster ? cluster.run(roomId, create, work) : Promise.resolve().then(work);
+}
 const metadata = new WeakMap<
   WebSocket,
   {
@@ -60,6 +73,17 @@ export const httpServer = createServer(async (request, response) => {
     }
     response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     response.end(JSON.stringify({ roomIds: manager.activeRoomIds() }));
+    return;
+  }
+  if (request.url === '/ready') {
+    try {
+      if (clusterStore) await clusterStore.pool.query('SELECT 1');
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, nodeId: clusterStore?.node.id ?? 'standalone' }));
+    } catch {
+      response.writeHead(503);
+      response.end();
+    }
     return;
   }
   if (request.url === '/health') {
@@ -116,7 +140,7 @@ sockets.on('headers', (headers, request) => {
   const info = upgradeMetadata.get(request);
   if (!info) return;
   headers.push(`x-freetalk-server-connection-id: ${info.serverConnectionId}`);
-  headers.push('x-freetalk-edge-colo: VPS-SPB');
+  headers.push(`x-freetalk-edge-colo: ${clusterStore?.node.id ?? 'VPS-SPB'}`);
 });
 
 sockets.on('connection', (socket, request) => {
@@ -132,9 +156,16 @@ sockets.on('connection', (socket, request) => {
       ...connectionInfo,
     }),
   );
+  let connectionRoomId: string | undefined;
   const connection: PeerConnection = {
-    send: (message) => send(socket, message),
-    close: (code, reason) => socket.close(code, reason),
+    send: (message) =>
+      cluster
+        ? cluster.deliver(connectionRoomId, () => send(socket, message))
+        : send(socket, message),
+    close: (code, reason) =>
+      cluster
+        ? cluster.deliver(connectionRoomId, () => socket.close(code, reason))
+        : socket.close(code, reason),
   };
   const joinDeadline = setTimeout(() => {
     if (!metadata.get(socket)?.roomId) socket.terminate();
@@ -228,62 +259,71 @@ sockets.on('connection', (socket, request) => {
           // a dead connection to a room after its close handler has already run.
           if (socket.readyState !== socket.OPEN) return;
           send(socket, iceConfig);
-          if (message.type === 'create-room')
-            manager.create(
-              message.roomId,
-              message.clientId,
-              message.sessionId,
-              authorizedName,
-              connection,
-              authorizedAvatar,
-              'userId' in authorization ? authorization.userId : undefined,
-              roomAuthority,
-              message.cardStyle ?? 'avatar-glass',
-              message.cardDecoration ?? 'none',
+          connectionRoomId = message.roomId;
+          await inRoom(message.roomId, message.type === 'create-room', async () => {
+            if (socket.readyState !== socket.OPEN) return;
+            if (message.type === 'create-room')
+              manager.create(
+                message.roomId,
+                message.clientId,
+                message.sessionId,
+                authorizedName,
+                connection,
+                authorizedAvatar,
+                'userId' in authorization ? authorization.userId : undefined,
+                roomAuthority,
+                message.cardStyle ?? 'avatar-glass',
+                message.cardDecoration ?? 'none',
+              );
+            else
+              manager.join(
+                message.roomId,
+                message.clientId,
+                message.sessionId,
+                authorizedName,
+                connection,
+                authorizedAvatar,
+                'userId' in authorization ? authorization.userId : undefined,
+                roomAuthority,
+                message.cardStyle ?? 'avatar-glass',
+                message.cardDecoration ?? 'none',
+              );
+            meta.roomId = message.roomId;
+            clearTimeout(joinDeadline);
+            meta.clientId = message.clientId;
+            meta.authorization = authorization;
+            meta.displayName = authorizedName;
+            void recordCallEventReliably({
+              event: message.type === 'create-room' ? 'start' : 'join',
+              roomId: message.roomId,
+              displayName: authorizedName,
+              userId: 'userId' in authorization ? authorization.userId : undefined,
+              anonymousUserId:
+                'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
+            }).catch((error) =>
+              logSocketEvent(socket, 'call-event.error', { error: String(error) }),
             );
-          else
-            manager.join(
-              message.roomId,
-              message.clientId,
-              message.sessionId,
-              authorizedName,
-              connection,
-              authorizedAvatar,
-              'userId' in authorization ? authorization.userId : undefined,
-              roomAuthority,
-              message.cardStyle ?? 'avatar-glass',
-              message.cardDecoration ?? 'none',
-            );
-          meta.roomId = message.roomId;
-          clearTimeout(joinDeadline);
-          meta.clientId = message.clientId;
-          meta.authorization = authorization;
-          meta.displayName = authorizedName;
-          void recordCallEventReliably({
-            event: message.type === 'create-room' ? 'start' : 'join',
-            roomId: message.roomId,
-            displayName: authorizedName,
-            userId: 'userId' in authorization ? authorization.userId : undefined,
-            anonymousUserId:
-              'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
-          }).catch((error) => logSocketEvent(socket, 'call-event.error', { error: String(error) }));
-          if (authorization.kind === 'guest' && authorization.disconnectAt) {
-            const delay = Math.max(0, new Date(authorization.disconnectAt).getTime() - Date.now());
-            meta.guestExpiryTimer = setTimeout(() => {
-              send(socket, {
-                type: 'error',
-                code: 'GUEST_SESSION_EXPIRED',
-                message:
-                  'Гостевая сессия завершена. Зарегистрируйтесь, чтобы общаться без ограничений.',
-                fatal: true,
-              });
-              socket.close(4003, 'Guest session expired');
-            }, delay);
-            meta.guestExpiryTimer.unref();
-          }
-          if (message.type === 'create-room')
-            send(socket, { type: 'room-created', roomId: message.roomId });
-          send(socket, iceConfig);
+            if (authorization.kind === 'guest' && authorization.disconnectAt) {
+              const delay = Math.max(
+                0,
+                new Date(authorization.disconnectAt).getTime() - Date.now(),
+              );
+              meta.guestExpiryTimer = setTimeout(() => {
+                send(socket, {
+                  type: 'error',
+                  code: 'GUEST_SESSION_EXPIRED',
+                  message:
+                    'Гостевая сессия завершена. Зарегистрируйтесь, чтобы общаться без ограничений.',
+                  fatal: true,
+                });
+                socket.close(4003, 'Guest session expired');
+              }, delay);
+              meta.guestExpiryTimer.unref();
+            }
+            if (message.type === 'create-room')
+              send(socket, { type: 'room-created', roomId: message.roomId });
+            send(socket, iceConfig);
+          });
           return;
         } finally {
           meta.joining = false;
@@ -295,7 +335,8 @@ sockets.on('connection', (socket, request) => {
         // A connected voice room can legitimately have no SDP/ICE traffic for hours.
         // Heartbeats are therefore the authoritative liveness signal for RoomManager.
         // Without this touch, removeStale evicts healthy participants after 45 seconds.
-        if (meta.roomId && meta.clientId) manager.touch(meta.roomId, meta.clientId);
+        if (meta.roomId && meta.clientId)
+          await inRoom(meta.roomId, undefined, () => manager.touch(meta.roomId!, meta.clientId!));
         send(socket, { type: 'pong', timestamp: message.timestamp });
         return;
       }
@@ -305,128 +346,140 @@ sockets.on('connection', (socket, request) => {
           code: 'NOT_JOINED',
           message: 'Сначала войдите в комнату',
         });
-      manager.touch(meta.roomId, meta.clientId);
-      switch (message.type) {
-        case 'leave-room':
-          leaveRoom(meta, connection);
-          socket.close(1000, 'Выход');
-          break;
-        case 'mute-changed':
-          manager.setMuted(meta.roomId, meta.clientId, message.muted);
-          break;
-        case 'update-profile': {
-          if (meta.authorization?.kind === 'guest') {
-            send(socket, {
-              type: 'error',
-              code: 'REGISTERED_ONLY',
-              message: 'Профиль доступен после регистрации',
-            });
+      await inRoom(meta.roomId!, undefined, async () => {
+        manager.touch(meta.roomId!, meta.clientId!);
+        switch (message.type) {
+          case 'leave-room':
+            leaveRoom(meta, connection);
+            socket.close(1000, 'Выход');
+            break;
+          case 'mute-changed':
+            manager.setMuted(meta.roomId!, meta.clientId!, message.muted);
+            break;
+          case 'update-profile': {
+            if (meta.authorization?.kind === 'guest') {
+              send(socket, {
+                type: 'error',
+                code: 'REGISTERED_ONLY',
+                message: 'Профиль доступен после регистрации',
+              });
+              break;
+            }
+            const registeredProfile =
+              meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
+                ? await getRegisteredProfile(meta.authorization.userId)
+                : null;
+            const result = manager.updateProfile(
+              meta.roomId!,
+              meta.clientId!,
+              registeredProfile?.displayName ?? message.name,
+              registeredProfile?.avatar ??
+                (meta.authorization?.kind === 'development' ? message.avatar : undefined),
+            );
+            if (result === 'RATE_LIMITED')
+              send(socket, {
+                type: 'error',
+                code: 'PROFILE_RATE_LIMITED',
+                message: 'Профиль можно изменить не более пяти раз за пять часов',
+              });
             break;
           }
-          const registeredProfile =
-            meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
-              ? await getRegisteredProfile(meta.authorization.userId)
-              : null;
-          const result = manager.updateProfile(
-            meta.roomId,
-            meta.clientId,
-            registeredProfile?.displayName ?? message.name,
-            registeredProfile?.avatar ??
-              (meta.authorization?.kind === 'development' ? message.avatar : undefined),
-          );
-          if (result === 'RATE_LIMITED')
-            send(socket, {
-              type: 'error',
-              code: 'PROFILE_RATE_LIMITED',
-              message: 'Профиль можно изменить не более пяти раз за пять часов',
-            });
-          break;
+          case 'update-card-appearance':
+            manager.updateCardAppearance(
+              meta.roomId!,
+              meta.clientId!,
+              message.cardStyle,
+              message.cardDecoration,
+            );
+            break;
+          case 'reaction':
+            manager.react(meta.roomId!, meta.clientId!, message.id, message.reaction);
+            break;
+          case 'room-chat-message':
+            manager.chat(meta.roomId!, meta.clientId!, message.id, message.text);
+            break;
+          case 'recording-started': {
+            const result = manager.recordingStarted(meta.roomId!, meta.clientId!);
+            if (result !== 'OK')
+              send(socket, {
+                type: 'error',
+                code: result,
+                message:
+                  result === 'NOT_OWNER'
+                    ? 'Только создатель комнаты может начать запись'
+                    : 'Комната уже недоступна',
+              });
+            break;
+          }
+          case 'moderation-mute': {
+            const result = manager.moderationMute(
+              meta.roomId!,
+              meta.clientId!,
+              message.targetParticipantId,
+            );
+            if (result !== 'OK')
+              send(socket, {
+                type: 'error',
+                code: result,
+                message:
+                  result === 'NOT_OWNER'
+                    ? 'Только создатель комнаты может выключать микрофоны участников'
+                    : 'Участник уже отключился',
+              });
+            break;
+          }
+          case 'telemetry-report':
+            if (meta.lastTelemetryAt && now - meta.lastTelemetryAt < 5_000) break;
+            meta.lastTelemetryAt = now;
+            message.report.connections = message.report.connections.filter((connection) =>
+              manager.hasParticipant(meta.roomId!, connection.peerId),
+            );
+            void recordTelemetry({
+              roomId: meta.roomId!,
+              reporterClientId: meta.clientId!,
+              userId:
+                meta.authorization && 'userId' in meta.authorization
+                  ? meta.authorization.userId
+                  : undefined,
+              anonymousUserId:
+                meta.authorization && 'anonymousUserId' in meta.authorization
+                  ? meta.authorization.anonymousUserId
+                  : undefined,
+              report: message.report,
+            }).catch((error) =>
+              logSocketEvent(socket, 'telemetry.error', { error: String(error) }),
+            );
+            break;
+          case 'offer':
+          case 'answer':
+          case 'ice-candidate': {
+            const payload =
+              message.type === 'ice-candidate'
+                ? ({
+                    type: message.type,
+                    from: meta.clientId!,
+                    candidate: message.candidate,
+                  } as const)
+                : ({
+                    type: message.type,
+                    from: meta.clientId!,
+                    description: message.description,
+                  } as const);
+            if (!manager.relay(meta.roomId!, meta.clientId!, message.to, payload))
+              send(socket, {
+                type: 'error',
+                code: 'TARGET_NOT_FOUND',
+                message: 'Участник уже отключился',
+              });
+            break;
+          }
         }
-        case 'update-card-appearance':
-          manager.updateCardAppearance(
-            meta.roomId,
-            meta.clientId,
-            message.cardStyle,
-            message.cardDecoration,
-          );
-          break;
-        case 'reaction':
-          manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
-          break;
-        case 'room-chat-message':
-          manager.chat(meta.roomId, meta.clientId, message.id, message.text);
-          break;
-        case 'recording-started': {
-          const result = manager.recordingStarted(meta.roomId, meta.clientId);
-          if (result !== 'OK')
-            send(socket, {
-              type: 'error',
-              code: result,
-              message:
-                result === 'NOT_OWNER'
-                  ? 'Только создатель комнаты может начать запись'
-                  : 'Комната уже недоступна',
-            });
-          break;
-        }
-        case 'moderation-mute': {
-          const result = manager.moderationMute(
-            meta.roomId,
-            meta.clientId,
-            message.targetParticipantId,
-          );
-          if (result !== 'OK')
-            send(socket, {
-              type: 'error',
-              code: result,
-              message:
-                result === 'NOT_OWNER'
-                  ? 'Только создатель комнаты может выключать микрофоны участников'
-                  : 'Участник уже отключился',
-            });
-          break;
-        }
-        case 'telemetry-report':
-          if (meta.lastTelemetryAt && now - meta.lastTelemetryAt < 5_000) break;
-          meta.lastTelemetryAt = now;
-          message.report.connections = message.report.connections.filter((connection) =>
-            manager.hasParticipant(meta.roomId!, connection.peerId),
-          );
-          void recordTelemetry({
-            roomId: meta.roomId,
-            reporterClientId: meta.clientId,
-            userId:
-              meta.authorization && 'userId' in meta.authorization
-                ? meta.authorization.userId
-                : undefined,
-            anonymousUserId:
-              meta.authorization && 'anonymousUserId' in meta.authorization
-                ? meta.authorization.anonymousUserId
-                : undefined,
-            report: message.report,
-          }).catch((error) => logSocketEvent(socket, 'telemetry.error', { error: String(error) }));
-          break;
-        case 'offer':
-        case 'answer':
-        case 'ice-candidate': {
-          const payload =
-            message.type === 'ice-candidate'
-              ? ({ type: message.type, from: meta.clientId, candidate: message.candidate } as const)
-              : ({
-                  type: message.type,
-                  from: meta.clientId,
-                  description: message.description,
-                } as const);
-          if (!manager.relay(meta.roomId, meta.clientId, message.to, payload))
-            send(socket, {
-              type: 'error',
-              code: 'TARGET_NOT_FOUND',
-              message: 'Участник уже отключился',
-            });
-          break;
-        }
-      }
+      });
     } catch (error) {
+      if (error instanceof ClusterUnavailable) {
+        socket.close(1013, 'Room temporarily unavailable; reconnect');
+        return;
+      }
       if (error instanceof RoomError)
         send(socket, { type: 'error', code: error.code, message: error.message, fatal: true });
       else
@@ -449,11 +502,19 @@ sockets.on('connection', (socket, request) => {
       }),
     );
     if (meta?.roomId && meta.clientId && code === 1000) {
-      leaveRoom(meta, connection, 'Выход');
+      void inRoom(meta.roomId, undefined, () => leaveRoom(meta, connection, 'Выход')).catch(() =>
+        socket.close(1012),
+      );
     } else if (meta?.roomId && meta.clientId) {
       // A short grace period lets the same authenticated in-memory session replace
       // this connection. RoomManager ignores this delayed leave after replacement.
-      setTimeout(() => leaveRoom(meta, connection, 'Соединение потеряно'), 12_000).unref();
+      setTimeout(
+        () =>
+          void inRoom(meta.roomId!, undefined, () =>
+            leaveRoom(meta, connection, 'Соединение потеряно'),
+          ).catch(() => {}),
+        12_000,
+      ).unref();
     }
   });
 
@@ -523,13 +584,23 @@ function logSocketEvent(socket: WebSocket, event: string, details: Record<string
 }
 
 const staleRoomTimer = setInterval(() => {
+  if (cluster) {
+    for (const id of manager.activeRoomIds())
+      void inRoom(id, undefined, () => {
+        manager.removeStaleInRoom(id, CLIENT_STALE_AFTER_MS);
+      }).catch(() => {});
+    return;
+  }
   for (const roomId of manager.removeStale(CLIENT_STALE_AFTER_MS)) {
     void recordCallEventReliably({ event: 'end', roomId }).catch((error) =>
       console.error('Failed to end stale call', { roomId, error: String(error) }),
     );
   }
 }, 15_000).unref();
-httpServer.on('close', () => clearInterval(staleRoomTimer));
-httpServer.listen(port, '127.0.0.1', () =>
+httpServer.on('close', () => {
+  clearInterval(staleRoomTimer);
+  void cluster?.stop().then(() => clusterStore?.pool.end());
+});
+httpServer.listen(port, process.env.SIGNALING_HOST ?? '127.0.0.1', () =>
   console.info(`Trlka signaling: ws://127.0.0.1:${port}/ws`),
 );

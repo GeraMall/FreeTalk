@@ -1,4 +1,7 @@
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { participantSchema, roomChatMessageSchema } from '@freetalk/protocol';
 import type {
   Participant,
   ParticipantCardDecoration,
@@ -14,7 +17,8 @@ export interface PeerConnection {
 
 interface Peer {
   participant: Participant;
-  sessionId: string;
+  sessionHash: string;
+  recovering?: boolean;
   connection: PeerConnection;
   lastSeen: number;
   profileChanges: number[];
@@ -32,6 +36,31 @@ interface Room {
 
 export type RoomAuthority =
   { scope: 'standalone' } | { scope: 'direct' } | { scope: 'group'; groupOwnerAccountId?: string };
+
+const snapshotSchema = z.object({
+  version: z.literal(1),
+  id: z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/),
+  ownerId: z.string().uuid().optional(),
+  createdAt: z.number().int().nonnegative(),
+  authority: z.discriminatedUnion('scope', [
+    z.object({ scope: z.literal('standalone') }),
+    z.object({ scope: z.literal('direct') }),
+    z.object({ scope: z.literal('group'), groupOwnerAccountId: z.string().uuid().optional() }),
+  ]),
+  chatMessages: z.array(roomChatMessageSchema).max(200),
+  peers: z
+    .array(
+      z.object({
+        participant: participantSchema,
+        sessionHash: z.string().regex(/^[a-f0-9]{64}$/),
+        profileChanges: z.array(z.number()).max(5),
+        lastReactionAt: z.number(),
+      }),
+    )
+    .max(ROOM_MAX_PARTICIPANTS),
+});
+export type RoomSnapshot = z.infer<typeof snapshotSchema>;
+const sessionHash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 export class RoomError extends Error {
   constructor(
@@ -103,7 +132,8 @@ export class RoomManager {
     }
     if (
       existing &&
-      (existing.sessionId !== sessionId || existing.participant.accountId !== accountId)
+      (existing.sessionHash !== sessionHash(sessionId) ||
+        existing.participant.accountId !== accountId)
     ) {
       throw new RoomError('ROOM_FULL', 'Этот идентификатор участника уже используется');
     }
@@ -128,7 +158,7 @@ export class RoomManager {
     participant.cardDecoration = 'none';
     const peer: Peer = {
       participant,
-      sessionId,
+      sessionHash: sessionHash(sessionId),
       connection,
       lastSeen: Date.now(),
       profileChanges: existing?.profileChanges ?? [],
@@ -142,14 +172,19 @@ export class RoomManager {
       roomId,
       selfId: clientId,
       roomStartedAt: room.createdAt,
-      participants: [...room.peers.values()].map((entry) => entry.participant),
+      participants: [...room.peers.values()]
+        .filter((entry) => !entry.recovering)
+        .map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
     });
-    if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
+    if (!existing || existing.recovering)
+      this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
       this.broadcast(room, {
         type: 'participants',
-        participants: [...room.peers.values()].map((entry) => entry.participant),
+        participants: [...room.peers.values()]
+          .filter((entry) => !entry.recovering)
+          .map((entry) => entry.participant),
       });
     return participant;
   }
@@ -312,6 +347,58 @@ export class RoomManager {
 
   hasRoom(roomId: string) {
     return this.rooms.has(roomId);
+  }
+  snapshot(roomId: string): RoomSnapshot | null {
+    const room = this.rooms.get(roomId);
+    if (!room) return null;
+    return structuredClone({
+      version: 1,
+      id: room.id,
+      ownerId: room.ownerId,
+      createdAt: room.createdAt,
+      authority: room.authority,
+      chatMessages: room.chatMessages,
+      peers: [...room.peers.values()].map(
+        ({ participant, sessionHash, profileChanges, lastReactionAt }) => ({
+          participant,
+          sessionHash,
+          profileChanges,
+          lastReactionAt,
+        }),
+      ),
+    });
+  }
+  restore(snapshot: RoomSnapshot) {
+    const value = snapshotSchema.parse(snapshot);
+    const connection: PeerConnection = { send: () => {}, close: () => {} };
+    this.rooms.set(value.id, {
+      id: value.id,
+      ownerId: value.ownerId,
+      authority: value.authority,
+      createdAt: value.createdAt,
+      chatMessages: value.chatMessages,
+      peers: new Map(
+        value.peers.map((peer) => [
+          peer.participant.id,
+          { ...peer, connection, recovering: true, lastSeen: Date.now() },
+        ]),
+      ),
+    });
+  }
+  discard(roomId: string) {
+    const room = this.rooms.get(roomId);
+    this.rooms.delete(roomId);
+    for (const peer of room?.peers.values() ?? [])
+      peer.connection.close(1012, 'Room moving to another node');
+  }
+  removeStaleInRoom(roomId: string, maxAgeMs: number, now = Date.now()) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    for (const [id, peer] of [...room.peers])
+      if (now - peer.lastSeen > maxAgeMs) {
+        peer.connection.close(4000, 'Тайм-аут');
+        this.leave(roomId, id, peer.connection, 'Соединение потеряно');
+      }
   }
   activeRoomIds() {
     return [...this.rooms.values()].filter((room) => room.peers.size > 0).map((room) => room.id);

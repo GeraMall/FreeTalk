@@ -23,6 +23,7 @@ import { accountLoginLimited } from './login-throttle.js';
 import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { registerAndroidPush, startAndroidPush } from './android-push.js';
 import { chatRealtimeHub } from './chat-realtime.js';
+import { ApiLeadership } from './api-leadership.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
 import { registerAdminRoutes } from './admin-routes.js';
@@ -64,9 +65,26 @@ const app = Fastify({
     },
   },
   bodyLimit: 64 * 1024,
-  trustProxy: ['127.0.0.1', '::1'],
+  trustProxy: env.API_TRUSTED_PROXIES.split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
 });
 registerApiMetrics(app);
+const leadership =
+  process.env.API_HIGH_AVAILABILITY === 'true'
+    ? new ApiLeadership(db, () => chatRealtimeHub.disconnectAll())
+    : undefined;
+if (leadership) {
+  await leadership.start();
+  app.addHook('onRequest', async (_request, reply) => {
+    if (!leadership.isActive())
+      return reply
+        .code(503)
+        .header('Retry-After', '2')
+        .send({ code: 'API_STANDBY', message: 'Сервер переключается. Повторите подключение.' });
+  });
+  app.addHook('onClose', async () => leadership.stop());
+}
 await app.register(websocket, {
   options: { maxPayload: 8 * 1024, perMessageDeflate: false },
 });
@@ -1043,8 +1061,9 @@ startWebPush(app);
 registerAdminRoutes(app);
 startInfrastructureSampler();
 
-const stopCallReconciliation = startCallReconciliation((error) =>
-  app.log.error(error, 'Call reconciliation failed'),
+const stopCallReconciliation = startCallReconciliation(
+  (error) => app.log.error(error, 'Call reconciliation failed'),
+  () => !leadership || leadership.isActive(),
 );
 app.addHook('onClose', async () => stopCallReconciliation());
 await app.listen({ host: env.API_HOST, port: env.API_PORT });

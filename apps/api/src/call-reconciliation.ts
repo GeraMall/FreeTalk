@@ -27,11 +27,14 @@ export class MissingCallTracker {
   }
 }
 
-export function startCallReconciliation(logError: (error: unknown) => void) {
+export function startCallReconciliation(
+  logError: (error: unknown) => void,
+  enabled: () => boolean = () => true,
+) {
   const tracker = new MissingCallTracker();
   let running = false;
   const reconcile = async () => {
-    if (running) return;
+    if (running || !enabled()) return;
     running = true;
     try {
       const response = await fetch(

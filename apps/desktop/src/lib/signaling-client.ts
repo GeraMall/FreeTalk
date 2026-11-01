@@ -19,6 +19,7 @@ export class SignalingClient {
   private socket?: SignalSocket;
   private heartbeat?: number;
   private retryTimer?: number;
+  private connectTimer?: number;
   private closedByUser = false;
   private lastServerActivity = 0;
   private lastPingQueuedAt?: number;
@@ -30,7 +31,7 @@ export class SignalingClient {
   private readonly clientClosing = new WeakSet<SignalSocket>();
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
-  private readonly schedule = new ReconnectSchedule();
+  private readonly schedule = new ReconnectSchedule({ unlimited: true, jitter: true });
 
   constructor(
     private readonly url: string,
@@ -131,8 +132,15 @@ export class SignalingClient {
       return;
     }
 
+    this.connectTimer = window.setTimeout(() => {
+      if (this.socket !== socket) return;
+      socket.close(4000, 'Connection timeout');
+    }, 10_000);
+
     socket.addEventListener('open', (event) => {
       if (this.socket !== socket) return;
+      if (this.connectTimer) window.clearTimeout(this.connectTimer);
+      this.connectTimer = undefined;
       const handshake = (event as MessageEvent<SignalOpenDetails>).data;
       if (reconnecting) connectionDiagnostics.record('signaling-reconnect:socket-open');
       connectionDiagnostics.record('signaling-socket:open', undefined, {
@@ -216,6 +224,8 @@ export class SignalingClient {
     });
     socket.addEventListener('close', (event) => {
       if (this.socket !== socket) return;
+      if (this.connectTimer) window.clearTimeout(this.connectTimer);
+      this.connectTimer = undefined;
       this.socket = undefined;
       const native = (event as MessageEvent<SignalCloseDetails>).data;
       const closeCode = native?.code ?? (event as CloseEvent).code ?? 1006;
@@ -267,6 +277,8 @@ export class SignalingClient {
   }
 
   private clearTimers() {
+    if (this.connectTimer) window.clearTimeout(this.connectTimer);
+    this.connectTimer = undefined;
     if (this.retryTimer) window.clearTimeout(this.retryTimer);
     if (this.heartbeat) window.clearInterval(this.heartbeat);
     this.retryTimer = undefined;

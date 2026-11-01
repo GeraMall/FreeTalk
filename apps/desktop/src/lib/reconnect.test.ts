@@ -19,6 +19,17 @@ describe('reconnect schedule', () => {
     expect(schedule.attempts).toBe(8);
     expect(schedule.canRetry).toBe(false);
   });
+  it('keeps an active call retrying with bounded jitter through a long outage', () => {
+    const schedule = new ReconnectSchedule({ unlimited: true, jitter: true });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const delay = schedule.next();
+      expect(schedule.canRetry).toBe(true);
+      expect(delay).toBeGreaterThanOrEqual(400);
+      expect(delay).toBeLessThanOrEqual(36_000);
+    }
+    schedule.reset();
+    expect(schedule.next()).toBeLessThanOrEqual(600);
+  });
 });
 
 describe('room code', () => {

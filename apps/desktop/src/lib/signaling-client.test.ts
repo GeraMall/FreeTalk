@@ -75,6 +75,7 @@ const join = {
 describe('SignalingClient', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
     vi.setSystemTime(1_000_000);
     FakeWebSocket.instances = [];
     vi.stubGlobal('window', globalThis);
@@ -83,6 +84,7 @@ describe('SignalingClient', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
