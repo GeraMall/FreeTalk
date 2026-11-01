@@ -154,6 +154,10 @@ final class CallController {
         case "mute-changed":
             if let id = message["participantId"] as? String, let index = participants.firstIndex(where: { $0.id == id }), let muted = message["muted"] as? Bool { participants[index].muted = muted }
         case "force-mute": setMuted(true)
+        case "owner-changed":
+            if let owner = message["ownerId"] as? String {
+                for index in participants.indices { participants[index].isOwner = participants[index].id == owner }
+            }
         case "offer", "answer":
             guard let id = message["from"] as? String, let description = message["description"] as? [String: Any], let sdp = description["sdp"] as? String, sdp.utf8.count <= 24000 else { return }
             ensure(id)?.description(type: type, sdp: sdp)

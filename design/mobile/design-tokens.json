@@ -72,7 +72,7 @@
       "id": "history",
       "label": "История",
       "appleSymbol": "clock.fill",
-      "androidEquivalent": "Icons.Rounded.Schedule"
+      "androidEquivalent": "Icons.Rounded.WatchLater"
     }
   ],
   "connection": {

@@ -87,6 +87,9 @@ struct ParticipantCard: View {
             }
             if let video = call.video(participantID: participant.id) {
                 RTCVideoSurface(track: video, mirrored: participant.id == call.selfID && mirrorSelf)
+                    #if os(macOS)
+                    .scaleEffect(x: participant.id == call.selfID && mirrorSelf ? -1 : 1, y: 1)
+                    #endif
                     .frame(height: 200).clipped()
             }
             HStack(spacing: 14) {

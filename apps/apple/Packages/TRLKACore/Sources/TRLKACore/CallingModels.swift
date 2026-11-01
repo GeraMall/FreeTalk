@@ -32,7 +32,7 @@ public struct RoomParticipant: Codable, Identifiable, Sendable, Equatable {
     public let name: String
     public let avatar: String?
     public var muted: Bool
-    public let isOwner: Bool
+    public var isOwner: Bool
 }
 
 public struct ActiveCall: Decodable, Sendable {
