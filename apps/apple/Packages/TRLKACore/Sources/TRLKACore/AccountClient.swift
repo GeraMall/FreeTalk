@@ -10,7 +10,7 @@ public actor AccountClient {
     private var generation = 0
 
     public init(baseURL: URL = URL(string: "https://trlka.com/api")!,
-                transport: URLSession = .shared,
+                transport: URLSession = URLSession(configuration: .ephemeral),
                 vault: any SessionVault = KeychainSessionVault()) throws {
         guard baseURL.scheme == "https", baseURL.host != nil,
               baseURL.user == nil, baseURL.password == nil,
@@ -109,7 +109,7 @@ public actor AccountClient {
         let task = Task<Session, Error> { try await self.rotate(token: token, expected: expected) }
         refreshTask = task
         do {
-            let session = try await task.value
+            _ = try await task.value
             guard generation == expected else { throw CancellationError() }
             refreshTask = nil
         } catch {
@@ -156,7 +156,6 @@ public actor AccountClient {
         let (data, response) = try await transport.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200..<300).contains(http.statusCode) else {
-            struct Failure: Decodable { let code: String?; let message: String? }
             let failure = try? JSONDecoder().decode(Failure.self, from: data)
             let message = http.statusCode >= 500 ? "Сервер временно недоступен. Попробуйте снова." :
                 (failure?.message ?? "Не удалось выполнить запрос.")
@@ -168,3 +167,4 @@ public actor AccountClient {
 }
 
 private struct EmptyResponse: Decodable {}
+private struct Failure: Decodable { let code: String?; let message: String? }

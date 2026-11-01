@@ -111,6 +111,23 @@ final class AccountClientTests: XCTestCase {
         XCTAssertNil(vault.read())
     }
 
+    func testLogoutDuringRefreshCannotResurrectSession() async throws {
+        let vault = MemoryVault("saved-token")
+        let started = expectation(description: "Refresh started")
+        StubProtocol.handle = { _ in
+            started.fulfill()
+            Thread.sleep(forTimeInterval: 0.15)
+            return (200, "{\"session\":\(self.sessionJSON)}")
+        }
+        let api = try client(vault: vault)
+        let pending = Task { try await api.chats() }
+        await fulfillment(of: [started], timeout: 2)
+        try await api.logout()
+        do { _ = try await pending.value; XCTFail("Request must be cancelled") }
+        catch {}
+        XCTAssertNil(vault.read())
+    }
+
     func testCaptchaRequirementIsNotBypassed() async throws {
         let vault = MemoryVault()
         StubProtocol.handle = { _ in (403, #"{"code":"CAPTCHA_REQUIRED","message":"Пройдите CAPTCHA"}"#) }
