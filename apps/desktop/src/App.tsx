@@ -571,9 +571,8 @@ export function App() {
         // Older Safari releases expose Media Session but reject this setter.
       }
     };
-    const resumeBrowserCall = () => {
+    const activateBrowserCall = () => {
       if (document.visibilityState !== 'visible') return;
-      signaling.current?.reconnectNow('online');
       setMediaSessionActive(true);
       if ('wakeLock' in navigator && (!wakeLock || wakeLock.released)) {
         void navigator.wakeLock
@@ -585,6 +584,11 @@ export function App() {
           .catch(() => {});
       }
     };
+    const resumeBrowserCall = () => {
+      if (document.visibilityState !== 'visible') return;
+      signaling.current?.recoverAfterResume();
+      activateBrowserCall();
+    };
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -593,16 +597,16 @@ export function App() {
       });
       setMediaSessionActive(true);
     }
-    resumeBrowserCall();
+    // Activating the call screen must not interrupt its initial create-room
+    // handshake. Network return already has one independent online listener.
+    activateBrowserCall();
     document.addEventListener('visibilitychange', resumeBrowserCall);
     window.addEventListener('pageshow', resumeBrowserCall);
-    window.addEventListener('online', resumeBrowserCall);
 
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', resumeBrowserCall);
       window.removeEventListener('pageshow', resumeBrowserCall);
-      window.removeEventListener('online', resumeBrowserCall);
       if (wakeLock) void wakeLock.release();
       if ('mediaSession' in navigator) {
         setMediaSessionActive(false);

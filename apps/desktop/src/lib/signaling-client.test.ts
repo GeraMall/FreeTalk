@@ -195,6 +195,13 @@ describe('SignalingClient', () => {
     const first = FakeWebSocket.instances[0]!;
     first.open();
 
+    first.receive({
+      type: 'joined-room',
+      roomId: join.roomId,
+      selfId: join.clientId,
+      roomStartedAt: Date.now(),
+      participants: [],
+    });
     client.reconnectNow();
     const second = FakeWebSocket.instances[1]!;
     second.open();
@@ -216,6 +223,13 @@ describe('SignalingClient', () => {
     const first = FakeWebSocket.instances[0]!;
     first.open();
 
+    first.receive({
+      type: 'joined-room',
+      roomId: join.roomId,
+      selfId: join.clientId,
+      roomStartedAt: Date.now(),
+      participants: [],
+    });
     client.reconnectNow();
     expect(FakeWebSocket.instances).toHaveLength(1);
     await Promise.resolve();
@@ -279,5 +293,51 @@ describe('SignalingClient', () => {
     for (let index = 0; index < 12; index += 1) await Promise.resolve();
 
     expect(handled).toEqual([2]);
+  });
+  it('does not turn an initial create handshake into a join when the page becomes visible', () => {
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), vi.fn());
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    client.recoverAfterResume();
+    first.open();
+    client.recoverAfterResume();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(first.closeCode).toBeUndefined();
+    expect(JSON.parse(first.sent[0]!)).toMatchObject({ type: 'create-room' });
+    client.close();
+  });
+
+  it('retries create instead of joining a room that has never acknowledged creation', () => {
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), vi.fn());
+    client.connect(join);
+    FakeWebSocket.instances[0]!.open();
+    client.reconnectNow();
+    const next = FakeWebSocket.instances[1]!;
+    next.open();
+    expect(JSON.parse(next.sent[0]!)).toMatchObject({ type: 'create-room', roomId: join.roomId });
+    client.close();
+  });
+
+  it('preserves a responsive call on focus and rejoins only after its activity becomes stale', () => {
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), vi.fn());
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive({
+      type: 'joined-room',
+      roomId: join.roomId,
+      selfId: join.clientId,
+      roomStartedAt: Date.now(),
+      participants: [],
+    });
+    client.recoverAfterResume();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 45_001);
+    client.recoverAfterResume();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const next = FakeWebSocket.instances[1]!;
+    next.open();
+    expect(JSON.parse(next.sent[0]!)).toMatchObject({ type: 'join-room', roomId: join.roomId });
+    client.close();
   });
 });
