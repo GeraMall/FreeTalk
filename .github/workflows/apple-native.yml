@@ -66,6 +66,7 @@ jobs:
         working-directory: apps/apple
         run: |
           codesign --force --sign - --entitlements Configuration/macOS.entitlements build/macos/Build/Products/Debug/TRLKA.app
+          lipo build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA -archs
           lipo build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA -verify_arch arm64 x86_64
           /usr/bin/open -n build/macos/Build/Products/Debug/TRLKA.app
           sleep 3
