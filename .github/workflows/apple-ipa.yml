@@ -7,6 +7,8 @@ on:
       - '.github/workflows/apple-ipa.yml'
       - 'apps/apple/script/build_ipa.sh'
       - 'apps/apple/script/verify_ipa.py'
+      - 'apps/apple/project.yml'
+      - 'apps/apple/Configuration/Info.plist'
   workflow_dispatch:
 
 permissions:
