@@ -41,6 +41,7 @@ public struct Message: Codable, Identifiable, Sendable, Equatable {
     public let body: String
     public let senderID: String?
     public let displayName: String?
+    public let avatarURL: String?
     public let createdAt: String
     public let metadata: Metadata?
     public struct Metadata: Codable, Sendable, Equatable {
@@ -51,6 +52,7 @@ public struct Message: Codable, Identifiable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, kind, body, metadata
         case senderID = "sender_id", displayName = "display_name", createdAt = "created_at"
+        case avatarURL = "avatar_url"
     }
 
     public var preview: String {

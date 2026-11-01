@@ -11,6 +11,10 @@ struct ConversationView: View {
     @State private var hasMore = false
     @State private var sending = false
     @State private var loadingOlder = false
+    @State private var groupedIDs: Set<String> = []
+    @State private var nearBottom = true
+    @State private var viewportHeight: CGFloat = 0
+    @State private var newMessages = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -33,45 +37,39 @@ struct ConversationView: View {
             .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 0) {
                     if hasMore {
                         Button("Загрузить предыдущие") { Task { await load(older: true) } }
                             .disabled(loadingOlder)
                     }
                     ForEach(messages) { message in
-                        let mine = message.senderID == account.user?.id
-                        HStack {
-                            if mine { Spacer(minLength: 36) }
-                            VStack(alignment: .leading, spacing: 5) {
-                                if !mine, let name = message.displayName {
-                                    Text(name).font(.caption.bold()).foregroundStyle(Brand.cyan)
-                                }
-                                if message.kind == "call" {
-                                    Label(message.metadata?.ended == true ? "Звонок завершён" : "Голосовой звонок", systemImage: "phone")
-                                        .font(.subheadline.weight(.semibold))
-                                    if let code = message.metadata?.roomId, message.metadata?.ended != true {
-                                        Button("Присоединиться") {
-                                            if let user = account.user { Task { await account.calls.start(user: user, join: code) } }
-                                        }.buttonStyle(.bordered)
-                                    }
-                                } else { Text(message.preview).font(.system(size: 15)).textSelection(.enabled) }
-                                if let date = WireDate.parse(message.createdAt) {
-                                    Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted).frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                            }
-                            .padding(12)
-                            .background(mine ? Brand.cyan.opacity(0.12) : Brand.surface.opacity(0.6),
-                                        in: RoundedRectangle(cornerRadius: 16))
-                            if !mine { Spacer(minLength: 36) }
-                        }.id(message.id)
+                        MessageLine(message: message, grouped: groupedIDs.contains(message.id), account: account).id(message.id)
                     }
-                }.padding()
+                    Color.clear.frame(height: 1).id("message-bottom")
+                        .background(GeometryReader { geometry in Color.clear.preference(key: MessageBottomKey.self, value: geometry.frame(in: .named("message-viewport")).maxY) })
+                }.padding(.horizontal, 16).padding(.vertical, 12)
             }
+            .coordinateSpace(name: "message-viewport")
+            .background(GeometryReader { geometry in Color.clear.preference(key: MessageViewportKey.self, value: geometry.size.height) })
+            .onPreferenceChange(MessageViewportKey.self) { viewportHeight = $0 }
+            .onPreferenceChange(MessageBottomKey.self) { nearBottom = $0 <= viewportHeight + 100; if nearBottom { newMessages = false } }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .accessibilityIdentifier("chat.messages")
             .onChange(of: messages.last?.id) {
-                if !loadingOlder { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(messages.last?.id, anchor: .bottom) } }
+                if !loadingOlder {
+                    if nearBottom { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("message-bottom", anchor: .bottom) } }
+                    else { newMessages = true }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if newMessages {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("message-bottom", anchor: .bottom) }
+                        newMessages = false
+                    } label: { Label("Новые сообщения", systemImage: "arrow.down").font(.caption.bold()).padding(.horizontal, 14).padding(.vertical, 9).background(Brand.surface, in: Capsule()).overlay(Capsule().stroke(Brand.cyan.opacity(0.5))) }
+                        .buttonStyle(CompactControlStyle()).padding(.bottom, 8)
+                }
             }
         }
         composer
@@ -132,6 +130,7 @@ struct ConversationView: View {
                 }
             }
             error = nil
+            rebuildGroups()
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
 
@@ -143,8 +142,20 @@ struct ConversationView: View {
         do {
             let message = try await account.client.send(chatID: chat.id, text: text)
             if !messages.contains(where: { $0.id == message.id }) { messages.append(message) }
+            nearBottom = true; rebuildGroups()
             if draft == text { draft = "" }
             error = nil
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func rebuildGroups() {
+        var result: Set<String> = []
+        for index in messages.indices where index > 0 {
+            let current = messages[index], previous = messages[index - 1]
+            if current.kind == "text", previous.kind == "text", current.senderID == previous.senderID,
+               let date = WireDate.parse(current.createdAt), let before = WireDate.parse(previous.createdAt),
+               (0...300).contains(date.timeIntervalSince(before)), Calendar.current.isDate(date, inSameDayAs: before) { result.insert(current.id) }
+        }
+        groupedIDs = result
     }
 }

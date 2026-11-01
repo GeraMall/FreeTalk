@@ -20,7 +20,7 @@ struct AppShell: View {
     enum Page: String, CaseIterable {
         case home = "Главная", chats = "Чаты", friends = "Друзья", history = "История"
         var icon: String {
-            switch self { case .home: return "door.left.hand.open"; case .chats: return "bubble.left"; case .friends: return "person.2"; case .history: return "clock.arrow.circlepath" }
+            switch self { case .home: return "house.fill"; case .chats: return "bubble.left.and.bubble.right.fill"; case .friends: return "person.2.fill"; case .history: return "clock.fill" }
         }
     }
     var body: some View {
@@ -75,12 +75,16 @@ struct AppShell: View {
                         path = []; withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { page = item }
                     } label: {
                         VStack(spacing: 5) {
-                            Image(systemName: item.icon).font(.system(size: 21))
+                            Image(systemName: item.icon)
+                                .font(.system(size: 22, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .frame(width: 28, height: 25)
                             Text(item.rawValue).font(.system(size: 10, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .foregroundStyle(page == item ? Brand.cyan : Brand.muted)
                         .background(page == item ? Brand.cyan.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
                     }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("tab.\(String(describing: item))")
                 }
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 3)

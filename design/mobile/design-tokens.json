@@ -1,0 +1,86 @@
+{
+  "version": "trlka-mobile-0.2",
+  "units": "points-on-ios-dp-on-android",
+  "colors": {
+    "background": "#050D17",
+    "surface": "#091620",
+    "stroke": "#1F3B4D",
+    "muted": "#87A3B5",
+    "accentStart": "#3DE3ED",
+    "accentEnd": "#407DFF",
+    "goodConnection": "#4ADBA3",
+    "destructive": "#E8305C"
+  },
+  "spacing": [4, 8, 12, 16, 24, 32],
+  "type": {
+    "hero": 31,
+    "screenTitle": 28,
+    "profileName": 24,
+    "chatHeader": 16,
+    "participantName": 16,
+    "messageBody": 15,
+    "messageAuthor": 14,
+    "secondary": 13,
+    "metadata": 11,
+    "navigationLabel": 10
+  },
+  "radii": {
+    "field": 14,
+    "panel": 18,
+    "participant": 20,
+    "hero": 22
+  },
+  "sizes": {
+    "minimumTouchTarget": 44,
+    "navigationIconFrame": [28, 25],
+    "navigationIcon": 22,
+    "chatAvatar": 48,
+    "messageAvatar": 36,
+    "participantAvatar": 50,
+    "callButtonHeight": 68,
+    "callButtonRowMaxWidth": 360,
+    "contentMaxWidth": 850,
+    "callContentMaxWidth": 900
+  },
+  "motionMs": {
+    "press": 120,
+    "primaryPress": 150,
+    "tab": 180,
+    "scrollToLatest": 200,
+    "waitingPulse": 1200
+  },
+  "navigation": [
+    {
+      "id": "home",
+      "label": "Главная",
+      "appleSymbol": "house.fill",
+      "androidEquivalent": "Icons.Rounded.Home"
+    },
+    {
+      "id": "chats",
+      "label": "Чаты",
+      "appleSymbol": "bubble.left.and.bubble.right.fill",
+      "androidEquivalent": "Icons.Rounded.Forum"
+    },
+    {
+      "id": "friends",
+      "label": "Друзья",
+      "appleSymbol": "person.2.fill",
+      "androidEquivalent": "Icons.Rounded.Group"
+    },
+    {
+      "id": "history",
+      "label": "История",
+      "appleSymbol": "clock.fill",
+      "androidEquivalent": "Icons.Rounded.Schedule"
+    }
+  ],
+  "connection": {
+    "unknown": "neutral-before-stats",
+    "fairAboveRTTMs": 300,
+    "poorAboveRTTMs": 1000,
+    "fairAboveLossFraction": 0.05,
+    "poorAboveLossFraction": 0.15,
+    "sampleIntervalMs": 500
+  }
+}
