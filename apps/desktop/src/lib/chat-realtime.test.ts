@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountClient } from './api-client';
 import { AWAY_AFTER_MS, ChatRealtimeClient } from './chat-realtime';
 import { setPresenceMode } from './presence-preference';
+import { setCallActive } from './presence-activity';
 
 class FakeWebSocket extends EventTarget {
   static OPEN = 1;
@@ -35,6 +36,7 @@ class FakeWebSocket extends EventTarget {
 
 describe('ChatRealtimeClient', () => {
   beforeEach(() => {
+    setCallActive(false);
     localStorage.clear();
     FakeWebSocket.instances = [];
     vi.stubGlobal('WebSocket', FakeWebSocket);
@@ -42,6 +44,7 @@ describe('ChatRealtimeClient', () => {
   });
 
   afterEach(() => {
+    setCallActive(false);
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -66,6 +69,45 @@ describe('ChatRealtimeClient', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
     expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
     expect(onPresence).toHaveBeenLastCalledWith('online');
+    client.stop();
+  });
+
+  it('stays online throughout an idle call and restarts the idle timeout after leaving', async () => {
+    vi.useFakeTimers();
+    setCallActive(true);
+    const client = new ChatRealtimeClient(vi.fn());
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: 'ready' });
+    await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS * 3);
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
+    setCallActive(false);
+    await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS - 1);
+    expect(JSON.parse(socket.sent.at(-1)!).status).toBe('online');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(JSON.parse(socket.sent.at(-1)!).status).toBe('away');
+    client.stop();
+  });
+  it('respects manually selected invisible, away and do-not-disturb during a call', async () => {
+    vi.useFakeTimers();
+    const client = new ChatRealtimeClient(vi.fn());
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    socket.receive({ type: 'ready' });
+    setCallActive(true);
+    for (const [mode, status] of [
+      ['invisible', 'offline'],
+      ['dnd', 'dnd'],
+      ['away', 'away'],
+    ] as const) {
+      setPresenceMode(mode);
+      await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS * 2);
+      expect(JSON.parse(socket.sent.at(-1)!).status).toBe(status);
+    }
     client.stop();
   });
 

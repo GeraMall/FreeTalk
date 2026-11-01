@@ -4,6 +4,7 @@ import {
   type PresenceStatus,
 } from '@freetalk/protocol';
 import { accountClient, accountRealtimeUrl } from './api-client';
+import { CALL_ACTIVITY_EVENT, isCallActive } from './presence-activity';
 import {
   getPresenceMode,
   PRESENCE_MODE_EVENT,
@@ -37,6 +38,7 @@ export class ChatRealtimeClient {
     this.stopped = false;
     this.attachActivityListeners();
     window.addEventListener(PRESENCE_MODE_EVENT, this.handlePresenceModeChange);
+    window.addEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     this.scheduleAway();
     void this.connect();
   }
@@ -49,6 +51,7 @@ export class ChatRealtimeClient {
     this.socket = undefined;
     this.detachActivityListeners();
     window.removeEventListener(PRESENCE_MODE_EVENT, this.handlePresenceModeChange);
+    window.removeEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     if (this.awayTimer !== undefined) window.clearTimeout(this.awayTimer);
     this.awayTimer = undefined;
     this.updateSelfPresence('offline');
@@ -73,9 +76,7 @@ export class ChatRealtimeClient {
           if (message.type === 'ready') {
             this.attempt = 0;
             window.clearTimeout(connectTimeout);
-            this.sendPresence(
-              resolvePresence(this.presenceMode, Date.now() - this.lastActivityAt >= AWAY_AFTER_MS),
-            );
+            this.sendPresence(this.resolvedPresence());
             this.onReady?.();
             return;
           }
@@ -118,16 +119,27 @@ export class ChatRealtimeClient {
   private scheduleAway() {
     if (this.awayTimer !== undefined) window.clearTimeout(this.awayTimer);
     this.awayTimer = undefined;
-    if (this.presenceMode === 'auto')
+    if (this.presenceMode === 'auto' && !isCallActive())
       this.awayTimer = window.setTimeout(() => this.sendPresence('away'), AWAY_AFTER_MS);
   }
 
   private readonly handlePresenceModeChange = (event: Event) => {
     this.presenceMode = (event as CustomEvent<PresenceMode>).detail;
     this.scheduleAway();
-    this.sendPresence(
-      resolvePresence(this.presenceMode, Date.now() - this.lastActivityAt >= AWAY_AFTER_MS),
+    this.sendPresence(this.resolvedPresence());
+  };
+
+  private resolvedPresence() {
+    return resolvePresence(
+      this.presenceMode,
+      !isCallActive() && Date.now() - this.lastActivityAt >= AWAY_AFTER_MS,
     );
+  }
+
+  private readonly handleCallActivityChange = () => {
+    if (!isCallActive()) this.lastActivityAt = Date.now();
+    this.scheduleAway();
+    this.sendPresence(this.resolvedPresence());
   };
 
   private sendPresence(status: PresenceStatus) {

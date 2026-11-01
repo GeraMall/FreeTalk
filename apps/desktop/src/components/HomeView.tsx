@@ -4,6 +4,7 @@ import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import { ChatSendPacer } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
+import { uploadPrivateGif } from '../lib/gif-library';
 import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
 import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
 import { dataUrlToBlob } from '../lib/profile';
@@ -201,7 +202,18 @@ export function HomeView({
   useEffect(() => {
     const realtime = new ChatRealtimeClient(
       (event) => {
-        if (event.type === 'message-created') {
+        if (event.type === 'friends-updated') {
+          void accountClient
+            .request<{ friends: FriendItem[]; pending: PendingItem[]; blocked: BlockedItem[] }>(
+              '/v1/friends',
+            )
+            .then((result) => {
+              setFriends(result.friends);
+              setPending(result.pending);
+              setBlocked(result.blocked);
+            })
+            .catch(() => undefined);
+        } else if (event.type === 'message-created') {
           setChats((current) =>
             promoteChat(current, event.chatId, event.message).map((chat) =>
               chat.id === event.chatId &&
@@ -710,7 +722,7 @@ export function HomeView({
     }
   };
 
-  const sendGif = async (gif: GifMessageData, replyToMessageId?: string) => {
+  const sendGif = async (input: GifMessageData | File, replyToMessageId?: string) => {
     if (!activeChat) return false;
     const chatId = activeChat;
     const pacing = chatSendPacerRef.current.check(chatId);
@@ -719,11 +731,14 @@ export function HomeView({
       return false;
     }
     try {
+      const gif = input instanceof File ? await uploadPrivateGif(input, user.id) : input;
       const result = await accountClient.request<{ message: MessageItem }>(
         `/v1/chats/${chatId}/gifs`,
         {
           method: 'POST',
-          body: JSON.stringify({ ...gif, replyToMessageId }),
+          body: JSON.stringify(
+            gif.assetId ? { assetId: gif.assetId, replyToMessageId } : { ...gif, replyToMessageId },
+          ),
         },
       );
       if (activeChatRef.current === chatId)
@@ -740,8 +755,7 @@ export function HomeView({
         });
         return false;
       }
-      setLocalError(caught instanceof Error ? caught.message : 'Не удалось отправить GIF');
-      return false;
+      throw caught instanceof Error ? caught : new Error('Не удалось отправить GIF');
     }
   };
 
@@ -1356,6 +1370,19 @@ export function HomeView({
               } catch (caught) {
                 setLocalError(
                   caught instanceof Error ? caught.message : 'Не удалось отклонить запрос',
+                );
+              }
+            }}
+            onCancel={async (requestId) => {
+              try {
+                await accountClient.request(`/v1/friends/requests/${requestId}`, {
+                  method: 'DELETE',
+                });
+                await loadPage('friends');
+              } catch (caught) {
+                await loadPage('friends');
+                setLocalError(
+                  caught instanceof Error ? caught.message : 'Не удалось отменить запрос',
                 );
               }
             }}

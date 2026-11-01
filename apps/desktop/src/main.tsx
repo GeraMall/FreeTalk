@@ -11,6 +11,8 @@ import { installInteractionGuards } from './lib/interaction-guards';
 import { usesCustomWindowChrome } from './lib/window-chrome';
 import './styles.css';
 import './profile-panel.css';
+import './gif-library.css';
+import './theme-steel.css';
 
 installInteractionGuards();
 

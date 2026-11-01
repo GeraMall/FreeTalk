@@ -8,7 +8,8 @@ import { chatRealtimeHub } from './chat-realtime.js';
 import { randomToken, tokenHash, usernameSchema } from './security.js';
 import { safeImageDimensions } from './image-dimensions.js';
 import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
-import { verifyRemoteGif } from './remote-gif.js';
+import { inspectRemoteGif } from './remote-gif.js';
+import { registerGifLibraryRoutes, accessibleGif, privateGif } from './gif-library.js';
 import { resolveLinkPreview } from './link-preview.js';
 import { sendIncomingCallPush } from './web-push.js';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
@@ -472,6 +473,7 @@ async function isDirectChat(chatId: string) {
 }
 
 export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireUser) {
+  registerGifLibraryRoutes(app, requireUser);
   app.get(
     '/v1/link-preview',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
@@ -579,6 +581,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
         `INSERT INTO friend_requests(sender_id,recipient_id) VALUES($1,$2) RETURNING id,created_at`,
         [user.id, targetId],
       );
+      chatRealtimeHub.publish([user.id, targetId], { type: 'friends-updated' });
       return reply.code(201).send({ request: result.rows[0] });
     },
   );
@@ -607,9 +610,29 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
            VALUES(LEAST($1::uuid,$2::uuid),GREATEST($1::uuid,$2::uuid)) ON CONFLICT DO NOTHING`,
           [row.sender_id, row.recipient_id],
         );
-      return true;
+      return row;
     });
+    if (resolved)
+      chatRealtimeHub.publish([resolved.sender_id, resolved.recipient_id], {
+        type: 'friends-updated',
+      });
     return resolved ? { status: action } : reply.code(404).send({ code: 'REQUEST_NOT_FOUND' });
+  });
+
+  app.delete('/v1/friends/requests/:id', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { id } = z.object({ id: uuid }).parse(request.params);
+    const cancelled = await db.query<{ recipient_id: string }>(
+      `UPDATE friend_requests SET status='cancelled',resolved_at=now()
+       WHERE id=$1 AND sender_id=$2 AND status='pending' RETURNING recipient_id`,
+      [id, user.id],
+    );
+    if (!cancelled.rowCount) return reply.code(404).send({ code: 'REQUEST_NOT_FOUND' });
+    chatRealtimeHub.publish([user.id, cancelled.rows[0]!.recipient_id], {
+      type: 'friends-updated',
+    });
+    return reply.code(204).send();
   });
 
   app.delete('/v1/friends/:userId', async (request, reply) => {
@@ -1261,22 +1284,28 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const user = await requireUser(request, reply);
       if (!user) return;
       const { chatId } = chatIdParams.parse(request.params);
-      const input = chatGifMetadataSchema
-        .extend({ replyToMessageId: uuid.optional() })
+      const local = z
+        .object({ assetId: uuid.optional(), replyToMessageId: uuid.optional() })
         .parse(request.body);
-      if (!new URL(input.url).pathname.toLowerCase().endsWith('.gif'))
-        return reply.code(400).send({ code: 'INVALID_GIF_URL' });
       if (!(await isChatMember(chatId, user.id)))
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
       if (!(await canInteractInChat(chatId, user.id)))
         return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
       if (enforceChatSendPacing(reply, chatId, user.id)) return;
-      if (!(await verifyRemoteGif(input.url)))
-        return reply.code(400).send({
-          code: 'GIF_UNAVAILABLE',
-          message: 'GIF недоступен, имеет неверный формат или превышает 20 МБ',
-        });
-      const { replyToMessageId, ...gif } = input;
+      let gif;
+      if (local.assetId) {
+        const asset = await accessibleGif(local.assetId, user.id, true);
+        if (!asset) return reply.code(404).send({ code: 'GIF_NOT_FOUND' });
+        gif = privateGif(asset);
+      } else {
+        gif = chatGifMetadataSchema.parse(request.body);
+        if (gif.attribution.provider === 'Wikimedia Commons') {
+          const inspected = await inspectRemoteGif(gif.url);
+          if (!inspected.ok)
+            return reply.code(400).send({ code: inspected.code, message: inspected.message });
+        }
+      }
+      const { replyToMessageId } = local;
       const messageId = await transaction((client) =>
         insertMessage(client, {
           chatId,

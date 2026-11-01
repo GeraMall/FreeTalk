@@ -299,7 +299,7 @@ const wikimediaUploadUrlSchema = z
       const url = new URL(value);
       return (
         url.protocol === 'https:' &&
-        url.hostname === 'upload.wikimedia.org' &&
+        ['upload.wikimedia.org', 'static.klipy.com'].includes(url.hostname) &&
         url.port === '' &&
         url.username === '' &&
         url.password === ''
@@ -307,7 +307,7 @@ const wikimediaUploadUrlSchema = z
     } catch {
       return false;
     }
-  }, 'GIF URL must use the Wikimedia upload host');
+  }, 'GIF URL must use an approved GIF media host');
 
 const wikimediaCommonsPageUrlSchema = z
   .string()
@@ -318,7 +318,7 @@ const wikimediaCommonsPageUrlSchema = z
       const url = new URL(value);
       return (
         url.protocol === 'https:' &&
-        url.hostname === 'commons.wikimedia.org' &&
+        ['commons.wikimedia.org', 'klipy.com'].includes(url.hostname) &&
         url.port === '' &&
         url.username === '' &&
         url.password === ''
@@ -328,20 +328,40 @@ const wikimediaCommonsPageUrlSchema = z
     }
   }, 'Attribution URL must use Wikimedia Commons');
 
-export const chatGifMetadataSchema = z.object({
-  url: wikimediaUploadUrlSchema,
-  previewUrl: wikimediaUploadUrlSchema.optional(),
-  width: z.number().int().min(1).max(4_096).optional(),
-  height: z.number().int().min(1).max(4_096).optional(),
-  alt: z.string().trim().min(1).max(200),
-  attribution: z.object({
-    provider: z.literal('Wikimedia Commons'),
-    title: z.string().trim().min(1).max(200),
-    pageUrl: wikimediaCommonsPageUrlSchema,
-    author: z.string().trim().min(1).max(200).optional(),
-    license: z.string().trim().min(1).max(100).optional(),
-  }),
-});
+export const chatGifMetadataSchema = z
+  .object({
+    url: wikimediaUploadUrlSchema.refine(
+      (value) => new URL(value).pathname.toLowerCase().endsWith('.gif'),
+      'GIF must use an animated GIF rendition',
+    ),
+    previewUrl: wikimediaUploadUrlSchema.optional(),
+    providerId: z.string().min(1).max(128).optional(),
+    width: z.number().int().min(1).max(4_096).optional(),
+    height: z.number().int().min(1).max(4_096).optional(),
+    alt: z.string().trim().min(1).max(200),
+    attribution: z.object({
+      provider: z.enum(['Wikimedia Commons', 'KLIPY']),
+      title: z.string().trim().min(1).max(200),
+      pageUrl: wikimediaCommonsPageUrlSchema,
+      author: z.string().trim().min(1).max(200).optional(),
+      license: z.string().trim().min(1).max(100).optional(),
+    }),
+  })
+  .superRefine((gif, context) => {
+    const klipy = gif.attribution.provider === 'KLIPY';
+    const media = klipy ? 'static.klipy.com' : 'upload.wikimedia.org';
+    const page = klipy ? 'klipy.com' : 'commons.wikimedia.org';
+    if (
+      new URL(gif.url).hostname !== media ||
+      (gif.previewUrl && new URL(gif.previewUrl).hostname !== media) ||
+      new URL(gif.attribution.pageUrl).hostname !== page
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'GIF source and attribution must match',
+        path: ['attribution'],
+      });
+  });
 
 export type ChatGifMetadata = z.infer<typeof chatGifMetadataSchema>;
 
@@ -427,6 +447,7 @@ export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
     metadata: z.record(z.string(), z.unknown()).optional(),
   }),
   z.object({ type: z.literal('history-cleared'), chatId: z.string().uuid() }),
+  z.object({ type: z.literal('friends-updated') }),
   z.object({
     type: z.literal('message-reactions-updated'),
     chatId: z.string().uuid(),

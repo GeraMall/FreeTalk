@@ -2,7 +2,7 @@
   width: min(620px, calc(100vw - 32px));
   max-height: 85dvh;
   padding: 24px;
-  border: 1px solid #254553;
+  border: 1px solid #353c4b;
   border-radius: 24px;
   background: #081622;
   color: #eef6ff;
@@ -34,14 +34,14 @@
   justify-content: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid #254553;
+  border: 1px solid #353c4b;
   border-radius: 12px;
-  background: #0b202c;
+  background: #181d28;
   color: inherit;
   cursor: pointer;
 }
 .native-screen-picker button:focus-visible {
-  outline: 2px solid #4be7e6;
+  outline: 2px solid #869ed1;
   outline-offset: 3px;
 }
 .native-screen-picker [role='tablist'] {
@@ -53,9 +53,9 @@
   flex: 1;
 }
 .native-screen-picker [aria-selected='true'] {
-  border-color: #4be7e6;
-  background: #12353d;
-  color: #5cf0ef;
+  border-color: #869ed1;
+  background: #232937;
+  color: #92a9d9;
 }
 .native-screen-sources {
   display: grid;
@@ -77,6 +77,6 @@
   white-space: nowrap;
 }
 .native-screen-sources button:hover {
-  border-color: #4be7e6;
-  background: #10333e;
+  border-color: #869ed1;
+  background: #222938;
 }

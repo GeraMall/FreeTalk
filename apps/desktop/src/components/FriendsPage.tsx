@@ -47,6 +47,7 @@ interface FriendsPageProps {
   onAdd(username: string): Promise<void>;
   onAccept(requestId: string): Promise<void>;
   onDecline(requestId: string): Promise<void>;
+  onCancel?(requestId: string): Promise<void>;
   onMessage(friendId: string): Promise<void>;
   onCall?(friendId: string): Promise<void>;
   onOpenChat?(chatId: string): Promise<void>;
@@ -66,6 +67,7 @@ export function FriendsPage({
   onAdd,
   onAccept,
   onDecline,
+  onCancel,
   onMessage,
   onCall,
   onOpenChat,
@@ -285,7 +287,16 @@ export function FriendsPage({
                         </button>
                       </div>
                     ) : (
-                      <span className="request-sent-label">Ожидаем ответа</span>
+                      <button
+                        className="friend-cancel-request"
+                        disabled={Boolean(busyAction) || !onCancel}
+                        aria-label={`Отменить запрос к ${item.username}`}
+                        onClick={() =>
+                          void runAction(`cancel:${item.id}`, () => onCancel!(item.id))
+                        }
+                      >
+                        <X /> {busyAction === `cancel:${item.id}` ? 'Отменяем…' : 'Отменить запрос'}
+                      </button>
                     )}
                   </article>
                 );

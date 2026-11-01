@@ -1,3 +1,5 @@
+import { accountClient, protectedGifAssetId } from './api-client';
+
 interface AccountMediaEntry {
   key: string;
   accountId: string;
@@ -23,6 +25,23 @@ const inFlight = new Map<string, Promise<string>>();
 let memoryCacheBytes = 0;
 let databasePromise: Promise<IDBDatabase | undefined> | undefined;
 let activeAccountId: string | undefined;
+let privateGifTransfers = 0;
+const privateGifWaiters: Array<() => void> = [];
+async function loadPrivateGif(assetId: string, variant: 'full' | 'thumbnail') {
+  await new Promise<void>((resolve) => {
+    if (privateGifTransfers < 2) {
+      privateGifTransfers++;
+      resolve();
+    } else privateGifWaiters.push(resolve);
+  });
+  try {
+    return await accountClient.gifBlob(assetId, variant);
+  } finally {
+    const next = privateGifWaiters.shift();
+    if (next) next();
+    else privateGifTransfers--;
+  }
+}
 
 function mediaKey(accountId: string, sourceUrl: string) {
   return `${accountId}:${sourceUrl}`;
@@ -179,14 +198,23 @@ export async function loadAccountMedia(sourceUrl: string, accountId = activeAcco
       void persist(persistent);
       return remember(persistent);
     }
-    const response = await fetch(sourceUrl, { cache: 'force-cache', credentials: 'omit' });
-    if (!response.ok) throw new Error(`Не удалось загрузить изображение (${response.status})`);
-    const contentLength = Number(response.headers.get('content-length'));
-    if (Number.isFinite(contentLength) && contentLength > MAX_SINGLE_MEDIA_BYTES)
-      throw new Error('Изображение превышает допустимый размер');
-    const blob = await response.blob();
+    const assetId = protectedGifAssetId(sourceUrl);
+    let blob: Blob;
+    if (assetId)
+      blob = await loadPrivateGif(
+        assetId,
+        new URL(sourceUrl).searchParams.get('variant') === 'thumbnail' ? 'thumbnail' : 'full',
+      );
+    else {
+      const response = await fetch(sourceUrl, { cache: 'force-cache', credentials: 'omit' });
+      if (!response.ok) throw new Error(`Не удалось загрузить изображение (${response.status})`);
+      const contentLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(contentLength) && contentLength > MAX_SINGLE_MEDIA_BYTES)
+        throw new Error('Изображение превышает допустимый размер');
+      blob = await response.blob();
+    }
     if (!blob.type.startsWith('image/')) throw new Error('Сервер вернул не изображение');
-    if (blob.size > MAX_SINGLE_MEDIA_BYTES)
+    if (blob.size > (assetId ? 30 * 1024 * 1024 : MAX_SINGLE_MEDIA_BYTES))
       throw new Error('Изображение превышает допустимый размер');
     const entry: AccountMediaEntry = {
       key,

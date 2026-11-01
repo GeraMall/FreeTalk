@@ -1366,34 +1366,48 @@ describe('Message interactions', () => {
     await waitFor(() => expect(onSendFile).toHaveBeenCalledWith(file, ''));
   });
 
-  it('searches Wikimedia GIFs and sends the chosen result', async () => {
+  it('searches the configured GIF provider and sends an animated compact rendition', async () => {
     const onSendGif = vi.fn(async () => true);
+    const originalRequest = accountClient.request.bind(accountClient);
+    vi.spyOn(accountClient, 'request').mockImplementation((path, init, retry) =>
+      path === '/v1/gifs/config'
+        ? (Promise.resolve({ provider: 'KLIPY', apiKey: 'fixture-key' }) as never)
+        : originalRequest(path, init, retry),
+    );
     vi.stubGlobal(
       'fetch',
       vi.fn(
         async () =>
           new Response(
             JSON.stringify({
-              query: {
-                pages: {
-                  '17': {
-                    pageid: 17,
-                    title: 'File:Happy reaction.gif',
-                    imageinfo: [
-                      {
-                        url: 'https://upload.wikimedia.org/happy-reaction.gif',
-                        thumburl: 'https://upload.wikimedia.org/happy-reaction-preview.gif',
-                        mime: 'image/gif',
-                        width: 320,
-                        height: 180,
-                        extmetadata: {
-                          Artist: { value: 'Free artist' },
-                          LicenseShortName: { value: 'CC BY-SA 4.0' },
+              result: true,
+              data: {
+                has_next: false,
+                data: [
+                  {
+                    id: '17',
+                    title: 'Happy reaction',
+                    slug: 'happy-reaction',
+                    file: {
+                      md: {
+                        gif: {
+                          url: 'https://static.klipy.com/happy-reaction.gif',
+                          width: 320,
+                          height: 180,
+                          size: 10000,
                         },
                       },
-                    ],
+                      xs: {
+                        gif: {
+                          url: 'https://static.klipy.com/happy-reaction-preview.gif',
+                          width: 160,
+                          height: 90,
+                          size: 2000,
+                        },
+                      },
+                    },
                   },
-                },
+                ],
               },
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
@@ -1438,17 +1452,16 @@ describe('Message interactions', () => {
     fireEvent.click(result);
     await waitFor(() =>
       expect(onSendGif).toHaveBeenCalledWith({
-        url: 'https://upload.wikimedia.org/happy-reaction.gif',
-        previewUrl: 'https://upload.wikimedia.org/happy-reaction-preview.gif',
+        providerId: '17',
+        url: 'https://static.klipy.com/happy-reaction.gif',
+        previewUrl: 'https://static.klipy.com/happy-reaction-preview.gif',
         width: 320,
         height: 180,
         alt: 'Happy reaction',
         attribution: {
-          provider: 'Wikimedia Commons',
+          provider: 'KLIPY',
           title: 'Happy reaction',
-          pageUrl: 'https://commons.wikimedia.org/?curid=17',
-          author: 'Free artist',
-          license: 'CC BY-SA 4.0',
+          pageUrl: 'https://klipy.com/gifs/happy-reaction',
         },
       }),
     );

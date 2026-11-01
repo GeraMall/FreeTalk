@@ -1,0 +1,54 @@
+/* Approved steel-blue accent. Semantic success/warning/error colours are kept. */
+:root {
+  --ft-accent: #8da6dc;
+  --ft-cyan: var(--ft-accent);
+}
+@media (min-width: 761px) {
+  :root .account-shell > .account-sidebar,
+  :root .room-account-shell > .account-sidebar {
+    background: #080d15;
+    backdrop-filter: none;
+    border-right-color: #202a38;
+    box-shadow: none;
+  }
+  .account-sidebar nav button {
+    color: #c4cfdf;
+  }
+  .account-sidebar nav button svg {
+    color: #a8b8cf;
+  }
+  .account-sidebar nav button.active {
+    background: #151e2e;
+    box-shadow: inset 2px 0 #8da6dc;
+  }
+  .account-sidebar .account-sidebar-chat-heading {
+    color: #b3c0d3;
+  }
+  .account-sidebar .account-sidebar-chat-open.active {
+    background: #151e2e;
+    border-color: #536b99;
+    box-shadow: inset 2px 0 #8da6dc;
+  }
+  .account-sidebar .account-sidebar-chat-open:hover .account-sidebar-chat-avatar,
+  .account-sidebar .account-sidebar-chat-open.active .account-sidebar-chat-avatar {
+    border-color: #7186ad;
+  }
+  .account-sidebar .account-chat-search {
+    background: #101823;
+    border-color: #293648;
+  }
+  .account-sidebar .account-chat-search:focus-within {
+    border-color: #8da6dc;
+    box-shadow: 0 0 0 2px #8da6dc1a;
+  }
+  .account-sidebar .account-profile-mini {
+    background: #101823;
+    border-color: #293648;
+  }
+  .account-sidebar .account-sidebar-chat-list small {
+    color: #8e9eb3;
+  }
+  .account-sidebar .account-sidebar-chat-list strong {
+    color: #e0e7f1;
+  }
+}

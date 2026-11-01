@@ -69,6 +69,8 @@ import { GroupInviteFriendsDialog } from './GroupInviteFriendsDialog';
 import { CachedMediaImage } from './CachedMedia';
 import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
 import { PresenceBadge } from './PresenceBadge';
+import { GifPicker, GifImage } from './GifPicker';
+import { gifKey, useGifLibrary, toggleGifFavorite } from '../lib/gif-library';
 import {
   UserProfileDialog,
   type UserProfileData,
@@ -223,13 +225,16 @@ export interface MessageReaction {
 }
 
 export interface GifMessageData {
+  assetId?: string;
+  favoriteId?: string;
+  providerId?: string;
   url: string;
   previewUrl?: string;
   width?: number;
   height?: number;
   alt: string;
   attribution: {
-    provider: 'Wikimedia Commons';
+    provider: 'Wikimedia Commons' | 'KLIPY' | 'TRLKA';
     title: string;
     pageUrl: string;
     author?: string;
@@ -273,7 +278,7 @@ interface ChatsPageProps {
     replyToMessageId?: string,
   ): Promise<boolean>;
   onSendFile?(file: globalThis.File, caption: string, replyToMessageId?: string): Promise<boolean>;
-  onSendGif?(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
+  onSendGif?(gif: GifMessageData | File, replyToMessageId?: string): Promise<boolean>;
   onReactMessage?(messageId: string, emoji: string | null): Promise<boolean>;
   onPinMessage?(messageId: string, pinned: boolean): Promise<boolean>;
   onEditMessage?(messageId: string, body: string): Promise<boolean>;
@@ -3010,7 +3015,7 @@ function MessageBubble({
           {deleted ? (
             <p className="deleted-message-copy">Сообщение удалено</p>
           ) : gif ? (
-            <GifMessage gif={gif} />
+            <GifMessage gif={gif} messageId={message.id} accountId={accountId} />
           ) : message.kind === 'image' ? (
             <ChatImageMessage message={message} accountId={accountId} />
           ) : message.kind === 'file' ? (
@@ -3095,25 +3100,65 @@ function scrollToReferencedMessage(messageId: string) {
   return true;
 }
 
-function GifMessage({ gif }: { gif: GifMessageData }) {
-  const cachedUrl = useCachedMediaUrl(gif.url);
+function GifMessage({
+  gif,
+  messageId,
+  accountId,
+}: {
+  gif: GifMessageData;
+  messageId: string;
+  accountId?: string;
+}) {
+  const library = useGifLibrary(accountId);
+  const favorite = library.gifs.some((item) => gifKey(item) === gifKey(gif));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [failed, setFailed] = useState(false);
   return (
     <figure
       className="chat-gif-message"
       style={{ aspectRatio: gif.width && gif.height ? `${gif.width} / ${gif.height}` : undefined }}
     >
-      {cachedUrl ? <img src={cachedUrl} alt={gif.alt || 'GIF'} draggable={false} /> : <span />}
+      {failed ? (
+        <span className="chat-gif-load-error">GIF не удалось загрузить</span>
+      ) : (
+        <GifImage gif={gif} onError={() => setFailed(true)} />
+      )}
       <figcaption>
         <span>GIF</span>
-        <a
-          href={gif.attribution.pageUrl}
-          target="_blank"
-          rel="noreferrer"
-          title={gif.attribution.license || 'Источник GIF'}
-        >
-          {gif.attribution.provider}
-        </a>
+        {accountId ? (
+          <button
+            className={`gif-favorite-action${favorite ? ' saved' : ''}`}
+            disabled={busy}
+            aria-label={favorite ? 'Убрать GIF из избранного' : 'Добавить GIF в избранное'}
+            onClick={(event) => {
+              event.stopPropagation();
+              setBusy(true);
+              setError('');
+              void toggleGifFavorite(accountId, gif, messageId)
+                .catch(() => setError('Не удалось сохранить GIF'))
+                .finally(() => setBusy(false));
+            }}
+          >
+            <Save /> {favorite ? 'Сохранено' : 'Сохранить'}
+          </button>
+        ) : null}
+        {gif.attribution.provider !== 'TRLKA' ? (
+          <a
+            href={gif.attribution.pageUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={gif.attribution.license || 'Источник GIF'}
+          >
+            {gif.attribution.provider}
+          </a>
+        ) : null}
       </figcaption>
+      {error ? (
+        <span className="gif-save-error" role="alert">
+          {error}
+        </span>
+      ) : null}
     </figure>
   );
 }
@@ -4072,7 +4117,7 @@ function MessageComposer({
     replyToMessageId?: string,
   ): Promise<boolean>;
   onSendFile(file: globalThis.File, caption: string, replyToMessageId?: string): Promise<boolean>;
-  onSendGif(gif: GifMessageData, replyToMessageId?: string): Promise<boolean>;
+  onSendGif(gif: GifMessageData | File, replyToMessageId?: string): Promise<boolean>;
   replyTarget?: MessageItem;
   onCancelReply(): void;
 }) {
@@ -4084,6 +4129,8 @@ function MessageComposer({
   const [attachmentFile, setAttachmentFile] = useState<globalThis.File>();
   const [imageError, setImageError] = useState('');
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifError, setGifError] = useState('');
+  const [gifFilePreview, setGifFilePreview] = useState('');
   const [composerMenu, setComposerMenu] = useState<{
     x: number;
     y: number;
@@ -4095,6 +4142,18 @@ function MessageComposer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (
+      !attachmentFile ||
+      !(attachmentFile.type === 'image/gif' || /\.gif$/i.test(attachmentFile.name))
+    ) {
+      setGifFilePreview('');
+      return;
+    }
+    const url = URL.createObjectURL(attachmentFile);
+    setGifFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [attachmentFile]);
   useEffect(() => {
     if (!composerMenu) return;
     const close = (event: globalThis.PointerEvent) => {
@@ -4173,17 +4232,21 @@ function MessageComposer({
     if ((!body && !imageDataUrl && !attachmentFile) || sending || processingImage) return;
     setSending(true);
     try {
-      const sent = attachmentFile
-        ? replyTarget
-          ? await onSendFile(attachmentFile, body, replyTarget.id)
-          : await onSendFile(attachmentFile, body)
-        : imageDataUrl
-          ? replyTarget
-            ? await onSendImage(imageDataUrl, body, thumbnailDataUrl, replyTarget.id)
-            : await onSendImage(imageDataUrl, body, thumbnailDataUrl)
-          : replyTarget
-            ? await onSend(body, replyTarget.id)
-            : await onSend(body);
+      const sent =
+        attachmentFile &&
+        (attachmentFile.type === 'image/gif' || /\.gif$/i.test(attachmentFile.name))
+          ? await onSendGif(attachmentFile, replyTarget?.id)
+          : attachmentFile
+            ? replyTarget
+              ? await onSendFile(attachmentFile, body, replyTarget.id)
+              : await onSendFile(attachmentFile, body)
+            : imageDataUrl
+              ? replyTarget
+                ? await onSendImage(imageDataUrl, body, thumbnailDataUrl, replyTarget.id)
+                : await onSendImage(imageDataUrl, body, thumbnailDataUrl)
+              : replyTarget
+                ? await onSend(body, replyTarget.id)
+                : await onSend(body);
       if (sent) {
         setValue('');
         setImageDataUrl('');
@@ -4192,6 +4255,8 @@ function MessageComposer({
         setImageError('');
         onCancelReply();
       }
+    } catch (caught) {
+      setImageError(caught instanceof Error ? caught.message : 'Не удалось отправить сообщение');
     } finally {
       setSending(false);
     }
@@ -4235,7 +4300,15 @@ function MessageComposer({
       )}
       {attachmentFile && (
         <div className="composer-file-preview">
-          <FileText aria-hidden="true" />
+          {gifFilePreview ? (
+            <img
+              className="composer-gif-preview"
+              src={gifFilePreview}
+              alt="Предпросмотр своего GIF"
+            />
+          ) : (
+            <FileText aria-hidden="true" />
+          )}
           <span>
             <strong>{attachmentFile.name}</strong>
             <small>{formatFileSize(attachmentFile.size)}</small>
@@ -4330,10 +4403,12 @@ function MessageComposer({
       ) : null}
       {showGifPicker ? (
         <GifPicker
+          externalError={gifError}
           busy={sending || disabled}
           onClose={() => setShowGifPicker(false)}
           onSelect={(gif) => {
             if (sending || disabled) return;
+            setGifError('');
             setSending(true);
             void (replyTarget ? onSendGif(gif, replyTarget.id) : onSendGif(gif))
               .then((sent) => {
@@ -4342,6 +4417,9 @@ function MessageComposer({
                   onCancelReply();
                 }
               })
+              .catch((caught) =>
+                setGifError(caught instanceof Error ? caught.message : 'Не удалось отправить GIF'),
+              )
               .finally(() => setSending(false));
           }}
         />
@@ -4467,199 +4545,6 @@ function ComposerContextMenu({
       </button>
     </div>
   );
-}
-
-interface CommonsGifPage {
-  pageid: number;
-  title: string;
-  imageinfo?: Array<{
-    url: string;
-    thumburl?: string;
-    mime?: string;
-    width?: number;
-    height?: number;
-    extmetadata?: Record<string, { value?: string }>;
-  }>;
-}
-
-function GifPicker({
-  busy,
-  onClose,
-  onSelect,
-}: {
-  busy: boolean;
-  onClose(): void;
-  onSelect(gif: GifMessageData): void;
-}) {
-  const [query, setQuery] = useState('animated sticker');
-  const [results, setResults] = useState<GifMessageData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const pickerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const closeOnPointer = (event: PointerEvent) => {
-      if ((event.target as Element | null)?.closest?.('.composer-gif-button')) return;
-      if (!pickerRef.current?.contains(event.target as Node)) onClose();
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('pointerdown', closeOnPointer, true);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnPointer, true);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const search = query.trim() || 'animated sticker';
-    const timer = window.setTimeout(() => {
-      const parameters = new URLSearchParams({
-        action: 'query',
-        generator: 'search',
-        gsrsearch: `filemime:image/gif ${search}`,
-        gsrnamespace: '6',
-        gsrlimit: '24',
-        prop: 'imageinfo',
-        iiprop: 'url|mime|size|extmetadata',
-        iiurlwidth: '360',
-        format: 'json',
-        origin: '*',
-      });
-      setLoading(true);
-      setError('');
-      void fetch(`https://commons.wikimedia.org/w/api.php?${parameters}`, {
-        signal: controller.signal,
-        credentials: 'omit',
-      })
-        .then(async (response) => {
-          if (!response.ok) throw new Error(`GIF search failed (${response.status})`);
-          return (await response.json()) as { query?: { pages?: Record<string, CommonsGifPage> } };
-        })
-        .then((payload) => {
-          const pages = Object.values(payload.query?.pages ?? {});
-          setResults(
-            pages.flatMap((page) => {
-              const image = page.imageinfo?.[0];
-              if (!image?.url || image.mime !== 'image/gif') return [];
-              const title = page.title
-                .replace(/^File:/i, '')
-                .replace(/\.gif$/i, '')
-                .trim()
-                .slice(0, 200);
-              const width = validGifDimension(image.width);
-              const height = validGifDimension(image.height);
-              return [
-                {
-                  url: image.url,
-                  previewUrl: image.thumburl ?? image.url,
-                  width,
-                  height,
-                  alt: title || 'GIF',
-                  attribution: {
-                    provider: 'Wikimedia Commons',
-                    title: title || 'GIF',
-                    pageUrl: `https://commons.wikimedia.org/?curid=${page.pageid}`,
-                    author: plainMetadataText(image.extmetadata?.Artist?.value, 200),
-                    license: plainMetadataText(image.extmetadata?.LicenseShortName?.value, 100),
-                  },
-                },
-              ];
-            }),
-          );
-        })
-        .catch((caught) => {
-          if ((caught as Error).name !== 'AbortError') {
-            setResults([]);
-            setError('Не удалось загрузить GIF. Проверьте соединение.');
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
-        });
-    }, 320);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query]);
-
-  return createPortal(
-    <div
-      ref={pickerRef}
-      className="gif-picker"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Поиск GIF"
-    >
-      <header>
-        <div>
-          <strong>GIF</strong>
-          <small>Wikimedia Commons</small>
-        </div>
-        <button type="button" aria-label="Закрыть GIF" onClick={onClose}>
-          <X />
-        </button>
-      </header>
-      <label className="gif-search-field">
-        <Search />
-        <input
-          value={query}
-          autoFocus
-          placeholder="Поиск GIF"
-          aria-label="Поиск GIF"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      <div className="gif-results" aria-live="polite">
-        {loading ? (
-          Array.from({ length: 8 }, (_, index) => <i key={index} />)
-        ) : error ? (
-          <p>{error}</p>
-        ) : results.length ? (
-          results.map((gif) => (
-            <button
-              type="button"
-              disabled={busy}
-              title={gif.alt}
-              aria-label={`Отправить GIF: ${gif.alt}`}
-              onClick={() => onSelect(gif)}
-              key={gif.attribution.pageUrl}
-            >
-              <img
-                src={gif.previewUrl ?? gif.url}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-              <span>{gif.alt}</span>
-            </button>
-          ))
-        ) : (
-          <p>По этому запросу GIF не найдены</p>
-        )}
-      </div>
-      <footer>
-        <span>GIF из открытой медиатеки</span>
-        <b>Wikimedia Commons</b>
-      </footer>
-    </div>,
-    document.body,
-  );
-}
-
-function plainMetadataText(value?: string, limit = 200) {
-  if (!value) return undefined;
-  const container = document.createElement('span');
-  container.innerHTML = value;
-  return (container.textContent ?? '').trim().slice(0, limit) || undefined;
-}
-
-function validGifDimension(value?: number) {
-  return Number.isInteger(value) && value! >= 1 && value! <= 4_096 ? value : undefined;
 }
 
 function extractChatInviteToken(body: string) {

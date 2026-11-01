@@ -106,8 +106,8 @@
   .account-profile-popover .profile-status-control.open,
   .account-profile-popover .profile-presence-options button:hover,
   .account-profile-popover .profile-presence-options button.selected {
-    border-color: rgba(78, 243, 242, 0.1);
-    background: rgba(78, 243, 242, 0.05);
+    border-color: rgba(141, 166, 220, 0.1);
+    background: rgba(141, 166, 220, 0.05);
     color: #edf6ff;
   }
 

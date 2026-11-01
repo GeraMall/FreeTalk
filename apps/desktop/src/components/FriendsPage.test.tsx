@@ -25,6 +25,7 @@ function callbacks() {
     onAdd: vi.fn().mockResolvedValue(undefined),
     onAccept: vi.fn().mockResolvedValue(undefined),
     onDecline: vi.fn().mockResolvedValue(undefined),
+    onCancel: vi.fn().mockResolvedValue(undefined),
     onMessage: vi.fn().mockResolvedValue(undefined),
     onRemove: vi.fn().mockResolvedValue(undefined),
     onBlock: vi.fn().mockResolvedValue(undefined),
@@ -35,6 +36,34 @@ function callbacks() {
 afterEach(cleanup);
 
 describe('FriendsPage', () => {
+  it('lets the sender cancel an outgoing request and disables it while pending', async () => {
+    const handlers = callbacks();
+    let finish!: () => void;
+    handlers.onCancel.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(
+      <FriendsPage
+        userId="self"
+        friends={[]}
+        pending={[{ ...pending, sender_id: 'self', recipient_id: 'friend-2' }]}
+        blocked={[]}
+        loading={false}
+        loadError=""
+        {...handlers}
+      />,
+    );
+    fireEvent.click(view.getByRole('button', { name: /Ожидают/ }));
+    const cancel = view.getByRole('button', { name: 'Отменить запрос к dmitry' });
+    fireEvent.click(cancel);
+    expect(handlers.onCancel).toHaveBeenCalledWith('request-1');
+    expect((cancel as HTMLButtonElement).disabled).toBe(true);
+    finish();
+    await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(false));
+  });
   it('filters friends and sends an exact username request', async () => {
     const handlers = callbacks();
     const secondFriend = { ...friend, id: 'friend-2', username: 'gera', display_name: 'Гера' };

@@ -3,6 +3,29 @@ import { dataUrlToBlob } from './profile';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8790').replace(/\/$/, '');
 
+export function protectedGifAssetId(sourceUrl: string) {
+  try {
+    const source = new URL(sourceUrl),
+      base = new URL(`${API_URL}/`);
+    if (
+      source.origin !== base.origin ||
+      (source.search && source.search !== '?variant=thumbnail') ||
+      source.hash ||
+      source.username ||
+      source.password
+    )
+      return undefined;
+    const prefix = `${base.pathname}v1/gifs/assets/`;
+    if (!source.pathname.startsWith(prefix)) return undefined;
+    const id = source.pathname.slice(prefix.length);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function accountRealtimeUrl() {
   const url = new URL(`${API_URL}/v1/chats/realtime`);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -396,6 +419,27 @@ export class AccountClient {
     const response = await this.authenticatedFetch(`/v1/messages/${messageId}/file`);
     if (!response.ok) return decode<never>(response);
     return response.blob();
+  }
+
+  async gifBlob(assetId: string, variant: 'full' | 'thumbnail' = 'full') {
+    if (!/^[0-9a-f-]{36}$/i.test(assetId)) throw new Error('Некорректный GIF');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await this.authenticatedFetch(
+        `/v1/gifs/assets/${assetId}${variant === 'thumbnail' ? '?variant=thumbnail' : ''}`,
+      );
+      if (response.status === 429 && attempt < 2) {
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(5, Math.max(1, Number(response.headers.get('retry-after')) || 2)) * 1000,
+          ),
+        );
+        continue;
+      }
+      if (!response.ok) return decode<never>(response);
+      return response.blob();
+    }
+    throw new Error('GIF временно недоступен');
   }
 
   async deleteAccount(password: string) {
