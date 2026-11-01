@@ -16,6 +16,7 @@ set -a
 source /etc/trlka/cluster.env
 set +a
 [[ "$SIGNALING_NODE_ID" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]]
+curl --silent --fail --max-time 5 "$ACCOUNT_API_URL/health" >/dev/null
 if test -f /opt/trlka-cluster/current/cluster-admin.mjs; then
   "$node" /opt/trlka-cluster/current/cluster-admin.mjs assert-empty "$SIGNALING_NODE_ID"
 fi
@@ -36,7 +37,7 @@ systemctl enable trlka-voice trlka-room-gateway
 systemctl restart trlka-voice trlka-room-gateway
 ready=false
 for _ in $(seq 1 30); do
-  if curl --silent --fail --max-time 2 "http://${SIGNALING_HOST}:${PORT}/ready" >/dev/null; then ready=true;break;fi
+  if curl --silent --fail --max-time 2 "${SIGNALING_NODE_URL%/}/ready" >/dev/null; then ready=true;break;fi
   sleep 1
 done
 test "$ready" = true || { journalctl -u trlka-voice --no-pager -n 20; exit 1; }

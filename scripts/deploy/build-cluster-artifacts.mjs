@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -37,7 +37,10 @@ for (const name of [
   'Caddyfile.routes.snippet',
   'api.env.example',
 ])
-  await copyFile(join(root, 'deploy/cluster', name), join(stage, name));
+  await writeFile(
+    join(stage, name),
+    (await readFile(join(root, 'deploy/cluster', name), 'utf8')).replace(/\r\n/g, '\n'),
+  );
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 await writeFile(join(stage, 'revision.txt'), `${revision}\n`);
 const archive = join(output, 'trlka-cluster-node.tar.gz');

@@ -171,7 +171,10 @@ describe.skipIf(!url)('PostgreSQL cluster fencing and routing', () => {
       ALLOWED_ORIGIN: '*',
     };
     const launch = (entry: string, extra: Record<string, string>) => {
-      const child = spawn(process.execPath, ['--import', 'tsx', `src/${entry}.ts`], {
+      const args = process.env.CLUSTER_TEST_BUNDLED_DIR
+        ? [`${process.env.CLUSTER_TEST_BUNDLED_DIR}/${entry}.mjs`]
+        : ['--import', 'tsx', `src/${entry}.ts`];
+      const child = spawn(process.execPath, args, {
         cwd: fileURLToPath(new URL('..', import.meta.url)),
         env: { ...common, ...extra },
         stdio: ['ignore', 'pipe', 'pipe'],
