@@ -29,6 +29,7 @@ export class ChatRealtimeClient {
   constructor(
     private readonly onEvent: (event: ChatRealtimeServerMessage) => void,
     private readonly onSelfPresence?: (status: PresenceStatus) => void,
+    private readonly onReady?: () => void,
   ) {}
 
   start() {
@@ -66,6 +67,7 @@ export class ChatRealtimeClient {
         socket.send(JSON.stringify({ type: 'authenticate', token }));
       });
       socket.addEventListener('message', (event) => {
+        if (this.stopped || this.socket !== socket) return;
         try {
           const message = parseChatRealtimeServerMessage(String(event.data));
           if (message.type === 'ready') {
@@ -74,6 +76,7 @@ export class ChatRealtimeClient {
             this.sendPresence(
               resolvePresence(this.presenceMode, Date.now() - this.lastActivityAt >= AWAY_AFTER_MS),
             );
+            this.onReady?.();
             return;
           }
           this.onEvent(message);

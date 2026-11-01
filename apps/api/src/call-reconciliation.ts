@@ -50,7 +50,13 @@ export function startCallReconciliation(logError: (error: unknown) => void) {
         throw new Error('Invalid signaling snapshot');
       const candidates = await db.query<{ room_id: string }>(
         `SELECT DISTINCT room_id FROM call_sessions WHERE ended_at IS NULL
-         AND started_at < now()-interval '2 minutes'`,
+         AND started_at < now()-interval '2 minutes'
+         UNION
+         SELECT DISTINCT metadata->>'roomId' AS room_id FROM messages
+         WHERE kind='call' AND metadata->>'roomId' IS NOT NULL
+           AND COALESCE(metadata->>'ended','false')!='true'
+           AND NOT (metadata ? 'movedToChatId')
+           AND created_at < now()-interval '2 minutes'`,
       );
       const expired = tracker.observe(
         candidates.rows.map((row) => row.room_id),
@@ -85,6 +91,30 @@ export function startCallReconciliation(logError: (error: unknown) => void) {
           );
           changed.push(...result.rows);
         }
+        // A call message is created before signaling acknowledges the room.
+        // If that handshake fails there may never be a call_sessions row.
+        // The same repeated live-room snapshots must retire those cards too.
+        const orphaned = await client.query<{
+          id: string;
+          chat_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `UPDATE messages message SET metadata=message.metadata || jsonb_build_object(
+             'ended',true,'endedAt',COALESCE((
+               SELECT max(session.ended_at) FROM call_sessions session
+               WHERE session.room_id=message.metadata->>'roomId'
+             ),message.created_at))
+           WHERE message.kind='call' AND message.metadata->>'roomId'=ANY($1::text[])
+             AND COALESCE(message.metadata->>'ended','false')!='true'
+             AND NOT (message.metadata ? 'movedToChatId')
+             AND NOT EXISTS (
+               SELECT 1 FROM call_sessions session
+               WHERE session.room_id=message.metadata->>'roomId' AND session.ended_at IS NULL
+             )
+           RETURNING message.id,message.chat_id,message.metadata`,
+          [expired],
+        );
+        changed.push(...orphaned.rows);
         return changed;
       });
       for (const message of messages)

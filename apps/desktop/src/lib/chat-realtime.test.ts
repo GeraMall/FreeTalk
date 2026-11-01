@@ -99,6 +99,28 @@ describe('ChatRealtimeClient', () => {
     client.stop();
   });
 
+  it('requests a fresh snapshot after each authenticated reconnect and ignores a retired socket', async () => {
+    vi.useFakeTimers();
+    const onReady = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), undefined, onReady);
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    expect(onReady).not.toHaveBeenCalled();
+    first.receive({ type: 'ready' });
+    expect(onReady).toHaveBeenCalledTimes(1);
+    first.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    first.receive({ type: 'ready' });
+    expect(onReady).toHaveBeenCalledTimes(1);
+    second.receive({ type: 'ready' });
+    expect(onReady).toHaveBeenCalledTimes(2);
+    client.stop();
+  });
+
   it('keeps the realtime socket open while reporting invisible as offline', async () => {
     const onPresence = vi.fn();
     const client = new ChatRealtimeClient(vi.fn(), onPresence);

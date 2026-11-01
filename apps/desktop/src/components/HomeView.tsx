@@ -199,211 +199,240 @@ export function HomeView({
   }, [onPageChange, page]);
 
   useEffect(() => {
-    const realtime = new ChatRealtimeClient((event) => {
-      if (event.type === 'message-created') {
-        setChats((current) =>
-          promoteChat(current, event.chatId, event.message).map((chat) =>
-            chat.id === event.chatId &&
-            activeChatRef.current !== event.chatId &&
-            event.message.sender_id !== user.id
-              ? { ...chat, unreadCount: (chat.unreadCount ?? 0) + 1 }
-              : chat,
-          ),
-        );
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) => appendMessage(current, event.message));
-      } else if (event.type === 'message-updated') {
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? {
-                    ...message,
-                    ...(event.body === undefined ? {} : { body: event.body }),
-                    ...(event.editedAt === undefined ? {} : { edited_at: event.editedAt }),
-                    ...(event.metadata === undefined
-                      ? {}
-                      : { metadata: { ...message.metadata, ...event.metadata } }),
-                  }
-                : message,
+    const realtime = new ChatRealtimeClient(
+      (event) => {
+        if (event.type === 'message-created') {
+          setChats((current) =>
+            promoteChat(current, event.chatId, event.message).map((chat) =>
+              chat.id === event.chatId &&
+              activeChatRef.current !== event.chatId &&
+              event.message.sender_id !== user.id
+                ? { ...chat, unreadCount: (chat.unreadCount ?? 0) + 1 }
+                : chat,
             ),
           );
-      } else if (event.type === 'message-reactions-updated') {
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? { ...message, reactions: event.reactions as MessageReaction[] }
-                : message,
-            ),
-          );
-      } else if (event.type === 'message-pin-updated') {
-        if (activeChatRef.current === event.chatId) {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? { ...message, pinned_at: event.pinnedAt, pinned_by: event.pinnedBy }
-                : message,
-            ),
-          );
-          if (event.pinnedMessage !== undefined)
-            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
-        }
-      } else if (event.type === 'message-deleted') {
-        if (activeChatRef.current === event.chatId) {
-          setMessages((current) => removeMessageAndMarkReplies(current, event.messageId));
-          if (event.pinnedMessage !== undefined)
-            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
-        }
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId ? chatWithLatestMessage(chat, event.latestMessage) : chat,
-          ),
-        );
-      } else if (event.type === 'history-cleared') {
-        if (activeChatRef.current === event.chatId) {
-          messagesPageStartRef.current = { chatId: event.chatId };
-          setMessages([]);
-          setPinnedMessage(undefined);
-          setHasMoreMessages(false);
-        }
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId
-              ? { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null }
-              : chat,
-          ),
-        );
-      } else if (event.type === 'chat-removed') {
-        void clearChatImageCache(user.id);
-        setChats((current) => current.filter((chat) => chat.id !== event.chatId));
-        if (activeChatRef.current === event.chatId) {
-          activeChatRef.current = undefined;
-          messagesRequestIdRef.current += 1;
-          messagesPageStartRef.current = {};
-          setActiveChat(undefined);
-          setMessages([]);
-          setPinnedMessage(undefined);
-          setHasMoreMessages(false);
-        }
-      } else if (event.type === 'retention-changed') {
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId ? { ...chat, retentionHours: event.retentionHours } : chat,
-          ),
-        );
-      } else if (event.type === 'profile-updated') {
-        setProfileRevision((revision) => revision + 1);
-        void accountClient
-          .request<{
-            profile: { displayName: string; username: string; avatarUrl: string | null };
-          }>(`/v1/users/${event.userId}/profile`)
-          .then(async ({ profile }) => {
-            await warmAccountMediaCache(user.id, collectAccountMediaUrls(profile), 4_000);
+          if (activeChatRef.current === event.chatId)
+            setMessages((current) => appendMessage(current, event.message));
+        } else if (event.type === 'message-updated') {
+          if (activeChatRef.current === event.chatId)
             setMessages((current) =>
               current.map((message) =>
-                message.sender_id === event.userId
+                message.id === event.messageId
                   ? {
                       ...message,
-                      display_name: profile.displayName,
-                      username: profile.username,
-                      avatar_url: profile.avatarUrl,
+                      ...(event.body === undefined ? {} : { body: event.body }),
+                      ...(event.editedAt === undefined ? {} : { edited_at: event.editedAt }),
+                      ...(event.metadata === undefined
+                        ? {}
+                        : { metadata: { ...message.metadata, ...event.metadata } }),
                     }
                   : message,
               ),
             );
-            setHistory((current) =>
-              current.map((call) => ({
-                ...call,
-                participants: call.participants.map((participant) =>
-                  participant.userId === event.userId
-                    ? {
-                        ...participant,
-                        displayName: profile.displayName,
-                        avatarUrl: profile.avatarUrl,
-                      }
-                    : participant,
-                ),
-              })),
+        } else if (event.type === 'message-reactions-updated') {
+          if (activeChatRef.current === event.chatId)
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === event.messageId
+                  ? { ...message, reactions: event.reactions as MessageReaction[] }
+                  : message,
+              ),
             );
-          })
-          .catch(() => {
-            // Lists below still refresh; inaccessible profiles stay unchanged.
-          });
-        void Promise.all([
-          accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
-          accountClient.request<{
-            friends: FriendItem[];
-            pending: PendingItem[];
-            blocked: BlockedItem[];
-          }>('/v1/friends'),
-        ])
-          .then(([chatResult, friendResult]) => {
-            setChats((current) =>
-              chatResult.chats.map((chat) => ({
-                ...chat,
-                unreadCount: current.find((item) => item.id === chat.id)?.unreadCount,
-              })),
+        } else if (event.type === 'message-pin-updated') {
+          if (activeChatRef.current === event.chatId) {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === event.messageId
+                  ? { ...message, pinned_at: event.pinnedAt, pinned_by: event.pinnedBy }
+                  : message,
+              ),
             );
-            setFriends(friendResult.friends);
-            setPending(friendResult.pending);
-            setBlocked(friendResult.blocked);
-          })
-          .catch(() => {
-            // The next normal page refresh will retry without interrupting realtime chat.
-          });
-      } else if (event.type === 'chat-updated') {
-        void accountClient
-          .request<{ chats: ChatItem[] }>('/v1/chats')
-          .then((result) => setChats(result.chats))
-          .catch(() => undefined);
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId
-              ? {
-                  ...chat,
-                  ...(event.title !== undefined ? { title: event.title } : {}),
-                  ...(event.avatarUrl !== undefined ? { avatarUrl: event.avatarUrl } : {}),
-                  ...(event.avatarPositionX !== undefined
-                    ? { avatarPositionX: event.avatarPositionX }
-                    : {}),
-                  ...(event.avatarPositionY !== undefined
-                    ? { avatarPositionY: event.avatarPositionY }
-                    : {}),
-                  ...(event.avatarScale !== undefined ? { avatarScale: event.avatarScale } : {}),
-                }
-              : chat,
-          ),
-        );
-      } else if (event.type === 'presence-updated') {
-        setFriends((current) =>
-          current.map((friend) =>
-            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
-          ),
-        );
-        setPending((current) =>
-          current.map((friend) =>
-            (friend.profile_id ?? friend.id) === event.userId
-              ? { ...friend, presence: event.status }
-              : friend,
-          ),
-        );
-        setBlocked((current) =>
-          current.map((friend) =>
-            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
-          ),
-        );
-        setChats((current) =>
-          current.map((chat) => ({
-            ...chat,
-            members: chat.members.map((member) =>
-              member.id === event.userId ? { ...member, presence: event.status } : member,
+            if (event.pinnedMessage !== undefined)
+              setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+          }
+        } else if (event.type === 'message-deleted') {
+          if (activeChatRef.current === event.chatId) {
+            setMessages((current) => removeMessageAndMarkReplies(current, event.messageId));
+            if (event.pinnedMessage !== undefined)
+              setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+          }
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId ? chatWithLatestMessage(chat, event.latestMessage) : chat,
             ),
-          })),
-        );
-        setProfileRevision((revision) => revision + 1);
-      }
-    });
+          );
+        } else if (event.type === 'history-cleared') {
+          if (activeChatRef.current === event.chatId) {
+            messagesPageStartRef.current = { chatId: event.chatId };
+            setMessages([]);
+            setPinnedMessage(undefined);
+            setHasMoreMessages(false);
+          }
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId
+                ? { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null }
+                : chat,
+            ),
+          );
+        } else if (event.type === 'chat-removed') {
+          void clearChatImageCache(user.id);
+          setChats((current) => current.filter((chat) => chat.id !== event.chatId));
+          if (activeChatRef.current === event.chatId) {
+            activeChatRef.current = undefined;
+            messagesRequestIdRef.current += 1;
+            messagesPageStartRef.current = {};
+            setActiveChat(undefined);
+            setMessages([]);
+            setPinnedMessage(undefined);
+            setHasMoreMessages(false);
+          }
+        } else if (event.type === 'retention-changed') {
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId ? { ...chat, retentionHours: event.retentionHours } : chat,
+            ),
+          );
+        } else if (event.type === 'profile-updated') {
+          setProfileRevision((revision) => revision + 1);
+          void accountClient
+            .request<{
+              profile: { displayName: string; username: string; avatarUrl: string | null };
+            }>(`/v1/users/${event.userId}/profile`)
+            .then(async ({ profile }) => {
+              await warmAccountMediaCache(user.id, collectAccountMediaUrls(profile), 4_000);
+              setMessages((current) =>
+                current.map((message) =>
+                  message.sender_id === event.userId
+                    ? {
+                        ...message,
+                        display_name: profile.displayName,
+                        username: profile.username,
+                        avatar_url: profile.avatarUrl,
+                      }
+                    : message,
+                ),
+              );
+              setHistory((current) =>
+                current.map((call) => ({
+                  ...call,
+                  participants: call.participants.map((participant) =>
+                    participant.userId === event.userId
+                      ? {
+                          ...participant,
+                          displayName: profile.displayName,
+                          avatarUrl: profile.avatarUrl,
+                        }
+                      : participant,
+                  ),
+                })),
+              );
+            })
+            .catch(() => {
+              // Lists below still refresh; inaccessible profiles stay unchanged.
+            });
+          void Promise.all([
+            accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
+            accountClient.request<{
+              friends: FriendItem[];
+              pending: PendingItem[];
+              blocked: BlockedItem[];
+            }>('/v1/friends'),
+          ])
+            .then(([chatResult, friendResult]) => {
+              setChats((current) =>
+                chatResult.chats.map((chat) => ({
+                  ...chat,
+                  unreadCount: current.find((item) => item.id === chat.id)?.unreadCount,
+                })),
+              );
+              setFriends(friendResult.friends);
+              setPending(friendResult.pending);
+              setBlocked(friendResult.blocked);
+            })
+            .catch(() => {
+              // The next normal page refresh will retry without interrupting realtime chat.
+            });
+        } else if (event.type === 'chat-updated') {
+          void accountClient
+            .request<{ chats: ChatItem[] }>('/v1/chats')
+            .then((result) => setChats(result.chats))
+            .catch(() => undefined);
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId
+                ? {
+                    ...chat,
+                    ...(event.title !== undefined ? { title: event.title } : {}),
+                    ...(event.avatarUrl !== undefined ? { avatarUrl: event.avatarUrl } : {}),
+                    ...(event.avatarPositionX !== undefined
+                      ? { avatarPositionX: event.avatarPositionX }
+                      : {}),
+                    ...(event.avatarPositionY !== undefined
+                      ? { avatarPositionY: event.avatarPositionY }
+                      : {}),
+                    ...(event.avatarScale !== undefined ? { avatarScale: event.avatarScale } : {}),
+                  }
+                : chat,
+            ),
+          );
+        } else if (event.type === 'presence-updated') {
+          setFriends((current) =>
+            current.map((friend) =>
+              friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+            ),
+          );
+          setPending((current) =>
+            current.map((friend) =>
+              (friend.profile_id ?? friend.id) === event.userId
+                ? { ...friend, presence: event.status }
+                : friend,
+            ),
+          );
+          setBlocked((current) =>
+            current.map((friend) =>
+              friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+            ),
+          );
+          setChats((current) =>
+            current.map((chat) => ({
+              ...chat,
+              members: chat.members.map((member) =>
+                member.id === event.userId ? { ...member, presence: event.status } : member,
+              ),
+            })),
+          );
+          setProfileRevision((revision) => revision + 1);
+        }
+      },
+      undefined,
+      () => {
+        // The end event can arrive while leaving the call remounts this view.
+        // Repair visible call cards after subscription is authenticated, without
+        // resetting pagination, the draft or the message loading state.
+        const chatId = activeChatRef.current;
+        if (!chatId) return;
+        void accountClient
+          .request<{ messages: MessageItem[] }>(`/v1/chats/${chatId}/messages`)
+          .then(({ messages: snapshot }) => {
+            if (activeChatRef.current !== chatId) return;
+            const calls = new Map(
+              snapshot
+                .filter((message) => message.kind === 'call')
+                .map((message) => [message.id, message]),
+            );
+            setMessages((current) =>
+              current.map((message) => {
+                const fresh = calls.get(message.id);
+                if (message.kind !== 'call' || !fresh || message.metadata?.ended === true)
+                  return message;
+                return { ...message, metadata: { ...message.metadata, ...fresh.metadata } };
+              }),
+            );
+          })
+          .catch(() => undefined);
+      },
+    );
     realtime.start();
     return () => realtime.stop();
   }, [user.id]);

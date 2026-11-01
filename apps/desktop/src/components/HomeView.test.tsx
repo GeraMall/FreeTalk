@@ -10,7 +10,10 @@ import {
 } from '../lib/call-history';
 import { HomeView, RecentRooms, TransientNotice } from './HomeView';
 
-const homeViewHarness = vi.hoisted(() => ({ request: vi.fn() }));
+const homeViewHarness = vi.hoisted(() => ({
+  request: vi.fn(),
+  ready: undefined as (() => void) | undefined,
+}));
 
 vi.mock('../lib/api-client', () => ({
   accountClient: { request: homeViewHarness.request },
@@ -18,6 +21,9 @@ vi.mock('../lib/api-client', () => ({
 
 vi.mock('../lib/chat-realtime', () => ({
   ChatRealtimeClient: class {
+    constructor(_event: unknown, _presence: unknown, ready?: () => void) {
+      homeViewHarness.ready = ready;
+    }
     start() {}
     stop() {}
   },
@@ -27,6 +33,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   homeViewHarness.request.mockReset();
+  homeViewHarness.ready = undefined;
   localStorage.clear();
 });
 
@@ -44,6 +51,75 @@ function mobileMatchMedia() {
 }
 
 describe('HomeView chat navigation', () => {
+  it('repairs a missed call end after realtime reconnect without clearing the draft', async () => {
+    let ended = false;
+    const user: AccountUser = {
+      id: 'self',
+      email: 'qa@example.invalid',
+      username: 'qa_self',
+      displayName: 'QA',
+      emailVerified: true,
+      avatarUrl: null,
+      registeredAt: '2026-08-26T00:00:00.000Z',
+    };
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats')
+        return {
+          chats: [
+            {
+              id: 'chat-1',
+              type: 'group',
+              title: 'Команда',
+              members: [{ id: 'self', username: 'qa_self', displayName: 'QA', role: 'owner' }],
+              currentUserRole: 'owner',
+            },
+          ],
+        };
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      if (path === '/v1/chats/chat-1/active-call') return { call: null };
+      if (path === '/v1/chats/chat-1/messages')
+        return {
+          messages: [
+            {
+              id: 'call-1',
+              sender_id: 'self',
+              username: 'qa_self',
+              display_name: 'QA',
+              kind: 'call',
+              body: 'QA начал звонок',
+              created_at: new Date().toISOString(),
+              expires_at: null,
+              metadata: { roomId: 'ROOM12345678', ended, established: true },
+            },
+          ],
+          hasMore: false,
+        };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const view = render(
+      <HomeView
+        user={user}
+        busy={false}
+        error=""
+        page="chats"
+        onCreateRoom={vi.fn()}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    fireEvent.click(await view.findByRole('button', { name: 'Команда', exact: true }));
+    expect(await view.findByRole('button', { name: 'Присоединиться' })).toBeTruthy();
+    const input = view.getByPlaceholderText('Написать сообщение…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'Черновик остаётся' } });
+    ended = true;
+    await act(async () => homeViewHarness.ready?.());
+    expect(await view.findByText('Звонок завершён')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Присоединиться' })).toBeNull();
+    expect(input.value).toBe('Черновик остаётся');
+  });
+
   it('opens the mobile settings menu with one avatar click', async () => {
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation(mobileMatchMedia);
