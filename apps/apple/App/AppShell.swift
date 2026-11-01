@@ -25,6 +25,20 @@ struct AppShell: View {
     }
     var body: some View {
         @Bindable var call = account.calls
+        VStack(spacing: 0) {
+                if call.active && !call.presented {
+                    Button { call.presented = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "phone.fill")
+                            Text(call.phase == .connected ? "Перейти к звонку" : "Подключение…").font(.subheadline.bold())
+                            Spacer()
+                            Text(call.startedAt, style: .timer).font(.caption.monospacedDigit())
+                            Image(systemName: "chevron.right")
+                        }.padding(.horizontal, 16).padding(.vertical, 10)
+                        .foregroundStyle(call.qualityColor)
+                        .background(call.qualityColor.opacity(0.12))
+                    }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("call.return")
+                }
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
@@ -53,22 +67,7 @@ struct AppShell: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-                if call.active && !call.presented {
-                    Button { call.presented = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "phone.fill")
-                            Text(call.phase == .connected ? "Перейти к звонку" : "Подключение…").font(.subheadline.bold())
-                            Spacer()
-                            Text(call.startedAt, style: .timer).font(.caption.monospacedDigit())
-                            Image(systemName: "chevron.right")
-                        }.padding(.horizontal, 16).padding(.vertical, 10)
-                        .foregroundStyle(call.qualityColor)
-                        .background(call.qualityColor.opacity(0.12))
-                    }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("call.return")
-                }
-            }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        // The bar participates in layout so destinations cannot draw behind it.
             if !keyboardVisible {
             HStack(spacing: 4) {
                 ForEach(Page.allCases, id: \.self) { item in
@@ -93,6 +92,7 @@ struct AppShell: View {
                 .overlay(alignment: .top) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
             }
         }
+        .background(Brand.background)
         #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }

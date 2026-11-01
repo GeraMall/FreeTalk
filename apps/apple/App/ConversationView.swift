@@ -18,6 +18,7 @@ struct ConversationView: View {
     @State private var nearBottom = true
     @State private var viewportHeight: CGFloat = 0
     @State private var newMessages = false
+    @State private var didScrollToLatest = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -61,7 +62,10 @@ struct ConversationView: View {
             .accessibilityIdentifier("chat.messages")
             .onChange(of: messages.last?.id) {
                 if !loadingOlder {
-                    if nearBottom { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("message-bottom", anchor: .bottom) } }
+                    if !didScrollToLatest || nearBottom {
+                        proxy.scrollTo("message-bottom", anchor: .bottom)
+                        didScrollToLatest = true
+                    }
                     else { newMessages = true }
                 }
             }
