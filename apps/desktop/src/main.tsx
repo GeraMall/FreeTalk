@@ -10,6 +10,7 @@ import { NotificationOverlay } from './components/NotificationOverlay';
 import { installInteractionGuards } from './lib/interaction-guards';
 import { usesCustomWindowChrome } from './lib/window-chrome';
 import './styles.css';
+import './interface-polish.css';
 import './profile-panel.css';
 
 installInteractionGuards();

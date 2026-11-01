@@ -1242,7 +1242,7 @@ export function HomeView({
           <div className="home-dashboard">
             <section className="home-hero">
               <img className="home-hero-watermark" src={mascot} alt="" aria-hidden="true" />
-              <p className="eyebrow">СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!</p>
+              <p className="eyebrow">Стабильная связь и работа без VPN</p>
               <h1>Добрый вечер, {user.displayName}</h1>
               <p>Создайте приватную комнату или войдите по приглашению.</p>
               <div className="home-room-actions">
@@ -1522,7 +1522,7 @@ export function RecentRooms({
     <section className="recent-rooms" aria-labelledby="recent-rooms-title" aria-busy={loading}>
       <header>
         <div>
-          <p>ВАШИ ЗВОНКИ</p>
+          <p>Ваши звонки</p>
           <h2 id="recent-rooms-title">Недавние комнаты</h2>
         </div>
         <span>Последние {Math.min(4, recent.length) || '—'}</span>

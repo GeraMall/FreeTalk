@@ -1,0 +1,198 @@
+/* Craft pass guided by unslop, Damir Sokolovsky, CC BY 4.0:
+   https://github.com/heydamir/unslop
+   Preserve TRLKA branding, call controls, custom backgrounds and mobile geometry. */
+.welcome-shell .aurora {
+  background: #080e17;
+}
+.welcome-shell .aurora > span {
+  display: none;
+}
+.welcome-card {
+  border-color: rgba(232, 240, 255, 0.12);
+  border-radius: 20px;
+  background: #101924;
+  box-shadow: none;
+  backdrop-filter: none;
+  animation: none;
+}
+.welcome-topbar {
+  background: #080e17;
+  border-color: rgba(232, 240, 255, 0.1);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.welcome-card .brand-logo-full {
+  min-height: 72px;
+}
+.welcome-card .brand-logo-full .brand-emblem {
+  width: 64px;
+  height: 64px;
+  filter: none;
+}
+.welcome-card .brand-logo-full .brand-wordmark {
+  font-size: 44px;
+  filter: none;
+  text-shadow: none;
+}
+.welcome-card .eyebrow,
+.home-hero .eyebrow,
+.friends-eyebrow,
+.settings-sidebar-title,
+.settings-header .eyebrow,
+.messenger-eyebrow,
+.recent-rooms > header p {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.welcome-card .field-label {
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.welcome-card .auth-form {
+  gap: 16px;
+  margin-top: 24px;
+}
+.welcome-card .auth-switch {
+  margin-top: 24px;
+  border-color: rgba(232, 240, 255, 0.1);
+  border-radius: 10px;
+}
+.welcome-card .auth-switch::before {
+  border-color: rgba(232, 240, 255, 0.12);
+  background: #20303d;
+  box-shadow: none;
+}
+.welcome-card .auth-switch button {
+  font-size: 14px;
+  font-weight: 500;
+}
+.welcome-card .auth-info-row {
+  color: #a5afbf;
+  border-color: rgba(232, 240, 255, 0.1);
+  background: #141f2b;
+  font-size: 12px;
+}
+.welcome-card .primary,
+.home-create {
+  box-shadow: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+.home-hero {
+  gap: 20px;
+  border-color: rgba(232, 240, 255, 0.12);
+  border-radius: 20px;
+  background: #101924;
+  box-shadow: none;
+}
+.home-hero::after,
+.friends-header::after {
+  display: none;
+}
+.home-hero-watermark {
+  opacity: 0.04;
+}
+.home-hero h1 {
+  font-size: clamp(30px, 3.6vw, 40px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.home-hero > p:not(.eyebrow) {
+  font-size: 16px;
+  line-height: 1.6;
+}
+.home-create {
+  min-height: 48px;
+}
+.home-proof-row span {
+  border-color: rgba(232, 240, 255, 0.08);
+  background: #101924;
+  border-radius: 10px;
+}
+.account-page-header h1,
+.friends-header h1,
+.conversation-sidebar-header h1 {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.friends-title-mark {
+  background: #142530;
+  border-color: rgba(232, 240, 255, 0.1);
+  box-shadow: none;
+}
+.friends-toolbar {
+  background: #101924;
+  border-color: rgba(232, 240, 255, 0.1);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.recent-rooms > header h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.settings-sidebar {
+  background: #0d1621;
+  border-color: rgba(232, 240, 255, 0.1);
+}
+.settings-sidebar nav button {
+  font-size: 14px;
+  font-weight: 500;
+}
+.settings-sidebar nav button.active {
+  border-color: rgba(232, 240, 255, 0.12);
+  background: #19303a;
+  box-shadow: none;
+}
+.settings-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.settings-section h3 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.settings-section-description {
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 760px) {
+  .welcome-card .brand-logo-full .brand-emblem {
+    width: 48px;
+    height: 48px;
+  }
+  .welcome-card .brand-logo-full .brand-wordmark {
+    font-size: 36px;
+  }
+  .welcome-card .brand-logo-full {
+    min-height: 56px;
+  }
+  .welcome-card .eyebrow {
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .home-hero h1 {
+    font-size: 30px;
+  }
+  .home-hero > p:not(.eyebrow) {
+    font-size: 15px;
+  }
+  .home-create {
+    min-height: 48px;
+    font-size: 16px;
+  }
+  .account-page-header h1,
+  .friends-header h1,
+  .conversation-sidebar-header h1 {
+    font-size: 28px;
+  }
+}

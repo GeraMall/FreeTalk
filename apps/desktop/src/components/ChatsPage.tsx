@@ -644,7 +644,7 @@ export function ChatsPage({
         >
           <header className="conversation-sidebar-header">
             <div>
-              <p className="messenger-eyebrow">СООБЩЕНИЯ</p>
+              <p className="messenger-eyebrow">Сообщения</p>
               <h1>Чаты</h1>
               <p>Срок хранения задаётся для каждого чата</p>
             </div>
