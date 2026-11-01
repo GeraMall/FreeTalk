@@ -9,7 +9,7 @@ public actor AccountClient {
     private var refreshTask: Task<Session, Error>?
     private var generation = 0
 
-    public init(baseURL: URL = URL(string: "https://trlka.com/api")!,
+    public init(baseURL: URL = URL(string: "https://freetalk.191-44-38-60.sslip.io/api")!,
                 transport: URLSession = URLSession(configuration: .ephemeral),
                 vault: any SessionVault = KeychainSessionVault()) throws {
         guard baseURL.scheme == "https", baseURL.host != nil,

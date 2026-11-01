@@ -11,8 +11,9 @@ final class AccountStore {
     let client: AccountClient
 
     init() {
-        // A fixed HTTPS origin; never accept a server address from a deep link.
-        client = try! AccountClient()
+        // Build configuration only; never accept server addresses from deep links.
+        let endpoint = Bundle.main.object(forInfoDictionaryKey: "TRLKAAPIBaseURL") as? String
+        client = try! AccountClient(baseURL: URL(string: endpoint ?? "https://freetalk.191-44-38-60.sslip.io/api")!)
     }
 
     func restore() async {
