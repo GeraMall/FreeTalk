@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS signaling_rooms (
   recover_until timestamptz NOT NULL, snapshot jsonb
 );
 CREATE INDEX IF NOT EXISTS signaling_rooms_node_idx ON signaling_rooms(node_id);
+CREATE INDEX IF NOT EXISTS signaling_rooms_expiry_idx ON signaling_rooms(recover_until) WHERE snapshot IS NOT NULL;
 `;
 
 export class ClusterUnavailable extends Error {}
@@ -70,6 +71,11 @@ export class ClusterStore {
       [this.node.id, this.node.instanceId],
     );
     if (!result.rowCount) throw new ClusterUnavailable('Node registration was replaced');
+  }
+
+  async expireSnapshots() {
+    await this.pool.query(`UPDATE signaling_rooms SET snapshot=NULL
+      WHERE snapshot IS NOT NULL AND recover_until<clock_timestamp()`);
   }
 
   async acquire(roomId: string, create: boolean): Promise<RoomLease> {
@@ -150,6 +156,19 @@ export class ClusterStore {
         n.leaseMs,
         n.recoveryMs,
       ],
+    );
+    if (!result.rowCount) throw new ClusterUnavailable('Room lease lost; stale writer fenced');
+  }
+
+  async renew(roomId: string, epoch: string) {
+    const n = this.node;
+    const result = await this.pool.query(
+      `UPDATE signaling_rooms SET
+      lease_until=clock_timestamp()+$5*interval '1 millisecond',
+      recover_until=clock_timestamp()+$6*interval '1 millisecond'
+      WHERE id=$1 AND node_id=$2 AND instance_id=$3 AND epoch=$4::bigint
+        AND lease_until>clock_timestamp() RETURNING id`,
+      [roomId, n.id, n.instanceId, epoch, n.leaseMs, n.recoveryMs],
     );
     if (!result.rowCount) throw new ClusterUnavailable('Room lease lost; stale writer fenced');
   }

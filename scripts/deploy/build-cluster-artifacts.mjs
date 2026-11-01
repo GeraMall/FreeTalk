@@ -34,6 +34,8 @@ for (const name of [
   'cluster.env.example',
   'haproxy.cfg.example',
   'install-node.sh',
+  'Caddyfile.routes.snippet',
+  'api.env.example',
 ])
   await copyFile(join(root, 'deploy/cluster', name), join(stage, name));
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

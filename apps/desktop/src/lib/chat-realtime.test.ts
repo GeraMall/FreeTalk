@@ -34,6 +34,28 @@ class FakeWebSocket extends EventTarget {
 }
 
 describe('ChatRealtimeClient', () => {
+  it('requests a snapshot refresh after reconnecting and ignores messages from the old socket', async () => {
+    vi.useFakeTimers();
+    const restored = vi.fn(),
+      listener = vi.fn();
+    const client = new ChatRealtimeClient(listener, undefined, restored);
+    client.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive({ type: 'ready' });
+    expect(restored).not.toHaveBeenCalled();
+    first.close();
+    await vi.advanceTimersByTimeAsync(1_300);
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    second.receive({ type: 'ready' });
+    expect(restored).toHaveBeenCalledTimes(1);
+    first.receive({ type: 'ready' });
+    expect(restored).toHaveBeenCalledTimes(1);
+    client.stop();
+  });
   beforeEach(() => {
     localStorage.clear();
     FakeWebSocket.instances = [];

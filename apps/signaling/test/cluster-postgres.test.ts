@@ -78,6 +78,22 @@ describe.skipIf(!url)('PostgreSQL cluster fencing and routing', () => {
       [room],
     );
     await expect(a.acquire(room, false)).rejects.toThrow('unavailable');
+    await a.expireSnapshots();
+    expect(
+      (await pool.query('SELECT snapshot FROM signaling_rooms WHERE id=$1', [room])).rows[0]
+        .snapshot,
+    ).toBeNull();
+  });
+
+  it('enforces room capacity even when two admissions race before the first snapshot', async () => {
+    const limited = new ClusterStore(pool, { ...node('limited'), capacity: 1 });
+    await limited.register();
+    const results = await Promise.allSettled([
+      limited.acquire('DEFGHJKL2345', true),
+      limited.acquire('DEFGHJKL2346', true),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
   });
 
   it('elects one account API and promotes standby after primary lease expiration', async () => {

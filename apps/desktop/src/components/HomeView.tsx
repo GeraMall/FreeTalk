@@ -152,6 +152,7 @@ export function HomeView({
   const messagesRequestIdRef = useRef(0);
   const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({});
   const navigationInitialized = useRef(false);
+  const recoverRealtimeRef = useRef<() => void>(() => {});
   const chatFriendOptions = useMemo(
     () =>
       friends.map((friend) => ({
@@ -199,211 +200,215 @@ export function HomeView({
   }, [onPageChange, page]);
 
   useEffect(() => {
-    const realtime = new ChatRealtimeClient((event) => {
-      if (event.type === 'message-created') {
-        setChats((current) =>
-          promoteChat(current, event.chatId, event.message).map((chat) =>
-            chat.id === event.chatId &&
-            activeChatRef.current !== event.chatId &&
-            event.message.sender_id !== user.id
-              ? { ...chat, unreadCount: (chat.unreadCount ?? 0) + 1 }
-              : chat,
-          ),
-        );
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) => appendMessage(current, event.message));
-      } else if (event.type === 'message-updated') {
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? {
-                    ...message,
-                    ...(event.body === undefined ? {} : { body: event.body }),
-                    ...(event.editedAt === undefined ? {} : { edited_at: event.editedAt }),
-                    ...(event.metadata === undefined
-                      ? {}
-                      : { metadata: { ...message.metadata, ...event.metadata } }),
-                  }
-                : message,
+    const realtime = new ChatRealtimeClient(
+      (event) => {
+        if (event.type === 'message-created') {
+          setChats((current) =>
+            promoteChat(current, event.chatId, event.message).map((chat) =>
+              chat.id === event.chatId &&
+              activeChatRef.current !== event.chatId &&
+              event.message.sender_id !== user.id
+                ? { ...chat, unreadCount: (chat.unreadCount ?? 0) + 1 }
+                : chat,
             ),
           );
-      } else if (event.type === 'message-reactions-updated') {
-        if (activeChatRef.current === event.chatId)
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? { ...message, reactions: event.reactions as MessageReaction[] }
-                : message,
-            ),
-          );
-      } else if (event.type === 'message-pin-updated') {
-        if (activeChatRef.current === event.chatId) {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === event.messageId
-                ? { ...message, pinned_at: event.pinnedAt, pinned_by: event.pinnedBy }
-                : message,
-            ),
-          );
-          if (event.pinnedMessage !== undefined)
-            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
-        }
-      } else if (event.type === 'message-deleted') {
-        if (activeChatRef.current === event.chatId) {
-          setMessages((current) => removeMessageAndMarkReplies(current, event.messageId));
-          if (event.pinnedMessage !== undefined)
-            setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
-        }
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId ? chatWithLatestMessage(chat, event.latestMessage) : chat,
-          ),
-        );
-      } else if (event.type === 'history-cleared') {
-        if (activeChatRef.current === event.chatId) {
-          messagesPageStartRef.current = { chatId: event.chatId };
-          setMessages([]);
-          setPinnedMessage(undefined);
-          setHasMoreMessages(false);
-        }
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId
-              ? { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null }
-              : chat,
-          ),
-        );
-      } else if (event.type === 'chat-removed') {
-        void clearChatImageCache(user.id);
-        setChats((current) => current.filter((chat) => chat.id !== event.chatId));
-        if (activeChatRef.current === event.chatId) {
-          activeChatRef.current = undefined;
-          messagesRequestIdRef.current += 1;
-          messagesPageStartRef.current = {};
-          setActiveChat(undefined);
-          setMessages([]);
-          setPinnedMessage(undefined);
-          setHasMoreMessages(false);
-        }
-      } else if (event.type === 'retention-changed') {
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId ? { ...chat, retentionHours: event.retentionHours } : chat,
-          ),
-        );
-      } else if (event.type === 'profile-updated') {
-        setProfileRevision((revision) => revision + 1);
-        void accountClient
-          .request<{
-            profile: { displayName: string; username: string; avatarUrl: string | null };
-          }>(`/v1/users/${event.userId}/profile`)
-          .then(async ({ profile }) => {
-            await warmAccountMediaCache(user.id, collectAccountMediaUrls(profile), 4_000);
+          if (activeChatRef.current === event.chatId)
+            setMessages((current) => appendMessage(current, event.message));
+        } else if (event.type === 'message-updated') {
+          if (activeChatRef.current === event.chatId)
             setMessages((current) =>
               current.map((message) =>
-                message.sender_id === event.userId
+                message.id === event.messageId
                   ? {
                       ...message,
-                      display_name: profile.displayName,
-                      username: profile.username,
-                      avatar_url: profile.avatarUrl,
+                      ...(event.body === undefined ? {} : { body: event.body }),
+                      ...(event.editedAt === undefined ? {} : { edited_at: event.editedAt }),
+                      ...(event.metadata === undefined
+                        ? {}
+                        : { metadata: { ...message.metadata, ...event.metadata } }),
                     }
                   : message,
               ),
             );
-            setHistory((current) =>
-              current.map((call) => ({
-                ...call,
-                participants: call.participants.map((participant) =>
-                  participant.userId === event.userId
-                    ? {
-                        ...participant,
-                        displayName: profile.displayName,
-                        avatarUrl: profile.avatarUrl,
-                      }
-                    : participant,
-                ),
-              })),
+        } else if (event.type === 'message-reactions-updated') {
+          if (activeChatRef.current === event.chatId)
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === event.messageId
+                  ? { ...message, reactions: event.reactions as MessageReaction[] }
+                  : message,
+              ),
             );
-          })
-          .catch(() => {
-            // Lists below still refresh; inaccessible profiles stay unchanged.
-          });
-        void Promise.all([
-          accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
-          accountClient.request<{
-            friends: FriendItem[];
-            pending: PendingItem[];
-            blocked: BlockedItem[];
-          }>('/v1/friends'),
-        ])
-          .then(([chatResult, friendResult]) => {
-            setChats((current) =>
-              chatResult.chats.map((chat) => ({
-                ...chat,
-                unreadCount: current.find((item) => item.id === chat.id)?.unreadCount,
-              })),
+        } else if (event.type === 'message-pin-updated') {
+          if (activeChatRef.current === event.chatId) {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === event.messageId
+                  ? { ...message, pinned_at: event.pinnedAt, pinned_by: event.pinnedBy }
+                  : message,
+              ),
             );
-            setFriends(friendResult.friends);
-            setPending(friendResult.pending);
-            setBlocked(friendResult.blocked);
-          })
-          .catch(() => {
-            // The next normal page refresh will retry without interrupting realtime chat.
-          });
-      } else if (event.type === 'chat-updated') {
-        void accountClient
-          .request<{ chats: ChatItem[] }>('/v1/chats')
-          .then((result) => setChats(result.chats))
-          .catch(() => undefined);
-        setChats((current) =>
-          current.map((chat) =>
-            chat.id === event.chatId
-              ? {
-                  ...chat,
-                  ...(event.title !== undefined ? { title: event.title } : {}),
-                  ...(event.avatarUrl !== undefined ? { avatarUrl: event.avatarUrl } : {}),
-                  ...(event.avatarPositionX !== undefined
-                    ? { avatarPositionX: event.avatarPositionX }
-                    : {}),
-                  ...(event.avatarPositionY !== undefined
-                    ? { avatarPositionY: event.avatarPositionY }
-                    : {}),
-                  ...(event.avatarScale !== undefined ? { avatarScale: event.avatarScale } : {}),
-                }
-              : chat,
-          ),
-        );
-      } else if (event.type === 'presence-updated') {
-        setFriends((current) =>
-          current.map((friend) =>
-            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
-          ),
-        );
-        setPending((current) =>
-          current.map((friend) =>
-            (friend.profile_id ?? friend.id) === event.userId
-              ? { ...friend, presence: event.status }
-              : friend,
-          ),
-        );
-        setBlocked((current) =>
-          current.map((friend) =>
-            friend.id === event.userId ? { ...friend, presence: event.status } : friend,
-          ),
-        );
-        setChats((current) =>
-          current.map((chat) => ({
-            ...chat,
-            members: chat.members.map((member) =>
-              member.id === event.userId ? { ...member, presence: event.status } : member,
+            if (event.pinnedMessage !== undefined)
+              setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+          }
+        } else if (event.type === 'message-deleted') {
+          if (activeChatRef.current === event.chatId) {
+            setMessages((current) => removeMessageAndMarkReplies(current, event.messageId));
+            if (event.pinnedMessage !== undefined)
+              setPinnedMessage((event.pinnedMessage as MessageItem | null) ?? undefined);
+          }
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId ? chatWithLatestMessage(chat, event.latestMessage) : chat,
             ),
-          })),
-        );
-        setProfileRevision((revision) => revision + 1);
-      }
-    });
+          );
+        } else if (event.type === 'history-cleared') {
+          if (activeChatRef.current === event.chatId) {
+            messagesPageStartRef.current = { chatId: event.chatId };
+            setMessages([]);
+            setPinnedMessage(undefined);
+            setHasMoreMessages(false);
+          }
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId
+                ? { ...chat, lastMessage: null, lastMessageAt: null, lastMessageKind: null }
+                : chat,
+            ),
+          );
+        } else if (event.type === 'chat-removed') {
+          void clearChatImageCache(user.id);
+          setChats((current) => current.filter((chat) => chat.id !== event.chatId));
+          if (activeChatRef.current === event.chatId) {
+            activeChatRef.current = undefined;
+            messagesRequestIdRef.current += 1;
+            messagesPageStartRef.current = {};
+            setActiveChat(undefined);
+            setMessages([]);
+            setPinnedMessage(undefined);
+            setHasMoreMessages(false);
+          }
+        } else if (event.type === 'retention-changed') {
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId ? { ...chat, retentionHours: event.retentionHours } : chat,
+            ),
+          );
+        } else if (event.type === 'profile-updated') {
+          setProfileRevision((revision) => revision + 1);
+          void accountClient
+            .request<{
+              profile: { displayName: string; username: string; avatarUrl: string | null };
+            }>(`/v1/users/${event.userId}/profile`)
+            .then(async ({ profile }) => {
+              await warmAccountMediaCache(user.id, collectAccountMediaUrls(profile), 4_000);
+              setMessages((current) =>
+                current.map((message) =>
+                  message.sender_id === event.userId
+                    ? {
+                        ...message,
+                        display_name: profile.displayName,
+                        username: profile.username,
+                        avatar_url: profile.avatarUrl,
+                      }
+                    : message,
+                ),
+              );
+              setHistory((current) =>
+                current.map((call) => ({
+                  ...call,
+                  participants: call.participants.map((participant) =>
+                    participant.userId === event.userId
+                      ? {
+                          ...participant,
+                          displayName: profile.displayName,
+                          avatarUrl: profile.avatarUrl,
+                        }
+                      : participant,
+                  ),
+                })),
+              );
+            })
+            .catch(() => {
+              // Lists below still refresh; inaccessible profiles stay unchanged.
+            });
+          void Promise.all([
+            accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
+            accountClient.request<{
+              friends: FriendItem[];
+              pending: PendingItem[];
+              blocked: BlockedItem[];
+            }>('/v1/friends'),
+          ])
+            .then(([chatResult, friendResult]) => {
+              setChats((current) =>
+                chatResult.chats.map((chat) => ({
+                  ...chat,
+                  unreadCount: current.find((item) => item.id === chat.id)?.unreadCount,
+                })),
+              );
+              setFriends(friendResult.friends);
+              setPending(friendResult.pending);
+              setBlocked(friendResult.blocked);
+            })
+            .catch(() => {
+              // The next normal page refresh will retry without interrupting realtime chat.
+            });
+        } else if (event.type === 'chat-updated') {
+          void accountClient
+            .request<{ chats: ChatItem[] }>('/v1/chats')
+            .then((result) => setChats(result.chats))
+            .catch(() => undefined);
+          setChats((current) =>
+            current.map((chat) =>
+              chat.id === event.chatId
+                ? {
+                    ...chat,
+                    ...(event.title !== undefined ? { title: event.title } : {}),
+                    ...(event.avatarUrl !== undefined ? { avatarUrl: event.avatarUrl } : {}),
+                    ...(event.avatarPositionX !== undefined
+                      ? { avatarPositionX: event.avatarPositionX }
+                      : {}),
+                    ...(event.avatarPositionY !== undefined
+                      ? { avatarPositionY: event.avatarPositionY }
+                      : {}),
+                    ...(event.avatarScale !== undefined ? { avatarScale: event.avatarScale } : {}),
+                  }
+                : chat,
+            ),
+          );
+        } else if (event.type === 'presence-updated') {
+          setFriends((current) =>
+            current.map((friend) =>
+              friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+            ),
+          );
+          setPending((current) =>
+            current.map((friend) =>
+              (friend.profile_id ?? friend.id) === event.userId
+                ? { ...friend, presence: event.status }
+                : friend,
+            ),
+          );
+          setBlocked((current) =>
+            current.map((friend) =>
+              friend.id === event.userId ? { ...friend, presence: event.status } : friend,
+            ),
+          );
+          setChats((current) =>
+            current.map((chat) => ({
+              ...chat,
+              members: chat.members.map((member) =>
+                member.id === event.userId ? { ...member, presence: event.status } : member,
+              ),
+            })),
+          );
+          setProfileRevision((revision) => revision + 1);
+        }
+      },
+      undefined,
+      () => recoverRealtimeRef.current(),
+    );
     realtime.start();
     return () => realtime.stop();
   }, [user.id]);
@@ -508,6 +513,17 @@ export function HomeView({
       if (!silent && requestId === messagesRequestIdRef.current) setMessagesLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    recoverRealtimeRef.current = () => {
+      void loadPage(page);
+      const chatId = activeChatRef.current;
+      if (chatId) void loadChatMessages(chatId, true);
+    };
+    return () => {
+      recoverRealtimeRef.current = () => {};
+    };
+  }, [page, loadPage, loadChatMessages]);
 
   const openChat = useCallback(
     async (chatId: string) => {

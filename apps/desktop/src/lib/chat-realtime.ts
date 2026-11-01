@@ -20,6 +20,7 @@ export class ChatRealtimeClient {
   private retryTimer?: number;
   private stopped = true;
   private attempt = 0;
+  private hasConnected = false;
   private lastActivityAt = Date.now();
   private lastActivitySignalAt = 0;
   private awayTimer?: number;
@@ -29,6 +30,7 @@ export class ChatRealtimeClient {
   constructor(
     private readonly onEvent: (event: ChatRealtimeServerMessage) => void,
     private readonly onSelfPresence?: (status: PresenceStatus) => void,
+    private readonly onRestored?: () => void,
   ) {}
 
   start() {
@@ -63,9 +65,11 @@ export class ChatRealtimeClient {
       const connectTimeout = window.setTimeout(() => socket.close(), CONNECT_TIMEOUT_MS);
 
       socket.addEventListener('open', () => {
+        if (this.socket !== socket || this.stopped) return;
         socket.send(JSON.stringify({ type: 'authenticate', token }));
       });
       socket.addEventListener('message', (event) => {
+        if (this.socket !== socket || this.stopped) return;
         try {
           const message = parseChatRealtimeServerMessage(String(event.data));
           if (message.type === 'ready') {
@@ -74,6 +78,8 @@ export class ChatRealtimeClient {
             this.sendPresence(
               resolvePresence(this.presenceMode, Date.now() - this.lastActivityAt >= AWAY_AFTER_MS),
             );
+            if (this.hasConnected) this.onRestored?.();
+            this.hasConnected = true;
             return;
           }
           this.onEvent(message);
@@ -83,7 +89,8 @@ export class ChatRealtimeClient {
       });
       socket.addEventListener('close', () => {
         window.clearTimeout(connectTimeout);
-        if (this.socket === socket) this.socket = undefined;
+        if (this.socket !== socket) return;
+        this.socket = undefined;
         this.updateSelfPresence('offline');
         this.scheduleReconnect();
       });
@@ -141,7 +148,9 @@ export class ChatRealtimeClient {
 
   private scheduleReconnect() {
     if (this.stopped || this.retryTimer !== undefined) return;
-    const delay = Math.min(1_000 * 2 ** this.attempt, MAX_RECONNECT_DELAY_MS);
+    const delay = Math.round(
+      Math.min(1_000 * 2 ** this.attempt, MAX_RECONNECT_DELAY_MS) * (0.8 + Math.random() * 0.4),
+    );
     this.attempt += 1;
     this.retryTimer = window.setTimeout(() => {
       this.retryTimer = undefined;

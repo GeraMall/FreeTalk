@@ -34,8 +34,9 @@ function inRoom<T>(
   roomId: string,
   create: boolean | undefined,
   work: () => T | Promise<T>,
+  checkpoint = true,
 ): Promise<T> {
-  return cluster ? cluster.run(roomId, create, work) : Promise.resolve().then(work);
+  return cluster ? cluster.run(roomId, create, work, checkpoint) : Promise.resolve().then(work);
 }
 function afterRoomCommit(roomId: string, work: () => void) {
   if (cluster) cluster.deliver(roomId, work);
@@ -344,7 +345,12 @@ sockets.on('connection', (socket, request) => {
         // Heartbeats are therefore the authoritative liveness signal for RoomManager.
         // Without this touch, removeStale evicts healthy participants after 45 seconds.
         if (meta.roomId && meta.clientId)
-          await inRoom(meta.roomId, undefined, () => manager.touch(meta.roomId!, meta.clientId!));
+          await inRoom(
+            meta.roomId,
+            undefined,
+            () => manager.touch(meta.roomId!, meta.clientId!),
+            false,
+          );
         send(socket, { type: 'pong', timestamp: message.timestamp });
         return;
       }
@@ -354,135 +360,140 @@ sockets.on('connection', (socket, request) => {
           code: 'NOT_JOINED',
           message: 'Сначала войдите в комнату',
         });
-      await inRoom(meta.roomId!, undefined, async () => {
-        manager.touch(meta.roomId!, meta.clientId!);
-        switch (message.type) {
-          case 'leave-room':
-            leaveRoom(meta, connection);
-            socket.close(1000, 'Выход');
-            break;
-          case 'mute-changed':
-            manager.setMuted(meta.roomId!, meta.clientId!, message.muted);
-            break;
-          case 'update-profile': {
-            if (meta.authorization?.kind === 'guest') {
-              send(socket, {
-                type: 'error',
-                code: 'REGISTERED_ONLY',
-                message: 'Профиль доступен после регистрации',
-              });
+      await inRoom(
+        meta.roomId!,
+        undefined,
+        async () => {
+          manager.touch(meta.roomId!, meta.clientId!);
+          switch (message.type) {
+            case 'leave-room':
+              leaveRoom(meta, connection);
+              socket.close(1000, 'Выход');
+              break;
+            case 'mute-changed':
+              manager.setMuted(meta.roomId!, meta.clientId!, message.muted);
+              break;
+            case 'update-profile': {
+              if (meta.authorization?.kind === 'guest') {
+                send(socket, {
+                  type: 'error',
+                  code: 'REGISTERED_ONLY',
+                  message: 'Профиль доступен после регистрации',
+                });
+                break;
+              }
+              const registeredProfile =
+                meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
+                  ? await getRegisteredProfile(meta.authorization.userId)
+                  : null;
+              const result = manager.updateProfile(
+                meta.roomId!,
+                meta.clientId!,
+                registeredProfile?.displayName ?? message.name,
+                registeredProfile?.avatar ??
+                  (meta.authorization?.kind === 'development' ? message.avatar : undefined),
+              );
+              if (result === 'RATE_LIMITED')
+                send(socket, {
+                  type: 'error',
+                  code: 'PROFILE_RATE_LIMITED',
+                  message: 'Профиль можно изменить не более пяти раз за пять часов',
+                });
               break;
             }
-            const registeredProfile =
-              meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
-                ? await getRegisteredProfile(meta.authorization.userId)
-                : null;
-            const result = manager.updateProfile(
-              meta.roomId!,
-              meta.clientId!,
-              registeredProfile?.displayName ?? message.name,
-              registeredProfile?.avatar ??
-                (meta.authorization?.kind === 'development' ? message.avatar : undefined),
-            );
-            if (result === 'RATE_LIMITED')
-              send(socket, {
-                type: 'error',
-                code: 'PROFILE_RATE_LIMITED',
-                message: 'Профиль можно изменить не более пяти раз за пять часов',
-              });
-            break;
+            case 'update-card-appearance':
+              manager.updateCardAppearance(
+                meta.roomId!,
+                meta.clientId!,
+                message.cardStyle,
+                message.cardDecoration,
+              );
+              break;
+            case 'reaction':
+              manager.react(meta.roomId!, meta.clientId!, message.id, message.reaction);
+              break;
+            case 'room-chat-message':
+              manager.chat(meta.roomId!, meta.clientId!, message.id, message.text);
+              break;
+            case 'recording-started': {
+              const result = manager.recordingStarted(meta.roomId!, meta.clientId!);
+              if (result !== 'OK')
+                send(socket, {
+                  type: 'error',
+                  code: result,
+                  message:
+                    result === 'NOT_OWNER'
+                      ? 'Только создатель комнаты может начать запись'
+                      : 'Комната уже недоступна',
+                });
+              break;
+            }
+            case 'moderation-mute': {
+              const result = manager.moderationMute(
+                meta.roomId!,
+                meta.clientId!,
+                message.targetParticipantId,
+              );
+              if (result !== 'OK')
+                send(socket, {
+                  type: 'error',
+                  code: result,
+                  message:
+                    result === 'NOT_OWNER'
+                      ? 'Только создатель комнаты может выключать микрофоны участников'
+                      : 'Участник уже отключился',
+                });
+              break;
+            }
+            case 'telemetry-report':
+              if (meta.lastTelemetryAt && now - meta.lastTelemetryAt < 5_000) break;
+              meta.lastTelemetryAt = now;
+              message.report.connections = message.report.connections.filter((connection) =>
+                manager.hasParticipant(meta.roomId!, connection.peerId),
+              );
+              void recordTelemetry({
+                roomId: meta.roomId!,
+                reporterClientId: meta.clientId!,
+                userId:
+                  meta.authorization && 'userId' in meta.authorization
+                    ? meta.authorization.userId
+                    : undefined,
+                anonymousUserId:
+                  meta.authorization && 'anonymousUserId' in meta.authorization
+                    ? meta.authorization.anonymousUserId
+                    : undefined,
+                report: message.report,
+              }).catch((error) =>
+                logSocketEvent(socket, 'telemetry.error', { error: String(error) }),
+              );
+              break;
+            case 'offer':
+            case 'answer':
+            case 'ice-candidate': {
+              const payload =
+                message.type === 'ice-candidate'
+                  ? ({
+                      type: message.type,
+                      from: meta.clientId!,
+                      candidate: message.candidate,
+                    } as const)
+                  : ({
+                      type: message.type,
+                      from: meta.clientId!,
+                      description: message.description,
+                    } as const);
+              if (!manager.relay(meta.roomId!, meta.clientId!, message.to, payload))
+                send(socket, {
+                  type: 'error',
+                  code: 'TARGET_NOT_FOUND',
+                  message: 'Участник уже отключился',
+                });
+              break;
+            }
           }
-          case 'update-card-appearance':
-            manager.updateCardAppearance(
-              meta.roomId!,
-              meta.clientId!,
-              message.cardStyle,
-              message.cardDecoration,
-            );
-            break;
-          case 'reaction':
-            manager.react(meta.roomId!, meta.clientId!, message.id, message.reaction);
-            break;
-          case 'room-chat-message':
-            manager.chat(meta.roomId!, meta.clientId!, message.id, message.text);
-            break;
-          case 'recording-started': {
-            const result = manager.recordingStarted(meta.roomId!, meta.clientId!);
-            if (result !== 'OK')
-              send(socket, {
-                type: 'error',
-                code: result,
-                message:
-                  result === 'NOT_OWNER'
-                    ? 'Только создатель комнаты может начать запись'
-                    : 'Комната уже недоступна',
-              });
-            break;
-          }
-          case 'moderation-mute': {
-            const result = manager.moderationMute(
-              meta.roomId!,
-              meta.clientId!,
-              message.targetParticipantId,
-            );
-            if (result !== 'OK')
-              send(socket, {
-                type: 'error',
-                code: result,
-                message:
-                  result === 'NOT_OWNER'
-                    ? 'Только создатель комнаты может выключать микрофоны участников'
-                    : 'Участник уже отключился',
-              });
-            break;
-          }
-          case 'telemetry-report':
-            if (meta.lastTelemetryAt && now - meta.lastTelemetryAt < 5_000) break;
-            meta.lastTelemetryAt = now;
-            message.report.connections = message.report.connections.filter((connection) =>
-              manager.hasParticipant(meta.roomId!, connection.peerId),
-            );
-            void recordTelemetry({
-              roomId: meta.roomId!,
-              reporterClientId: meta.clientId!,
-              userId:
-                meta.authorization && 'userId' in meta.authorization
-                  ? meta.authorization.userId
-                  : undefined,
-              anonymousUserId:
-                meta.authorization && 'anonymousUserId' in meta.authorization
-                  ? meta.authorization.anonymousUserId
-                  : undefined,
-              report: message.report,
-            }).catch((error) =>
-              logSocketEvent(socket, 'telemetry.error', { error: String(error) }),
-            );
-            break;
-          case 'offer':
-          case 'answer':
-          case 'ice-candidate': {
-            const payload =
-              message.type === 'ice-candidate'
-                ? ({
-                    type: message.type,
-                    from: meta.clientId!,
-                    candidate: message.candidate,
-                  } as const)
-                : ({
-                    type: message.type,
-                    from: meta.clientId!,
-                    description: message.description,
-                  } as const);
-            if (!manager.relay(meta.roomId!, meta.clientId!, message.to, payload))
-              send(socket, {
-                type: 'error',
-                code: 'TARGET_NOT_FOUND',
-                message: 'Участник уже отключился',
-              });
-            break;
-          }
-        }
-      });
+        },
+        !['offer', 'answer', 'ice-candidate', 'telemetry-report'].includes(message.type),
+      );
     } catch (error) {
       if (error instanceof ClusterUnavailable) {
         socket.close(1013, 'Room temporarily unavailable; reconnect');

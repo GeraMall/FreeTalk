@@ -1,0 +1,8 @@
+# Routing fragment ONLY: merge into each edge site's existing route block.
+# Keep production security headers, CSP and static/app handlers.
+# Unlike a direct-to-API deployment, do NOT use handle_path for /api here:
+# the local HAProxy performs the single prefix removal.
+@cluster_internal path /api/v1/internal/* /internal/*
+respond @cluster_internal 404
+@cluster_backend path /api/* /ws
+reverse_proxy @cluster_backend 127.0.0.1:8800

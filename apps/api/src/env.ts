@@ -10,6 +10,7 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     API_HOST: z.string().default('127.0.0.1'),
     API_TRUSTED_PROXIES: z.string().default('127.0.0.1,::1'),
+    API_HIGH_AVAILABILITY: booleanString,
     API_PORT: z.coerce.number().int().min(1).max(65535).default(8790),
     API_PUBLIC_URL: z.string().url().default('http://127.0.0.1:8790'),
     ALLOWED_ORIGIN: z.string().default('http://127.0.0.1:1420'),

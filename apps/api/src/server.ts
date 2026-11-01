@@ -70,10 +70,9 @@ const app = Fastify({
     .filter(Boolean),
 });
 registerApiMetrics(app);
-const leadership =
-  process.env.API_HIGH_AVAILABILITY === 'true'
-    ? new ApiLeadership(db, () => chatRealtimeHub.disconnectAll())
-    : undefined;
+const leadership = env.API_HIGH_AVAILABILITY
+  ? new ApiLeadership(db, () => chatRealtimeHub.disconnectAll())
+  : undefined;
 if (leadership) {
   await leadership.start();
   app.addHook('onRequest', async (_request, reply) => {

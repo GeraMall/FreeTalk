@@ -9,6 +9,7 @@ export class RoomCluster {
   private readonly outboxes = new Map<string, Array<() => void>>();
   private timer?: NodeJS.Timeout;
   private busy = false;
+  private lastPruned = 0;
   constructor(
     readonly store: ClusterStore,
     readonly manager: RoomManager,
@@ -33,7 +34,12 @@ export class RoomCluster {
     if (outbox) outbox.push(send);
     else send();
   }
-  run<T>(roomId: string, create: boolean | undefined, work: () => T | Promise<T>): Promise<T> {
+  run<T>(
+    roomId: string,
+    create: boolean | undefined,
+    work: () => T | Promise<T>,
+    checkpoint = true,
+  ): Promise<T> {
     const previous = this.queues.get(roomId) ?? Promise.resolve();
     const next = previous
       .catch(() => {})
@@ -61,12 +67,13 @@ export class RoomCluster {
           if (performance.now() >= lease.deadline)
             throw new ClusterUnavailable('Room lease expired');
           const started = performance.now();
-          const snapshot = this.manager.snapshot(roomId);
-          await this.store.save(roomId, lease.epoch, snapshot);
+          const snapshot = checkpoint ? this.manager.snapshot(roomId) : undefined;
+          if (checkpoint) await this.store.save(roomId, lease.epoch, snapshot!);
+          else await this.store.renew(roomId, lease.epoch);
           lease.deadline = started + this.store.node.leaseMs - 1_000;
           if (performance.now() >= lease.deadline)
             throw new ClusterUnavailable('Room save timed out');
-          if (!snapshot) this.owned.delete(roomId);
+          if (snapshot === null) this.owned.delete(roomId);
           this.outboxes.delete(roomId);
           for (const send of outbox) send();
           return result;
@@ -95,8 +102,14 @@ export class RoomCluster {
     this.busy = true;
     try {
       await this.store.heartbeat();
+      if (Date.now() - this.lastPruned > 60_000) {
+        await this.store.expireSnapshots();
+        this.lastPruned = Date.now();
+      }
       await Promise.all(
-        [...this.owned.keys()].map((id) => this.run(id, undefined, () => {}).catch(() => {})),
+        [...this.owned.keys()].map((id) =>
+          this.run(id, undefined, () => {}, false).catch(() => {}),
+        ),
       );
     } catch {
       for (const [id, lease] of this.owned) if (performance.now() >= lease.deadline) this.fence(id);
