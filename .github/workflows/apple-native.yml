@@ -1,0 +1,65 @@
+name: Apple native preview
+
+on:
+  push:
+    branches: [feat/apple-native]
+    paths: ['apps/apple/**', '.github/workflows/apple-native.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode and install project generator
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Core contract and session tests
+        run: swift test --package-path apps/apple/Packages/TRLKACore
+      - name: Build Mac app
+        run: bash apps/apple/script/build_and_run.sh macos --build-only
+      - name: Build iPhone and iPad app
+        working-directory: apps/apple
+        run: |
+          xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
+            -destination 'generic/platform=iOS' -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Launch and capture iPhone and iPad previews
+        working-directory: apps/apple
+        run: |
+          mkdir -p build/previews
+          xcrun simctl list devices available --json > build/devices.json
+          python3 - <<'PY'
+          import json, subprocess, time
+          devices = [d for group in json.load(open('build/devices.json'))['devices'].values() for d in group]
+          for family in ('iPhone', 'iPad'):
+              device = next(d for d in devices if d['name'].startswith(family))
+              uid = device['udid']
+              subprocess.run(['xcrun','simctl','boot',uid], check=False)
+              subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
+              subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
+              subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios'],check=True)
+              time.sleep(4)
+              subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}.png'],check=True)
+              subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
+          PY
+      - name: Package local Mac preview
+        working-directory: apps/apple
+        run: |
+          codesign --force --sign - --entitlements Configuration/macOS.entitlements build/macos/Build/Products/Debug/TRLKA.app
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Debug/TRLKA.app build/TRLKA-macOS-preview.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRLKA-Apple-development-preview
+          path: |
+            apps/apple/build/TRLKA-macOS-preview.zip
+            apps/apple/build/previews/*.png
+          retention-days: 14
