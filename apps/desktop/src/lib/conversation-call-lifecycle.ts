@@ -13,6 +13,26 @@ export function remainingConversationWaitMs(
   return Math.max(0, timeoutMs - Math.max(0, now - startedAt));
 }
 
+export function remainingUnansweredConversationWaitMs(
+  {
+    startedAt,
+    joined,
+    joining,
+    established,
+  }: {
+    startedAt: number;
+    joined: boolean;
+    joining: boolean;
+    established: boolean;
+  },
+  now = Date.now(),
+) {
+  // Only the creator of an unanswered call owns the local waiting timer.
+  // A handshake can receive an old server start time before its peer list.
+  if (!joined || joining || established) return undefined;
+  return remainingConversationWaitMs(startedAt, EMPTY_CONVERSATION_CALL_TIMEOUT_MS, now);
+}
+
 export function isAbandonedConversationCall(
   startedAt: string | undefined,
   participantCount: number,

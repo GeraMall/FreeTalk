@@ -4,10 +4,39 @@ import {
   clampConversationCallHeight,
   isAbandonedConversationCall,
   remainingConversationWaitMs,
+  remainingUnansweredConversationWaitMs,
   WAITING_PARTICIPANT_CARD_MS,
 } from './conversation-call-lifecycle';
 
 describe('conversation call lifecycle', () => {
+  it('does not expire a rejoin before its participant list arrives', () => {
+    const call = { startedAt: 1_000, joined: false, joining: true, established: false };
+    expect(remainingUnansweredConversationWaitMs(call, 601_000)).toBeUndefined();
+    expect(
+      remainingUnansweredConversationWaitMs({ ...call, joined: true }, 601_000),
+    ).toBeUndefined();
+  });
+
+  it('keeps an established call joinable beyond eight minutes, including a solo rejoin', () => {
+    expect(
+      remainingUnansweredConversationWaitMs(
+        {
+          startedAt: 1_000,
+          joined: true,
+          joining: false,
+          established: true,
+        },
+        601_000,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('still expires a creator waiting alone for an unanswered call', () => {
+    const call = { startedAt: 1_000, joined: true, joining: false, established: false };
+    expect(remainingUnansweredConversationWaitMs(call, 480_999)).toBe(1);
+    expect(remainingUnansweredConversationWaitMs(call, 481_000)).toBe(0);
+  });
+
   it('keeps invited cards for exactly 30 seconds', () => {
     expect(remainingConversationWaitMs(1_000, WAITING_PARTICIPANT_CARD_MS, 30_999)).toBe(1);
     expect(remainingConversationWaitMs(1_000, WAITING_PARTICIPANT_CARD_MS, 31_000)).toBe(0);

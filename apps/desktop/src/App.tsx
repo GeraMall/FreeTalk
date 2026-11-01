@@ -69,8 +69,7 @@ import { BrowserNotificationPrompt } from './components/BrowserNotificationPromp
 import { MobileNavigation } from './components/MobileNavigation';
 import {
   clampConversationCallHeight,
-  EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
-  remainingConversationWaitMs,
+  remainingUnansweredConversationWaitMs,
 } from './lib/conversation-call-lifecycle';
 import {
   clearBrowserActiveCall,
@@ -1011,7 +1010,8 @@ export function App() {
         recreateAttempted: Boolean(options.resumeRecreateAttempted),
       };
     }
-    conversationPeerJoined.current = false;
+    conversationPeerJoined.current = !create;
+    joinedRoom.current = false;
     pendingChatRing.current = create && Boolean(options.chatId);
     callChatRef.current = options.chatId;
     setCallChatId(options.chatId);
@@ -1260,11 +1260,14 @@ export function App() {
   }, [roomId, accountUser]);
 
   useEffect(() => {
-    if (!roomId || !callChatId || !roomStartedAt || conversationPeerJoined.current) return;
-    const remaining = remainingConversationWaitMs(
-      roomStartedAt,
-      EMPTY_CONVERSATION_CALL_TIMEOUT_MS,
-    );
+    if (!roomId || !callChatId || !roomStartedAt) return;
+    const remaining = remainingUnansweredConversationWaitMs({
+      startedAt: roomStartedAt,
+      joined: joinedRoom.current,
+      joining,
+      established: conversationPeerJoined.current,
+    });
+    if (remaining === undefined) return;
     const closeEmptyConversationCall = () => {
       if (conversationPeerJoined.current) return;
       clearBrowserActiveCall();
@@ -1277,7 +1280,7 @@ export function App() {
     }
     const timer = window.setTimeout(closeEmptyConversationCall, remaining);
     return () => window.clearTimeout(timer);
-  }, [callChatId, cleanup, participants, roomId, roomStartedAt]);
+  }, [callChatId, cleanup, joining, participants, roomId, roomStartedAt]);
 
   useEffect(() => {
     if (roomId) signaling.current?.send({ type: 'mute-changed', muted });
