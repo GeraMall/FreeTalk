@@ -114,7 +114,7 @@ describe.skipIf(!url)('PostgreSQL cluster fencing and routing', () => {
         let raw = '';
         for await (const chunk of req) raw += chunk;
         const body = JSON.parse(raw);
-        if (body.token !== 'integration-test-token') {
+        if (body.token !== 'integration-test-token-0123456789abcdef') {
           res.writeHead(401);
           res.end('{}');
           return;
@@ -188,7 +188,7 @@ describe.skipIf(!url)('PostgreSQL cluster fencing and routing', () => {
         clientId,
         sessionId,
         name: 'Owner',
-        authToken: 'integration-test-token',
+        authToken: 'integration-test-token-0123456789abcdef',
       };
       const socket = new WebSocket(`ws://127.0.0.1:${gatewayPort}/ws?room=${roomId}`);
       sockets.push(socket);

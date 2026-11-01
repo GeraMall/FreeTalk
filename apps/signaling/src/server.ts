@@ -37,6 +37,10 @@ function inRoom<T>(
 ): Promise<T> {
   return cluster ? cluster.run(roomId, create, work) : Promise.resolve().then(work);
 }
+function afterRoomCommit(roomId: string, work: () => void) {
+  if (cluster) cluster.deliver(roomId, work);
+  else work();
+}
 const metadata = new WeakMap<
   WebSocket,
   {
@@ -293,15 +297,19 @@ sockets.on('connection', (socket, request) => {
             meta.clientId = message.clientId;
             meta.authorization = authorization;
             meta.displayName = authorizedName;
-            void recordCallEventReliably({
-              event: message.type === 'create-room' ? 'start' : 'join',
-              roomId: message.roomId,
-              displayName: authorizedName,
-              userId: 'userId' in authorization ? authorization.userId : undefined,
-              anonymousUserId:
-                'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
-            }).catch((error) =>
-              logSocketEvent(socket, 'call-event.error', { error: String(error) }),
+            afterRoomCommit(
+              message.roomId,
+              () =>
+                void recordCallEventReliably({
+                  event: message.type === 'create-room' ? 'start' : 'join',
+                  roomId: message.roomId,
+                  displayName: authorizedName,
+                  userId: 'userId' in authorization ? authorization.userId : undefined,
+                  anonymousUserId:
+                    'anonymousUserId' in authorization ? authorization.anonymousUserId : undefined,
+                }).catch((error) =>
+                  logSocketEvent(socket, 'call-event.error', { error: String(error) }),
+                ),
             );
             if (authorization.kind === 'guest' && authorization.disconnectAt) {
               const delay = Math.max(
@@ -321,8 +329,8 @@ sockets.on('connection', (socket, request) => {
               meta.guestExpiryTimer.unref();
             }
             if (message.type === 'create-room')
-              send(socket, { type: 'room-created', roomId: message.roomId });
-            send(socket, iceConfig);
+              connection.send({ type: 'room-created', roomId: message.roomId });
+            connection.send(iceConfig);
           });
           return;
         } finally {
@@ -513,7 +521,7 @@ sockets.on('connection', (socket, request) => {
           void inRoom(meta.roomId!, undefined, () =>
             leaveRoom(meta, connection, 'Соединение потеряно'),
           ).catch(() => {}),
-        12_000,
+        clusterStore?.node.recoveryMs ?? 12_000,
       ).unref();
     }
   });
@@ -530,21 +538,26 @@ function leaveRoom(
 ) {
   if (!meta.roomId || !meta.clientId) return;
   if (!manager.leave(meta.roomId, meta.clientId, connection, reason)) return;
-  void recordCallEventReliably({
-    event: 'leave',
-    roomId: meta.roomId,
-    displayName: meta.displayName,
-    userId:
-      meta.authorization && 'userId' in meta.authorization ? meta.authorization.userId : undefined,
-    anonymousUserId:
-      meta.authorization && 'anonymousUserId' in meta.authorization
-        ? meta.authorization.anonymousUserId
-        : undefined,
-  }).catch((error) => logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }));
-  if (manager.roomSize(meta.roomId) === 0)
-    void recordCallEventReliably({ event: 'end', roomId: meta.roomId }).catch((error) =>
-      logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }),
-    );
+  const roomEnded = manager.roomSize(meta.roomId) === 0;
+  afterRoomCommit(meta.roomId, () => {
+    void recordCallEventReliably({
+      event: 'leave',
+      roomId: meta.roomId!,
+      displayName: meta.displayName,
+      userId:
+        meta.authorization && 'userId' in meta.authorization
+          ? meta.authorization.userId
+          : undefined,
+      anonymousUserId:
+        meta.authorization && 'anonymousUserId' in meta.authorization
+          ? meta.authorization.anonymousUserId
+          : undefined,
+    }).catch((error) => logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }));
+    if (roomEnded)
+      void recordCallEventReliably({ event: 'end', roomId: meta.roomId! }).catch((error) =>
+        logSocketEventForMeta(meta, 'call-event.error', { error: String(error) }),
+      );
+  });
 }
 
 function logSocketEventForMeta(
@@ -587,7 +600,10 @@ const staleRoomTimer = setInterval(() => {
   if (cluster) {
     for (const id of manager.activeRoomIds())
       void inRoom(id, undefined, () => {
-        manager.removeStaleInRoom(id, CLIENT_STALE_AFTER_MS);
+        manager.removeStaleInRoom(
+          id,
+          Math.max(CLIENT_STALE_AFTER_MS, clusterStore!.node.recoveryMs),
+        );
       }).catch(() => {});
     return;
   }
