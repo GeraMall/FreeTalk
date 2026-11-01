@@ -7,7 +7,7 @@ struct WaitingPersonCard: View {
     @State private var pulse = false
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("ВЫЗОВ ОТПРАВЛЕН").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Brand.muted)
+            Text(person.sent ? "ВЫЗОВ ОТПРАВЛЕН" : "СОЕДИНЯЕМ…").font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(Brand.muted)
             HStack(spacing: 14) {
                 ProfileAvatar(name: person.name, url: person.avatar, client: account.client, size: 50)
                 VStack(alignment: .leading, spacing: 7) {

@@ -15,6 +15,8 @@ final class CallController {
         let id: String
         let name: String
         let avatar: String?
+        var expiresAt = Date().addingTimeInterval(45)
+        var sent = false
     }
     var waiting: [WaitingPerson] = []
     var muted = false
@@ -105,6 +107,7 @@ final class CallController {
                     do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
                     guard let self, self.active else { return }
                     self.peers.values.forEach { $0.sampleStatistics() }
+                    self.waiting.removeAll { $0.expiresAt <= Date() }
                 }
             }
             let url = try await client.signalingURL(roomID: room)
@@ -218,7 +221,17 @@ final class CallController {
         ringTask = Task {
             for attempt in 0..<5 {
                 guard expected == generation && active && !Task.isCancelled else { return }
-                do { try await client.invite(roomID: room, userIDs: members); return }
+                do {
+                    let receipts = try await client.invite(roomID: room, userIDs: members)
+                    guard expected == generation && active else { return }
+                    for receipt in receipts {
+                        if let index = waiting.firstIndex(where: { $0.id == receipt.userId }) {
+                            waiting[index].sent = true
+                            waiting[index].expiresAt = WireDate.parse(receipt.expiresAt) ?? Date().addingTimeInterval(30)
+                        }
+                    }
+                    return
+                }
                 catch {
                     if attempt == 4 { self.waiting = []; self.error = "Приглашение не отправлено. Можно войти по коду комнаты." }
                     else { try? await Task.sleep(for: .seconds(1.5)) }
@@ -233,8 +246,12 @@ final class CallController {
     }
     func toggleSpeaker() { speaker.toggle(); applySpeaker() }
     func removeWaiting(_ userID: String) { waiting.removeAll { $0.id == userID } }
-    func noteInvitation(_ friend: Friend) {
-        if !waiting.contains(where: { $0.id == friend.id }) { waiting.append(WaitingPerson(id: friend.id, name: friend.display_name, avatar: friend.avatarUrl)) }
+    func noteInvitation(_ friend: Friend, receipts: [CallInviteReceipt]) {
+        guard let receipt = receipts.first(where: { $0.userId == friend.id }) else { return }
+        if !waiting.contains(where: { $0.id == friend.id }) {
+            waiting.append(WaitingPerson(id: friend.id, name: friend.display_name, avatar: friend.avatarUrl,
+                expiresAt: WireDate.parse(receipt.expiresAt) ?? Date().addingTimeInterval(30), sent: true))
+        }
     }
     func video(participantID: String, source: String = "camera") -> RTCVideoTrack? {
         _ = revision

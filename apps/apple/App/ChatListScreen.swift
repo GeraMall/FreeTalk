@@ -19,7 +19,7 @@ struct ChatListScreen: View {
             HStack {
                 Text("Чаты").font(.system(size: 28, weight: .bold))
                 Spacer()
-                Button { creating = true } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 42, height: 42).trlkaPanel(14) }
+                Button { creating = true } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44).trlkaPanel(14) }
                     .buttonStyle(.plain).accessibilityLabel("Создать чат")
             }.padding(.horizontal, 16)
             HStack(spacing: 10) {

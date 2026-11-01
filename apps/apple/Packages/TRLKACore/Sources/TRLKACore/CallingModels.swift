@@ -47,6 +47,11 @@ public struct CallInvitationResult: Decodable, Sendable {
     public let chatId: String?
 }
 struct CallInvitationResponse: Decodable { let invitation: CallInvitationResult }
+public struct CallInviteReceipt: Decodable, Sendable {
+    public let userId: String
+    public let expiresAt: String
+}
+struct CallInvitesResponse: Decodable { let invitations: [CallInviteReceipt] }
 
 public struct IncomingCall: Decodable, Identifiable, Sendable {
     public var id: String { invitationId }

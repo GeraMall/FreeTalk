@@ -33,8 +33,9 @@ struct AppShell: View {
                     Spacer()
                     Button { profile = true } label: {
                         ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 36)
+                            .frame(width: 44, height: 44).contentShape(Rectangle())
                     }.accessibilityLabel("Настройки").accessibilityIdentifier("app.profile")
-                }.padding(.horizontal, 18).padding(.vertical, 12)
+                }.padding(.horizontal, 18).padding(.vertical, 8)
                 .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
             Group {
                 switch page {

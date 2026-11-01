@@ -11,7 +11,7 @@ struct CallScreen: View {
         let call = account.calls
         VStack(spacing: 16) {
             HStack(spacing: 14) {
-                Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 42, height: 42).trlkaPanel(14) }
+                Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44).trlkaPanel(14) }
                     .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
                 VStack(alignment: .leading, spacing: 5) {
                     Text(call.title).font(.headline).lineLimit(1)
@@ -58,11 +58,12 @@ struct CallScreen: View {
                 #if os(iOS)
                 Button { account.calls.toggleSpeaker() } label: {
                     Label(account.calls.speaker ? "Динамик включён" : "Разговорный динамик", systemImage: account.calls.speaker ? "speaker.wave.2.fill" : "ear")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 #endif
                 Toggle("Зеркалить свою камеру", isOn: $mirrorSelf)
                 Text("Другие участники видят камеру без зеркального отражения.").font(.caption).foregroundStyle(Brand.muted)
-                ShareLink(item: URL(string: "https://trlka.com/join/\(account.calls.roomID)")!) { Label("Поделиться комнатой", systemImage: "square.and.arrow.up") }
+                ShareLink(item: URL(string: "https://trlka.com/join/\(account.calls.roomID)")!) { Label("Поделиться комнатой", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
                 Text("Код комнаты: \(account.calls.roomID)").font(.callout.monospaced()).textSelection(.enabled)
                 Button("Готово") { more = false }
             }.padding(24).presentationDetents([.medium])
@@ -157,7 +158,7 @@ struct InviteToCallScreen: View {
                         working = true
                         Task {
                             defer { working = false }
-                            do { try await account.client.invite(roomID: account.calls.roomID, userIDs: [friend.id]); account.calls.noteInvitation(friend); dismiss() }
+                            do { let receipts = try await account.client.invite(roomID: account.calls.roomID, userIDs: [friend.id]); account.calls.noteInvitation(friend, receipts: receipts); dismiss() }
                             catch { self.error = error.localizedDescription }
                         }
                     } label: {

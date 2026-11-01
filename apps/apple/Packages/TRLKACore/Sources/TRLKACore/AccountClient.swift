@@ -46,10 +46,11 @@ public actor AccountClient {
         return call
     }
 
-    public func invite(roomID: String, userIDs: [String]) async throws {
+    @discardableResult public func invite(roomID: String, userIDs: [String]) async throws -> [CallInviteReceipt] {
         struct Input: Encodable { let userIds: [String] }
         let data = try JSONEncoder().encode(Input(userIds: Array(userIDs.prefix(7))))
-        let _: EmptyResponse = try await request("v1/calls/\(try RoomCode.parse(roomID))/invitations", method: "POST", data: data)
+        let result: CallInvitesResponse = try await request("v1/calls/\(try RoomCode.parse(roomID))/invitations", method: "POST", data: data)
+        return result.invitations
     }
 
     public func respond(invitationID: String, accept: Bool) async throws -> CallInvitationResult {

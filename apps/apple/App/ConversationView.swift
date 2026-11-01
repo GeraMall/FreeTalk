@@ -24,7 +24,7 @@ struct ConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
         HStack(spacing: 12) {
-            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 34, height: 42) }
+            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44) }
                 .buttonStyle(CompactControlStyle()).accessibilityLabel("Назад к чатам").accessibilityIdentifier("chat.back")
             ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 36)
             VStack(alignment: .leading, spacing: 4) {
@@ -34,7 +34,7 @@ struct ConversationView: View {
             Spacer(minLength: 4)
             Button {
                 if let user = account.user { Task { await account.calls.start(user: user, chat: chat) } }
-            } label: { Image(systemName: "phone").font(.system(size: 20)).frame(width: 42, height: 42) }
+            } label: { Image(systemName: "phone").font(.system(size: 20)).frame(width: 44, height: 44) }
                 .buttonStyle(CompactControlStyle()).disabled(account.calls.busy).accessibilityLabel("Позвонить").accessibilityIdentifier("chat.call")
         }.padding(.horizontal, 10).padding(.vertical, 8)
             .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
@@ -101,7 +101,7 @@ struct ConversationView: View {
                     .accessibilityIdentifier("chat.composer")
                 Button { Task { await send() } } label: {
                     Image(systemName: "arrow.up").font(.headline)
-                        .frame(width: 42, height: 42).background(Brand.gradient, in: Circle()).foregroundStyle(.black)
+                        .frame(width: 44, height: 44).background(Brand.gradient, in: Circle()).foregroundStyle(.black)
                 }.buttonStyle(.plain)
                     .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Отправить сообщение")
