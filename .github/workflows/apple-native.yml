@@ -15,6 +15,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Determine whether simulator screens changed
+        id: screens
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || ! git diff --quiet HEAD^ HEAD -- apps/apple/App apps/apple/project.yml; then
+            echo 'capture=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'capture=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Select Xcode and install project generator
         run: |
           xcodebuild -version
@@ -33,6 +43,7 @@ jobs:
             -destination 'generic/platform=iOS' -derivedDataPath build/device \
             CODE_SIGNING_ALLOWED=NO build
       - name: Launch and capture iPhone and iPad previews
+        if: steps.screens.outputs.capture == 'true'
         working-directory: apps/apple
         run: |
           mkdir -p build/previews
@@ -55,12 +66,13 @@ jobs:
         working-directory: apps/apple
         run: |
           codesign --force --sign - --entitlements Configuration/macOS.entitlements build/macos/Build/Products/Debug/TRLKA.app
-          lipo -verify_arch arm64 x86_64 build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA
+          lipo build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA -verify_arch arm64 x86_64
           /usr/bin/open -n build/macos/Build/Products/Debug/TRLKA.app
           sleep 3
           pgrep -x TRLKA
           ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Debug/TRLKA.app build/TRLKA-macOS-preview.zip
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: TRLKA-Apple-development-preview
           path: |
