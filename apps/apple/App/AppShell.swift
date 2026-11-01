@@ -11,8 +11,8 @@ struct AppShell: View {
         self.account = account
         #if DEBUG
         let mode = PreviewFixtures.mode
-        _page = State(initialValue: mode == "chats" || mode == "conversation" ? .chats : mode == "friends" ? .friends : mode == "history" ? .history : .home)
-        _path = State(initialValue: mode == "conversation" ? [PreviewFixtures.chat] : [])
+        _page = State(initialValue: ["chats", "conversation", "minimized"].contains(mode ?? "") ? .chats : mode == "friends" ? .friends : mode == "history" ? .history : .home)
+        _path = State(initialValue: mode == "conversation" || mode == "minimized" ? [PreviewFixtures.chat] : [])
         _profile = State(initialValue: mode == "settings")
         #endif
     }
@@ -25,6 +25,16 @@ struct AppShell: View {
     var body: some View {
         @Bindable var call = account.calls
         NavigationStack(path: $path) {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Image("BrandMark").resizable().scaledToFit().frame(width: 28, height: 28)
+                    Text("TRLKA").font(.system(size: 19, weight: .heavy))
+                    Spacer()
+                    Button { profile = true } label: {
+                        ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 36)
+                    }.accessibilityLabel("Настройки")
+                }.padding(.horizontal, 18).padding(.vertical, 12)
+                .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
             Group {
                 switch page {
                 case .home: HomeScreen(account: account)
@@ -33,25 +43,15 @@ struct AppShell: View {
                 case .history: HistoryScreen(account: account)
                 }
             }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Brand.background)
             .navigationDestination(for: Chat.self) { ConversationView(chat: $0, account: account) }
-            .toolbar {
-                if path.isEmpty {
-                    ToolbarItem(placement: .automatic) {
-                        HStack(spacing: 8) {
-                            Image("BrandMark").resizable().scaledToFit().frame(width: 28, height: 28)
-                            Text("TRLKA").font(.system(size: 19, weight: .heavy))
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button { profile = true } label: {
-                        ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 34)
-                    }.accessibilityLabel("Настройки")
-                }
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
                 if call.active && !call.presented {
                     Button { call.presented = true } label: {
                         HStack(spacing: 8) {
@@ -66,7 +66,6 @@ struct AppShell: View {
                     }.buttonStyle(.plain)
                 }
             }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !keyboardVisible {
             HStack(spacing: 4) {

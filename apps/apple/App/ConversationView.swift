@@ -13,6 +13,7 @@ struct ConversationView: View {
     @State private var loadingOlder = false
 
     var body: some View {
+        VStack(spacing: 0) {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
@@ -53,25 +54,17 @@ struct ConversationView: View {
             .onChange(of: messages.last?.id) {
                 if !loadingOlder { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(messages.last?.id, anchor: .bottom) } }
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if let error { Text(error).font(.caption).foregroundStyle(.red) }
-                    HStack(alignment: .bottom, spacing: 12) {
-                        TextField("Сообщение", text: $draft, axis: .vertical)
-                            .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
-                        Button { Task { await send() } } label: {
-                            Image(systemName: "arrow.up").font(.headline)
-                                .frame(width: 42, height: 42).background(Brand.gradient, in: Circle())
-                                .foregroundStyle(.black)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityLabel("Отправить сообщение")
-                    }
-                }.padding().background(.regularMaterial)
-            }
         }
+        composer
+        }
+        .background(Brand.background)
         .navigationTitle(chat.name(currentUserID: account.user?.id))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(Brand.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        #endif
         .toolbar {
             ToolbarItem {
                 Button {
@@ -88,6 +81,22 @@ struct ConversationView: View {
                 do { try await Task.sleep(for: .seconds(4)) } catch { return }
             } while !Task.isCancelled
         }
+    }
+
+    private var composer: some View {
+        VStack(spacing: 8) {
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Сообщение", text: $draft, axis: .vertical)
+                    .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
+                Button { Task { await send() } } label: {
+                    Image(systemName: "arrow.up").font(.headline)
+                        .frame(width: 42, height: 42).background(Brand.gradient, in: Circle()).foregroundStyle(.black)
+                }.buttonStyle(.plain)
+                    .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Отправить сообщение")
+            }
+        }.padding(12).background(Brand.background)
     }
 
     private func load(older: Bool = false) async {

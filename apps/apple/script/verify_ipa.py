@@ -59,6 +59,12 @@ def verify(path):
         if info["CFBundleShortVersionString"] != "0.1.0":
             assert framework in names, "Missing native WebRTC framework"
             native = archive.read(framework)
+            fat_magic, count = struct.unpack_from(">II", native)
+            if fat_magic == 0xCAFEBABE:
+                assert count == 1, "Unexpected additional SDK architecture"
+                sdk_cpu, _, offset, size, _ = struct.unpack_from(">5I", native, 8)
+                assert sdk_cpu == 0x0100000C and offset + size <= len(native), "Wrong native SDK slice"
+                native = native[offset:offset + size]
             sdk_magic, sdk_cpu = struct.unpack_from("<II", native)
             assert sdk_magic == 0xFEEDFACF and sdk_cpu == 0x0100000C, "Wrong native SDK architecture"
             assert info.get("NSMicrophoneUsageDescription") and info.get("NSCameraUsageDescription"), "Missing media privacy descriptions"

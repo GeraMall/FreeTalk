@@ -41,6 +41,7 @@ final class CallController {
     #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
     private var routeObserver: NSObjectProtocol?
+    private var audioInterrupted = false
     private var previousAudio: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
     #endif
 
@@ -276,7 +277,7 @@ final class CallController {
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
             try? session.setCategory(previousAudio.0, mode: previousAudio.1, options: previousAudio.2)
         }
-        previousAudio = nil
+        previousAudio = nil; audioInterrupted = false
         #endif
     }
 
@@ -293,6 +294,7 @@ final class CallController {
             let began = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
             Task { @MainActor in
                 guard let self, self.active else { return }
+                self.audioInterrupted = began
                 if began { self.setMuted(true); self.error = "Микрофон выключен из-за другого звонка. Включите его после завершения." }
                 else { self.applySpeaker() }
             }
@@ -301,13 +303,17 @@ final class CallController {
     }
     private func applySpeaker() {
         #if os(iOS)
-        guard previousAudio != nil else { return }
+        guard previousAudio != nil && !audioInterrupted else { return }
         let session = AVAudioSession.sharedInstance()
         let external = session.currentRoute.outputs.contains { [.bluetoothA2DP, .bluetoothHFP, .headphones, .airPlay, .usbAudio].contains($0.portType) }
         if !external {
             let usingSpeaker = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
-            let desired: AVAudioSession.CategoryOptions = speaker ? [.defaultToSpeaker, .allowBluetooth] : [.allowBluetooth]
-            if session.categoryOptions != desired { try? session.setCategory(.playAndRecord, mode: .voiceChat, options: desired) }
+            if session.categoryOptions.contains(.defaultToSpeaker) != speaker {
+                var desired = session.categoryOptions
+                if speaker { desired.insert(.defaultToSpeaker) } else { desired.remove(.defaultToSpeaker) }
+                desired.insert(.allowBluetooth)
+                try? session.setCategory(.playAndRecord, mode: .voiceChat, options: desired)
+            }
             if speaker != usingSpeaker { try? session.overrideOutputAudioPort(speaker ? .speaker : .none) }
         }
         #endif

@@ -46,7 +46,7 @@ struct CallScreen: View {
             }
             .frame(maxWidth: 360).padding(.vertical, 8)
         }
-        .padding(.horizontal, 16).padding(.top, 8)
+        .padding(.horizontal, 16).padding(.top, 8).frame(maxWidth: 900)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Brand.background)
         .sheet(isPresented: $more) {

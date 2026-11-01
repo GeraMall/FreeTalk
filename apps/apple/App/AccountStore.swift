@@ -76,9 +76,9 @@ final class AccountStore {
     private func startRealtime() async {
         #if DEBUG
         if PreviewFixtures.mode != nil {
-            if PreviewFixtures.mode == "call" {
+            if PreviewFixtures.mode == "call" || PreviewFixtures.mode == "minimized" {
                 calls.roomID = "ABCDEFGHJKLM"; calls.selfID = PreviewFixtures.userID; calls.title = "Комната с друзьями"
-                calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = true
+                calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = PreviewFixtures.mode == "call"
             }
             return
         }
