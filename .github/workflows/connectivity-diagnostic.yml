@@ -1,0 +1,17 @@
+name: TRLKA connectivity diagnostic
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  connectivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check public endpoints from an independent network
+        shell: bash
+        run: |
+          for url in https://trlka.com/ https://trlka.com/app/ https://freetalk.191-44-38-60.sslip.io/api/health; do
+            printf 'Checking %s\n' "$url"
+            curl --silent --show-error --max-time 15 --output /dev/null --write-out 'status=%{http_code} remote=%{remote_ip} tls=%{ssl_verify_result}\n' "$url" || true
+          done
+          ssh-keyscan -T 10 -t ed25519 191.44.38.60 2>&1 || true
