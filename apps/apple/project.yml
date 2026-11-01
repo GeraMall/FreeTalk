@@ -5,13 +5,16 @@ options:
     iOS: '17.0'
     macOS: '14.0'
 packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 154.0.0
   TRLKACore:
     path: Packages/TRLKACore
 settings:
   base:
     SWIFT_VERSION: '5.0'
-    MARKETING_VERSION: '0.1.0'
-    CURRENT_PROJECT_VERSION: '1'
+    MARKETING_VERSION: '0.2.0'
+    CURRENT_PROJECT_VERSION: '2'
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_FILE: Configuration/Info.plist
@@ -25,9 +28,11 @@ targets:
     sources: [App]
     dependencies:
       - package: TRLKACore
+      - package: WebRTC
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.trlka.ios
+        INFOPLIST_FILE: Configuration/iOS-Info.plist
         PRODUCT_NAME: TRLKA
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: '1,2'
@@ -44,6 +49,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: TRLKACore
+      - package: WebRTC
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.trlka.macos

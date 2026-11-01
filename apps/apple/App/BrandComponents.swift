@@ -1,0 +1,66 @@
+import SwiftUI
+import TRLKACore
+
+extension Brand {
+    static let surface = Color(red: 0.035, green: 0.085, blue: 0.125)
+    static let stroke = Color(red: 0.12, green: 0.23, blue: 0.30)
+    static let muted = Color(red: 0.53, green: 0.64, blue: 0.71)
+}
+
+struct Panel: ViewModifier {
+    var radius: CGFloat = 18
+    func body(content: Content) -> some View {
+        content.background(Brand.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).stroke(Brand.stroke, lineWidth: 1))
+    }
+}
+extension View { func trlkaPanel(_ radius: CGFloat = 18) -> some View { modifier(Panel(radius: radius)) } }
+
+struct PrimaryButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 15)
+            .background(Brand.gradient, in: RoundedRectangle(cornerRadius: 13))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+struct ProfileAvatar: View {
+    let name: String
+    var url: String?
+    let client: AccountClient
+    var size: CGFloat = 44
+    @State private var image: Image?
+    var body: some View {
+        ZStack {
+            Circle().fill(Brand.gradient.opacity(0.4))
+            if let image { image.resizable().scaledToFill() }
+            else { Text(String(name.prefix(1)).uppercased()).font(.system(size: size * 0.38, weight: .bold)) }
+        }
+        .frame(width: size, height: size).clipShape(Circle())
+        .overlay(Circle().stroke(Brand.cyan.opacity(0.3), lineWidth: 1))
+        .task(id: url) {
+            image = nil
+            guard let url, let address = URL(string: url) else { return }
+            do {
+                let bytes: Data
+                if address.scheme == "data", let value = url.split(separator: ",", maxSplits: 1).last, let decoded = Data(base64Encoded: String(value)) { bytes = decoded }
+                else { bytes = try await client.avatarData(url: address) }
+                try Task.checkCancellation()
+                #if os(iOS)
+                if let decoded = UIImage(data: bytes) { image = Image(uiImage: decoded) }
+                #else
+                if let decoded = NSImage(data: bytes) { image = Image(nsImage: decoded) }
+                #endif
+            } catch {}
+        }
+        .accessibilityLabel(name)
+    }
+}
+
+struct SectionCaption: View {
+    let text: String
+    var body: some View { Text(text).font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(Brand.cyan) }
+}

@@ -6,6 +6,7 @@ public struct AccountUser: Codable, Sendable, Equatable {
     public let displayName: String
     public let avatarUrl: String?
     public let bio: String?
+    public let coverUrl: String?
 }
 
 public struct ChatMember: Codable, Sendable, Hashable {
@@ -41,9 +42,14 @@ public struct Message: Codable, Identifiable, Sendable, Equatable {
     public let senderID: String?
     public let displayName: String?
     public let createdAt: String
+    public let metadata: Metadata?
+    public struct Metadata: Codable, Sendable, Equatable {
+        public let roomId: String?
+        public let ended: Bool?
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, body
+        case id, kind, body, metadata
         case senderID = "sender_id", displayName = "display_name", createdAt = "created_at"
     }
 

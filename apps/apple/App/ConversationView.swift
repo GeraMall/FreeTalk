@@ -28,10 +28,21 @@ struct ConversationView: View {
                                 if !mine, let name = message.displayName {
                                     Text(name).font(.caption.bold()).foregroundStyle(Brand.cyan)
                                 }
-                                Text(message.preview).textSelection(.enabled)
+                                if message.kind == "call" {
+                                    Label(message.metadata?.ended == true ? "Звонок завершён" : "Голосовой звонок", systemImage: "phone")
+                                        .font(.subheadline.weight(.semibold))
+                                    if let code = message.metadata?.roomId, message.metadata?.ended != true {
+                                        Button("Присоединиться") {
+                                            if let user = account.user { Task { await account.calls.start(user: user, join: code) } }
+                                        }.buttonStyle(.bordered)
+                                    }
+                                } else { Text(message.preview).font(.system(size: 15)).textSelection(.enabled) }
+                                if let date = WireDate.parse(message.createdAt) {
+                                    Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted).frame(maxWidth: .infinity, alignment: .trailing)
+                                }
                             }
                             .padding(12)
-                            .background(mine ? Brand.cyan.opacity(0.14) : Color.white.opacity(0.06),
+                            .background(mine ? Brand.cyan.opacity(0.12) : Brand.surface.opacity(0.6),
                                         in: RoundedRectangle(cornerRadius: 16))
                             if !mine { Spacer(minLength: 36) }
                         }.id(message.id)
@@ -47,7 +58,7 @@ struct ConversationView: View {
                     if let error { Text(error).font(.caption).foregroundStyle(.red) }
                     HStack(alignment: .bottom, spacing: 12) {
                         TextField("Сообщение", text: $draft, axis: .vertical)
-                            .lineLimit(1...5).textFieldStyle(.roundedBorder)
+                            .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
                         Button { Task { await send() } } label: {
                             Image(systemName: "arrow.up").font(.headline)
                                 .frame(width: 42, height: 42).background(Brand.gradient, in: Circle())
@@ -61,6 +72,15 @@ struct ConversationView: View {
             }
         }
         .navigationTitle(chat.name(currentUserID: account.user?.id))
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    if let user = account.user { Task { await account.calls.start(user: user, chat: chat) } }
+                } label: { Image(systemName: "phone").frame(width: 36, height: 36) }
+                    .disabled(account.calls.busy).accessibilityLabel("Позвонить")
+            }
+        }
+        .task(id: account.revision) { await load() }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             repeat {

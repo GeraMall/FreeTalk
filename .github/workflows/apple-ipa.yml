@@ -9,6 +9,9 @@ on:
       - 'apps/apple/script/verify_ipa.py'
       - 'apps/apple/project.yml'
       - 'apps/apple/Configuration/Info.plist'
+      - 'apps/apple/Configuration/iOS-Info.plist'
+      - 'apps/apple/App/**'
+      - 'apps/apple/Packages/**'
   workflow_dispatch:
 
 permissions:

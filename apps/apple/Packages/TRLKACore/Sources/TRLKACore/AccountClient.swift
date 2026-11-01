@@ -8,6 +8,94 @@ public actor AccountClient {
     private var accessToken: String?
     private var refreshTask: Task<Session, Error>?
     private var generation = 0
+    private var accessExpiry = Date.distantPast
+
+    public func realtimeToken() async throws -> String {
+        if accessToken == nil || accessExpiry.timeIntervalSinceNow < 30 { try await refresh() }
+        guard let accessToken else { throw URLError(.userAuthenticationRequired) }
+        return accessToken
+    }
+
+    public func realtimeURL() -> URL {
+        var components = URLComponents(url: baseURL.appendingPathComponent("v1/chats/realtime"), resolvingAgainstBaseURL: false)!
+        components.scheme = "wss"
+        return components.url!
+    }
+
+    public func signalingURL(roomID: String) throws -> URL {
+        let code = try RoomCode.parse(roomID)
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+        components.scheme = "wss"
+        components.path = "/ws"
+        components.queryItems = [URLQueryItem(name: "room", value: code)]
+        return components.url!
+    }
+
+    public func activeCall(chatID: String) async throws -> ActiveCall? {
+        let result: ActiveCallResponse = try await request("v1/chats/\(try identifier(chatID))/active-call")
+        return result.call
+    }
+
+    public func registerCall(chatID: String, roomID: String) async throws {
+        let _: EmptyResponse = try await request("v1/chats/\(try identifier(chatID))/calls", method: "POST", body: ["roomId": try RoomCode.parse(roomID)])
+    }
+
+    public func callContext(roomID: String) async throws -> ActiveCall {
+        let result: ActiveCallResponse = try await request("v1/calls/\(try RoomCode.parse(roomID))/context")
+        guard let call = result.call else { throw URLError(.resourceUnavailable) }
+        return call
+    }
+
+    public func invite(roomID: String, userIDs: [String]) async throws {
+        struct Input: Encodable { let userIds: [String] }
+        let data = try JSONEncoder().encode(Input(userIds: Array(userIDs.prefix(7))))
+        let _: EmptyResponse = try await request("v1/calls/\(try RoomCode.parse(roomID))/invitations", method: "POST", data: data)
+    }
+
+    public func respond(invitationID: String, accept: Bool) async throws -> CallInvitationResult {
+        let result: CallInvitationResponse = try await request("v1/call-invitations/\(try identifier(invitationID))/respond", method: "POST", body: ["action": accept ? "accept" : "decline"])
+        return result.invitation
+    }
+
+    public func friends() async throws -> [Friend] {
+        let result: FriendsResponse = try await request("v1/friends")
+        return result.friends
+    }
+
+    public func createChat(memberIDs: [String], title: String? = nil) async throws -> Chat {
+        struct Input: Encodable { let type: String; let memberIds: [String]; let title: String? }
+        struct Output: Decodable { struct Reference: Decodable { let id: String }; let chat: Reference }
+        let data = try JSONEncoder().encode(Input(type: memberIDs.count == 1 ? "direct" : "group", memberIds: memberIDs, title: title))
+        let result: Output = try await request("v1/chats", method: "POST", data: data)
+        guard let chat = try await chats().first(where: { $0.id == result.chat.id }) else { throw URLError(.badServerResponse) }
+        return chat
+    }
+
+    public func addFriend(username: String) async throws {
+        let _: EmptyResponse = try await request("v1/friends/requests", method: "POST", body: ["username": username.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "@", with: "").lowercased()])
+    }
+
+    public func updateProfile(displayName: String, bio: String) async throws -> AccountUser {
+        let response: UserResponse = try await request("v1/me", method: "PATCH", body: ["displayName": displayName, "bio": bio])
+        return response.user
+    }
+
+    public func history() async throws -> [CallHistoryItem] {
+        let result: HistoryResponse = try await request("v1/history")
+        return result.calls
+    }
+
+    public func avatarData(url: URL) async throws -> Data {
+        guard url.scheme == baseURL.scheme, url.host == baseURL.host, url.port == baseURL.port,
+              url.path.hasPrefix(baseURL.path + "/") else { throw URLError(.badURL) }
+        let token = try await realtimeToken()
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await transport.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 5_000_000 else { throw URLError(.badServerResponse) }
+        return data
+    }
 
     public init(baseURL: URL = URL(string: "https://freetalk.191-44-38-60.sslip.io/api")!,
                 transport: URLSession = URLSession(configuration: .ephemeral),
@@ -92,12 +180,14 @@ public actor AccountClient {
         refreshTask?.cancel()
         refreshTask = nil
         accessToken = nil
+        accessExpiry = .distantPast
         try vault.clear()
     }
 
     private func accept(_ session: Session) throws {
         try vault.write(session.refreshToken)
         accessToken = session.accessToken
+        accessExpiry = WireDate.parse(session.accessExpiresAt) ?? .distantPast
     }
 
     private func refresh() async throws {
@@ -128,20 +218,20 @@ public actor AccountClient {
 
     private func request<T: Decodable>(_ path: String, method: String = "GET",
                                        body: [String: String]? = nil,
-                                       query: [URLQueryItem] = []) async throws -> T {
+                                       query: [URLQueryItem] = [], data: Data? = nil) async throws -> T {
         if accessToken == nil { try await refresh() }
         let token = accessToken
-        do { return try await publicRequest(path, method: method, body: body, query: query, bearer: token) }
+        do { return try await publicRequest(path, method: method, body: body, query: query, bearer: token, data: data) }
         catch let error as APIError where error.status == 401 {
             // A concurrent request may already have rotated this token.
             if accessToken == token { try await refresh() }
-            return try await publicRequest(path, method: method, body: body, query: query, bearer: accessToken)
+            return try await publicRequest(path, method: method, body: body, query: query, bearer: accessToken, data: data)
         }
     }
 
     private func publicRequest<T: Decodable>(_ path: String, method: String = "GET",
                                              body: [String: String]? = nil,
-                                             query: [URLQueryItem] = [], bearer: String? = nil) async throws -> T {
+                                             query: [URLQueryItem] = [], bearer: String? = nil, data: Data? = nil) async throws -> T {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!)
@@ -151,6 +241,10 @@ public actor AccountClient {
         if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpBody = try JSONEncoder().encode(body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        if let data {
+            request.httpBody = data
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         let (data, response) = try await transport.data(for: request)

@@ -17,7 +17,7 @@ struct LoginView: View {
                     Image("BrandMark").resizable().scaledToFit().frame(width: 56, height: 56)
                     Text("TRLKA").font(.largeTitle.bold())
                 }
-                Text("Твои люди — на связи").foregroundStyle(.secondary)
+                SectionCaption(text: "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!")
                 VStack(alignment: .leading, spacing: 16) {
                     TextField("Почта или @username", text: $login)
                         .textContentType(.username)
@@ -59,10 +59,13 @@ struct LoginView: View {
                     Button("Забыли пароль?") { resetting = true }.frame(maxWidth: .infinity)
                 }
                 .textFieldStyle(.roundedBorder)
-                Text("Предварительная нативная версия для проверки входа и чатов.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                HStack(spacing: 12) {
+                    Image(systemName: "shield.lefthalf.filled").foregroundStyle(Brand.cyan)
+                    Text("Приватная связь. Разговоры идут через WebRTC.")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading).trlkaPanel(14)
             }
-            .padding(28).frame(maxWidth: 440).frame(maxWidth: .infinity)
+            .padding(24).frame(maxWidth: 440).trlkaPanel(24).padding(20).frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $resetting) {
             VStack(alignment: .leading, spacing: 20) {

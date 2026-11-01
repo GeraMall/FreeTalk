@@ -36,7 +36,7 @@ struct RootView: View {
             switch account.phase {
             case .restoring: ProgressView("Восстанавливаем вход…")
             case .signedOut: LoginView(account: account)
-            case .signedIn: ChatsView(account: account)
+            case .signedIn: AppShell(account: account)
             case .unavailable:
                 ContentUnavailableView {
                     Label("Нет соединения", systemImage: "wifi.exclamationmark")
