@@ -47,6 +47,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.trlka.macos
         PRODUCT_NAME: TRLKA
         ENABLE_HARDENED_RUNTIME: YES
+        ARCHS: arm64 x86_64
+        ONLY_ACTIVE_ARCH: NO
         CODE_SIGN_ENTITLEMENTS: Configuration/macOS.entitlements
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleIconFile: TRLKA
