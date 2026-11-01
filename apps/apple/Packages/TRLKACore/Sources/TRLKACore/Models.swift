@@ -23,6 +23,10 @@ public struct Chat: Codable, Identifiable, Sendable, Hashable {
     public let lastMessageAt: String?
     public let members: [ChatMember]
 
+    // Navigation selection must survive an updated last message or member list.
+    public static func == (lhs: Chat, rhs: Chat) -> Bool { lhs.id == rhs.id }
+    public func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
     public func name(currentUserID: String?) -> String {
         if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return title }
         let names = members.filter { $0.id != currentUserID }.map(\.displayName)

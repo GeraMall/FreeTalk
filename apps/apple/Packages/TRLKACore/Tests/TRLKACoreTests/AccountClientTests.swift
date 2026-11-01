@@ -152,4 +152,14 @@ final class AccountClientTests: XCTestCase {
         XCTAssertEqual(page.messages.first?.preview, "Привет")
         XCTAssertTrue(page.hasMore)
     }
+
+    func testChatNavigationIdentitySurvivesListRefresh() throws {
+        func decode(_ text: String) throws -> Chat {
+            try JSONDecoder().decode(Chat.self, from: Data(text.utf8))
+        }
+        let first = try decode(#"{"id":"c1","type":"group","title":"Команда","lastMessage":"Первое","members":[]}"#)
+        let updated = try decode(#"{"id":"c1","type":"group","title":"Новое название","lastMessage":"Следующее","members":[]}"#)
+        XCTAssertEqual(first, updated)
+        XCTAssertEqual(Set([first, updated]).count, 1)
+    }
 }
