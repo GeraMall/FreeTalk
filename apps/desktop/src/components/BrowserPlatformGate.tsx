@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   UserPlus,
 } from 'lucide-react';
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import brandMark from '../assets/freetalk-mascot.png';
 import { accountClient } from '../lib/api-client';
 import { normalizeUsername } from '../lib/username';
@@ -28,7 +28,7 @@ function isMobileBrowser() {
 export function BrowserPlatformGate({ children }: { children: ReactNode }) {
   const native = isTauri();
   const [mobile] = useState(() => !native && isMobileBrowser());
-  const [state, setState] = useState<'checking' | 'locked' | 'allowed'>(() =>
+  const [state, setState] = useState<'checking' | 'locked' | 'allowed' | 'unavailable'>(() =>
     native || !isMobileBrowser() ? 'allowed' : 'checking',
   );
   const [login, setLogin] = useState('');
@@ -49,17 +49,37 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
   const [resetSent, setResetSent] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const restoreFailedRef = useRef(false);
 
   useEffect(() => {
     if (!mobile) return;
     let disposed = false;
-    void accountClient.restore().then((user) => {
-      if (!disposed) setState(user ? 'allowed' : 'locked');
-    });
+    restoreFailedRef.current = false;
+    setState('checking');
+    void accountClient
+      .restore()
+      .then((user) => {
+        if (!disposed) setState(user ? 'allowed' : 'locked');
+      })
+      .catch(() => {
+        if (!disposed) {
+          restoreFailedRef.current = true;
+          setState('unavailable');
+        }
+      });
     return () => {
       disposed = true;
     };
-  }, [mobile]);
+  }, [mobile, restoreAttempt]);
+
+  useEffect(() => {
+    const retry = () => {
+      if (restoreFailedRef.current) setRestoreAttempt((attempt) => attempt + 1);
+    };
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -163,6 +183,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
         <h1 id="browser-platform-title">Trlka на телефоне</h1>
         {state === 'checking' ? (
           <p className="browser-platform-status">Проверяем доступ этого аккаунта…</p>
+        ) : state === 'unavailable' ? (
+          <div className="browser-platform-form" role="alert">
+            <p>Нет соединения с сервером. Ваш вход сохранён.</p>
+            <button type="button" onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
+              Повторить подключение
+            </button>
+          </div>
         ) : (
           <>
             <div className="browser-platform-auth-switch" role="tablist" aria-label="Авторизация">

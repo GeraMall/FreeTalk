@@ -154,14 +154,25 @@ export class AccountClient {
   private async restoreStoredSession() {
     const refreshToken = await readRefreshToken();
     if (!refreshToken) return null;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     try {
-      await this.refresh(refreshToken);
-      const result = await this.request<{ user: AccountUser }>('/v1/me');
+      await this.refresh(refreshToken, controller.signal);
+      const result = await this.request<{ user: AccountUser }>('/v1/me', {
+        signal: controller.signal,
+      });
       this.user = result.user;
       return this.user;
-    } catch {
-      await this.clear();
-      return null;
+    } catch (error) {
+      // An outage is not a logout. Only an explicit rejection of the session
+      // invalidates its persisted refresh token (including a newly rotated one).
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        await this.clear();
+        return null;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
@@ -453,10 +464,11 @@ export class AccountClient {
     );
   }
 
-  private async refresh(refreshToken: string) {
+  private async refresh(refreshToken: string, signal?: AbortSignal) {
     const result = await this.publicRequest<{ session: SessionPayload }>('/v1/auth/refresh', {
       method: 'POST',
       body: JSON.stringify({ refreshToken }),
+      signal,
     });
     await this.acceptSession(result.session);
   }

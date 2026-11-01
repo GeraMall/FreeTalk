@@ -21390,3 +21390,25 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     transition-duration: 0.01ms !important;
   }
 }
+
+/* On tablets the optional profile must not consume the message column.
+   Opening it uses an overlay; the header toggle remains available to close it. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .messenger-layout.external-sidebar.chat-direct,
+  .messenger-layout.external-sidebar.chat-group,
+  .messenger-layout.external-sidebar.profile-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .messenger-layout.external-sidebar > .chat-profile-panel {
+    position: absolute;
+    z-index: 30;
+    inset: 56px 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    width: min(320px, 100%);
+    height: auto;
+    max-height: none;
+    box-shadow: -16px 0 40px rgba(0, 0, 0, 0.32);
+  }
+}

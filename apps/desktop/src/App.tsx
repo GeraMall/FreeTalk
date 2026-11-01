@@ -168,6 +168,9 @@ export function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [accountUser, setAccountUser] = useState<AccountUser>();
   const [accountReady, setAccountReady] = useState(false);
+  const [restoreFailed, setRestoreFailed] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const restoreFailedRef = useRef(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const [guestMode, setGuestMode] = useState(false);
@@ -321,20 +324,45 @@ export function App() {
   ]);
 
   useEffect(() => {
-    void accountClient.restore().then(async (user) => {
-      if (user) {
-        await warmInitialAccountMedia(user);
-        setAccountUser(user);
-        setName(user.displayName);
-        updateSettings({
-          displayName: user.displayName,
-          avatarDataUrl: user.avatarUrl ?? '',
-        });
-      }
-      if (!user) setActiveAccountMediaScope(undefined);
-      setAccountReady(true);
-    });
-  }, [updateSettings]);
+    let disposed = false;
+    restoreFailedRef.current = false;
+    setAccountReady(false);
+    setRestoreFailed(false);
+    void accountClient
+      .restore()
+      .then(async (user) => {
+        if (disposed) return;
+        if (user) {
+          await warmInitialAccountMedia(user);
+          if (disposed) return;
+          setAccountUser(user);
+          setName(user.displayName);
+          updateSettings({
+            displayName: user.displayName,
+            avatarDataUrl: user.avatarUrl ?? '',
+          });
+        }
+        if (!user) setActiveAccountMediaScope(undefined);
+        setAccountReady(true);
+      })
+      .catch(() => {
+        if (disposed) return;
+        restoreFailedRef.current = true;
+        setRestoreFailed(true);
+        setAccountReady(true);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [updateSettings, restoreAttempt]);
+
+  useEffect(() => {
+    const retry = () => {
+      if (restoreFailedRef.current) setRestoreAttempt((attempt) => attempt + 1);
+    };
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -1923,6 +1951,18 @@ export function App() {
         {!accountReady ? (
           <main className="account-loading" aria-label="Восстанавливаем сессию">
             <img className="account-loading-mascot" src={mascot} alt="" aria-hidden="true" />
+          </main>
+        ) : restoreFailed ? (
+          <main className="browser-platform-gate">
+            <section className="browser-platform-card" role="alert">
+              <h1>Нет соединения с сервером</h1>
+              <p>Ваш вход сохранён. Проверьте интернет и повторите подключение.</p>
+              <div className="browser-platform-form">
+                <button type="button" onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
+                  Повторить подключение
+                </button>
+              </div>
+            </section>
           </main>
         ) : accountUser ? (
           <HomeView

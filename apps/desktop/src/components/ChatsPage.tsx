@@ -368,7 +368,18 @@ export function ChatsPage({
   const [replyTarget, setReplyTarget] = useState<MessageItem>();
   const [messageSearch, setMessageSearch] = useState('');
   const [messageSearchIndex, setMessageSearchIndex] = useState(0);
-  const [profileVisible, setProfileVisible] = useState(!mobile);
+  const [profileVisible, setProfileVisible] = useState(
+    () => !mobile && !window.matchMedia?.('(max-width: 1100px)').matches,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(max-width: 1100px)');
+    const collapse = () => {
+      if (media?.matches) setProfileVisible(false);
+    };
+    media?.addEventListener?.('change', collapse);
+    return () => media?.removeEventListener?.('change', collapse);
+  }, []);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
