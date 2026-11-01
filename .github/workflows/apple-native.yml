@@ -20,7 +20,7 @@ jobs:
       - name: Determine whether simulator screens changed
         id: screens
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || ! git diff --quiet HEAD^ HEAD -- apps/apple/App apps/apple/project.yml; then
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || ! git diff --quiet HEAD^ HEAD -- 'apps/apple/App/*.swift' apps/apple/App/Assets.xcassets apps/apple/project.yml; then
             echo 'capture=true' >> "$GITHUB_OUTPUT"
           else
             echo 'capture=false' >> "$GITHUB_OUTPUT"

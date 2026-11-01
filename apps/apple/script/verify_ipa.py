@@ -55,6 +55,15 @@ def verify(path):
         assert prefix + "embedded.mobileprovision" not in names, "Unexpected provisioning profile"
         assert not any(name.endswith((".p12", ".p8", ".pem", ".key")) for name in names), "Unexpected signing material"
         assert not any(name.endswith(".dylib") and ("debug" in name or "preview" in name) for name in names), "Debug library in release IPA"
+        framework = prefix + "Frameworks/WebRTC.framework/WebRTC"
+        if info["CFBundleShortVersionString"] != "0.1.0":
+            assert framework in names, "Missing native WebRTC framework"
+            native = archive.read(framework)
+            sdk_magic, sdk_cpu = struct.unpack_from("<II", native)
+            assert sdk_magic == 0xFEEDFACF and sdk_cpu == 0x0100000C, "Wrong native SDK architecture"
+            assert info.get("NSMicrophoneUsageDescription") and info.get("NSCameraUsageDescription"), "Missing media privacy descriptions"
+            assert "audio" in info.get("UIBackgroundModes", []), "Missing background audio mode"
+            assert prefix + "ThirdParty-WebRTC.txt" in names, "Missing WebRTC license attribution"
         bad = archive.testzip()
         assert bad is None, f"ZIP CRC failure: {bad}"
         return {

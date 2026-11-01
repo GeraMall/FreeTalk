@@ -40,6 +40,7 @@ final class CallController {
     private var shouldCreate = false
     #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
+    private var routeObserver: NSObjectProtocol?
     private var previousAudio: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
     #endif
 
@@ -241,6 +242,12 @@ final class CallController {
                 }
             }
             guard active && expected == cameraGeneration else { capture.stopCapture {}; return }
+            for output in capture.captureSession.outputs {
+                for connection in output.connections where connection.isVideoMirroringSupported {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                    connection.isVideoMirrored = false
+                }
+            }
             cameraSource = source; capturer = capture; cameraDevice = device
             localVideo = factory.videoTrack(with: source, trackId: "camera-\(UUID().uuidString.lowercased())")
             cameraOn = true
@@ -263,6 +270,7 @@ final class CallController {
         phase = .idle; muted = false; presented = false
         #if os(iOS)
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }; interruptionObserver = nil
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }; routeObserver = nil
         if let previousAudio {
             let session = AVAudioSession.sharedInstance()
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
@@ -278,6 +286,9 @@ final class CallController {
         previousAudio = (session.category, session.mode, session.categoryOptions)
         try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
+        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.applySpeaker() }
+        }
         interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
             let began = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
             Task { @MainActor in
@@ -293,7 +304,12 @@ final class CallController {
         guard previousAudio != nil else { return }
         let session = AVAudioSession.sharedInstance()
         let external = session.currentRoute.outputs.contains { [.bluetoothA2DP, .bluetoothHFP, .headphones, .airPlay, .usbAudio].contains($0.portType) }
-        if !external { try? session.overrideOutputAudioPort(speaker ? .speaker : .none) }
+        if !external {
+            let usingSpeaker = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+            let desired: AVAudioSession.CategoryOptions = speaker ? [.defaultToSpeaker, .allowBluetooth] : [.allowBluetooth]
+            if session.categoryOptions != desired { try? session.setCategory(.playAndRecord, mode: .voiceChat, options: desired) }
+            if speaker != usingSpeaker { try? session.overrideOutputAudioPort(speaker ? .speaker : .none) }
+        }
         #endif
     }
 }
