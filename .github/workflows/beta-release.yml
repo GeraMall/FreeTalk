@@ -29,14 +29,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Cache native dependencies for design previews
-        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/preview/')
+      - name: Cache Windows native dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
-            apps/desktop/src-tauri/target/release
-          key: windows-design-v1-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: windows-native-v2-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: windows-native-v2-
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
