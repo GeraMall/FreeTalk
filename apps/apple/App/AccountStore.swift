@@ -13,6 +13,7 @@ final class AccountStore {
     let calls: CallController
     var incoming: IncomingCall?
     var revision = 0
+    var drafts: [String: String] = [:]
     private let realtime = SocketChannel()
     private var expiryTask: Task<Void, Never>?
     private var ringtone: AVAudioPlayer?
@@ -66,6 +67,7 @@ final class AccountStore {
         working = true
         defer { working = false }
         calls.end(); realtime.stop(); clearIncoming()
+        drafts.removeAll()
         do { try await client.logout() }
         catch { /* Local tokens were cleared before the server request. */ }
         user = nil
@@ -105,6 +107,8 @@ final class AccountStore {
             }
         }
         if type == "call-invitation-resolved", message["invitationId"] as? String == incoming?.invitationId { clearIncoming() }
+        if type == "call-invitation-resolved", let id = message["inviteeId"] as? String,
+           ["declined", "missed"].contains(message["status"] as? String ?? "") { calls.removeWaiting(id) }
         revision += 1
     }
 

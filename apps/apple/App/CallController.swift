@@ -11,6 +11,12 @@ final class CallController {
     var title = "Звонок"
     var selfID = ""
     var participants: [RoomParticipant] = []
+    struct WaitingPerson: Identifiable {
+        let id: String
+        let name: String
+        let avatar: String?
+    }
+    var waiting: [WaitingPerson] = []
     var muted = false
     var cameraOn = false
     var cameraBusy = false
@@ -89,6 +95,7 @@ final class CallController {
             roomID = room; title = chat?.name(currentUserID: user.id) ?? "Комната TRLKA"
             chatID = chat?.id
             ringMembers = create ? (chat?.members.filter { $0.id != user.id }.map(\.id) ?? []) : []
+            waiting = create ? (chat?.members.filter { $0.id != user.id }.map { WaitingPerson(id: $0.id, name: $0.displayName, avatar: $0.avatarUrl) } ?? []) : []
             shouldCreate = create
             let participantID = UUID().uuidString.lowercased()
             let sessionID = UUID().uuidString.lowercased()
@@ -195,6 +202,8 @@ final class CallController {
     }
 
     private func refreshPhase() {
+        let joined = Set(participants.compactMap(\.accountId))
+        waiting.removeAll { joined.contains($0.id) }
         revision += 1
         if peers.isEmpty || peers.values.contains(where: { $0.state == .connected || $0.state == .completed }) {
             phase = .connected; applySpeaker()
@@ -211,7 +220,7 @@ final class CallController {
                 guard expected == generation && active && !Task.isCancelled else { return }
                 do { try await client.invite(roomID: room, userIDs: members); return }
                 catch {
-                    if attempt == 4 { self.error = "Приглашение не отправлено. Можно войти по коду комнаты." }
+                    if attempt == 4 { self.waiting = []; self.error = "Приглашение не отправлено. Можно войти по коду комнаты." }
                     else { try? await Task.sleep(for: .seconds(1.5)) }
                 }
             }
@@ -223,6 +232,10 @@ final class CallController {
         socket.send(["type": "mute-changed", "muted": value])
     }
     func toggleSpeaker() { speaker.toggle(); applySpeaker() }
+    func removeWaiting(_ userID: String) { waiting.removeAll { $0.id == userID } }
+    func noteInvitation(_ friend: Friend) {
+        if !waiting.contains(where: { $0.id == friend.id }) { waiting.append(WaitingPerson(id: friend.id, name: friend.display_name, avatar: friend.avatarUrl)) }
+    }
     func video(participantID: String, source: String = "camera") -> RTCVideoTrack? {
         _ = revision
         return participantID == selfID ? localVideo : peers[participantID]?.video(source: source)
@@ -300,7 +313,7 @@ final class CallController {
         socket.finish(["type": "leave-room"])
         peers.values.forEach { $0.close() }; peers.removeAll()
         stopCamera(); audio?.isEnabled = false; audio = nil; audioSource = nil; factory = nil
-        participants = []; selfID = ""; roomID = ""; ringMembers = []; chatID = nil
+        participants = []; waiting = []; selfID = ""; roomID = ""; ringMembers = []; chatID = nil
         phase = .idle; muted = false; presented = false
         #if os(iOS)
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }; interruptionObserver = nil

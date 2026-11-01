@@ -34,6 +34,7 @@ struct CallScreen: View {
                     ForEach(call.participants) { participant in
                         ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf)
                     }
+                    ForEach(call.waiting) { person in WaitingPersonCard(person: person, account: account) }
                     if call.participants.isEmpty { ProgressView("Подключаемся к комнате…").padding(40) }
                 }
             }
@@ -156,12 +157,12 @@ struct InviteToCallScreen: View {
                         working = true
                         Task {
                             defer { working = false }
-                            do { try await account.client.invite(roomID: account.calls.roomID, userIDs: [friend.id]); dismiss() }
+                            do { try await account.client.invite(roomID: account.calls.roomID, userIDs: [friend.id]); account.calls.noteInvitation(friend); dismiss() }
                             catch { self.error = error.localizedDescription }
                         }
                     } label: {
                         HStack { ProfileAvatar(name: friend.display_name, url: friend.avatarUrl, client: account.client); Text(friend.display_name); Spacer(); Image(systemName: "phone.badge.plus") }
-                    }.disabled(working || account.calls.participants.contains(where: { $0.accountId == friend.id }))
+                    }.disabled(working || account.calls.participants.contains(where: { $0.accountId == friend.id }) || account.calls.waiting.contains(where: { $0.id == friend.id }))
                 }
             }
             .navigationTitle("Пригласить друзей")

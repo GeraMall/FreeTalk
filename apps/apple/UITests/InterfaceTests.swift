@@ -30,6 +30,10 @@ final class InterfaceTests: XCTestCase {
         XCTAssertTrue(app.buttons["settings.done"].waitForExistence(timeout: 5), "One tap must open settings")
         app.buttons["settings.done"].tap()
         XCTAssertTrue(app.buttons["tab.home"].isHittable)
+        row.tap()
+        let restored = app.descendants(matching: .any).matching(identifier: "chat.composer").firstMatch
+        XCTAssertTrue(restored.waitForExistence(timeout: 5))
+        XCTAssertTrue((restored.value as? String)?.contains("Test message") == true, "Draft must survive back navigation")
     }
 
     func testMinimizedCallKeepsChatUsableAndCanReturnAndEnd() {

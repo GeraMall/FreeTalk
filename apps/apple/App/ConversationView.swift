@@ -6,7 +6,10 @@ struct ConversationView: View {
     let account: AccountStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var messages: [Message] = []
-    @State private var draft = ""
+    private var draft: String {
+        get { account.drafts[chat.id] ?? "" }
+        nonmutating set { account.drafts[chat.id] = newValue }
+    }
     @State private var error: String?
     @State private var hasMore = false
     @State private var sending = false
@@ -93,7 +96,7 @@ struct ConversationView: View {
         VStack(spacing: 8) {
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack(alignment: .bottom, spacing: 12) {
-                TextField("Сообщение", text: $draft, axis: .vertical)
+                TextField("Сообщение", text: Binding(get: { draft }, set: { draft = $0 }), axis: .vertical)
                     .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
                     .accessibilityIdentifier("chat.composer")
                 Button { Task { await send() } } label: {
