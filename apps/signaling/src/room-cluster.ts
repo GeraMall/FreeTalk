@@ -55,7 +55,7 @@ export class RoomCluster {
           const started = performance.now();
           const acquired = await this.store.acquire(roomId, create);
           lease = { epoch: acquired.epoch, deadline: started + this.store.node.leaseMs - 1_000 };
-          if (performance.now() >= lease.deadline)
+          if (performance.now() >= lease.deadline || this.owned.get(roomId) !== lease)
             throw new ClusterUnavailable('Lease acquisition timed out');
           if (acquired.snapshot) this.manager.restore(acquired.snapshot);
           this.owned.set(roomId, lease);
@@ -64,7 +64,7 @@ export class RoomCluster {
         this.outboxes.set(roomId, outbox);
         try {
           const result = await work();
-          if (performance.now() >= lease.deadline)
+          if (performance.now() >= lease.deadline || this.owned.get(roomId) !== lease)
             throw new ClusterUnavailable('Room lease expired');
           const started = performance.now();
           const snapshot = checkpoint ? this.manager.snapshot(roomId) : undefined;
@@ -93,6 +93,7 @@ export class RoomCluster {
   }
   private fence(roomId: string) {
     this.owned.delete(roomId);
+    this.outboxes.delete(roomId);
     this.manager.discard(roomId);
   }
   private async tick() {

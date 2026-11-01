@@ -146,7 +146,9 @@ export class ClusterStore {
          lease_until=clock_timestamp()+$6*interval '1 millisecond',
          recover_until=CASE WHEN $5::jsonb IS NULL THEN clock_timestamp() ELSE clock_timestamp()+$7*interval '1 millisecond' END
        WHERE id=$1 AND node_id=$2 AND instance_id=$3 AND epoch=$4::bigint
-         AND lease_until>clock_timestamp() RETURNING id`,
+         AND lease_until>clock_timestamp()
+         AND EXISTS(SELECT 1 FROM signaling_nodes n WHERE n.id=$2 AND n.instance_id=$3
+           AND n.seen_at>clock_timestamp()-interval '15 seconds') RETURNING id`,
       [
         roomId,
         n.id,
@@ -167,7 +169,9 @@ export class ClusterStore {
       lease_until=clock_timestamp()+$5*interval '1 millisecond',
       recover_until=clock_timestamp()+$6*interval '1 millisecond'
       WHERE id=$1 AND node_id=$2 AND instance_id=$3 AND epoch=$4::bigint
-        AND lease_until>clock_timestamp() RETURNING id`,
+        AND lease_until>clock_timestamp()
+        AND EXISTS(SELECT 1 FROM signaling_nodes n WHERE n.id=$2 AND n.instance_id=$3
+          AND n.seen_at>clock_timestamp()-interval '15 seconds') RETURNING id`,
       [roomId, n.id, n.instanceId, epoch, n.leaseMs, n.recoveryMs],
     );
     if (!result.rowCount) throw new ClusterUnavailable('Room lease lost; stale writer fenced');
