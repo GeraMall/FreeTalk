@@ -22,6 +22,18 @@ settings:
     TRLKA_API_BASE_URL: https://freetalk.191-44-38-60.sslip.io/api
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
+  TRLKA-UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: TRLKA-iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.trlka.ios.uitests
+        INFOPLIST_FILE: Configuration/UITests-Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: TRLKA UI Tests
+        TEST_TARGET_NAME: TRLKA-iOS
   TRLKA-iOS:
     type: application
     platform: iOS
@@ -60,3 +72,11 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Configuration/macOS.entitlements
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleIconFile: TRLKA
+schemes:
+  TRLKA-iOS:
+    build:
+      targets:
+        TRLKA-iOS: all
+        TRLKA-UITests: [test]
+    test:
+      targets: [TRLKA-UITests]

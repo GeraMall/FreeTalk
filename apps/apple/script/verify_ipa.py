@@ -37,6 +37,7 @@ def verify(path):
         entry = archive.getinfo(prefix + executable)
         assert (entry.external_attr >> 16) & stat.S_IXUSR, "Executable permission missing"
         binary = archive.read(entry)
+        assert b"--ui-preview" not in binary and b"preview-refresh" not in binary, "Debug preview fixtures leaked into release"
         magic, cpu, _, filetype, commands, command_bytes, _, _ = struct.unpack_from("<8I", binary)
         assert magic == 0xFEEDFACF and cpu == 0x0100000C and filetype == 2, "Expected arm64 Mach-O executable"
         position = 32

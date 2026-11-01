@@ -43,7 +43,7 @@ struct ProfileView: View {
             }
             .background(Brand.background)
             .navigationTitle("Настройки")
-            .toolbar { ToolbarItem { Button("Готово") { dismiss() } } }
+            .toolbar { ToolbarItem { Button("Готово") { dismiss() }.accessibilityIdentifier("settings.done") } }
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Выйти", role: .destructive) { Task { await account.logout(); dismiss() } }
             }

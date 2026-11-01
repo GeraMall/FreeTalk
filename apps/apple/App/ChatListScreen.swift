@@ -48,6 +48,7 @@ struct ChatListScreen: View {
                     }.padding(.vertical, 11)
                 }
                 .listRowBackground(Brand.background)
+                .accessibilityIdentifier("chat.row.\(chat.id)")
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
             }

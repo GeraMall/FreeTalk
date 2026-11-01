@@ -35,6 +35,7 @@ final class CallController {
     private var generation = 0
     private var cameraGeneration = 0
     private var ringTask: Task<Void, Never>?
+    private var statisticsTask: Task<Void, Never>?
     private var chatID: String?
     private var ringMembers: [String] = []
     private var shouldCreate = false
@@ -92,6 +93,13 @@ final class CallController {
             let participantID = UUID().uuidString.lowercased()
             let sessionID = UUID().uuidString.lowercased()
             phase = .connecting
+            statisticsTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                    guard let self, self.active else { return }
+                    self.peers.values.forEach { $0.sampleStatistics() }
+                }
+            }
             let url = try await client.signalingURL(roomID: room)
             socket.start(url: url, roomHeartbeat: true) { [weak self] in
                 guard let self, active else { throw CancellationError() }
@@ -221,6 +229,26 @@ final class CallController {
         switch peer.state { case .connected, .completed: return "На связи"; case .failed, .disconnected: return "Переподключение…"; default: return "Подключение…" }
     }
 
+    var quality: MediaPeer.Grade {
+        _ = revision
+        guard phase == .connected, !peers.isEmpty else { return .unknown }
+        return peers.values.map(\.grade).max(by: { $0.rawValue < $1.rawValue }) ?? .unknown
+    }
+    var qualityColor: Color {
+        switch quality { case .unknown: return Brand.muted; case .good: return Color(red: 0.29, green: 0.86, blue: 0.64); case .fair: return .yellow; case .poor: return .pink }
+    }
+    var qualityText: String {
+        if phase == .connecting || phase == .preparing { return "Подключение…" }
+        if phase == .reconnecting { return "Восстанавливаем связь…" }
+        if participants.count < 2 { return "Ожидаем участников" }
+        switch quality { case .unknown: return "Проверяем связь…"; case .good: return "На связи"; case .fair: return "Нестабильная связь"; case .poor: return "Плохое соединение" }
+    }
+    func level(_ id: String) -> Double {
+        _ = revision
+        if id == selfID { return muted ? 0 : peers.values.map(\.localLevel).max() ?? 0 }
+        return peers[id]?.remoteLevel ?? 0
+    }
+
     func toggleCamera() async {
         guard active, !cameraBusy, let factory else { return }
         cameraBusy = true
@@ -264,6 +292,7 @@ final class CallController {
     func end() {
         generation += 1
         ringTask?.cancel(); ringTask = nil
+        statisticsTask?.cancel(); statisticsTask = nil
         socket.finish(["type": "leave-room"])
         peers.values.forEach { $0.close() }; peers.removeAll()
         stopCamera(); audio?.isEnabled = false; audio = nil; audioSource = nil; factory = nil

@@ -7,6 +7,7 @@ struct AppShell: View {
     @State private var path: [Chat] = []
     @State private var profile = false
     @State private var keyboardVisible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(account: AccountStore) {
         self.account = account
         #if DEBUG
@@ -28,11 +29,11 @@ struct AppShell: View {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Image("BrandMark").resizable().scaledToFit().frame(width: 28, height: 28)
-                    Text("TRLKA").font(.system(size: 19, weight: .heavy))
+                    Text("TRLKA").font(.system(size: 19, weight: .heavy)).accessibilityIdentifier("app.brand")
                     Spacer()
                     Button { profile = true } label: {
                         ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 36)
-                    }.accessibilityLabel("Настройки")
+                    }.accessibilityLabel("Настройки").accessibilityIdentifier("app.profile")
                 }.padding(.horizontal, 18).padding(.vertical, 12)
                 .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
             Group {
@@ -61,9 +62,9 @@ struct AppShell: View {
                             Text(call.startedAt, style: .timer).font(.caption.monospacedDigit())
                             Image(systemName: "chevron.right")
                         }.padding(.horizontal, 16).padding(.vertical, 10)
-                        .foregroundStyle(call.phase == .connected ? Color.green : Brand.muted)
-                        .background((call.phase == .connected ? Color.green : Brand.muted).opacity(0.12))
-                    }.buttonStyle(.plain)
+                        .foregroundStyle(call.qualityColor)
+                        .background(call.qualityColor.opacity(0.12))
+                    }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("call.return")
                 }
             }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -71,7 +72,7 @@ struct AppShell: View {
             HStack(spacing: 4) {
                 ForEach(Page.allCases, id: \.self) { item in
                     Button {
-                        path = []; withAnimation(.easeOut(duration: 0.16)) { page = item }
+                        path = []; withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { page = item }
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: item.icon).font(.system(size: 21))
@@ -80,7 +81,7 @@ struct AppShell: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .foregroundStyle(page == item ? Brand.cyan : Brand.muted)
                         .background(page == item ? Brand.cyan.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("tab.\(String(describing: item))")
                 }
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 3)
                 .background(Brand.background.opacity(0.98))

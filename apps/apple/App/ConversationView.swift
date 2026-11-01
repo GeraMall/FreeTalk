@@ -11,9 +11,26 @@ struct ConversationView: View {
     @State private var hasMore = false
     @State private var sending = false
     @State private var loadingOlder = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
+        HStack(spacing: 12) {
+            Button { dismiss() } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 34, height: 42) }
+                .buttonStyle(CompactControlStyle()).accessibilityLabel("Назад к чатам").accessibilityIdentifier("chat.back")
+            ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 36)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(chat.name(currentUserID: account.user?.id)).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                Text(chat.type == "direct" ? "Личная переписка" : "Участников: \(chat.members.count)").font(.system(size: 11)).foregroundStyle(Brand.muted)
+            }
+            Spacer(minLength: 4)
+            Button {
+                if let user = account.user { Task { await account.calls.start(user: user, chat: chat) } }
+            } label: { Image(systemName: "phone").font(.system(size: 20)).frame(width: 42, height: 42) }
+                .buttonStyle(CompactControlStyle()).disabled(account.calls.busy).accessibilityLabel("Позвонить").accessibilityIdentifier("chat.call")
+        }.padding(.horizontal, 10).padding(.vertical, 8)
+            .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
@@ -51,8 +68,10 @@ struct ConversationView: View {
                 }.padding()
             }
             .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("chat.messages")
             .onChange(of: messages.last?.id) {
-                if !loadingOlder { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(messages.last?.id, anchor: .bottom) } }
+                if !loadingOlder { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(messages.last?.id, anchor: .bottom) } }
             }
         }
         composer
@@ -60,19 +79,8 @@ struct ConversationView: View {
         .background(Brand.background)
         .navigationTitle(chat.name(currentUserID: account.user?.id))
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(Brand.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    if let user = account.user { Task { await account.calls.start(user: user, chat: chat) } }
-                } label: { Image(systemName: "phone").frame(width: 36, height: 36) }
-                    .disabled(account.calls.busy).accessibilityLabel("Позвонить")
-            }
-        }
         .task(id: account.revision) { await load() }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
@@ -89,12 +97,14 @@ struct ConversationView: View {
             HStack(alignment: .bottom, spacing: 12) {
                 TextField("Сообщение", text: $draft, axis: .vertical)
                     .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
+                    .accessibilityIdentifier("chat.composer")
                 Button { Task { await send() } } label: {
                     Image(systemName: "arrow.up").font(.headline)
                         .frame(width: 42, height: 42).background(Brand.gradient, in: Circle()).foregroundStyle(.black)
                 }.buttonStyle(.plain)
                     .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Отправить сообщение")
+                    .accessibilityIdentifier("chat.send")
             }
         }.padding(12).background(Brand.background)
     }

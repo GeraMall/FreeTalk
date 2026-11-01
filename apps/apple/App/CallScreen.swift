@@ -12,12 +12,12 @@ struct CallScreen: View {
         VStack(spacing: 16) {
             HStack(spacing: 14) {
                 Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 42, height: 42).trlkaPanel(14) }
-                    .buttonStyle(.plain).accessibilityLabel("Свернуть звонок")
+                    .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
                 VStack(alignment: .leading, spacing: 5) {
                     Text(call.title).font(.headline).lineLimit(1)
                     HStack(spacing: 5) {
-                        Circle().fill(call.phase == .connected ? Brand.cyan : Brand.muted).frame(width: 6, height: 6)
-                        Text(call.phase == .connected ? (call.participants.count < 2 ? "Ожидаем участников" : "На связи") : "Подключение…").font(.caption).foregroundStyle(Brand.muted)
+                        Circle().fill(call.qualityColor).frame(width: 6, height: 6)
+                        Text(call.qualityText).font(.caption).foregroundStyle(Brand.muted)
                     }
                 }
                 Spacer(minLength: 4)
@@ -39,10 +39,12 @@ struct CallScreen: View {
             }
             HStack(spacing: 10) {
                 CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.cyan) { call.setMuted(!call.muted) }
+                    .accessibilityIdentifier("call.microphone")
                 CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.cyan : .pink) { Task { await call.toggleCamera() } }
                     .disabled(call.cameraBusy)
                 CallButton(title: "Ещё", icon: "ellipsis", color: .white) { more = true }
                 CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
+                    .accessibilityIdentifier("call.end")
             }
             .frame(maxWidth: 360).padding(.vertical, 8)
         }
@@ -76,6 +78,7 @@ struct ParticipantCard: View {
     let account: AccountStore
     let mirrorSelf: Bool
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let call = account.calls
         VStack(alignment: .leading, spacing: 0) {
@@ -97,13 +100,22 @@ struct ParticipantCard: View {
                     Text(call.connectionState(participant.id)).font(.system(size: 12)).foregroundStyle(Brand.muted)
                 }
                 Spacer(minLength: 4)
-                Image(systemName: participant.muted ? "mic.slash.fill" : "waveform").foregroundStyle(participant.muted ? Color.pink : Brand.cyan)
+                if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink) }
+                else {
+                    HStack(alignment: .center, spacing: 3) {
+                        ForEach(0..<4) { index in
+                            RoundedRectangle(cornerRadius: 2).fill(Brand.cyan)
+                                .frame(width: 3, height: 3 + min(1, call.level(participant.id) * 6) * [12.0, 20.0, 16.0, 9.0][index])
+                        }
+                    }.frame(width: 24, height: 24)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: call.level(participant.id))
+                }
             }.padding(18)
         }
         .background(LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.cyan.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
-        .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } }
+        .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } } }
     }
 }
 
@@ -122,7 +134,7 @@ struct CallButton: View {
             .foregroundStyle(color).frame(maxWidth: .infinity).frame(height: 68)
             .background(destructive ? Color(red: 0.91, green: 0.19, blue: 0.36) : color.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.15), lineWidth: 1))
-        }.buttonStyle(.plain).accessibilityLabel(title)
+        }.buttonStyle(CompactControlStyle()).accessibilityLabel(title)
     }
 }
 

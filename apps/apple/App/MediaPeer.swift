@@ -4,6 +4,10 @@ import WebRTC
 /// Serializes SDP operations per peer, including glare rollback and queued ICE.
 @MainActor
 final class MediaPeer: NSObject {
+    enum Grade: Int { case unknown, good, fair, poor }
+    var grade: Grade = .unknown
+    var remoteLevel: Double = 0
+    var localLevel: Double = 0
     let id: String
     let localID: String
     let connection: RTCPeerConnection
@@ -25,6 +29,38 @@ final class MediaPeer: NSObject {
     private var pendingNegotiation = false
     private var ignoreOffer = false
     private var closed = false
+
+    func sampleStatistics() {
+        guard !closed else { return }
+        connection.statistics { [weak self] report in
+            var rtt: Double?
+            var loss = 0.0
+            var remote = 0.0
+            var local = 0.0
+            for sample in report.statistics.values {
+                let values = sample.values
+                if sample.type == "candidate-pair", values["state"] as? String == "succeeded",
+                   let number = values["currentRoundTripTime"] as? NSNumber { rtt = max(rtt ?? 0, number.doubleValue) }
+                if sample.type == "remote-inbound-rtp", let number = values["fractionLost"] as? NSNumber { loss = max(loss, number.doubleValue) }
+                let audio = values["kind"] as? String == "audio" || values["mediaType"] as? String == "audio"
+                if audio, let number = values["audioLevel"] as? NSNumber {
+                    if sample.type == "inbound-rtp" { remote = max(remote, number.doubleValue) }
+                    if sample.type == "media-source" { local = max(local, number.doubleValue) }
+                }
+            }
+            let measuredRTT = rtt; let measuredLoss = loss; let measuredRemote = remote; let measuredLocal = local
+            Task { @MainActor in
+                guard let self, !self.closed else { return }
+                let grade: Grade
+                if self.state == .failed || self.state == .disconnected { grade = .poor }
+                else if let measuredRTT { grade = measuredRTT > 1 || measuredLoss > 0.15 ? .poor : measuredRTT > 0.3 || measuredLoss > 0.05 ? .fair : .good }
+                else { grade = .unknown }
+                if grade != self.grade || abs(self.remoteLevel - measuredRemote) > 0.01 || abs(self.localLevel - measuredLocal) > 0.01 {
+                    self.grade = grade; self.remoteLevel = measuredRemote; self.localLevel = measuredLocal; self.changed?()
+                }
+            }
+        }
+    }
 
     init(id: String, localID: String, factory: RTCPeerConnectionFactory, audio: RTCAudioTrack?,
          ice: [RTCIceServer], camera: RTCVideoTrack?, passive: Bool = false) throws {

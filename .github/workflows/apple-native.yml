@@ -63,6 +63,11 @@ jobs:
                   subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode],check=True)
                   time.sleep(6)
                   subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
+              if family == 'iPhone':
+                  subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
+                      '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
+                      '-parallel-testing-enabled','NO','-resultBundlePath','build/UITests.xcresult',
+                      'CODE_SIGNING_ALLOWED=NO'],check=True)
               subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
           PY
       - name: Package local Mac preview
@@ -82,4 +87,5 @@ jobs:
           path: |
             apps/apple/build/TRLKA-macOS-preview.zip
             apps/apple/build/previews/*.png
+            apps/apple/build/UITests.xcresult
           retention-days: 14
