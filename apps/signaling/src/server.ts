@@ -366,6 +366,13 @@ sockets.on('connection', (socket, request) => {
           code: 'NOT_JOINED',
           message: 'Сначала войдите в комнату',
         });
+      const registeredProfile =
+        message.type === 'update-profile' &&
+        meta.authorization &&
+        'userId' in meta.authorization &&
+        meta.authorization.userId
+          ? await getRegisteredProfile(meta.authorization.userId)
+          : null;
       await inRoom(
         meta.roomId!,
         undefined,
@@ -388,10 +395,6 @@ sockets.on('connection', (socket, request) => {
                 });
                 break;
               }
-              const registeredProfile =
-                meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
-                  ? await getRegisteredProfile(meta.authorization.userId)
-                  : null;
               const result = manager.updateProfile(
                 meta.roomId!,
                 meta.clientId!,

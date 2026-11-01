@@ -216,6 +216,9 @@ describe.skipIf(!url)('PostgreSQL cluster fencing and routing', () => {
       await once(socket, 'open');
       socket.send(JSON.stringify(join));
       const before = await initial;
+      await pool.query('UPDATE signaling_nodes SET draining=true');
+      expect((await fetch(`http://127.0.0.1:${gatewayPort}/ready`)).status).toBe(200);
+      await pool.query('UPDATE signaling_nodes SET draining=false');
       const muted = messageOf(socket, 'mute-changed');
       socket.send(JSON.stringify({ type: 'mute-changed', muted: true }));
       await muted;

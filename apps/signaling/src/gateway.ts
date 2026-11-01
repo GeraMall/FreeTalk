@@ -32,7 +32,7 @@ const server = createServer(async (request, response) => {
       response.end(JSON.stringify({ roomIds: rooms.rows.map((row) => row.id) }));
     } else if (request.url === '/health' || request.url === '/ready') {
       const nodes = await pool.query(
-        `SELECT 1 FROM signaling_nodes WHERE NOT draining AND seen_at>clock_timestamp()-interval '15 seconds' LIMIT 1`,
+        `SELECT 1 FROM signaling_nodes WHERE seen_at>clock_timestamp()-interval '15 seconds' LIMIT 1`,
       );
       response.writeHead(nodes.rowCount ? 200 : 503, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ ok: Boolean(nodes.rowCount), service: 'trlka-room-gateway' }));
