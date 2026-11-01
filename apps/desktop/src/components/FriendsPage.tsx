@@ -121,7 +121,7 @@ export function FriendsPage({
           <Users />
         </div>
         <div>
-          <p className="friends-eyebrow">Ваш круг общения</p>
+          <p className="friends-eyebrow">ВАШ КРУГ ОБЩЕНИЯ</p>
           <h1>Друзья</h1>
           <p>
             {friendLabel} <span aria-hidden="true">•</span> {pendingLabel}

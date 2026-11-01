@@ -399,17 +399,17 @@ export function SettingsPanel({
               <div>
                 <p className="eyebrow">
                   {tab === 'audio'
-                    ? 'Аудио'
+                    ? 'АУДИО'
                     : tab === 'profile'
-                      ? 'Профиль'
+                      ? 'ПРОФИЛЬ'
                       : tab === 'video'
-                        ? 'Видео и звуки'
+                        ? 'ВИДЕО И ЗВУКИ'
                         : tab === 'devices'
-                          ? 'Устройства'
+                          ? 'УСТРОЙСТВА'
                           : tab === 'recording'
-                            ? 'Запись'
+                            ? 'ЗАПИСЬ'
                             : tab === 'chats'
-                              ? 'Чаты'
+                              ? 'ЧАТЫ'
                               : 'TRLKA'}
                 </p>
                 <h2 id="settings-title">

@@ -233,7 +233,7 @@ export function WelcomeScreen({
           <h1 id="welcome-title" className="visually-hidden">
             Trlka
           </h1>
-          <p className="eyebrow">Стабильная связь и работа без VPN</p>
+          <p className="eyebrow">СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!</p>
         </div>
         {updateStatus.kind === 'available' && (
           <button className="update-banner" onClick={onSettings}>
