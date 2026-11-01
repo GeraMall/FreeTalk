@@ -1,5 +1,9 @@
 name: TRLKA connectivity diagnostic
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [preview/unslop-20261101]
+    paths: [.github/workflows/connectivity-diagnostic.yml]
 permissions:
   contents: read
 jobs:
