@@ -1,0 +1,127 @@
+/* Shared chat surfaces and a composer baseline aligned with the profile dock. */
+:root {
+  --chat-canvas: #07111d;
+  --chat-incoming: #101e2e;
+  --chat-outgoing: #1a2c48;
+  --chat-control-height: 60px;
+}
+.room-chat-panel,
+.room-chat-messages {
+  background: var(--chat-canvas);
+}
+.active-conversation {
+  background-color: var(--chat-canvas);
+  background-image: linear-gradient(#07111dbb, #07111dbb), var(--ft-chat-wallpaper, none);
+}
+.message-scroll-container {
+  background: transparent;
+}
+.message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
+html[data-chat-message-style='compact']
+  .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
+.room-chat-bubble {
+  padding: 13px 16px;
+  border-color: #29384e;
+  border-radius: 0 14px 14px;
+  background: var(--chat-incoming);
+  box-shadow: none;
+}
+.message-bubble > p,
+.message-bubble p {
+  font-size: calc(14px * var(--ft-chat-text-scale, 1));
+  line-height: 1.65;
+}
+.message-bubble-row.own
+  .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
+html[data-chat-message-style='compact']
+  .message-bubble-row.own
+  .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
+.room-chat-message.own .room-chat-bubble {
+  border-color: #3d5073;
+  border-radius: 14px 0 14px 14px;
+  background: var(--chat-outgoing);
+  box-shadow: none;
+}
+.modern-message-composer {
+  grid-template-columns: var(--chat-control-height) var(--chat-control-height) minmax(0, 1fr) var(
+      --chat-control-height
+    );
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 0;
+  background: var(--chat-canvas);
+  backdrop-filter: none;
+}
+.modern-message-composer.send-button-hidden {
+  grid-template-columns: var(--chat-control-height) var(--chat-control-height) minmax(0, 1fr);
+}
+.modern-message-composer textarea,
+.room-chat-composer textarea,
+.service-chat-footer textarea {
+  height: var(--chat-control-height);
+  min-height: var(--chat-control-height);
+  padding: 18px 14px;
+  border: 1px solid #334561;
+  border-radius: 12px;
+  background: #050d18;
+  color: #eef4ff;
+  line-height: 22px;
+  font-size: 14px;
+  box-shadow: none;
+}
+.modern-message-composer .composer-add-button,
+.modern-message-composer .composer-gif-button,
+.modern-message-composer .send-message-button,
+.room-chat-composer > button,
+.service-chat-footer form > button {
+  width: var(--chat-control-height);
+  min-width: var(--chat-control-height);
+  height: var(--chat-control-height);
+  min-height: var(--chat-control-height);
+  align-self: center;
+  border-radius: 12px;
+}
+.room-chat-composer {
+  background: var(--chat-canvas);
+}
+@media (max-width: 760px) {
+  .account-shell.mobile-account-shell.mobile-chat-open:not(.room-account-shell) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .mobile-chat-open:not(.room-account-shell) > .account-content-chat {
+    height: 100%;
+    min-height: 0;
+  }
+  .messenger-layout.mobile-messenger.has-active-chat {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  :root {
+    --chat-control-height: 44px;
+  }
+  .modern-message-composer,
+  .mobile-messenger .modern-message-composer {
+    grid-template-columns: 38px 38px minmax(0, 1fr) 44px;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+  .modern-message-composer.send-button-hidden,
+  .mobile-messenger .modern-message-composer.send-button-hidden {
+    grid-template-columns: 38px 38px minmax(0, 1fr);
+  }
+  .modern-message-composer textarea,
+  .mobile-messenger .modern-message-composer textarea,
+  .room-chat-composer textarea,
+  .service-chat-footer textarea {
+    padding: 10px 12px;
+    min-height: 44px;
+    height: 44px;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .modern-message-composer .composer-add-button,
+  .modern-message-composer .composer-gif-button {
+    width: 38px;
+    min-width: 38px;
+  }
+}

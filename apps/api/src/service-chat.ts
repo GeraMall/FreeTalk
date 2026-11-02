@@ -75,12 +75,16 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
   app.get('/v1/service-chat/messages', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
+    const { search } = z
+      .object({ search: z.string().trim().max(200).default('') })
+      .parse(request.query);
     const rows = await transaction(async (client) => {
       await append(client, user.id, 'bot', 'help', HELP, 'welcome');
       return client.query<Entry>(
         `SELECT id,author,kind,body,created_at FROM service_chat_messages
-        WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,
-        [user.id],
+        WHERE user_id=$1 AND ($2='' OR strpos(lower(body),lower($2))>0)
+        ORDER BY created_at DESC,id DESC LIMIT 100`,
+        [user.id, search],
       );
     });
     return { messages: rows.rows.reverse() };
@@ -136,12 +140,15 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
             response = 'Добавьте подробности: нужно хотя бы 10 символов. /cancel — отмена.';
           } else {
             await client.query(`SELECT pg_advisory_xact_lock(hashtext('trlka-support-quota'))`);
-            const quota = await client.query<{ personal: number; global: number }>(
+            const quota = await client.query<{ personal: number; ideas: number; global: number }>(
               `SELECT
             (SELECT count(*)::int FROM support_reports WHERE user_id=$1 AND created_at>now()-interval '24 hours') personal,
+            (SELECT count(*)::int FROM support_reports WHERE user_id=$1 AND kind='idea' AND created_at>now()-interval '24 hours') ideas,
             (SELECT count(*)::int FROM support_reports WHERE created_at>now()-interval '1 hour') global`,
               [user.id],
             );
+            if (command.kind === 'idea' && quota.rows[0]!.ideas >= 1)
+              return { error: 'IDEA_LIMIT', entries: [] as Entry[] };
             if (quota.rows[0]!.personal >= 5 || quota.rows[0]!.global >= 100)
               return { error: 'SUPPORT_LIMIT', entries: [] as Entry[] };
             await client.query(
@@ -183,12 +190,14 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
         return { entries };
       });
       if (result.error)
-        return reply.code(result.error === 'SUPPORT_LIMIT' ? 429 : 503).send({
+        return reply.code(result.error === 'SUPPORT_UNAVAILABLE' ? 503 : 429).send({
           code: result.error,
           message:
-            result.error === 'SUPPORT_LIMIT'
-              ? 'Лимит обращений исчерпан. Попробуйте позже.'
-              : 'Отправка обращений временно недоступна. Текст не отправлен.',
+            result.error === 'IDEA_LIMIT'
+              ? 'Предложение можно отправить один раз за 24 часа. Спасибо — предыдущее уже принято.'
+              : result.error === 'SUPPORT_LIMIT'
+                ? 'Лимит обращений исчерпан. Попробуйте позже.'
+                : 'Отправка обращений временно недоступна. Текст не отправлен.',
         });
       publish(user.id, result.entries);
       return { ok: true };

@@ -81,13 +81,16 @@ try {
   const concurrent = await Promise.all(
     Array.from({ length: 8 }, () => send('a', '/idea Предложение для улучшения приложения')),
   );
-  assert.equal(concurrent.filter((r) => r.statusCode === 200).length, 4);
-  assert.equal(concurrent.filter((r) => r.statusCode === 429).length, 4);
+  assert.equal(concurrent.filter((r) => r.statusCode === 200).length, 1);
+  assert.equal(concurrent.filter((r) => r.statusCode === 429).length, 7);
+  for (let i = 0; i < 3; i++)
+    assert.equal((await send('a', '/bug Отдельное сообщение об ошибке')).statusCode, 200);
   assert.equal(
     (await db.query('SELECT count(*)::int n FROM support_reports WHERE user_id=$1', [a])).rows[0].n,
     5,
   );
-  passed.push('concurrent daily quota');
+  assert.equal((await send('a', '/bug Шестое обращение сверх лимита')).statusCode, 429);
+  passed.push('concurrent daily report quota and single idea per 24 hours');
   assert.equal(
     (await send('a', 'Камера не включается после входа в комнату', firstId)).statusCode,
     200,
@@ -186,6 +189,19 @@ try {
   await send('a', '/cancel');
   assert.equal((await db.query('SELECT count(*)::int n FROM support_reports')).rows[0].n, before);
   passed.push('subscription information without mail or payments');
+  await db.query(
+    "UPDATE support_reports SET created_at=now()-interval '25 hours' WHERE user_id=$1",
+    [a],
+  );
+  assert.equal((await send('a', '/idea Новое предложение спустя 24 часа')).statusCode, 200);
+  assert.equal((await send('a', '/idea Повторное предложение сразу после нового')).statusCode, 429);
+  const searched = await app.inject({
+    url: '/v1/service-chat/messages?search=камера',
+    headers: { 'x-actor': 'a' },
+  });
+  assert(searched.json().messages.length > 0);
+  assert(searched.json().messages.every((m) => m.body.toLowerCase().includes('камера')));
+  passed.push('rolling idea quota reset and private substring search');
   console.log(JSON.stringify({ passed, emailsActuallySent: 0 }));
   if (process.argv.includes('--serve')) {
     await app.listen({ host: '127.0.0.1', port: 8794 });

@@ -1,4 +1,5 @@
 .service-chat {
+  position: relative;
   height: 100%;
   min-height: 0;
   display: grid;
@@ -54,7 +55,7 @@
   overscroll-behavior: contain;
   touch-action: pan-y;
   min-height: 0;
-  padding: 24px max(20px, calc((100% - 850px) / 2));
+  padding: 24px 24px;
   scrollbar-width: thin;
 }
 .service-chat-intro {
@@ -69,6 +70,7 @@
   background: #152136;
 }
 .service-chat-intro h2 {
+  color: #f3f6fc;
   margin: 14px 0 8px;
   font-size: 23px;
   letter-spacing: -0.03em;
@@ -135,8 +137,8 @@
   font-weight: 650;
 }
 .service-chat-footer {
-  padding: 12px 20px 16px;
-  border-top: 1px solid #233147;
+  padding: 10px 20px;
+  border-top: 0;
   min-width: 0;
 }
 .service-chat-actions {
@@ -164,7 +166,7 @@
 }
 .service-chat-footer form {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
 }
 .service-chat-footer textarea {
@@ -172,7 +174,8 @@
   min-width: 0;
   flex: 1;
   padding: 12px 14px;
-  min-height: 50px;
+  height: 60px;
+  min-height: 60px;
   max-height: 140px;
   border: 1px solid #334561;
   border-radius: 12px;
@@ -183,8 +186,8 @@
   user-select: text;
 }
 .service-chat-footer form button {
-  width: 46px;
-  height: 46px;
+  width: 60px;
+  height: 60px;
   display: grid;
   place-items: center;
   border: 0;
@@ -267,4 +270,171 @@
   .service-chat-footer textarea {
     font-size: 16px;
   }
+}
+
+.service-chat-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.service-chat-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #f3f6fc;
+  text-align: left;
+}
+.service-chat-identity img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+.service-chat-identity > span {
+  display: grid;
+  gap: 3px;
+}
+.service-chat-header .service-chat-tools {
+  display: flex;
+  flex: 0 1 350px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.service-chat-tools > button,
+.service-chat-search button,
+.service-profile-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: #adbed6;
+}
+.service-chat-tools > button:hover {
+  background: #1a2c48;
+}
+.service-chat-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #29384e;
+  border-radius: 10px;
+  background: #050d18;
+  color: #9fadc3;
+}
+.service-chat-search input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #eef4ff;
+  font-size: 12px;
+  box-shadow: none;
+}
+.service-chat-search input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.service-chat-search button {
+  width: 22px;
+  height: 22px;
+}
+.service-chat-search-result {
+  color: #adbed6;
+  font-size: 12px;
+}
+.service-chat-history {
+  grid-column: 1;
+  grid-row: 2;
+}
+.service-chat-footer {
+  grid-column: 1;
+  grid-row: 3;
+}
+.service-profile-open {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+.service-chat > .service-chat-profile {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  min-width: 0;
+  padding: 14px;
+  background: #07111d;
+}
+.service-profile-close {
+  position: absolute;
+  z-index: 2;
+  top: 22px;
+  right: 22px;
+  background: #101e2e;
+}
+.service-chat-profile .chat-profile-avatar {
+  display: grid;
+  place-items: center;
+  background: #07111d;
+}
+.service-chat-profile .chat-profile-avatar img {
+  object-fit: contain;
+}
+.service-chat-profile footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.service-bot-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #c8d7f5;
+  background: #293c60;
+  padding: 3px 5px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+@media (max-width: 1100px) {
+  .service-profile-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .service-chat > .service-chat-profile {
+    position: absolute;
+    z-index: 40;
+    grid-column: 1 / -1;
+    grid-row: 2 / 4;
+    inset: 0 0 0 auto;
+    width: min(320px, 100%);
+    box-shadow: -16px 0 40px #0005;
+  }
+}
+@media (max-width: 760px) {
+  .service-chat-header {
+    flex-wrap: wrap;
+  }
+  .service-chat-header .service-chat-tools {
+    flex: 1 0 100%;
+  }
+  .service-chat-search input {
+    font-size: 16px;
+  }
+}
+.service-chat-profile .chat-profile-identity .service-bot-badge {
+  display: inline-block;
+  width: auto;
 }

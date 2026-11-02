@@ -23,7 +23,7 @@ beforeEach(async () => {
   config.SUPPORT_EMAIL = 'support@example.invalid';
   query.mockImplementation(async (sql: string, args: unknown[]) => {
     if (sql.includes('SELECT pending_kind')) return result([{ pending_kind: null }]);
-    if (sql.includes('personal,')) return result([{ personal: 0, global: 0 }]);
+    if (sql.includes('personal,')) return result([{ personal: 0, ideas: 0, global: 0 }]);
     if (sql.startsWith('INSERT INTO service_chat_messages'))
       return result([
         {
@@ -70,7 +70,36 @@ describe('private service chat', () => {
     const reads = query.mock.calls.filter(([sql]) =>
       String(sql).includes('ORDER BY created_at DESC,id DESC LIMIT 100'),
     );
-    expect(reads[0]?.[1]).toEqual([userId]);
+    expect(reads[0]?.[1]).toEqual([userId, '']);
+  });
+  it('searches only the session owner history with a parameterized substring', async () => {
+    await app.inject(`/v1/service-chat/messages?search=котята&userId=${other}`);
+    const reads = query.mock.calls.filter(([sql]) =>
+      String(sql).includes('strpos(lower(body),lower($2))'),
+    );
+    expect(reads[0]?.[1]).toEqual([userId, 'котята']);
+  });
+  it('limits ideas separately to one per rolling 24 hours without blocking bug reports', async () => {
+    query.mockImplementation(async (sql: string) =>
+      sql.includes('SELECT pending_kind')
+        ? result([{ pending_kind: null }])
+        : sql.includes('personal,')
+          ? result([{ personal: 1, ideas: 1, global: 1 }])
+          : result(),
+    );
+    const idea = await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/messages',
+      payload: { requestId: crypto.randomUUID(), body: '/idea Добавить полезное улучшение' },
+    });
+    expect(idea.statusCode).toBe(429);
+    expect(idea.json().code).toBe('IDEA_LIMIT');
+    const bug = await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/messages',
+      payload: { requestId: crypto.randomUUID(), body: '/bug Не работает кнопка камеры' },
+    });
+    expect(bug.statusCode).toBe(200);
   });
   it('queues one accepted report and publishes only to its owner', async () => {
     const id = crypto.randomUUID();
