@@ -39,6 +39,8 @@
     "messageAvatar": 36,
     "participantAvatar": 50,
     "callButtonHeight": 54,
+    "activeMicrophoneFillOpacity": 0.16,
+    "activeMicrophoneStrokeOpacity": 0.38,
     "callButtonRowMaxWidth": 300,
     "contentMaxWidth": 850,
     "callContentMaxWidth": 900
