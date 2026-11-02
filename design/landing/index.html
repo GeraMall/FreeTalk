@@ -16,7 +16,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/landing.css?v=product-tour-1" />
+    <link rel="stylesheet" href="/assets/landing.css?v=silent-tour-2" />
   </head>
   <body>
     <header class="topbar">
@@ -66,27 +66,21 @@
         </div>
         <div class="hero-note">beta.178 · Windows 10/11, 64-bit · бесплатно</div>
         <figure class="app-stage product-preview" data-reveal>
-          <button
-            class="tour-launch"
-            type="button"
-            aria-haspopup="dialog"
-            aria-controls="productTour"
-            aria-label="Посмотреть TRLKA в действии — 29 секунд"
+          <video
+            class="tour-video"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            width="1920"
+            height="1080"
+            poster="/assets/demo/screen.webp"
+            aria-label="TRLKA: друзья, сообщения, звонки и демонстрация экрана"
           >
-            <img
-              src="/assets/demo/screen.webp"
-              width="1280"
-              height="800"
-              alt="Настоящий интерфейс TRLKA: Сергей, Аня и Макс обсуждают маршрут во время звонка с демонстрацией экрана"
-              fetchpriority="high"
-            />
-            <span class="tour-play"
-              ><svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m9 5 11 7-11 7Z" fill="currentColor" /></svg
-              >Посмотреть в действии <small>0:29</small></span
-            >
-          </button>
-          <figcaption>Настоящий интерфейс TRLKA · демонстрационные участники</figcaption>
+            <source src="/assets/demo/trlka-tour.mp4?v=silent-2" type="video/mp4" />
+          </video>
+          <button class="tour-toggle" type="button" aria-label="Приостановить видео">Пауза</button>
         </figure>
       </section>
       <div class="marquee" aria-hidden="true">
@@ -126,7 +120,7 @@
                 src="/assets/demo/call-detail.webp"
                 width="1005"
                 height="250"
-                alt="Карточки участников настоящего звонка TRLKA и управление громкостью"
+                alt="Карточки участников звонка TRLKA и управление громкостью"
                 loading="lazy"
                 decoding="async"
               />
@@ -226,24 +220,6 @@
         </div>
       </div>
     </footer>
-    <dialog class="product-tour" id="productTour" aria-labelledby="tourTitle">
-      <div class="tour-heading">
-        <h2 id="tourTitle">Один вечер в TRLKA</h2>
-        <button class="tour-close" type="button" aria-label="Закрыть видео">×</button>
-      </div>
-      <video
-        controls
-        playsinline
-        preload="none"
-        poster="/assets/demo/screen.webp"
-        aria-label="Обзор TRLKA: друзья, переписка, звонок и демонстрация экрана"
-      >
-        <source data-src="/assets/demo/trlka-tour.mp4" type="video/mp4" />
-        <track kind="captions" src="/assets/demo/tour-ru.vtt" srclang="ru" label="Русский" />
-        Ваш браузер не поддерживает видео. <a href="/assets/demo/trlka-tour.mp4">Скачать ролик</a>.
-      </video>
-      <p>Реальный интерфейс, вымышленные участники. Ролик с музыкой, без озвучки.</p>
-    </dialog>
-    <script src="/assets/landing.js?v=product-tour-1"></script>
+    <script src="/assets/landing.js?v=silent-tour-2"></script>
   </body>
 </html>

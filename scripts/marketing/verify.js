@@ -1,4 +1,4 @@
-/* global window, document, innerWidth, scrollTo, performance, getComputedStyle */
+/* global window, document, innerWidth, scrollTo, getComputedStyle */
 // Playwright CLI evaluates this file as a function expression.
 // prettier-ignore
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -48,40 +48,36 @@
       layout.featureOverflow
     )
       throw new Error(JSON.stringify(layout))
-    const initialVideoRequests = await p.evaluate(
-      () =>
-        performance
-          .getEntriesByType("resource")
-          .filter((e) => e.name.endsWith(".mp4")).length,
-    )
-    if (initialVideoRequests)
-      throw new Error("Video was loaded before being requested")
-    if ([1280, 820, 390].includes(width))
+    await p.locator(".tour-video").scrollIntoViewIfNeeded()
+    await p.waitForFunction(() => {
+      const v = document.querySelector("video")
+      return v.readyState >= 2 && !v.paused && v.currentTime > 0
+    })
+    const video = await p.locator("video").evaluate((v) => ({
+      width: v.videoWidth, height: v.videoHeight, duration: v.duration,
+      muted: v.muted, loop: v.loop, inline: v.playsInline, autoplay: v.autoplay,
+    }))
+    if (!video.muted || !video.loop || !video.inline || !video.autoplay)
+      throw new Error("Inline silent autoplay not configured")
+    await p.locator(".tour-toggle").click()
+    if (!(await p.locator("video").evaluate((v) => v.paused)))
+      throw new Error("Pause control failed")
+    await p.locator(".tour-toggle").click()
+    await p.waitForFunction(() => !document.querySelector("video").paused)
+    await p.locator("video").evaluate((v) => { v.currentTime = v.duration - .15 })
+    await p.waitForFunction(() => document.querySelector("video").currentTime < 2)
+    await p.locator("#download").scrollIntoViewIfNeeded()
+    await p.waitForFunction(() => document.querySelector("video").paused)
+    await p.locator(".tour-video").scrollIntoViewIfNeeded()
+    await p.waitForFunction(() => !document.querySelector("video").paused)
+    if ([1280, 820, 390].includes(width)) {
+      await p.evaluate(() => scrollTo({ top: 0, behavior: "instant" }))
       await p.screenshot({
         path: `D:/FreeTalk-gifs/output/playwright/marketing-landing-${width}.png`,
         fullPage: true,
       })
-    await p.locator(".tour-launch").click()
-    await p.locator("dialog[open]").waitFor()
-    await p.waitForFunction(
-      () => document.querySelector("video").readyState >= 2,
-    )
-    const video = await p
-      .locator("video")
-      .evaluate((v) => ({
-        width: v.videoWidth,
-        height: v.videoHeight,
-        duration: v.duration,
-      }))
-    await p.getByRole("button", { name: "Закрыть видео" }).click()
-    if (!(await p.locator("video").evaluate((v) => v.paused)))
-      throw new Error("Video still playing after close")
-    if (
-      !(await p
-        .locator(".tour-launch")
-        .evaluate((e) => e === document.activeElement))
-    )
-      throw new Error("Focus not restored")
+    }
+    if (errors.length) throw new Error(JSON.stringify(errors))
     report.push({ kind: "landing", ...layout, video, errors })
     await context.close()
   }

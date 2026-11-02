@@ -3,7 +3,7 @@ Requires Pillow and numpy; ffmpeg path may be supplied with --ffmpeg.
 No downloaded footage, music, personal accounts or production APIs are used.
 """
 from pathlib import Path
-import argparse, subprocess, wave
+import argparse, subprocess
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -27,53 +27,36 @@ def base():
     d.arc((1120,-570,2390,700),0,360,fill='#1a2940',width=1)
     logo=Image.open(ROOT/'design/landing/assets/trlka-logo.png').convert('RGBA').resize((64,64),Image.Resampling.LANCZOS)
     im.alpha_composite(logo,(70,58));d.text((152,62),'TRLKA',font=font(38,True),fill='#f0f4ff')
-    d.text((72,1018),'Демонстрационный стенд · вымышленные участники',font=font(20),fill='#8494ae')
     return im
 
-scenes=[('friends','01 / СВОИ ЛЮДИ',['Ближе,','чем кажется.'],['Друзья — рядом.','Разговор — в один клик.']),('chat','02 / ПЕРЕПИСКА',['Начинается','с «привет».'],['Планы, сообщения','и маленькие реакции.']),('call','03 / РАЗГОВОР',['Все здесь.','Можно просто','поговорить.'],['Своя комната.','Знакомые голоса.']),('screen','04 / ОБЩИЙ ЭКРАН',['Покажи.','Обсудите.','Сделайте.'],['Делитесь экраном','прямо во время звонка.'])]
+scenes=[('friends','01 / ДРУЗЬЯ',['Добавляйте','друзей'],['Поиск по имени.','Статусы и приглашения.']),('chat','02 / СООБЩЕНИЯ',['Пишите','в чатах'],['Личные и групповые чаты.','Сообщения и реакции.']),('call','03 / ЗВОНКИ',['До 8 человек','в звонке'],['Громкость для каждого.','Микрофон и камера.']),('screen','04 / ДЕМОНСТРАЦИЯ',['Показывайте','свой экран'],['Демонстрация экрана','во время звонка.'])]
 for name,kicker,title,body in scenes:
-    im=base();d=ImageDraw.Draw(im)
+    im=base();labels=Image.new('RGBA',(1920,1080));d=ImageDraw.Draw(labels)
     d.text((72,260),kicker,font=font(23,True),fill='#a5bae8')
-    for i,line in enumerate(title):d.text((68,320+i*84),line,font=font(65,True),fill='#f2f5fc')
+    for i,line in enumerate(title):d.text((68,320+i*84),line,font=font(60,True),fill='#f2f5fc')
     for i,line in enumerate(body):d.text((72,660+i*40),line,font=font(29),fill='#aebcd1')
-    d.rounded_rectangle((570,137,1870,959),radius=26,fill='#040a14',outline='#34455f',width=2)
     for i in range(4):d.rounded_rectangle((72+i*56,910,112+i*56,914),radius=2,fill='#9cb5e9' if i==[s[0] for s in scenes].index(name) else '#293549')
     im.convert('RGB').save(OUT/f'{name}-backdrop.png')
+    labels.save(OUT/f'{name}-labels.png')
+    frame=Image.new('RGBA',(1300,822));ImageDraw.Draw(frame).rounded_rectangle((0,0,1299,821),radius=26,fill='#040a14',outline='#34455f',width=2);frame.save(OUT/'frame.png')
     mask=Image.new('L',(1280,800));ImageDraw.Draw(mask).rounded_rectangle((0,0,1279,799),radius=17,fill=255);mask.save(OUT/'mask.png')
-    run('-sseof','-6.5','-i',OUT/f'{name}.webm','-loop','1','-i',OUT/f'{name}-backdrop.png','-loop','1','-i',OUT/'mask.png','-filter_complex','[0:v]fps=30,format=rgb24,setpts=PTS-STARTPTS[ui];[ui][2:v]alphamerge[rounded];[1:v][rounded]overlay=580:148:shortest=1,format=yuv420p[out]','-map','[out]','-t','6.5','-an','-c:v','libx264','-preset','fast','-crf','20',OUT/f'{name}-edit.mp4')
+    filters="[0:v]fps=30,format=rgb24,setpts=PTS-STARTPTS[ui];[ui][2:v]alphamerge[rounded];[4:v][rounded]overlay=10:11:shortest=1,format=rgba,fade=t=in:st=0:d=0.35:alpha=1[panel];[3:v]format=rgba,fade=t=in:st=0:d=0.3:alpha=1[labels];[1:v][labels]overlay=x=0:y='20*pow(max(0,1-t/0.65),3)':shortest=1[text];[text][panel]overlay=x='570+32*pow(max(0,1-t/0.75),3)':y=137:shortest=1,format=yuv420p[out]"
+    run('-sseof','-6.5','-i',OUT/f'{name}.webm','-loop','1','-i',OUT/f'{name}-backdrop.png','-loop','1','-i',OUT/'mask.png','-loop','1','-i',OUT/f'{name}-labels.png','-loop','1','-i',OUT/'frame.png','-filter_complex',filters,'-map','[out]','-t','6.5','-an','-c:v','libx264','-preset','fast','-crf','20',OUT/f'{name}-edit.mp4')
     print('Rendered',name,flush=True)
 
-for name,lines,sub in [('intro',['Собраться. Поговорить.','Побыть вместе.'],'Место, где тебя слышно.'),('outro',['Свои люди.','Одно место.'],'trlka.com')]:
-    im=base();d=ImageDraw.Draw(im)
-    for i,line in enumerate(lines):d.text((140,330+i*125),line,font=font(100,True),fill='#f1f5ff' if i==0 else '#9fb8ef')
-    d.text((148,670),sub,font=font(42),fill='#becde3');im.convert('RGB').save(OUT/f'{name}.png')
-    run('-loop','1','-i',OUT/f'{name}.png','-vf','fps=30,format=yuv420p','-t','2.8','-an','-c:v','libx264','-preset','fast','-crf','20',OUT/f'{name}-edit.mp4')
-
-parts=['intro','friends','chat','call','screen','outro'];lengths=[2.8,6.5,6.5,6.5,6.5,2.8];fade=.55
+# Repeat the first scene so the loop ends on the preceding frame of its start.
+parts=['friends','chat','call','screen','friends'];lengths=[6.5]*5;fade=.55
 inputs=[]
 for part in parts:inputs+=['-i',OUT/f'{part}-edit.mp4']
 filters=[f'[{i}:v]fps=30,settb=AVTB,setpts=PTS-STARTPTS[v{i}]' for i in range(len(parts))];total=lengths[0];prev='v0'
 for i in range(1,len(parts)):
-    offset=total-fade;out=f'x{i}';filters.append(f'[{prev}][v{i}]xfade=transition=fade:duration={fade}:offset={offset:.2f}[{out}]');prev=out;total+=lengths[i]-fade
+    offset=total-fade;out=f'x{i}';filters.append(f'[{prev}][v{i}]xfade=transition=smoothleft:duration={fade}:offset={offset:.2f}[{out}]');prev=out;total+=lengths[i]-fade
 run(*inputs,'-filter_complex',';'.join(filters),'-map',f'[{prev}]','-an','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p',OUT/'picture.mp4')
 
-# Original, quiet instrumental bed: soft triads and a sparse plucked melody.
-sr=48000;n=int(total*sr);audio=np.zeros((n,2),dtype=np.float64)
-def note(start,duration,midi,volume,pan=0):
-    begin=int(start*sr);end=min(n,begin+int(duration*sr));t=np.arange(end-begin)/sr;f=440*2**((midi-69)/12)
-    env=(1-np.exp(-t*18))*np.exp(-t*2.2)*np.minimum(1,(duration-t)*8)
-    sound=(np.sin(2*np.pi*f*t)+.18*np.sin(4*np.pi*f*t))*env*volume
-    audio[begin:end,0]+=sound*(.7-pan*.25);audio[begin:end,1]+=sound*(.7+pan*.25)
-chords=[[50,57,62,65],[46,53,58,62],[53,60,65,69],[48,55,60,64]]
-for bar,start in enumerate(np.arange(0,total,2.4)):
-    chord=chords[bar%4]
-    for j,m in enumerate(chord):note(start+j*.07,2.9,m,.022,(j-1.5)/2)
-    for j,m in enumerate([chord[2]+12,chord[3]+12,chord[1]+12]):
-        if start+.6+j*.6<total:note(start+.6+j*.6,1.1,m,.026,(j-1)/2)
-audio*=np.minimum(1,np.arange(n)/sr/1.1)[:,None]*np.minimum(1,(n-np.arange(n))/sr/1.5)[:,None]
-with wave.open(str(OUT/'music.wav'),'wb') as w:w.setnchannels(2);w.setsampwidth(2);w.setframerate(sr);w.writeframes((np.clip(audio,-1,1)*32767).astype('<i2').tobytes())
-run('-i',OUT/'picture.mp4','-i',OUT/'music.wav','-map','0:v','-map','1:a','-c:v','copy','-c:a','aac','-b:a','128k','-shortest','-movflags','+faststart',OUT/'TRLKA-demo-1080p.mp4')
-run('-i',OUT/'TRLKA-demo-1080p.mp4','-vf','scale=1280:720','-c:v','libx264','-preset','slow','-crf','23','-c:a','aac','-b:a','96k','-movflags','+faststart',ASSETS/'trlka-tour.mp4')
+# Silent MP4, no audio stream. A compact animation rather than a large GIF.
+total=4*(6.5-fade)
+run('-ss','0.8','-i',OUT/'picture.mp4','-t',str(total),'-an','-c:v','libx264','-preset','fast','-crf','20','-movflags','+faststart',OUT/'TRLKA-demo-1080p.mp4')
+run('-i',OUT/'TRLKA-demo-1080p.mp4','-vf','scale=1280:720','-an','-c:v','libx264','-preset','slow','-crf','23','-movflags','+faststart',ASSETS/'trlka-tour.mp4')
 
 # Honest crops of captured interface, without changing UI styling or text.
 shots=ROOT/'output/playwright'
