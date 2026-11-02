@@ -5,6 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { Participant, RoomChatMessage } from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
 import { RoomView, type RemoteVideoUiState, type WaitingCallParticipant } from './RoomView';
+import { accountClient } from '../lib/api-client';
+import { ACCOUNT_PRESENCE_EVENT } from '../lib/presence-activity';
 
 const selfId = '11111111-1111-4111-8111-111111111111';
 const peerId = '22222222-2222-4222-8222-222222222222';
@@ -173,6 +175,39 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it('shows account presence on a call card and applies realtime changes without reopening it', async () => {
+    const accountId = '33333333-3333-4333-8333-333333333333';
+    const request = vi
+      .spyOn(accountClient, 'request')
+      .mockResolvedValue({ profile: { presence: 'dnd' } });
+    try {
+      const result = render(
+        view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+          viewerId: selfId,
+          participants: [{ ...participants[1]!, accountId }],
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+        ).toBe('dnd'),
+      );
+      expect(result.getByText('Не беспокоить')).toBeTruthy();
+      act(() =>
+        window.dispatchEvent(
+          new CustomEvent(ACCOUNT_PRESENCE_EVENT, {
+            detail: { userId: accountId, status: 'away' },
+          }),
+        ),
+      );
+      expect(
+        result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+      ).toBe('away');
+      expect(result.getByText('Нет на месте')).toBeTruthy();
+    } finally {
+      request.mockRestore();
+    }
+  });
   it('opens a registered participant profile from an avatar, but not over active video', () => {
     const registeredParticipants: Participant[] = [
       participants[0]!,

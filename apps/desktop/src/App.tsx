@@ -22,7 +22,7 @@ import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from 
 import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { ChatRealtimeClient } from './lib/chat-realtime';
-import { setCallActive } from './lib/presence-activity';
+import { markVoiceActivity, setCallActive } from './lib/presence-activity';
 import { IncomingCallRingtone } from './lib/incoming-call-ringtone';
 import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
 import type { VideoPreferences } from './lib/video-quality';
@@ -271,6 +271,12 @@ export function App() {
     setCallActive(Boolean(roomId));
     return () => setCallActive(false);
   }, [roomId]);
+  useEffect(() => {
+    if (!roomId || !localSpeaking) return;
+    markVoiceActivity();
+    const timer = window.setInterval(markVoiceActivity, 15_000);
+    return () => window.clearInterval(timer);
+  }, [roomId, localSpeaking]);
   const browserResumeAttempted = useRef(false);
   const browserResume = useRef<
     { roomId: string; chatId?: string; recreateAttempted: boolean } | undefined

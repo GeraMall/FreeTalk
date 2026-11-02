@@ -8,6 +8,7 @@
   --accent: #8da6dc;
   --accent-soft: #cbd4e7;
   --blue: #4b7fff;
+  --online: #55e6a5;
   --brand-gradient: linear-gradient(105deg, #8da6dc 0%, #95ade2 48%, #4b7fff 100%);
   --radius: 32px;
 }
@@ -270,8 +271,8 @@ h1 {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 15px var(--accent);
+  background: var(--online);
+  box-shadow: 0 0 15px rgba(85, 230, 165, 0.3);
 }
 .float-one {
   top: 374px;
@@ -384,10 +385,10 @@ h1 {
   left: 50%;
   transform: translateX(-50%);
   padding: 6px 11px;
-  border: 1px solid rgba(146, 165, 208, 0.22);
+  border: 1px solid rgba(85, 230, 165, 0.22);
   border-radius: 999px;
-  color: #b0bcd6;
-  background: rgba(26, 31, 43, 0.5);
+  color: #9be8bc;
+  background: rgba(16, 48, 35, 0.5);
   font-size: 9px;
 }
 .cards {
@@ -435,7 +436,7 @@ h1 {
   height: 10px;
   border: 2px solid #0c1724;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--online);
   content: '';
 }
 .person-name {

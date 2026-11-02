@@ -29,6 +29,7 @@ import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
 import { API_VERSION } from './app-version.js';
+import { presenceAudience } from './presence-audience.js';
 import { startCallReconciliation } from './call-reconciliation.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
 import { registerWebPush, startWebPush } from './web-push.js';
@@ -143,19 +144,11 @@ async function publishPresenceUpdate(
   userId: string,
   status: 'online' | 'away' | 'dnd' | 'offline',
 ) {
-  const recipients = await db.query<{ user_id: string }>(
-    `SELECT $1::uuid AS user_id
-     UNION SELECT CASE WHEN user_low_id=$1 THEN user_high_id ELSE user_low_id END
-       FROM friendships WHERE user_low_id=$1 OR user_high_id=$1
-     UNION SELECT members.user_id FROM chat_members self
-       JOIN chat_members members ON members.chat_id=self.chat_id AND members.left_at IS NULL
-       WHERE self.user_id=$1 AND self.left_at IS NULL`,
-    [userId],
-  );
-  chatRealtimeHub.publish(
-    recipients.rows.map((recipient) => recipient.user_id),
-    { type: 'presence-updated', userId, status },
-  );
+  chatRealtimeHub.publish(await presenceAudience(userId), {
+    type: 'presence-updated',
+    userId,
+    status,
+  });
 }
 
 chatRealtimeHub.onPresenceChanged((userId, status) => {

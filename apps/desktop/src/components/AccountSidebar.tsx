@@ -436,7 +436,10 @@ export function AccountSidebar({
           </div>
         </section>
       ) : null}
-      <div className="account-profile-menu-anchor" ref={profileMenuRef}>
+      <div
+        className={`account-profile-menu-anchor${callDock?.active ? ' has-active-call' : ''}`}
+        ref={profileMenuRef}
+      >
         {callDock && <CallDock state={callDock} />}
         {menuOpen && (
           <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
@@ -680,7 +683,7 @@ function presenceModeDescription(mode: PresenceMode) {
   if (mode === 'away') return 'Показывать, что вы отошли';
   if (mode === 'dnd') return 'Показывать статус «Не беспокоить»';
   if (mode === 'invisible') return 'Другие всегда видят вас не в сети';
-  return 'Автоматически: неактивен через 10 минут';
+  return 'Автоматически: нет речи и действий 5 минут';
 }
 
 function getInlinePresence(mode: PresenceMode, presence: PresenceStatus) {

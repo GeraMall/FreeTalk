@@ -14,6 +14,7 @@ const load = (file) => import(pathToFileURL(resolve(api, file)).href);
 const { default: Fastify } = await load('node_modules/fastify/fastify.js');
 const { default: multipart } = await load('node_modules/@fastify/multipart/index.js');
 const { db } = await load('dist/db.js');
+const { presenceAudience } = await load('dist/presence-audience.js');
 const { registerSocialRoutes } = await load('dist/social-routes.js');
 const { GIF_LIMITS, beginGifUpload, chargeGifDownload, pruneUnusedGifs } =
   await load('dist/gif-limits.js');
@@ -100,6 +101,28 @@ try {
     sender,
     recipient,
   ]);
+  await check(
+    'presence reaches active room peers and excludes departed or ended calls',
+    async () => {
+      const call = (
+        await db.query(
+          "INSERT INTO call_sessions(room_id,created_by) VALUES('GIFQAAUDIT01',$1) RETURNING id",
+          [outsider],
+        )
+      ).rows[0].id;
+      await db.query(
+        `INSERT INTO call_participants(call_id,user_id,display_name,left_at)
+      VALUES($1,$2,'active outsider',NULL),($1,$3,'active peer',NULL),($1,$4,'departed',now())`,
+        [call, outsider, recipient, sender],
+      );
+      const audience = await presenceAudience(outsider);
+      assert(audience.includes(recipient));
+      assert(!audience.includes(sender));
+      await db.query('UPDATE call_sessions SET ended_at=now() WHERE id=$1', [call]);
+      assert.deepEqual(await presenceAudience(outsider), [outsider]);
+      await db.query('DELETE FROM call_sessions WHERE id=$1', [call]);
+    },
+  );
   await check('unauthenticated requests refused', async () => {
     assert.equal((await app.inject('/v1/gifs/favorites')).statusCode, 401);
   });

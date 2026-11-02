@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import type { Participant, Reaction, RoomChatMessage } from '@freetalk/protocol';
+import type { Participant, PresenceStatus, Reaction, RoomChatMessage } from '@freetalk/protocol';
+import { useRoomPresence } from '../lib/use-room-presence';
 import {
   Ban,
   Check,
@@ -187,6 +188,7 @@ export function RoomView({
   onPeerMute,
   onModerationMute,
 }: RoomViewProps) {
+  const accountPresence = useRoomPresence(viewerId, participants);
   const [menuFor, setMenuFor] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
@@ -451,6 +453,9 @@ export function RoomView({
   };
 
   const renderParticipant = (participant: Participant, compact = false) => {
+    const presence = participant.accountId
+      ? (accountPresence[participant.accountId] ?? 'online')
+      : 'online';
     const isSelf = participant.id === selfId;
     const speaking = isSelf ? localSpeaking : peerState[participant.id]?.speaking;
     const connection = isSelf ? 'connected' : (peerState[participant.id]?.connection ?? 'new');
@@ -460,11 +465,18 @@ export function RoomView({
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
     const cardStyle = participant.cardStyle ?? 'avatar-glass';
-    const status = participant.muted
-      ? 'Микрофон выключен'
-      : speaking
-        ? 'Говорит'
-        : connectionLabel(connection, hasAudio);
+    const status =
+      presence === 'away'
+        ? 'Нет на месте'
+        : presence === 'dnd'
+          ? 'Не беспокоить'
+          : presence === 'offline'
+            ? 'Не в сети'
+            : participant.muted
+              ? 'Микрофон выключен'
+              : speaking
+                ? 'Говорит'
+                : connectionLabel(connection, hasAudio);
 
     return (
       <article
@@ -517,6 +529,7 @@ export function RoomView({
           <ParticipantAvatar
             participant={participant}
             speaking={Boolean(speaking)}
+            presence={presence}
             onOpenProfile={
               viewerId && participant.avatar && participant.accountId
                 ? () =>
@@ -524,7 +537,7 @@ export function RoomView({
                       id: participant.accountId!,
                       displayName: participant.name,
                       avatarUrl: participant.avatar,
-                      presence: 'online',
+                      presence,
                     })
                 : undefined
             }
@@ -543,6 +556,7 @@ export function RoomView({
           </div>
           <div
             className={`participant-status ${participant.muted ? 'muted' : speaking ? 'live' : ''}`}
+            data-presence={presence}
           >
             {participant.muted ? <MicOff size={13} /> : <i />}
             {status}
@@ -2082,10 +2096,12 @@ function CreatorBadge({ compact = false, group = false }: { compact?: boolean; g
 function ParticipantAvatar({
   participant,
   speaking,
+  presence,
   onOpenProfile,
 }: {
   participant: Participant;
   speaking: boolean;
+  presence: PresenceStatus;
   onOpenProfile?(): void;
 }) {
   const variant = [...participant.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
@@ -2096,7 +2112,17 @@ function ParticipantAvatar({
       ) : (
         <span>{initials(participant.name)}</span>
       )}
-      <i aria-label="В сети" />
+      <i
+        aria-label={
+          presence === 'away'
+            ? 'Нет на месте'
+            : presence === 'dnd'
+              ? 'Не беспокоить'
+              : presence === 'offline'
+                ? 'Не в сети'
+                : 'В сети'
+        }
+      />
     </>
   );
   const className = `participant-avatar ${speaking ? 'speaking' : ''}${onOpenProfile ? ' profile-trigger' : ''}`;
@@ -2105,13 +2131,14 @@ function ParticipantAvatar({
       type="button"
       className={className}
       data-variant={variant}
+      data-presence={presence}
       aria-label={`Открыть полный профиль ${participant.name}`}
       onClick={onOpenProfile}
     >
       {content}
     </button>
   ) : (
-    <div className={className} data-variant={variant}>
+    <div className={className} data-variant={variant} data-presence={presence}>
       {content}
     </div>
   );

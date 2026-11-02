@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountClient } from './api-client';
 import { AWAY_AFTER_MS, ChatRealtimeClient } from './chat-realtime';
 import { setPresenceMode } from './presence-preference';
-import { setCallActive } from './presence-activity';
+import { markVoiceActivity, setCallActive } from './presence-activity';
 
 class FakeWebSocket extends EventTarget {
   static OPEN = 1;
@@ -50,7 +50,7 @@ describe('ChatRealtimeClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reports away after ten idle minutes and returns online on activity', async () => {
+  it('reports away after five idle minutes and returns online on activity', async () => {
     vi.useFakeTimers();
     const onPresence = vi.fn();
     const client = new ChatRealtimeClient(vi.fn(), onPresence);
@@ -72,7 +72,7 @@ describe('ChatRealtimeClient', () => {
     client.stop();
   });
 
-  it('stays online throughout an idle call and restarts the idle timeout after leaving', async () => {
+  it('counts speech as activity in a call and becomes away after five silent idle minutes', async () => {
     vi.useFakeTimers();
     setCallActive(true);
     const client = new ChatRealtimeClient(vi.fn());
@@ -81,13 +81,17 @@ describe('ChatRealtimeClient', () => {
     const socket = FakeWebSocket.instances[0]!;
     socket.open();
     socket.receive({ type: 'ready' });
-    await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS * 3);
+    for (let minute = 0; minute < 8; minute++) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      markVoiceActivity();
+    }
     expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
-    setCallActive(false);
     await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS - 1);
     expect(JSON.parse(socket.sent.at(-1)!).status).toBe('online');
     await vi.advanceTimersByTimeAsync(1);
     expect(JSON.parse(socket.sent.at(-1)!).status).toBe('away');
+    markVoiceActivity();
+    expect(JSON.parse(socket.sent.at(-1)!).status).toBe('online');
     client.stop();
   });
   it('respects manually selected invisible, away and do-not-disturb during a call', async () => {
@@ -105,6 +109,7 @@ describe('ChatRealtimeClient', () => {
       ['away', 'away'],
     ] as const) {
       setPresenceMode(mode);
+      markVoiceActivity();
       await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS * 2);
       expect(JSON.parse(socket.sent.at(-1)!).status).toBe(status);
     }
