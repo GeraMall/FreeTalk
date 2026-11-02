@@ -447,10 +447,10 @@ body {
   grid-template-columns: auto auto minmax(40px, 1fr) auto;
   align-items: center;
   height: 34px;
-  border-bottom: 1px solid rgba(149, 173, 226, 0.1);
+  border-bottom: 0;
   border-radius: 9px 9px 0 0;
   color: var(--ft-text);
-  background: #020a15;
+  background: #020914;
   user-select: none;
 }
 .custom-titlebar.is-maximized {

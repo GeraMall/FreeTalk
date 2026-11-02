@@ -10,7 +10,17 @@
     backdrop-filter: none;
     border-right-color: #202a38;
     box-shadow: none;
-    border-top-right-radius: 16px;
+  }
+  :root .account-shell > .account-sidebar::after,
+  :root .room-account-shell > .account-sidebar::after {
+    position: absolute;
+    top: 0;
+    right: -16px;
+    width: 16px;
+    height: 16px;
+    content: '';
+    background: radial-gradient(circle at bottom right, transparent 15.5px, #020914 16px);
+    pointer-events: none;
   }
   .account-sidebar-resizer::after {
     top: 16px;
