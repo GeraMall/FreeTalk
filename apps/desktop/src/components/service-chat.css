@@ -229,10 +229,11 @@
     border-radius: 0;
   }
   .service-chat-header {
-    padding: 10px 12px;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
     gap: 10px;
   }
   .service-chat-back {
+    flex: 0 0 36px;
     display: grid;
     place-items: center;
     width: 36px;

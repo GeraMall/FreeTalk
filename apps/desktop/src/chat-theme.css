@@ -96,6 +96,21 @@ html[data-chat-message-style='compact']
   background: var(--chat-canvas);
 }
 @media (max-width: 760px) {
+  html.mobile-keyboard-open,
+  .mobile-keyboard-open body,
+  .mobile-keyboard-open #root,
+  .mobile-keyboard-open .mobile-account-shell.account-shell-with-chat-sidebar,
+  .mobile-keyboard-open .room-account-shell.mobile-account-shell > .account-room-workspace {
+    height: var(--trlka-visible-height) !important;
+    min-height: 0 !important;
+    max-height: var(--trlka-visible-height);
+    overflow: hidden;
+  }
+  .mobile-keyboard-open body {
+    position: fixed;
+    top: var(--trlka-visible-top, 0px);
+    bottom: auto;
+  }
   .message-bubble-stack {
     max-width: 84%;
   }
