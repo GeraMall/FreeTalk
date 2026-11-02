@@ -33,6 +33,10 @@
   .account-sidebar-resizer::after {
     top: 16px;
   }
+  .account-shell-with-chat-sidebar .account-content-chat,
+  .messenger-layout.external-sidebar {
+    border-top-left-radius: 16px;
+  }
   .account-sidebar nav button {
     color: #c4cfdf;
   }
