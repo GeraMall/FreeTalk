@@ -22,7 +22,7 @@ struct ProfileView: View {
                         Text(account.user?.displayName ?? "").font(.system(size: 24, weight: .bold)).padding(.horizontal, 16)
                         Text("@\(account.user?.username ?? "") · В сети").font(.caption).foregroundStyle(Brand.accent).padding(.horizontal, 16)
                         if let bio = account.user?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.horizontal, 16) }
-                    }.padding(.bottom, 18).trlkaPanel(20)
+                    }.padding(.bottom, 18).webPanel(20)
                     Button {
                         name = account.user?.displayName ?? ""; bio = account.user?.bio ?? ""; editing = true
                     } label: { settingsRow("Редактировать профиль", icon: "pencil", description: "Имя и информация о себе") }
@@ -31,17 +31,17 @@ struct ProfileView: View {
                         Label("Видео и звук", systemImage: "video").font(.headline)
                         Toggle("Зеркалить свою камеру", isOn: $mirrorSelf).font(.subheadline).tint(Brand.accent)
                         Text("Настройка меняет только ваш предпросмотр. Собеседники видят обычное изображение.").font(.caption).foregroundStyle(Brand.muted)
-                    }.padding(18).trlkaPanel()
+                    }.padding(18).webPanel()
                     VStack(alignment: .leading, spacing: 10) {
                         Label("О приложении", systemImage: "info.circle").font(.headline)
-                        Text("TRLKA 0.2.1 · нативная beta").font(.subheadline).foregroundStyle(Brand.muted)
+                        Text("TRLKA 0.3.0 · нативная beta").font(.subheadline).foregroundStyle(Brand.muted)
                         Text("Входящие звонки доступны, пока приложение открыто. Уведомления через Apple Push пока не подключены.").font(.caption).foregroundStyle(Brand.muted)
-                    }.padding(18).trlkaPanel()
+                    }.padding(18).webPanel()
                     Button("Выйти из аккаунта", role: .destructive) { confirmLogout = true }
-                        .frame(maxWidth: .infinity).padding(14).trlkaPanel(14).disabled(account.working)
+                        .frame(maxWidth: .infinity).padding(14).webPanel(14).disabled(account.working)
                 }.padding(16).frame(maxWidth: 650).frame(maxWidth: .infinity)
             }
-            .background(Brand.background)
+            .background(Brand.webBackground)
             .navigationTitle("Настройки")
             .toolbar { ToolbarItem { Button("Готово") { dismiss() }.accessibilityIdentifier("settings.done") } }
             .confirmationDialog("Выйти из аккаунта?", isPresented: $confirmLogout, titleVisibility: .visible) {
@@ -50,8 +50,8 @@ struct ProfileView: View {
             .sheet(isPresented: $editing) {
                 NavigationStack {
                     Form {
-                        TextField("Имя", text: $name)
-                        TextField("О себе", text: $bio, axis: .vertical).lineLimit(3...6)
+                        TextField("Имя", text: $name).webInput()
+                        TextField("О себе", text: $bio, axis: .vertical).lineLimit(3...6).webInput()
                         if let error { Text(error).foregroundStyle(.red) }
                     }
                     .navigationTitle("Профиль")
@@ -68,7 +68,7 @@ struct ProfileView: View {
                             }.disabled(working || name.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }
-                }.presentationDetents([.medium, .large])
+                    }.presentationDetents([.medium, .large])
             }
         }.presentationDetents([.large])
     }
@@ -77,6 +77,6 @@ struct ProfileView: View {
             Image(systemName: icon).foregroundStyle(Brand.accent).frame(width: 28)
             VStack(alignment: .leading, spacing: 5) { Text(title).font(.headline); Text(description).font(.caption).foregroundStyle(Brand.muted) }
             Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
-        }.padding(18).trlkaPanel()
+        }.padding(18).webPanel()
     }
 }

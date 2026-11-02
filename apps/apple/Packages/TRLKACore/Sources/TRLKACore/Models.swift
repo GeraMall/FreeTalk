@@ -17,6 +17,9 @@ public struct ChatMember: Codable, Sendable, Hashable {
 }
 
 public struct Chat: Codable, Identifiable, Sendable, Hashable {
+    public static let serviceID = "00000000-0000-4000-a000-00000000724c"
+    public static var service: Chat { Chat(id: serviceID, type: "service", title: "TRLKA", lastMessage: "Уведомления и помощь", lastMessageAt: nil, members: []) }
+    public var isService: Bool { id == Self.serviceID }
     public let id: String
     public let type: String
     public let title: String?
@@ -34,6 +37,23 @@ public struct Chat: Codable, Identifiable, Sendable, Hashable {
         return names.isEmpty ? "Избранное" : names.joined(separator: ", ")
     }
 }
+
+public struct ServiceMessage: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let author: String
+    public let kind: String
+    public let body: String
+    public let created_at: String
+}
+struct ServiceHistory: Decodable { let messages: [ServiceMessage] }
+public struct PeerProfile: Decodable, Sendable {
+    public let displayName: String
+    public let username: String
+    public let avatarUrl: String?
+    public let coverUrl: String?
+    public let bio: String?
+}
+struct PeerProfileResponse: Decodable { let profile: PeerProfile }
 
 public struct Message: Codable, Identifiable, Sendable, Equatable {
     public let id: String

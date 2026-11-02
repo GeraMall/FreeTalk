@@ -20,6 +20,7 @@ struct LoginView: View {
                 SectionCaption(text: "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!")
                 VStack(alignment: .leading, spacing: 16) {
                     TextField("Почта или @username", text: $login)
+                        .webInput()
                         .textContentType(.username)
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
@@ -36,7 +37,7 @@ struct LoginView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(visiblePassword ? "Скрыть пароль" : "Показать пароль")
-                    }
+                    }.webInput()
                     if let error = account.error {
                         Text(error).font(.callout).foregroundStyle(.red).accessibilityAddTraits(.updatesFrequently)
                     }
@@ -58,19 +59,18 @@ struct LoginView: View {
                     .disabled(account.working || login.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty)
                     Button("Забыли пароль?") { resetting = true }.frame(maxWidth: .infinity)
                 }
-                .textFieldStyle(.roundedBorder)
                 HStack(spacing: 12) {
                     Image(systemName: "shield.lefthalf.filled").foregroundStyle(Brand.accent)
                     Text("Приватная связь. Разговоры идут через WebRTC.")
                         .font(.caption).foregroundStyle(Brand.muted)
-                }.padding(14).frame(maxWidth: .infinity, alignment: .leading).trlkaPanel(14)
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading).webPanel(14)
             }
-            .padding(24).frame(maxWidth: 440).trlkaPanel(24).padding(20).frame(maxWidth: .infinity)
+            .padding(24).frame(maxWidth: 440).webPanel(24).padding(20).frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $resetting) {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Восстановление доступа").font(.title2.bold())
-                TextField("Почта аккаунта", text: $resetEmail).textFieldStyle(.roundedBorder)
+                TextField("Почта аккаунта", text: $resetEmail).webInput()
                     .textContentType(.emailAddress)
                     #if os(iOS)
                     .keyboardType(.emailAddress).textInputAutocapitalization(.never)

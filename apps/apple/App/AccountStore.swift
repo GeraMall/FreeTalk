@@ -41,6 +41,9 @@ final class AccountStore {
         error = nil
         do {
             user = try await client.restore()
+            #if DEBUG
+            if PreviewFixtures.mode == "login" { user = nil }
+            #endif
             phase = user == nil ? .signedOut : .signedIn
             if user != nil { await startRealtime() }
         } catch {

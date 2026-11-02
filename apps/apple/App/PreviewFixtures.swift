@@ -32,6 +32,10 @@ enum PreviewFixtures {
         if path.hasSuffix("/history") {
             return ["calls": [["id": chatID, "room_id": "ABCDEFGHJKLM", "room_name": "Комната с друзьями", "started_at": "2026-11-01T12:00:00Z", "duration_seconds": 2400, "participants": [["displayName": "Макс"]]]]]
         }
+        if path.hasSuffix("/service-chat/messages") {
+            return ["messages": [["id": "bot-welcome", "author": "bot", "kind": "help", "body": "Я служебный бот TRLKA. Здесь появляются уведомления о звонках и обращения в поддержку.\n\n/bug — сообщить об ошибке\n/idea — предложить улучшение\n/subscription — подписка", "created_at": "2026-11-02T12:00:00Z"], ["id": "bot-timeout", "author": "bot", "kind": "call-timeout", "body": "Звонок завершён: за пять минут никто не подключился.", "created_at": "2026-11-02T12:01:00Z"]]]
+        }
+        if path.hasSuffix("/profile") { return ["profile": ["displayName": "Макс", "username": "max", "bio": "На связи с друзьями"]] }
         if path.hasSuffix("/messages") {
             let text = ["Привет! Как дела?", "Привет, всё отлично", "Давай созвонимся вечером", "Да, я уже здесь"]
             return ["messages": text.enumerated().map { index, body in

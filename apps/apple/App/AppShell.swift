@@ -7,20 +7,21 @@ struct AppShell: View {
     @State private var path: [Chat] = []
     @State private var profile = false
     @State private var keyboardVisible = false
+    @State private var conversationVisible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(account: AccountStore) {
         self.account = account
         #if DEBUG
         let mode = PreviewFixtures.mode
-        _page = State(initialValue: ["chats", "conversation", "minimized"].contains(mode ?? "") ? .chats : mode == "friends" ? .friends : mode == "history" ? .history : .home)
-        _path = State(initialValue: mode == "conversation" || mode == "minimized" ? [PreviewFixtures.chat] : [])
+        _page = State(initialValue: ["chats", "conversation", "minimized", "bot", "bot-profile"].contains(mode ?? "") ? .chats : mode == "friends" ? .friends : mode == "history" ? .history : .home)
+        _path = State(initialValue: ["bot", "bot-profile"].contains(mode ?? "") ? [Chat.service] : mode == "conversation" || mode == "minimized" ? [PreviewFixtures.chat] : [])
         _profile = State(initialValue: mode == "settings")
         #endif
     }
     enum Page: String, CaseIterable {
         case home = "Главная", chats = "Чаты", friends = "Друзья", history = "История"
         var icon: String {
-            switch self { case .home: return "house.fill"; case .chats: return "bubble.left.and.bubble.right.fill"; case .friends: return "person.2.fill"; case .history: return "clock.fill" }
+            switch self { case .home: return "house"; case .chats: return "bubble.left.and.bubble.right"; case .friends: return "person.2"; case .history: return "clock.arrow.circlepath" }
         }
     }
     var body: some View {
@@ -61,14 +62,18 @@ struct AppShell: View {
             }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Brand.background)
-            .navigationDestination(for: Chat.self) { ConversationView(chat: $0, account: account) }
+            .background(Brand.webBackground)
+            .navigationDestination(for: Chat.self) { chat in
+                if chat.isService { ServiceBotScreen(account: account) }
+                else { ConversationView(chat: chat, account: account) }
+            }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
         }
+        .onPreferenceChange(ChatDestinationKey.self) { conversationVisible = $0 }
         // The bar participates in layout so destinations cannot draw behind it.
-            if !keyboardVisible {
+            if !keyboardVisible && !conversationVisible && path.isEmpty {
             HStack(spacing: 4) {
                 ForEach(Page.allCases, id: \.self) { item in
                     Button {
@@ -76,10 +81,10 @@ struct AppShell: View {
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: item.icon)
-                                .font(.system(size: 22, weight: .semibold))
+                                .font(.system(size: 22, weight: .regular))
                                 .symbolRenderingMode(.hierarchical)
                                 .frame(width: 28, height: 25)
-                            Text(item.rawValue).font(.system(size: 10, weight: .semibold))
+                            Text(item.rawValue).font(.system(size: 11, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .foregroundStyle(page == item ? Brand.accent : Brand.muted)
@@ -88,11 +93,11 @@ struct AppShell: View {
                     }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("tab.\(String(describing: item))")
                 }
             }.padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 3)
-                .background(Brand.background.opacity(0.98))
+                .background(Brand.webBackground.opacity(0.98))
                 .overlay(alignment: .top) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
             }
         }
-        .background(Brand.background)
+        .background(Brand.webBackground)
         #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }

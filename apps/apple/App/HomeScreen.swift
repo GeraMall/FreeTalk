@@ -21,14 +21,14 @@ struct HomeScreen: View {
                         .buttonStyle(PrimaryButton()).disabled(account.calls.busy)
                     HStack(spacing: 8) {
                         TextField("Код или ссылка комнаты", text: $roomCode)
-                            .font(.system(size: 16)).textFieldStyle(.plain).padding(14).trlkaPanel(12)
+                            .font(.system(size: 16)).textFieldStyle(.plain).padding(14).webPanel(12)
                             #if os(iOS)
                             .textInputAutocapitalization(.characters).autocorrectionDisabled()
                             #endif
                         Button {
                             guard let user = account.user else { return }
                             Task { await account.calls.start(user: user, join: roomCode) }
-                        } label: { Image(systemName: "arrow.right").frame(width: 46, height: 48).trlkaPanel(12) }
+                        } label: { Image(systemName: "arrow.right").frame(width: 46, height: 48).webPanel(12) }
                             .buttonStyle(.plain).disabled(roomCode.isEmpty || account.calls.busy).accessibilityLabel("Войти в комнату")
                     }
                 }
@@ -37,7 +37,7 @@ struct HomeScreen: View {
                     Image("BrandMark").resizable().scaledToFit().frame(width: 190).opacity(0.07).offset(x: 40)
                 }
                 .background(LinearGradient(colors: [Brand.accent.opacity(0.07), Brand.blue.opacity(0.09)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .trlkaPanel(22).clipShape(RoundedRectangle(cornerRadius: 22))
+                .webPanel(22).clipShape(RoundedRectangle(cornerRadius: 22))
 
                 VStack(alignment: .leading, spacing: 8) {
                     SectionCaption(text: "ВАШИ ЗВОНКИ")
@@ -45,7 +45,7 @@ struct HomeScreen: View {
                 }
                 if history.isEmpty {
                     Text("После первого разговора здесь появятся недавние комнаты.")
-                        .font(.subheadline).foregroundStyle(Brand.muted).padding(18).frame(maxWidth: .infinity, alignment: .leading).trlkaPanel()
+                        .font(.subheadline).foregroundStyle(Brand.muted).padding(18).frame(maxWidth: .infinity, alignment: .leading).webPanel()
                 } else {
                     ForEach(Array(history.prefix(4))) { item in HistoryCard(item: item, account: account) }
                 }
@@ -97,9 +97,9 @@ struct HistoryCard: View {
                 Task { await account.calls.start(user: user) }
             } label: {
                 Label("Создать снова", systemImage: "phone").font(.caption.weight(.medium))
-                    .frame(maxWidth: .infinity).padding(10).trlkaPanel(12)
+                    .frame(maxWidth: .infinity).padding(10).webPanel(12)
             }.buttonStyle(.plain)
-        }.padding(16).trlkaPanel()
+        }.padding(16).webPanel()
     }
     private var dateText: String { WireDate.parse(item.started_at)?.formatted(date: .abbreviated, time: .shortened) ?? "" }
 }
@@ -129,7 +129,7 @@ struct FriendsScreen: View {
                         }
                     } label: { Image(systemName: "person.badge.plus").frame(width: 40, height: 40) }
                         .disabled(working || username.isEmpty)
-                }.padding(12).trlkaPanel(14)
+                }.padding(12).webPanel(14)
                 if let notice { Text(notice).font(.caption).foregroundStyle(Brand.muted) }
                 ForEach(friends) { friend in
                     HStack(spacing: 12) {
@@ -146,9 +146,9 @@ struct FriendsScreen: View {
                                 do { newChat = try await account.client.createChat(memberIDs: [friend.id]) }
                                 catch { notice = error.localizedDescription }
                             }
-                        } label: { Image(systemName: "bubble.left").frame(width: 42, height: 42).trlkaPanel(12) }
+                        } label: { Image(systemName: "bubble.left").frame(width: 42, height: 42).webPanel(12) }
                             .buttonStyle(.plain).disabled(working).accessibilityLabel("Написать \(friend.display_name)")
-                    }.padding(14).trlkaPanel()
+                    }.padding(14).webPanel()
                 }
                 if friends.isEmpty { Text("Добавьте друзей по username.").foregroundStyle(Brand.muted) }
             }.padding(16).frame(maxWidth: 850).frame(maxWidth: .infinity)

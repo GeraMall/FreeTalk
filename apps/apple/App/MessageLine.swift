@@ -5,45 +5,44 @@ struct MessageLine: View {
     let message: Message
     let grouped: Bool
     let account: AccountStore
-    private var name: String { message.displayName ?? (message.senderID == account.user?.id ? account.user?.displayName : nil) ?? "TRLKA" }
+    var maximumWidth: CGFloat = 300
+    var showAuthor = false
+    private var own: Bool { message.senderID == account.user?.id }
+    private var name: String { message.displayName ?? (own ? account.user?.displayName : nil) ?? "TRLKA" }
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            if grouped { Color.clear.frame(width: 36, height: 1) }
-            else { ProfileAvatar(name: name, url: message.avatarURL, client: account.client, size: 36) }
-            VStack(alignment: .leading, spacing: 5) {
-                if !grouped {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                            .foregroundStyle(message.senderID == account.user?.id ? Brand.accent : Color.primary)
-                        if let date = WireDate.parse(message.createdAt) {
-                            Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted)
-                        }
+        Group {
+            if message.kind == "call" {
+                HStack(spacing: 12) {
+                    Image(systemName: "phone").font(.system(size: 22)).foregroundStyle(.pink)
+                        .frame(width: 44, height: 44).background(Color.pink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("\(name) начал звонок").font(.system(size: 12, weight: .semibold))
+                        Text(message.metadata?.ended == true ? "Звонок завершён" : "Голосовой звонок").font(.system(size: 11)).foregroundStyle(Brand.muted)
                     }
-                }
-                if message.kind == "call" {
-                    HStack(spacing: 12) {
-                        Image(systemName: "phone").font(.system(size: 22)).foregroundStyle(message.metadata?.ended == true ? Color.pink : Brand.accent)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(message.body.isEmpty ? "Голосовой звонок" : message.body).font(.subheadline.weight(.semibold))
-                            if message.metadata?.ended == true { Text("Звонок завершён").font(.caption).foregroundStyle(Brand.muted) }
-                            else if let code = message.metadata?.roomId {
-                                Button("Присоединиться") { if let user = account.user { Task { await account.calls.start(user: user, join: code) } } }
-                                    .buttonStyle(.bordered).font(.caption)
-                            }
-                        }
-                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading).trlkaPanel(14)
-                } else {
-                    Text(message.preview).font(.system(size: 15)).lineSpacing(3).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                    Spacer(minLength: 0)
+                    if message.metadata?.ended != true, let code = message.metadata?.roomId {
+                        Button("Войти") { if let user = account.user { Task { await account.calls.start(user: user, join: code) } } }
+                            .buttonStyle(.bordered).font(.caption)
+                    }
+                }.padding(12).webPanel(16).padding(.vertical, 12)
+            } else {
+                HStack(alignment: .top, spacing: 7) {
+                    if own { Spacer(minLength: 22) }
+                    if !own { avatar }
+                    WebMessageBubble(text: message.preview, date: WireDate.parse(message.createdAt), own: own, author: showAuthor && !own && !grouped ? name : nil)
+                        .frame(maxWidth: maximumWidth, alignment: own ? .trailing : .leading)
+                        .accessibilityIdentifier("message.bubble.\(message.id)")
+                    if own { avatar }
+                    if !own { Spacer(minLength: 22) }
+                }.padding(.top, grouped ? 2 : 7)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, grouped ? 2 : 8)
-        .accessibilityElement(children: .contain)
+        }.accessibilityElement(children: .contain)
+    }
+    @ViewBuilder private var avatar: some View {
+        if grouped { Color.clear.frame(width: 32, height: 1) }
+        else { ProfileAvatar(name: name, url: message.avatarURL ?? (own ? account.user?.avatarUrl : nil), client: account.client, size: 32).accessibilityIdentifier("message.avatar.\(message.id)") }
     }
 }
-
 struct MessageBottomKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }

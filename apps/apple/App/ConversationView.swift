@@ -19,6 +19,7 @@ struct ConversationView: View {
     @State private var viewportHeight: CGFloat = 0
     @State private var newMessages = false
     @State private var didScrollToLatest = false
+    @State private var profileVisible = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -30,15 +31,18 @@ struct ConversationView: View {
             ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 36)
             VStack(alignment: .leading, spacing: 4) {
                 Text(chat.name(currentUserID: account.user?.id)).font(.system(size: 16, weight: .semibold)).lineLimit(1)
-                Text(chat.type == "direct" ? "Личная переписка" : "Участников: \(chat.members.count)").font(.system(size: 11)).foregroundStyle(Brand.muted)
+                Text(chat.type == "direct" ? "@\(chat.members.first { $0.id != account.user?.id }?.username ?? "")" : "Участников: \(chat.members.count)").font(.system(size: 11)).foregroundStyle(Brand.muted)
             }
             Spacer(minLength: 4)
             Button {
                 if let user = account.user { Task { await account.calls.start(user: user, chat: chat) } }
             } label: { Image(systemName: "phone").font(.system(size: 20)).frame(width: 44, height: 44) }
                 .buttonStyle(CompactControlStyle()).disabled(account.calls.busy).accessibilityLabel("Позвонить").accessibilityIdentifier("chat.call")
-        }.padding(.horizontal, 10).padding(.vertical, 8)
+            Button { profileVisible = true } label: { Image(systemName: "sidebar.right").font(.system(size: 19)).frame(width: 36, height: 44) }
+                .buttonStyle(CompactControlStyle()).accessibilityLabel("Показать профиль")
+        }.padding(.horizontal, 10).padding(.vertical, 8).background(Brand.webHeader)
             .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
+        GeometryReader { viewport in
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -47,11 +51,11 @@ struct ConversationView: View {
                             .disabled(loadingOlder)
                     }
                     ForEach(messages) { message in
-                        MessageLine(message: message, grouped: groupedIDs.contains(message.id), account: account).id(message.id)
+                        MessageLine(message: message, grouped: groupedIDs.contains(message.id), account: account, maximumWidth: min(viewport.size.width * 0.78, 640), showAuthor: chat.type == "group").id(message.id)
                     }
                     Color.clear.frame(height: 1).id("message-bottom")
                         .background(GeometryReader { geometry in Color.clear.preference(key: MessageBottomKey.self, value: geometry.frame(in: .named("message-viewport")).maxY) })
-                }.padding(.horizontal, 16).padding(.vertical, 12)
+                }.padding(.horizontal, 12).padding(.vertical, 12)
             }
             .coordinateSpace(name: "message-viewport")
             .background(GeometryReader { geometry in Color.clear.preference(key: MessageViewportKey.self, value: geometry.size.height) })
@@ -79,10 +83,13 @@ struct ConversationView: View {
                 }
             }
         }
+        }
         composer
         }
-        .background(Brand.background)
+        .background(Brand.chatCanvas)
+        .preference(key: ChatDestinationKey.self, value: true)
         .navigationTitle(chat.name(currentUserID: account.user?.id))
+        .sheet(isPresented: $profileVisible) { PeerProfileScreen(chat: chat, account: account) }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
@@ -99,19 +106,19 @@ struct ConversationView: View {
     private var composer: some View {
         VStack(spacing: 8) {
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 8) {
                 TextField("Сообщение", text: Binding(get: { draft }, set: { draft = $0 }), axis: .vertical)
-                    .lineLimit(1...5).textFieldStyle(.plain).font(.system(size: 16)).padding(13).trlkaPanel(14)
+                    .lineLimit(1...5).webInput()
                     .accessibilityIdentifier("chat.composer")
                 Button { Task { await send() } } label: {
-                    Image(systemName: "arrow.up").font(.headline)
-                        .frame(width: 44, height: 44).background(Brand.gradient, in: Circle()).foregroundStyle(.black)
+                    Image(systemName: "paperplane").font(.system(size: 19))
+                        .frame(width: 44, height: 44).background(Brand.gradient, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.black)
                 }.buttonStyle(.plain)
                     .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Отправить сообщение")
                     .accessibilityIdentifier("chat.send")
             }
-        }.padding(12).background(Brand.background)
+        }.padding(.horizontal, 12).padding(.vertical, 8).background(Brand.chatCanvas)
     }
 
     private func load(older: Bool = false) async {

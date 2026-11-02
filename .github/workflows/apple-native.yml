@@ -70,7 +70,7 @@ jobs:
               subprocess.run(['xcrun','simctl','boot',uid], check=False)
               subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
               subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
-              modes = ['call'] if quick else (['home','chats','conversation','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','call','call-video'])
+              modes = ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
               for mode in modes:
                   subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
                   subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode],check=True)

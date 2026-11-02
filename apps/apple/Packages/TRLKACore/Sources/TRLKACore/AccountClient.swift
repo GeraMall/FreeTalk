@@ -169,6 +169,20 @@ public actor AccountClient {
                                                       body: ["email": email, "codeFormat": "numeric"])
     }
 
+    public func serviceMessages(search: String = "") async throws -> [ServiceMessage] {
+        let result: ServiceHistory = try await request("v1/service-chat/messages", query: [URLQueryItem(name: "search", value: String(search.prefix(200)))])
+        return result.messages
+    }
+    public func sendServiceMessage(_ text: String, requestID: UUID) async throws {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.utf16.count <= 4000 else { throw APIError(status: 0, code: "INVALID_MESSAGE", message: "Сообщение должно содержать от 1 до 4000 символов.") }
+        let _: EmptyResponse = try await request("v1/service-chat/messages", method: "POST", body: ["requestId": requestID.uuidString.lowercased(), "body": value, "version": "iOS 0.3.0"])
+    }
+    public func profile(userID: String) async throws -> PeerProfile {
+        let result: PeerProfileResponse = try await request("v1/users/\(try identifier(userID))/profile")
+        return result.profile
+    }
+
     private func identifier(_ value: String) throws -> String {
         guard UUID(uuidString: value) != nil else {
             throw APIError(status: 0, code: "INVALID_ID", message: "Некорректный идентификатор чата.")

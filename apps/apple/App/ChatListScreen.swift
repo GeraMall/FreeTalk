@@ -12,29 +12,29 @@ struct ChatListScreen: View {
     @State private var created: Chat?
     @State private var joining = false
     @State private var code = ""
-    private var filtered: [Chat] { chats.filter { search.isEmpty || $0.name(currentUserID: account.user?.id).localizedCaseInsensitiveContains(search) } }
+    private var filtered: [Chat] { ([Chat.service] + chats.filter { !$0.isService }).filter { search.isEmpty || $0.name(currentUserID: account.user?.id).localizedCaseInsensitiveContains(search) } }
 
     var body: some View {
         VStack(spacing: 14) {
             HStack {
                 Text("Чаты").font(.system(size: 28, weight: .bold))
                 Spacer()
-                Button { creating = true } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44).trlkaPanel(14) }
+                Button { creating = true } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44).webPanel(14) }
                     .buttonStyle(.plain).accessibilityLabel("Создать чат")
             }.padding(.horizontal, 16)
             HStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Brand.muted)
-                    TextField("Поиск по чатам", text: $search).textFieldStyle(.plain).font(.system(size: 16))
-                }.padding(14).trlkaPanel(14)
-                Button { joining = true } label: { Image(systemName: "link").frame(width: 46, height: 47).trlkaPanel(14) }
+                WebSearchField(placeholder: "Поиск по чатам", text: $search)
+                Button { joining = true } label: { Image(systemName: "link").frame(width: 46, height: 47).webPanel(14) }
                     .buttonStyle(.plain).accessibilityLabel("Войти в комнату по приглашению")
             }.padding(.horizontal, 16)
             if let error { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal, 16) }
-            List(filtered) { chat in
+            ScrollView {
+            LazyVStack(spacing: 4) {
+            ForEach(filtered) { chat in
                 NavigationLink(value: chat) {
                     HStack(spacing: 13) {
-                        ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 48)
+                        if chat.isService { Image("BrandMark").resizable().scaledToFit().frame(width: 44, height: 44) }
+                        else { ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 44) }
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
                                 Text(chat.name(currentUserID: account.user?.id)).font(.system(size: 15, weight: .semibold)).lineLimit(1)
@@ -45,14 +45,15 @@ struct ChatListScreen: View {
                             }
                             Text(chat.lastMessage ?? "Нет сообщений").font(.system(size: 13)).foregroundStyle(Brand.muted).lineLimit(1)
                         }
-                    }.padding(.vertical, 11)
-                }
-                .listRowBackground(Brand.background)
+                    }.padding(.vertical, 11).padding(.horizontal, 10).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                .listRowBackground(Brand.webBackground)
                 .accessibilityIdentifier("chat.row.\(chat.id)")
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
             }
-            .listStyle(.plain).scrollContentBackground(.hidden)
+            }.padding(.horizontal, 6)
+            }
             .refreshable { await load() }
             .overlay {
                 if loading && chats.isEmpty { ProgressView() }
@@ -95,7 +96,7 @@ struct NewChatScreen: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                TextField("Название группы (необязательно)", text: $title).textFieldStyle(.roundedBorder).padding(.horizontal)
+                TextField("Название группы (необязательно)", text: $title).webInput().padding(.horizontal)
                 List(friends) { friend in
                     Button {
                         if selected.contains(friend.id) { selected.remove(friend.id) } else if selected.count < 7 { selected.insert(friend.id) }
