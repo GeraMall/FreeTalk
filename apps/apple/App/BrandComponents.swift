@@ -45,6 +45,7 @@ struct ProfileAvatar: View {
     @State private var image: Image?
     var body: some View {
         ZStack {
+            Circle().fill(Brand.background)
             Circle().fill(Brand.gradient.opacity(0.4))
             if let image { image.resizable().scaledToFill() }
             else { Text(String(name.prefix(1)).uppercased()).font(.system(size: size * 0.38, weight: .bold)) }
