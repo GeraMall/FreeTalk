@@ -26,6 +26,10 @@
     background: radial-gradient(circle at bottom right, transparent 15.5px, var(--ft-chrome) 16px);
     pointer-events: none;
   }
+  :root .account-shell > .account-sidebar::before,
+  :root .room-account-shell > .account-sidebar::before {
+    content: none;
+  }
   .account-sidebar-resizer::after {
     top: 16px;
   }
