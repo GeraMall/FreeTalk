@@ -2,9 +2,9 @@ import SwiftUI
 import TRLKACore
 
 extension Brand {
-    static let surface = Color(red: 0.035, green: 0.085, blue: 0.125)
-    static let stroke = Color(red: 0.12, green: 0.23, blue: 0.30)
-    static let muted = Color(red: 0.53, green: 0.64, blue: 0.71)
+    static let surface = Color(red: 13.0 / 255, green: 22.0 / 255, blue: 38.0 / 255)
+    static let stroke = Color(red: 41.0 / 255, green: 54.0 / 255, blue: 72.0 / 255)
+    static let muted = Color(red: 154.0 / 255, green: 171.0 / 255, blue: 193.0 / 255)
 }
 
 struct Panel: ViewModifier {
@@ -50,7 +50,7 @@ struct ProfileAvatar: View {
             else { Text(String(name.prefix(1)).uppercased()).font(.system(size: size * 0.38, weight: .bold)) }
         }
         .frame(width: size, height: size).clipShape(Circle())
-        .overlay(Circle().stroke(Brand.cyan.opacity(0.3), lineWidth: 1))
+        .overlay(Circle().stroke(Brand.accent.opacity(0.3), lineWidth: 1))
         .task(id: url) {
             image = nil
             guard let url, let address = URL(string: url) else { return }
@@ -72,7 +72,7 @@ struct ProfileAvatar: View {
 
 struct SectionCaption: View {
     let text: String
-    var body: some View { Text(text).font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(Brand.cyan) }
+    var body: some View { Text(text).font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(Brand.accent) }
 }
 
 struct ProfileCover: View {

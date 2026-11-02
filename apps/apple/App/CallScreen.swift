@@ -39,9 +39,9 @@ struct CallScreen: View {
                 }
             }
             HStack(spacing: 10) {
-                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.cyan) { call.setMuted(!call.muted) }
+                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.accent) { call.setMuted(!call.muted) }
                     .accessibilityIdentifier("call.microphone")
-                CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.cyan : .pink) { Task { await call.toggleCamera() } }
+                CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
                     .disabled(call.cameraBusy)
                 CallButton(title: "Ещё", icon: "ellipsis", color: .white) { more = true }
                 CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
@@ -109,7 +109,7 @@ struct ParticipantCard: View {
                 else {
                     HStack(alignment: .center, spacing: 3) {
                         ForEach(0..<4) { index in
-                            RoundedRectangle(cornerRadius: 2).fill(Brand.cyan)
+                            RoundedRectangle(cornerRadius: 2).fill(Brand.accent)
                                 .frame(width: 3, height: 3 + min(1, call.level(participant.id) * 6) * [12.0, 20.0, 16.0, 9.0][index])
                         }
                     }.frame(width: 24, height: 24)
@@ -119,7 +119,7 @@ struct ParticipantCard: View {
         }
         .background(LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.cyan.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
         .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } } }
     }
 }

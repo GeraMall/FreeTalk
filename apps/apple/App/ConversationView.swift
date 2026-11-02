@@ -74,7 +74,7 @@ struct ConversationView: View {
                     Button {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("message-bottom", anchor: .bottom) }
                         newMessages = false
-                    } label: { Label("Новые сообщения", systemImage: "arrow.down").font(.caption.bold()).padding(.horizontal, 14).padding(.vertical, 9).background(Brand.surface, in: Capsule()).overlay(Capsule().stroke(Brand.cyan.opacity(0.5))) }
+                    } label: { Label("Новые сообщения", systemImage: "arrow.down").font(.caption.bold()).padding(.horizontal, 14).padding(.vertical, 9).background(Brand.surface, in: Capsule()).overlay(Capsule().stroke(Brand.accent.opacity(0.5))) }
                         .buttonStyle(CompactControlStyle()).padding(.bottom, 8)
                 }
             }

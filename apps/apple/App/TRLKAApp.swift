@@ -8,7 +8,7 @@ struct TRLKAApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(account: account)
-                .tint(Brand.cyan)
+                .tint(Brand.accent)
                 .preferredColorScheme(.dark)
                 #if os(macOS)
                 .frame(minWidth: 720, minHeight: 500)
@@ -16,17 +16,17 @@ struct TRLKAApp: App {
         }
         #if os(macOS)
         Settings {
-            ProfileView(account: account).frame(width: 420, height: 350)
+            ProfileView(account: account).tint(Brand.accent).frame(width: 420, height: 350)
         }
         #endif
     }
 }
 
 enum Brand {
-    static let cyan = Color(red: 0.24, green: 0.89, blue: 0.93)
-    static let blue = Color(red: 0.25, green: 0.49, blue: 1)
-    static let background = Color(red: 0.02, green: 0.05, blue: 0.09)
-    static let gradient = LinearGradient(colors: [cyan, blue], startPoint: .leading, endPoint: .trailing)
+    static let accent = Color(red: 141.0 / 255, green: 166.0 / 255, blue: 220.0 / 255)
+    static let blue = Color(red: 75.0 / 255, green: 127.0 / 255, blue: 1)
+    static let background = Color(red: 2.0 / 255, green: 9.0 / 255, blue: 20.0 / 255)
+    static let gradient = LinearGradient(colors: [accent, blue], startPoint: .leading, endPoint: .trailing)
 }
 
 struct RootView: View {

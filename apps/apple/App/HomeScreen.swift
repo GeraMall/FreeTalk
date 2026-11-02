@@ -36,7 +36,7 @@ struct HomeScreen: View {
                 .background(alignment: .trailing) {
                     Image("BrandMark").resizable().scaledToFit().frame(width: 190).opacity(0.07).offset(x: 40)
                 }
-                .background(LinearGradient(colors: [Brand.cyan.opacity(0.07), Brand.blue.opacity(0.09)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .background(LinearGradient(colors: [Brand.accent.opacity(0.07), Brand.blue.opacity(0.09)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .trlkaPanel(22).clipShape(RoundedRectangle(cornerRadius: 22))
 
                 VStack(alignment: .leading, spacing: 8) {

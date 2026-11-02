@@ -104,7 +104,7 @@ struct NewChatScreen: View {
                             ProfileAvatar(name: friend.display_name, url: friend.avatarUrl, client: account.client)
                             Text(friend.display_name).foregroundStyle(.primary)
                             Spacer()
-                            Image(systemName: selected.contains(friend.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(Brand.cyan)
+                            Image(systemName: selected.contains(friend.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(Brand.accent)
                         }
                     }
                 }.listStyle(.plain)

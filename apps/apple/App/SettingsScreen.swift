@@ -20,7 +20,7 @@ struct ProfileView: View {
                                 ProfileAvatar(name: account.user?.displayName ?? "", url: account.user?.avatarUrl, client: account.client, size: 72).offset(x: 16, y: 24)
                             }.padding(.bottom, 24)
                         Text(account.user?.displayName ?? "").font(.system(size: 24, weight: .bold)).padding(.horizontal, 16)
-                        Text("@\(account.user?.username ?? "") · В сети").font(.caption).foregroundStyle(Brand.cyan).padding(.horizontal, 16)
+                        Text("@\(account.user?.username ?? "") · В сети").font(.caption).foregroundStyle(Brand.accent).padding(.horizontal, 16)
                         if let bio = account.user?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.horizontal, 16) }
                     }.padding(.bottom, 18).trlkaPanel(20)
                     Button {
@@ -29,12 +29,12 @@ struct ProfileView: View {
                         .buttonStyle(.plain)
                     VStack(alignment: .leading, spacing: 18) {
                         Label("Видео и звук", systemImage: "video").font(.headline)
-                        Toggle("Зеркалить свою камеру", isOn: $mirrorSelf).font(.subheadline)
+                        Toggle("Зеркалить свою камеру", isOn: $mirrorSelf).font(.subheadline).tint(Brand.accent)
                         Text("Настройка меняет только ваш предпросмотр. Собеседники видят обычное изображение.").font(.caption).foregroundStyle(Brand.muted)
                     }.padding(18).trlkaPanel()
                     VStack(alignment: .leading, spacing: 10) {
                         Label("О приложении", systemImage: "info.circle").font(.headline)
-                        Text("TRLKA 0.2.0 · нативная beta").font(.subheadline).foregroundStyle(Brand.muted)
+                        Text("TRLKA 0.2.1 · нативная beta").font(.subheadline).foregroundStyle(Brand.muted)
                         Text("Входящие звонки доступны, пока приложение открыто. Уведомления через Apple Push пока не подключены.").font(.caption).foregroundStyle(Brand.muted)
                     }.padding(18).trlkaPanel()
                     Button("Выйти из аккаунта", role: .destructive) { confirmLogout = true }
@@ -74,7 +74,7 @@ struct ProfileView: View {
     }
     private func settingsRow(_ title: String, icon: String, description: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: icon).foregroundStyle(Brand.cyan).frame(width: 28)
+            Image(systemName: icon).foregroundStyle(Brand.accent).frame(width: 28)
             VStack(alignment: .leading, spacing: 5) { Text(title).font(.headline); Text(description).font(.caption).foregroundStyle(Brand.muted) }
             Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
         }.padding(18).trlkaPanel()

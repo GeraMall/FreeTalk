@@ -14,7 +14,7 @@ struct MessageLine: View {
                 if !grouped {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                            .foregroundStyle(message.senderID == account.user?.id ? Brand.cyan : Color.primary)
+                            .foregroundStyle(message.senderID == account.user?.id ? Brand.accent : Color.primary)
                         if let date = WireDate.parse(message.createdAt) {
                             Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted)
                         }
@@ -22,7 +22,7 @@ struct MessageLine: View {
                 }
                 if message.kind == "call" {
                     HStack(spacing: 12) {
-                        Image(systemName: "phone").font(.system(size: 22)).foregroundStyle(message.metadata?.ended == true ? Color.pink : Brand.cyan)
+                        Image(systemName: "phone").font(.system(size: 22)).foregroundStyle(message.metadata?.ended == true ? Color.pink : Brand.accent)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(message.body.isEmpty ? "Голосовой звонок" : message.body).font(.subheadline.weight(.semibold))
                             if message.metadata?.ended == true { Text("Звонок завершён").font(.caption).foregroundStyle(Brand.muted) }

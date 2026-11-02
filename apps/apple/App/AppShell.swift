@@ -82,8 +82,8 @@ struct AppShell: View {
                             Text(item.rawValue).font(.system(size: 10, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .foregroundStyle(page == item ? Brand.cyan : Brand.muted)
-                        .background(page == item ? Brand.cyan.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(page == item ? Brand.accent : Brand.muted)
+                        .background(page == item ? Brand.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(Rectangle())
                     }.buttonStyle(CompactControlStyle()).accessibilityIdentifier("tab.\(String(describing: item))")
                 }

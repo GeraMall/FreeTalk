@@ -60,7 +60,7 @@ struct LoginView: View {
                 }
                 .textFieldStyle(.roundedBorder)
                 HStack(spacing: 12) {
-                    Image(systemName: "shield.lefthalf.filled").foregroundStyle(Brand.cyan)
+                    Image(systemName: "shield.lefthalf.filled").foregroundStyle(Brand.accent)
                     Text("Приватная связь. Разговоры идут через WebRTC.")
                         .font(.caption).foregroundStyle(Brand.muted)
                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading).trlkaPanel(14)
