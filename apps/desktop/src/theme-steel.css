@@ -2,11 +2,15 @@
 :root {
   --ft-accent: #8da6dc;
   --ft-cyan: var(--ft-accent);
+  --ft-chrome: #020914;
+}
+.custom-titlebar {
+  background: var(--ft-chrome);
 }
 @media (min-width: 761px) {
   :root .account-shell > .account-sidebar,
   :root .room-account-shell > .account-sidebar {
-    background: #020914;
+    background: var(--ft-chrome);
     backdrop-filter: none;
     border-right-color: #202a38;
     box-shadow: none;
@@ -19,7 +23,7 @@
     width: 16px;
     height: 16px;
     content: '';
-    background: radial-gradient(circle at bottom right, transparent 15.5px, #020914 16px);
+    background: radial-gradient(circle at bottom right, transparent 15.5px, var(--ft-chrome) 16px);
     pointer-events: none;
   }
   .account-sidebar-resizer::after {
