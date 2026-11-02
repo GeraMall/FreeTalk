@@ -26,27 +26,12 @@ const observer = new IntersectionObserver(
 document.querySelectorAll('[data-reveal]').forEach((item) => observer.observe(item));
 
 const tourVideo = document.querySelector('.tour-video');
-const tourToggle = document.querySelector('.tour-toggle');
-let pausedByUser = false;
 let tourVisible = true;
 tourVideo.muted = true;
 function syncTour() {
-  if (pausedByUser || !tourVisible || document.hidden) tourVideo.pause();
+  if (!tourVisible || document.hidden) tourVideo.pause();
   else tourVideo.play().catch(() => {});
 }
-function syncTourButton() {
-  tourToggle.textContent = tourVideo.paused ? 'Продолжить' : 'Пауза';
-  tourToggle.setAttribute(
-    'aria-label',
-    tourVideo.paused ? 'Воспроизвести видео' : 'Приостановить видео',
-  );
-}
-tourToggle.addEventListener('click', () => {
-  pausedByUser = !tourVideo.paused;
-  syncTour();
-});
-tourVideo.addEventListener('play', syncTourButton);
-tourVideo.addEventListener('pause', syncTourButton);
 new IntersectionObserver(
   ([entry]) => {
     tourVisible = entry.isIntersecting;

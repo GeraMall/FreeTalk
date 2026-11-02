@@ -1019,28 +1019,6 @@ body {
   aspect-ratio: 16 / 9;
   background: #050b15;
 }
-.tour-toggle {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  min-height: 36px;
-  padding: 8px 14px;
-  border: 1px solid #425470;
-  border-radius: 10px;
-  background: #08111fe8;
-  color: #c8d5eb;
-  font:
-    600 12px Manrope,
-    sans-serif;
-  cursor: pointer;
-}
-.tour-toggle:hover {
-  background: #1b2c48;
-}
-.tour-toggle:focus-visible {
-  outline: 2px solid #bfd0f4;
-  outline-offset: 3px;
-}
 .feature {
   display: flex;
   flex-direction: column;
@@ -1067,13 +1045,6 @@ body {
   max-width: 340px;
 }
 @media (max-width: 560px) {
-  .tour-toggle {
-    right: 8px;
-    bottom: 8px;
-    min-height: 32px;
-    padding: 6px 10px;
-    font-size: 11px;
-  }
   .feature-capture {
     margin-top: 24px;
   }
