@@ -56,7 +56,7 @@ struct CallScreen: View {
                 }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list")
             }
             HStack(spacing: 8) {
-                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, filled: !call.muted) { call.setMuted(!call.muted) }
+                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, highlighted: !call.muted) { call.setMuted(!call.muted) }
                     .accessibilityIdentifier("call.microphone")
                 CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
                     .accessibilityIdentifier("call.camera")
@@ -170,7 +170,7 @@ struct CallButton: View {
     let icon: String
     let color: Color
     var destructive = false
-    var filled = false
+    var highlighted = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
@@ -178,9 +178,9 @@ struct CallButton: View {
                 Image(systemName: icon).font(.system(size: 19, weight: .medium))
                 Text(title).font(.system(size: 10, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
             }
-            .foregroundStyle(filled ? Color.black : color).frame(maxWidth: .infinity).frame(height: 54)
-            .background(destructive ? Color(red: 0.91, green: 0.19, blue: 0.36) : filled ? color : color.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(0.15), lineWidth: 1))
+            .foregroundStyle(color).frame(maxWidth: .infinity).frame(height: 54)
+            .background(destructive ? Color(red: 0.91, green: 0.19, blue: 0.36) : color.opacity(highlighted ? 0.16 : 0.1), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(highlighted ? 0.38 : 0.15), lineWidth: 1))
         }.buttonStyle(CompactControlStyle()).accessibilityLabel(title)
     }
 }

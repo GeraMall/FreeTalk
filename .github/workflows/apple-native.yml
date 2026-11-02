@@ -5,6 +5,11 @@ on:
     branches: [feat/apple-native]
     paths: ['apps/apple/**', '.github/workflows/apple-native.yml']
   workflow_dispatch:
+    inputs:
+      call_preview_only:
+        description: Capture the iPhone call screen only (visual changes; no repeated UI suite)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,9 +34,12 @@ jobs:
         run: |
           xcodebuild -version
           brew install xcodegen
+          (cd apps/apple && xcodegen generate)
       - name: Core contract and session tests
+        if: inputs.call_preview_only != true
         run: swift test --package-path apps/apple/Packages/TRLKACore
       - name: Build Mac app
+        if: inputs.call_preview_only != true
         run: bash apps/apple/script/build_and_run.sh macos --build-only
       - name: Build iPhone and iPad app
         working-directory: apps/apple
@@ -39,31 +47,36 @@ jobs:
           xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO build
-          xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
-            -destination 'generic/platform=iOS' -derivedDataPath build/device \
-            CODE_SIGNING_ALLOWED=NO build
+          if [[ '${{ inputs.call_preview_only }}' != 'true' ]]; then
+            xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
+              -destination 'generic/platform=iOS' -derivedDataPath build/device \
+              CODE_SIGNING_ALLOWED=NO build
+          fi
       - name: Launch and capture iPhone and iPad previews
         if: steps.screens.outputs.capture == 'true'
         working-directory: apps/apple
+        env:
+          TRLKA_CALL_PREVIEW_ONLY: ${{ inputs.call_preview_only }}
         run: |
           mkdir -p build/previews
           xcrun simctl list devices available --json > build/devices.json
           python3 - <<'PY'
-          import json, subprocess, time
+          import json, os, subprocess, time
+          quick = os.environ.get('TRLKA_CALL_PREVIEW_ONLY') == 'true'
           devices = [d for group in json.load(open('build/devices.json'))['devices'].values() for d in group]
-          for family in ('iPhone', 'iPad'):
+          for family in (('iPhone',) if quick else ('iPhone', 'iPad')):
               device = next(d for d in devices if d['name'].startswith(family))
               uid = device['udid']
               subprocess.run(['xcrun','simctl','boot',uid], check=False)
               subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
               subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
-              modes = ['home','chats','conversation','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','call','call-video']
+              modes = ['call'] if quick else (['home','chats','conversation','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','call','call-video'])
               for mode in modes:
                   subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
                   subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode],check=True)
                   time.sleep(6)
                   subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
-              if family == 'iPhone':
+              if family == 'iPhone' and not quick:
                   subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
                       '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
                       '-parallel-testing-enabled','NO','-resultBundlePath','build/UITests.xcresult',
@@ -71,6 +84,7 @@ jobs:
               subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
           PY
       - name: Package local Mac preview
+        if: inputs.call_preview_only != true
         working-directory: apps/apple
         run: |
           bash script/sign_preview.sh
