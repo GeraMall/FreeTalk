@@ -99,7 +99,7 @@
   border: 1px solid #29384e;
   border-radius: 0 14px 14px;
   background: #101e2e;
-  padding: 13px 16px;
+  padding: 10px 13px;
 }
 .service-chat-message p {
   margin: 0;
@@ -251,7 +251,7 @@
     font-size: 21px;
   }
   .service-chat-message > div {
-    padding: 11px 12px;
+    padding: 10px 12px;
   }
   .service-chat-message > img {
     width: 26px;
