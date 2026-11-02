@@ -8,6 +8,7 @@ import { CallPopoutPlaceholder } from './components/CallPopoutPlaceholder';
 import { CustomTitleBar } from './components/CustomTitleBar';
 import { NotificationOverlay } from './components/NotificationOverlay';
 import { installInteractionGuards } from './lib/interaction-guards';
+import { installMobileViewport } from './lib/mobile-viewport';
 import { usesCustomWindowChrome } from './lib/window-chrome';
 import './styles.css';
 import './profile-panel.css';
@@ -16,6 +17,7 @@ import './theme-steel.css';
 import './chat-theme.css';
 
 installInteractionGuards();
+installMobileViewport();
 
 const standaloneWebApp =
   window.matchMedia('(display-mode: standalone)').matches ||
