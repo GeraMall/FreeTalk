@@ -78,9 +78,10 @@ final class AccountStore {
     private func startRealtime() async {
         #if DEBUG
         if PreviewFixtures.mode != nil {
-            if PreviewFixtures.mode == "call" || PreviewFixtures.mode == "minimized" {
+            if PreviewFixtures.mode == "call" || PreviewFixtures.mode == "call-video" || PreviewFixtures.mode == "minimized" {
                 calls.roomID = "ABCDEFGHJKLM"; calls.selfID = PreviewFixtures.userID; calls.title = "Комната с друзьями"
-                calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = PreviewFixtures.mode == "call"
+                calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = PreviewFixtures.mode != "minimized"
+                if PreviewFixtures.mode == "call-video" { calls.installPreviewCamera() }
             }
             return
         }

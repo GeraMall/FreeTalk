@@ -2,6 +2,9 @@ import SwiftUI
 import AVFoundation
 import WebRTC
 import TRLKACore
+#if DEBUG
+import QuartzCore
+#endif
 
 @MainActor @Observable
 final class CallController {
@@ -43,6 +46,42 @@ final class CallController {
     private var generation = 0
     private var cameraGeneration = 0
     private var ringTask: Task<Void, Never>?
+    #if DEBUG
+    private var previewFrames: Task<Void, Never>?
+    func installPreviewCamera() {
+        let previewFactory = RTCPeerConnectionFactory()
+        let source = previewFactory.videoSource()
+        let capture = RTCVideoCapturer(delegate: source)
+        factory = previewFactory
+        localVideo = previewFactory.videoTrack(with: source, trackId: "preview-camera")
+        cameraOn = true; revision += 1
+        previewFrames = Task {
+            var tick = 0
+            while !Task.isCancelled {
+                var buffer: CVPixelBuffer?
+                CVPixelBufferCreate(kCFAllocatorDefault, 320, 240, kCVPixelFormatType_32BGRA, nil, &buffer)
+                if let buffer {
+                    CVPixelBufferLockBaseAddress(buffer, [])
+                    if let base = CVPixelBufferGetBaseAddress(buffer) {
+                        let pixels = base.assumingMemoryBound(to: UInt8.self)
+                        let stride = CVPixelBufferGetBytesPerRow(buffer)
+                        for y in 0..<240 { for x in 0..<320 {
+                            let index = y * stride + x * 4
+                            pixels[index] = UInt8((x + tick) % 180 + 60)
+                            pixels[index + 1] = UInt8(y / 2 + 60)
+                            pixels[index + 2] = 70; pixels[index + 3] = 255
+                        } }
+                    }
+                    CVPixelBufferUnlockBaseAddress(buffer, [])
+                    let frame = RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: buffer), rotation: ._0, timeStampNs: Int64(CACurrentMediaTime() * 1_000_000_000))
+                    source.capturer(capture, didCapture: frame)
+                }
+                tick += 4
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+    #endif
     private var statisticsTask: Task<Void, Never>?
     private var chatID: String?
     private var ringMembers: [String] = []
@@ -318,6 +357,9 @@ final class CallController {
         } catch { self.error = error.localizedDescription }
     }
     private func stopCamera() {
+        #if DEBUG
+        previewFrames?.cancel(); previewFrames = nil
+        #endif
         cameraGeneration += 1; cameraOn = false
         peers.values.forEach { $0.setCamera(nil) }
         capturer?.stopCapture {}; capturer = nil; cameraSource = nil; localVideo = nil; cameraDevice = nil; revision += 1

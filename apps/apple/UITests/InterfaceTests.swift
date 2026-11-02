@@ -1,6 +1,29 @@
 import XCTest
 
 final class InterfaceTests: XCTestCase {
+    func testVideoTilesExpandSwapResizeAndReturnToAudioList() {
+        let app = launch("call-video")
+        let grid = app.descendants(matching: .any).matching(identifier: "call.video-grid").firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 10))
+        let peer = app.descendants(matching: .any).matching(identifier: "call.participant.22222222-2222-4222-8222-222222222222").firstMatch
+        XCTAssertTrue(peer.waitForExistence(timeout: 5)); peer.tap()
+        let back = app.buttons["call.return-grid"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        let preview = app.descendants(matching: .any).matching(identifier: "call.self-preview").firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        preview.tap()
+        XCTAssertTrue(back.exists)
+        let before = preview.frame
+        preview.pinch(withScale: 1.3, velocity: 1)
+        XCTAssertGreaterThan(preview.frame.width, before.width)
+        let origin = preview.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        origin.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)))
+        XCTAssertTrue(app.buttons["call.end"].isHittable)
+        back.tap()
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        app.buttons["call.camera"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "call.audio-list").firstMatch.waitForExistence(timeout: 5))
+    }
     private func launch(_ mode: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-preview", mode, "-AppleLanguages", "(ru)", "-AppleLocale", "ru_RU"]

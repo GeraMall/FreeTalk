@@ -6,10 +6,15 @@ struct CallScreen: View {
     let account: AccountStore
     @State private var more = false
     @State private var invite = false
+    @State private var videoMode = false
+    @State private var focusedID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("trlka.mirrorSelfCamera") private var mirrorSelf = true
     var body: some View {
         let call = account.calls
+        let hasVideo = call.participants.contains { call.video(participantID: $0.id) != nil || call.video(participantID: $0.id, source: "screen") != nil }
         VStack(spacing: 16) {
+            if focusedID == nil {
             HStack(spacing: 14) {
                 Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44).trlkaPanel(14) }
                     .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
@@ -29,32 +34,52 @@ struct CallScreen: View {
                 Button { invite = true } label: { Label("Добавить", systemImage: "person.badge.plus").font(.caption.weight(.semibold)) }
                     .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
             }
-            GeometryReader { geometry in
-                let layout = CallTileLayout(width: geometry.size.width, height: geometry.size.height, count: call.participants.count + call.waiting.count)
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.side), spacing: 10), count: layout.columns), spacing: 10) {
-                        ForEach(call.participants) { participant in
-                            ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf, side: layout.side)
-                        }
-                        ForEach(call.waiting) { person in WaitingPersonCard(person: person, account: account, side: layout.side) }
-                        if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").frame(width: layout.side, height: layout.side) }
-                    }.frame(maxWidth: .infinity).padding(.vertical, 2)
-                }.scrollDisabled(!layout.needsScroll).scrollIndicators(.hidden)
             }
-            HStack(spacing: 10) {
-                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.accent) { call.setMuted(!call.muted) }
+            if videoMode {
+                VideoCallCanvas(account: account, mirrorSelf: mirrorSelf, focusedID: $focusedID)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(call.participants) { participant in
+                            AudioParticipantRow(participant: participant, account: account)
+                        }
+                        ForEach(call.waiting) { person in
+                            HStack(spacing: 12) {
+                                ProfileAvatar(name: person.name, url: person.avatar, client: account.client, size: 42)
+                                VStack(alignment: .leading, spacing: 5) { Text(person.name).font(.subheadline.weight(.semibold)).lineLimit(1); Text("Ожидаем подключения").font(.caption).foregroundStyle(Brand.muted) }
+                                Spacer(minLength: 4)
+                                Image(systemName: "phone.arrow.up.right").foregroundStyle(Brand.accent)
+                            }.padding(14).trlkaPanel(18)
+                        }
+                        if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").padding(32) }
+                    }.padding(.vertical, 2)
+                }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list")
+            }
+            HStack(spacing: 8) {
+                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, filled: !call.muted) { call.setMuted(!call.muted) }
                     .accessibilityIdentifier("call.microphone")
                 CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
+                    .accessibilityIdentifier("call.camera")
                     .disabled(call.cameraBusy)
                 CallButton(title: "Ещё", icon: "ellipsis", color: .white) { more = true }
                 CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
                     .accessibilityIdentifier("call.end")
             }
-            .frame(maxWidth: 360).padding(.vertical, 8)
+            .frame(maxWidth: 300).padding(.top, 4)
         }
         .padding(.horizontal, 16).padding(.top, 8).frame(maxWidth: 900)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Brand.background)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: videoMode)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: focusedID)
+        .task(id: hasVideo) {
+            if hasVideo { videoMode = true }
+            else {
+                try? await Task.sleep(for: .milliseconds(550))
+                guard !Task.isCancelled else { return }
+                focusedID = nil; videoMode = false
+            }
+        }
         .sheet(isPresented: $more) {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Настройки звонка").font(.title2.bold())
@@ -83,6 +108,8 @@ struct ParticipantCard: View {
     let account: AccountStore
     let mirrorSelf: Bool
     var side: CGFloat = 170
+    var tileSize: CGSize?
+    var compact = false
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
@@ -91,24 +118,24 @@ struct ParticipantCard: View {
         let video = screen ?? call.video(participantID: participant.id)
         ZStack {
             LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing)
-            VStack(spacing: side < 140 ? 6 : 10) {
-                ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: min(64, side * 0.32))
-                identity.font(.system(size: side < 140 ? 12 : 14, weight: .semibold))
-                if side >= 135 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
-                activity
-            }.padding(12).opacity(video == nil ? 1 : 0)
+            VStack(spacing: compact ? 4 : side < 150 ? 6 : 10) {
+                ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: compact ? 26 : min(96, side * 0.32))
+                identity.font(.system(size: compact ? 10 : side < 150 ? 12 : 14, weight: .semibold))
+                if !compact && side >= 150 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
+                if !compact { activity }
+            }.padding(compact ? 6 : 12).opacity(video == nil ? 1 : 0)
             if let video {
                 RTCVideoSurface(track: video, mirrored: screen == nil && participant.id == call.selfID && mirrorSelf)
                     #if os(macOS)
                     .scaleEffect(x: screen == nil && participant.id == call.selfID && mirrorSelf ? -1 : 1, y: 1)
                     #endif
-                    .frame(width: side, height: side).clipped()
+                    .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side).clipped().allowsHitTesting(false)
                     .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.97)))
-                VStack { Spacer(); HStack { identity.font(.system(size: 12, weight: .semibold)); Spacer(minLength: 4); activity }.padding(10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
+                VStack { Spacer(); HStack { identity.font(.system(size: compact ? 10 : 12, weight: .semibold)); Spacer(minLength: 4); if !compact { activity } }.padding(compact ? 6 : 10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
                     .transition(.opacity)
             }
         }
-        .frame(width: side, height: side)
+        .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: video?.trackId)
@@ -142,16 +169,17 @@ struct CallButton: View {
     let icon: String
     let color: Color
     var destructive = false
+    var filled = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             VStack(spacing: 7) {
-                Image(systemName: icon).font(.system(size: 21, weight: .medium))
+                Image(systemName: icon).font(.system(size: 19, weight: .medium))
                 Text(title).font(.system(size: 10, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
             }
-            .foregroundStyle(color).frame(maxWidth: .infinity).frame(height: 68)
-            .background(destructive ? Color(red: 0.91, green: 0.19, blue: 0.36) : color.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.15), lineWidth: 1))
+            .foregroundStyle(filled ? Color.black : color).frame(maxWidth: .infinity).frame(height: 54)
+            .background(destructive ? Color(red: 0.91, green: 0.19, blue: 0.36) : filled ? color : color.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(0.15), lineWidth: 1))
         }.buttonStyle(CompactControlStyle()).accessibilityLabel(title)
     }
 }

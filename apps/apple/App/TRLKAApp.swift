@@ -24,6 +24,7 @@ struct TRLKAApp: App {
 
 enum Brand {
     static let accent = Color(red: 141.0 / 255, green: 166.0 / 255, blue: 220.0 / 255)
+    static let online = Color(red: 85.0 / 255, green: 230.0 / 255, blue: 165.0 / 255)
     static let blue = Color(red: 75.0 / 255, green: 127.0 / 255, blue: 1)
     static let background = Color(red: 2.0 / 255, green: 9.0 / 255, blue: 20.0 / 255)
     static let gradient = LinearGradient(colors: [accent, blue], startPoint: .leading, endPoint: .trailing)
