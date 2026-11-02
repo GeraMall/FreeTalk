@@ -137,6 +137,7 @@ struct ParticipantCard: View {
         }
         .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side)
         .clipShape(RoundedRectangle(cornerRadius: 20))
+        .accessibilityValue(video == nil ? "Без видео" : screen != nil ? "Демонстрация экрана" : "Камера")
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: video?.trackId)
         .accessibilityIdentifier("call.participant.\(participant.id)")

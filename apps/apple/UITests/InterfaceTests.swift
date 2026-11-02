@@ -5,6 +5,9 @@ final class InterfaceTests: XCTestCase {
         let app = launch("call-video")
         let grid = app.descendants(matching: .any).matching(identifier: "call.video-grid").firstMatch
         XCTAssertTrue(grid.waitForExistence(timeout: 10))
+        let own = app.descendants(matching: .any).matching(identifier: "call.participant.11111111-1111-4111-8111-111111111111").firstMatch
+        XCTAssertTrue(own.waitForExistence(timeout: 5))
+        XCTAssertEqual(own.value as? String, "Камера", "Self camera must not be treated as screen sharing")
         let peer = app.descendants(matching: .any).matching(identifier: "call.participant.22222222-2222-4222-8222-222222222222").firstMatch
         XCTAssertTrue(peer.waitForExistence(timeout: 5)); peer.tap()
         let back = app.buttons["call.return-grid"]

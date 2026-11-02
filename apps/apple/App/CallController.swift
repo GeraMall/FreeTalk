@@ -294,7 +294,8 @@ final class CallController {
     }
     func video(participantID: String, source: String = "camera") -> RTCVideoTrack? {
         _ = revision
-        return participantID == selfID ? localVideo : peers[participantID]?.video(source: source)
+        if participantID == selfID { return source == "camera" ? localVideo : nil }
+        return peers[participantID]?.video(source: source)
     }
     func connectionState(_ id: String) -> String {
         guard id != selfID else { return muted ? "Микрофон выключен" : "Вы в звонке" }
