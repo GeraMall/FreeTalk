@@ -1609,7 +1609,7 @@ body {
   border: 0;
   border-radius: 8px;
   color: #031018;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   box-shadow: none;
 }
 
@@ -5456,7 +5456,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   border: 1px solid rgba(141, 166, 220, 0.25);
   border-radius: 11px;
   color: #03101c;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   box-shadow: 0 10px 28px rgba(44, 149, 221, 0.15);
   font-size: 13px;
   font-weight: 720;
@@ -5766,7 +5766,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 .create-group-dialog > footer button:not(.secondary) {
   border-color: rgba(141, 166, 220, 0.31);
   color: #03101c;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   box-shadow: 0 9px 24px rgba(44, 149, 221, 0.13);
 }
 .create-group-dialog > footer button.secondary {
@@ -6104,7 +6104,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   border: 1px solid rgba(141, 166, 220, 0.31);
   border-radius: 10px;
   color: #03101c;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   font-size: 12px;
   font-weight: 750;
   box-shadow: 0 9px 24px rgba(44, 149, 221, 0.14);
@@ -13226,7 +13226,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border: 1px solid rgba(141, 166, 220, 0.35);
   border-radius: 13px;
   color: var(--ft-bg-deep);
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   box-shadow: 0 9px 26px rgba(141, 166, 220, 0.1);
 }
 .send-message-button:hover:not(:disabled) {
@@ -17287,7 +17287,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border: 1px solid rgba(141, 166, 220, 0.42);
   border-radius: 50%;
   color: #031018;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   box-shadow: 0 5px 16px rgba(141, 166, 220, 0.15);
   animation: message-selection-check-in 170ms var(--ft-ease);
 }
@@ -17767,7 +17767,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border: 0;
   border-radius: 10px;
   color: #031018;
-  background: linear-gradient(135deg, var(--ft-cyan), var(--ft-blue));
+  background: var(--ft-gradient);
   font-weight: 750;
 }
 
