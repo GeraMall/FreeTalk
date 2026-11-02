@@ -1,18 +1,25 @@
 /* global document, IntersectionObserver */
 const menuButton = document.querySelector('.menu-button');
 const nav = document.querySelector('.nav');
-menuButton.addEventListener('click', () => {
-  const open = nav.classList.toggle('open');
+function setMenuOpen(open) {
+  nav.classList.toggle('open', open);
   menuButton.setAttribute('aria-expanded', String(open));
-  menuButton.textContent = open ? '×' : '☰';
+  menuButton.setAttribute('aria-label', open ? 'Закрыть меню' : 'Открыть меню');
+}
+menuButton.addEventListener('click', () => {
+  setMenuOpen(!nav.classList.contains('open'));
 });
 document.querySelectorAll('.nav-links a').forEach((link) =>
   link.addEventListener('click', () => {
-    nav.classList.remove('open');
-    menuButton.setAttribute('aria-expanded', 'false');
-    menuButton.textContent = '☰';
+    setMenuOpen(false);
   }),
 );
+nav.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && nav.classList.contains('open')) {
+    setMenuOpen(false);
+    menuButton.focus();
+  }
+});
 const observer = new IntersectionObserver(
   (entries) =>
     entries.forEach((entry) => {

@@ -157,6 +157,35 @@ button:focus-visible {
   color: #fff;
   background: rgba(78, 183, 255, 0.08);
   font-size: 20px;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.menu-icon {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.menu-icon i {
+  position: absolute;
+  left: 1px;
+  top: 9px;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform 0.2s ease;
+  transform: translateY(-4px);
+}
+.menu-icon i + i {
+  transform: translateY(4px);
+}
+.nav.open .menu-icon i {
+  transform: rotate(45deg);
+}
+.nav.open .menu-icon i + i {
+  transform: rotate(-45deg);
 }
 .hero {
   position: relative;
@@ -808,31 +837,54 @@ footer {
   transform: none;
 }
 @media (max-width: 850px) {
+  .topbar {
+    top: max(12px, env(safe-area-inset-top, 0px));
+  }
+  .nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    padding: 12px;
+  }
   .nav-links,
   .nav-cta {
     display: none;
   }
   .nav-login {
     display: inline-flex;
-    margin-left: auto;
+    margin-left: 0;
+    min-height: 44px;
+    border-radius: 13px;
+  }
+  .nav-login:hover {
+    transform: none;
+  }
+  .nav-login:focus-visible,
+  .menu-button:focus-visible {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: -4px;
   }
   .menu-button {
-    display: block;
+    display: grid;
+    place-items: center;
     margin-left: 0;
+    background: rgba(139, 164, 216, 0.08);
   }
   .nav.open {
-    flex-wrap: wrap;
-    padding-bottom: 14px;
+    padding-bottom: 12px;
   }
   .nav.open .nav-links {
     display: grid;
-    order: 3;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
     width: 100%;
     gap: 0;
     padding-top: 6px;
   }
   .nav.open .nav-links a {
-    padding: 13px 5px;
+    padding: 14px 10px;
+    min-height: 48px;
     border-top: 1px solid var(--line);
   }
   .hero {

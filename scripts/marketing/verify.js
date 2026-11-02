@@ -32,6 +32,20 @@
         }),
       )
     })
+    if (width <= 850) {
+      const before = await p.locator(".menu-button").boundingBox()
+      await p.getByRole("button", { name: "Открыть меню" }).click()
+      const after = await p.locator(".menu-button").boundingBox()
+      const login = await p.locator(".nav-login").boundingBox()
+      if (Math.abs(before.y - after.y) > 1 || Math.abs(login.y - after.y) > 1 || Math.abs(login.height - after.height) > 1)
+        throw new Error("Mobile header controls shifted")
+      if (width === 390) {
+        await p.waitForTimeout(250)
+        await p.locator(".topbar").screenshot({ path: "D:/FreeTalk-gifs/output/playwright/marketing-menu-390.png" })
+      }
+      await p.getByRole("button", { name: "Закрыть меню" }).press("Escape")
+      if (await p.locator(".nav.open").count()) throw new Error("Menu did not close")
+    }
     const layout = await p.evaluate(() => ({
       width: innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
