@@ -68,14 +68,22 @@ function multipartBody(bytes = gif, filename = 'reaction.gif') {
 }
 const request = (user, method, url, payload) =>
   app.inject({ method, url, headers: { 'x-audit-user': user }, payload });
-const upload = (user, bytes = gif, filename) => {
+const upload = async (user, bytes = gif, filename) => {
   const body = multipartBody(bytes, filename);
-  return app.inject({
-    method: 'POST',
-    url: '/v1/gifs/uploads',
-    ...body,
-    headers: { ...body.headers, 'x-audit-user': user },
-  });
+  const request = () =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/gifs/uploads',
+      ...body,
+      headers: { ...body.headers, 'x-audit-user': user },
+    });
+  for (let attempt = 0; ; attempt++) {
+    const response = await request();
+    if (attempt >= 5 || response.statusCode !== 429 || response.json().code !== 'GIF_UPLOAD_BUSY')
+      return response;
+    // HTTP may finish while the prior upload's final quota write is committing.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 };
 let users = [],
   chatId,

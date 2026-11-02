@@ -34,8 +34,22 @@
     border-color: #7186ad;
   }
   .account-sidebar .account-chat-search {
+    overflow: hidden;
+    min-height: 40px;
+    border: 1px solid #293648;
+    border-radius: 12px;
     background: #101823;
-    border-color: #293648;
+    box-shadow: none;
+  }
+  .account-sidebar .account-chat-search input,
+  .account-sidebar .account-chat-search input:focus {
+    min-width: 0;
+    min-height: 38px;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
   }
   .account-sidebar .account-chat-search:focus-within {
     border-color: #8da6dc;
