@@ -24,9 +24,11 @@ data class SignedInUser(
     val displayName: String,
     val email: String = "",
     val avatarUrl: String? = null,
+    val bio: String = "",
+    val coverUrl: String? = null,
 )
 data class SignedInSession(val user: SignedInUser, val accessToken: String, val refreshToken: String)
-data class ChatMember(val id: String, val displayName: String, val avatarUrl: String?)
+data class ChatMember(val id: String, val displayName: String, val avatarUrl: String?, val username: String = "")
 data class ChatSummary(
     val id: String,
     val type: String,
@@ -89,6 +91,8 @@ data class AccountData(
 )
 
 class ApiException(val code: String, message: String, val status: Int) : IllegalStateException(message)
+
+internal data class ServiceEntry(val id: String, val body: String, val author: String, val createdAt: String)
 
 class FreeTalkApi(private val sessions: SessionStore) {
     val chatEvents = kotlinx.coroutines.flow.MutableSharedFlow<JSONObject>(extraBufferCapacity = 64)
@@ -169,6 +173,42 @@ class FreeTalkApi(private val sessions: SessionStore) {
         return parseMessage(json.getJSONObject("message"))
     }
 
+    internal suspend fun serviceMessages(search: String = ""): List<ServiceEntry> {
+        val query = java.net.URLEncoder.encode(search.take(200), "UTF-8")
+        return (authorizedJson("/v1/service-chat/messages?search=$query").optJSONArray("messages") ?: JSONArray()).objects().map {
+            ServiceEntry(it.optString("id"), it.optString("body"), it.optString("author"), it.optString("created_at"))
+        }
+    }
+
+    internal suspend fun sendServiceMessage(body: String, requestId: String) {
+        require(body.isNotBlank() && body.length <= 4000)
+        UUID.fromString(requestId)
+        authorizedJson("/v1/service-chat/messages", "POST", JSONObject().put("body", body.trim())
+            .put("requestId", requestId).put("version", "Android ${BuildConfig.VERSION_NAME}"))
+    }
+
+    suspend fun profile(userId: String): SignedInUser {
+        UUID.fromString(userId)
+        return parseUser(authorizedJson("/v1/users/$userId/profile").getJSONObject("profile"))
+    }
+
+    suspend fun updateProfile(name: String, bio: String): SignedInUser = parseUser(
+        authorizedJson("/v1/me", "PATCH", JSONObject().put("displayName", name.trim()).put("bio", bio)).getJSONObject("user"),
+    )
+
+    suspend fun directChat(userId: String): ChatSummary {
+        UUID.fromString(userId)
+        return parseChat(authorizedJson("/v1/chats", "POST", JSONObject().put("type", "direct").put("memberIds", JSONArray().put(userId))).getJSONObject("chat"))
+    }
+
+    suspend fun forgotPassword(email: String) {
+        publicJson("/v1/auth/forgot-password", JSONObject().put("email", email.trim().lowercase()).put("codeFormat", "numeric"))
+    }
+
+    suspend fun resetPassword(email: String, token: String, password: String) {
+        publicJson("/v1/auth/reset-password", JSONObject().put("email", email.trim().lowercase()).put("token", token.trim()).put("password", password))
+    }
+
     suspend fun inviteFriend(friendId: String, link: String) {
         val chat = authorizedJson("/v1/chats", "POST", JSONObject().put("type", "direct").put("memberIds", JSONArray().put(friendId))).getJSONObject("chat")
         sendMessage(chat.getString("id"), link)
@@ -244,7 +284,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
         withContext(Dispatchers.IO) {
             val token = accessToken ?: throw ApiException("UNAUTHORIZED", "Требуется вход", 401)
             val builder = Request.Builder().url(API_BASE + path).header("Authorization", "Bearer $token")
-            if (method == "POST") builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType)) else builder.get()
+            if (method == "GET") builder.get() else builder.method(method, (body ?: JSONObject()).toString().toRequestBody(jsonType))
             try {
                 execute(builder.build())
             } catch (error: ApiException) {
@@ -286,11 +326,12 @@ class FreeTalkApi(private val sessions: SessionStore) {
         json.optString("id"), json.optString("username"),
         json.optString("displayName", json.optString("display_name", "Пользователь")),
         json.optString("email"), json.nullableString("avatarUrl"),
+        json.optString("bio"), json.nullableString("coverUrl"),
     )
 
     private fun parseChat(json: JSONObject): ChatSummary {
         val members = (json.optJSONArray("members") ?: JSONArray()).objects().map {
-            ChatMember(it.optString("id"), it.optString("displayName", it.optString("display_name")), it.nullableString("avatarUrl"))
+            ChatMember(it.optString("id"), it.optString("displayName", it.optString("display_name")), it.nullableString("avatarUrl"), it.optString("username"))
         }
         return ChatSummary(
             json.optString("id"), json.optString("type"), json.nullableString("title"), members,

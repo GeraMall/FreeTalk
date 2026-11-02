@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -23,10 +26,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val authCyan = Color(0xFF4EF3F2)
-private val authMuted = Color(0xFF7F91A8)
-private val authBorder = Color(0xFF183345)
-private val authGradient = Brush.linearGradient(listOf(authCyan, Color(0xFF59BEF9), Color(0xFF3D7BFF)))
+private val authCyan = Color(0xFF8DA6DC)
+private val authMuted = Color(0xFF9AABC1)
+private val authBorder = Color(0xFF29384E)
+private val authGradient = Brush.linearGradient(listOf(authCyan, Color(0xFF8DA6DC), Color(0xFF4B7FFF)))
 
 @Composable
 internal fun BrandedStartupScreen() {
@@ -42,7 +45,7 @@ internal fun BrandedStartupScreen() {
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.size(180.dp).graphicsLayer(alpha = pulse).background(
-            Brush.radialGradient(listOf(Color(0x224EF3F2), Color.Transparent)),
+            Brush.radialGradient(listOf(Color(0x228DA6DC), Color.Transparent)),
         ))
         Image(
             painterResource(R.drawable.freetalk_mascot), null,
@@ -65,6 +68,7 @@ internal fun BrandedAuthScreen(
     onRegister: (String, String, String, String) -> Unit,
     onVerify: (String, String) -> Unit,
     onResend: (String) -> Unit,
+    onRecovery: () -> Unit = {},
 ) {
     var login by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable(verificationEmail) { mutableStateOf(verificationEmail) }
@@ -86,11 +90,6 @@ internal fun BrandedAuthScreen(
             Brush.verticalGradient(listOf(Color(0xFF071D29), Color(0xFF030A15))),
         ).safeDrawingPadding().imePadding(),
     ) {
-        Row(Modifier.fillMaxWidth().background(Color(0xFF030B14)).padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            AuthBrand(34, 22)
-        }
-        HorizontalDivider(color = authBorder)
         Column(
             Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -130,6 +129,7 @@ internal fun BrandedAuthScreen(
                             AuthAction(if (busy) "Входим…" else "Войти", !busy && login.isNotBlank() && password.isNotBlank()) {
                                 onLogin(login.trim(), password)
                             }
+                            TextButton(onClick = onRecovery, enabled = !busy) { Text("Забыли пароль?") }
                         }
                         AuthPage.Register -> {
                             Surface(
@@ -193,7 +193,7 @@ internal fun BrandedAuthScreen(
 private fun AuthBrand(iconSize: Int, textSize: Int) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(iconSize.dp))
-        Text("Trlka", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
+        Text("TRLKA", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
             modifier = Modifier.padding(start = 10.dp))
     }
 }
@@ -203,6 +203,7 @@ private fun BrandedField(
     value: String, onChange: (String) -> Unit, label: String, placeholder: String = "",
     keyboardType: KeyboardType = KeyboardType.Text, password: Boolean = false,
 ) {
+    var visible by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
         Text(label, color = Color(0xFFC3CEDC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
@@ -210,7 +211,8 @@ private fun BrandedField(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType),
-            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            visualTransformation = if (password && !visible) PasswordVisualTransformation() else VisualTransformation.None,
+            trailingIcon = if (password) { { IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (visible) "Скрыть пароль" else "Показать пароль") } } } else null,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = authCyan, unfocusedBorderColor = authBorder,
                 focusedContainerColor = Color(0xFF030A15), unfocusedContainerColor = Color(0xFF030A15),

@@ -1,5 +1,8 @@
 package io.freetalk.mobile
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -61,6 +64,7 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VideocamOff
 import androidx.compose.material.icons.outlined.CallEnd
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,27 +105,27 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+        MobilePreferences.load(this)
         val api = FreeTalkApi(SessionStore(this))
         val cache = MediaCache(this).also { it.trim() }
         setContent { FreeTalkNativeApp(api, cache) }
     }
 }
 
-private val colors = darkColorScheme(
-    primary = Color(0xFF4EF3F2), background = Color(0xFF010811),
-    surface = Color(0xFF03101E), surfaceVariant = Color(0xFF071827),
+internal val colors = darkColorScheme(
+    primary = Color(0xFF8DA6DC), background = Color(0xFF040B14),
+    surface = MobileDesign.incoming, surfaceVariant = MobileDesign.outgoing,
+    outline = MobileDesign.stroke, secondary = MobileDesign.accent, onSurfaceVariant = MobileDesign.muted,
     onPrimary = Color(0xFF02101A), onBackground = Color(0xFFF4F8FF), onSurface = Color(0xFFF4F8FF),
 )
-private val muted = Color(0xFF91A4B8)
+private val muted = Color(0xFF9AABC1)
 private val good = Color(0xFF55EFB7)
 private val danger = Color(0xFFFF8096)
 private val cyanBlueGradient = Brush.linearGradient(
-    listOf(Color(0xFF4EF3F2), Color(0xFF59BEF9), Color(0xFF3D7BFF)),
+    listOf(Color(0xFF8DA6DC), Color(0xFF8DA6DC), Color(0xFF4B7FFF)),
 )
-private val appBackground = Brush.radialGradient(
-    listOf(Color(0xFF0A3540), Color(0xFF07182B), Color(0xFF010811)), radius = 1350f,
-)
+private val appBackground = Brush.verticalGradient(listOf(MobileDesign.background, MobileDesign.background))
 
 internal enum class AuthPage { Login, Register, Verify }
 
@@ -133,6 +137,7 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
     var status by remember { mutableStateOf("") }
     var authPage by remember { mutableStateOf(AuthPage.Login) }
     var verificationEmail by remember { mutableStateOf("") }
+    var recovery by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -144,11 +149,13 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
         Surface(Modifier.fillMaxSize(), color = colors.background) {
             when {
                 restoring -> BrandedStartupScreen()
+                user == null && recovery -> PasswordRecoveryScreen(api) { recovery = false }
                 user == null -> BrandedAuthScreen(
                     page = authPage,
                     status = status,
                     verificationEmail = verificationEmail,
                     onPage = { authPage = it; status = "" },
+                    onRecovery = { recovery = true },
                     onLogin = { login, password ->
                         status = "Входим…"
                         scope.launch {
@@ -216,7 +223,12 @@ private fun LoadingScreen(label: String) {
 
 @Composable
 private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser, onLogout: () -> Unit) {
-    var page by remember { mutableStateOf(0) }
+    var page by rememberSaveable { mutableStateOf(0) }
+    var profile by remember(user) { mutableStateOf(user) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var serviceOpen by remember { mutableStateOf(false) }
+    var callExpanded by remember { mutableStateOf(true) }
+    var callQuality by remember { mutableStateOf("connecting") }
     var data by remember { mutableStateOf<AccountData?>(null) }
     var error by remember { mutableStateOf("") }
     var refreshing by remember { mutableStateOf(true) }
@@ -245,6 +257,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                     RoomEvent.Connected -> roomStatus = "Сигналинг подключён"
                     is RoomEvent.Created -> {
                         roomId = event.roomId
+                        callExpanded = true
                         roomStatus = "Комната создана"
                         val invitees = pendingCallInvitees
                         pendingCallInvitees = emptyList()
@@ -328,38 +341,21 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
         onDispose { accountLifecycle.removeObserver(observer); PushRuntime.visibleChatId = null }
     }
 
-    if (roomId != null) {
-        NativeRoomScreen(
-            signaling = signaling,
-            api = api,
-            chats = data?.chats.orEmpty(),
-            friends = data?.friends.orEmpty(),
-            user = user,
-            roomId = roomId!!,
-            status = roomStatus,
-            onLeave = {
-                signaling.close()
-                roomId = null
-                roomStatus = ""
-                load()
-            },
-        )
-        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
-            incomingCallBusy = true
-            scope.launch {
-                runCatching { api.respondToCall(call.invitationId, "accept") }
-                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
-                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
-                incomingCallBusy = false
+    Box(Modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxSize()) {
+        if (roomId != null && !callExpanded) {
+            val indicator = when (callQuality) { "good" -> MobileDesign.green; "poor" -> MobileDesign.red; else -> MobileDesign.muted }
+            Row(Modifier.fillMaxWidth().background(indicator.copy(alpha = .15f)).statusBarsPadding()
+                .clickable { callExpanded = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Call, null, Modifier.size(18.dp), tint = indicator)
+                Text("Перейти к звонку", Modifier.padding(start = 8.dp), color = indicator, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
-        }, onDecline = {
-            incomingCallBusy = true
-            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
-        }) }
-        return
-    }
-
-    if (activeChat != null) {
+        }
+        Box(Modifier.weight(1f).then(if (roomId != null && !callExpanded) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
+    if (settingsOpen) AccountSettingsScreen(api, cache, profile, data?.devices.orEmpty(), { settingsOpen = false }, { profile = it }, onLogout)
+    else if (serviceOpen) ServiceBotScreen(api, { serviceOpen = false })
+    else if (activeChat != null) {
         val chat = activeChat!!
         NativeChatScreen(
             api, cache, user, chat,
@@ -384,55 +380,21 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             },
             onJoinCall = { code -> roomStatus = "Подключаемся…"; api.accessToken?.let { signaling.join(code, user, it) } },
         )
-        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
-            incomingCallBusy = true
-            scope.launch {
-                runCatching { api.respondToCall(call.invitationId, "accept") }
-                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
-                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
-                incomingCallBusy = false
-            }
-        }, onDecline = {
-            incomingCallBusy = true
-            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
-        }) }
-        return
     }
-
-    Scaffold(
+    else Scaffold(
         modifier = Modifier.background(appBackground),
         containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar(containerColor = Color(0xF7061321), tonalElevation = 0.dp) {
-                listOf("Главная", "Чаты", "Друзья", "История").forEachIndexed { index, title ->
-                    NavigationBarItem(
-                        selected = page == index, onClick = { page = index },
-                        icon = {
-                            Icon(
-                                listOf(Icons.Outlined.Home, Icons.Outlined.ChatBubbleOutline, Icons.Outlined.PeopleOutline, Icons.Outlined.History)[index],
-                                contentDescription = title,
-                            )
-                        },
-                        label = { Text(title, maxLines = 1, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
-                        colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                            selectedIconColor = colors.primary,
-                            selectedTextColor = colors.primary,
-                            indicatorColor = Color(0xFF09242F),
-                            unselectedIconColor = Color(0xFF6E849B),
-                            unselectedTextColor = Color(0xFF6E849B),
-                        ),
-                    )
-                }
-            }
+            MobileBottomNavigation(page) { page = it }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
-            AppHeader(user, data?.devices?.size ?: 0, onLogout)
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            AppHeader(profile) { settingsOpen = true }
             if (error.isNotBlank()) ErrorCard(error, load)
             when {
                 refreshing && data == null -> LoadingScreen("Загружаем Trlka…")
                 page == 0 -> HomePage(
-                    user = user, data = data, roomId = roomId, status = roomStatus,
+                    user = profile, data = data, roomId = roomId, status = roomStatus,
                     onCreateRoom = {
                         val code = generateRoomCode(); roomStatus = "Создаём комнату…"
                         api.accessToken?.let { signaling.create(code, user, it) }
@@ -443,11 +405,17 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                         api.accessToken?.let { signaling.join(code, user, it) }
                     },
                 )
-                page == 1 -> ChatsPage(user, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load)
-                page == 2 -> FriendsPage(api, user, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load)
+                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true })
+                page == 2 -> FriendsPage(api, profile, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load, onChat = { activeChat = it })
                 else -> HistoryPage(data?.calls.orEmpty(), data?.devices.orEmpty(), cache)
             }
         }
+    }
+        }
+      }
+      if (roomId != null) NativeRoomScreen(profile, roomId!!, roomStatus, signaling, api, data?.chats.orEmpty(), data?.friends.orEmpty(),
+        onLeave = { signaling.close(); roomId = null; roomStatus = ""; load() },
+        expanded = callExpanded, onMinimize = { callExpanded = false }, onQuality = { callQuality = it })
     }
     incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
         incomingCallBusy = true
@@ -467,11 +435,11 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
 private fun IncomingCallDialog(call: IncomingCall, busy: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
     AlertDialog(
         onDismissRequest = {},
-        containerColor = Color(0xFF071827),
+        containerColor = Color(0xFF101E2E),
         title = { Text("Входящий звонок") },
         text = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF2C416D)), contentAlignment = Alignment.Center) {
                     if (call.inviterAvatarUrl != null) AsyncImage(call.inviterAvatarUrl, call.inviterName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     else Text(call.inviterName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
                 }
@@ -488,43 +456,11 @@ private fun IncomingCallDialog(call: IncomingCall, busy: Boolean, onAccept: () -
 
 
 @Composable
-private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.freetalk_mascot),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(36.dp),
-                )
-                Text("Trlka", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(start = 9.dp))
-            }
-            Box(
-                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF10354A))
-                    .border(1.dp, Color(0x664EF3F2), CircleShape).clickable { open = !open },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (user.avatarUrl != null) {
-                    AsyncImage(
-                        model = user.avatarUrl, contentDescription = user.displayName,
-                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                    )
-                } else Text(user.displayName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
-            }
-        }
-        if (open) {
-            Surface(Modifier.fillMaxWidth().padding(top = 12.dp), color = colors.surface, shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(user.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("@${user.username}", color = muted)
-                    Text("Подключено устройств: $deviceCount", color = colors.primary, modifier = Modifier.padding(top = 10.dp))
-                    OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("Выйти из аккаунта", color = danger) }
-                }
-            }
-        }
-        HorizontalDivider(color = Color(0xFF102537), modifier = Modifier.padding(top = if (open) 12.dp else 6.dp))
+internal fun AppHeader(user: SignedInUser, onSettings: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(MobileDesign.background).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(28.dp))
+        Text("TRLKA", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        Box(Modifier.size(44.dp).clickable(onClickLabel = "Настройки", onClick = onSettings), contentAlignment = Alignment.Center) { MobileAvatar(user.displayName, user.avatarUrl, 36.dp) }
     }
 }
 
@@ -539,7 +475,7 @@ private fun ErrorCard(message: String, retry: () -> Unit) {
 }
 
 @Composable
-private fun HomePage(
+internal fun HomePage(
     user: SignedInUser,
     data: AccountData?,
     roomId: String?,
@@ -549,7 +485,7 @@ private fun HomePage(
 ) {
     var roomCode by remember { mutableStateOf("") }
     val recentCalls = data?.calls.orEmpty().take(4)
-    LazyColumn(contentPadding = PaddingValues(top = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
@@ -567,13 +503,13 @@ private fun HomePage(
                         fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp,
                     )
                     Text(
-                        "Добрый вечер,\n${user.displayName}", fontSize = 34.sp, lineHeight = 35.4.sp,
+                        "Добрый вечер,\n${user.displayName}", fontSize = 30.sp, lineHeight = 35.4.sp,
                         fontWeight = FontWeight.Bold, letterSpacing = (-1.53).sp, modifier = Modifier.padding(top = 24.dp),
                     )
                     Text(
                         "Создайте приватную комнату или войдите по приглашению.",
                         color = Color(0xFFAEBCCE), fontSize = 14.sp, lineHeight = 21.sp,
-                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 34.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 24.dp),
                     )
                     Box(
                         Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(11.dp))
@@ -591,7 +527,7 @@ private fun HomePage(
                             singleLine = true, modifier = Modifier.weight(1f).height(58.dp),
                             shape = RoundedCornerShape(12.dp),
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = Color(0xFF193345), focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = Color(0xFF29384E), focusedBorderColor = colors.primary,
                                 unfocusedContainerColor = Color(0xFF030C18), focusedContainerColor = Color(0xFF030C18),
                             ),
                         )
@@ -648,7 +584,7 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
                     visible.forEachIndexed { index, participant ->
                         Box(
                             Modifier.offset(x = (index * 22).dp).size(34.dp).clip(CircleShape)
-                                .background(Color(0xFF10354A)),
+                                .background(Color(0xFF2C416D)),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (participant.avatarUrl != null) {
@@ -668,7 +604,7 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
             OutlinedButton(
                 onClick = onCreateAgain, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(36.dp),
                 shape = RoundedCornerShape(11.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x664EF3F2)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x668DA6DC)),
             ) {
                 Icon(Icons.Outlined.Call, null, modifier = Modifier.size(19.dp))
                 Text("Создать снова", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = muted, modifier = Modifier.padding(start = 8.dp))
@@ -678,36 +614,44 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
 }
 
 @Composable
-private fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit) {
+internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit, onService: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val shown = chats.filter { it.displayTitle(user.id).contains(query, true) }
-    Column {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Чаты и группы", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onRefresh) { Text("Обновить") }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Чаты", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, "Обновить чаты") }
         }
-        OutlinedTextField(query, { query = it }, placeholder = { Text("Поиск по чатам") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        LazyColumn(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (shown.isEmpty()) item { EmptyState("Чатов пока нет", "Новые личные и групповые чаты появятся здесь") }
+        MobileSearch(query, { query = it }, "Поиск по чатам", Modifier.fillMaxWidth())
+        LazyColumn(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if ("TRLKA".contains(query, true)) item {
+                Row(Modifier.fillMaxWidth().clickable(onClick = onService).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MobileAvatar("TRLKA", null, 44.dp, bot = true)
+                    Column(Modifier.padding(start = 12.dp)) { Text("TRLKA", fontWeight = FontWeight.SemiBold); Text("Уведомления и помощь", fontSize = 12.sp, color = muted) }
+                }
+            }
             items(shown, key = { it.id }) { chat ->
-                ListCard(
-                    chat.displayTitle(user.id), chat.lastMessage ?: "Сообщений пока нет",
-                    chat.displayTitle(user.id).take(1),
-                    imageUrl = chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl,
-                ) { activeChat(chat) }
+                Row(Modifier.fillMaxWidth().clickable { activeChat(chat) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MobileAvatar(chat.displayTitle(user.id), chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl, 44.dp)
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(chat.displayTitle(user.id), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(chat.lastMessage ?: "Сообщений пока нет", fontSize = 12.sp, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text(mobileMessageTime(chat.lastMessageAt.orEmpty()), fontSize = 10.sp, color = muted)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<FriendSummary>, pending: List<FriendRequestSummary>, onRefresh: () -> Unit) {
+internal fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<FriendSummary>, pending: List<FriendRequestSummary>, onRefresh: () -> Unit, onChat: (ChatSummary) -> Unit) {
     var username by remember { mutableStateOf("") }
     var busyId by remember { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val incoming = pending.filter { it.recipientId == user.id }
-    Column {
+    Column(Modifier.padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("Друзья", fontSize = 26.sp, fontWeight = FontWeight.Bold); if (incoming.isNotEmpty()) Text("Новых запросов: ${incoming.size}", color = colors.primary) }
             TextButton(onClick = onRefresh) { Text("Обновить") }
@@ -727,10 +671,10 @@ private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<Frie
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
             if (incoming.isNotEmpty()) item { SectionTitle("Входящие заявки") }
             items(incoming, key = { "request:${it.id}" }) { request ->
-                Surface(Modifier.fillMaxWidth(), color = Color(0xFF071827), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF174052))) {
+                Surface(Modifier.fillMaxWidth(), color = Color(0xFF101E2E), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF174052))) {
                     Column(Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF2C416D)), contentAlignment = Alignment.Center) {
                                 if (request.avatarUrl != null) AsyncImage(request.avatarUrl, request.displayName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                 else Text(request.displayName.take(1).uppercase(), color = colors.primary)
                             }
@@ -750,18 +694,18 @@ private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<Frie
                 ListCard(
                     friend.displayName, "@${friend.username} · ${if (online) "В сети" else "Не в сети"}",
                     friend.displayName.take(1), imageUrl = friend.avatarUrl, online = online,
-                )
+                ) { scope.launch { runCatching { api.directChat(friend.id) }.onSuccess(onChat).onFailure { feedback = it.message ?: "Не удалось открыть чат" } } }
             }
         }
     }
 }
 
 @Composable
-private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, cache: MediaCache) {
+internal fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, cache: MediaCache) {
     var cacheBytes by remember { mutableLongStateOf(0) }
     val cacheScope = rememberCoroutineScope()
     LaunchedEffect(cache) { cacheBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.sizeBytes() } }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("История", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
         if (calls.isEmpty()) item { EmptyState("Звонков пока нет", "Завершённые разговоры появятся здесь") }
         items(calls, key = { it.id }) { call ->
@@ -802,7 +746,7 @@ private fun ListCard(
     Surface(modifier, color = colors.surface, shape = RoundedCornerShape(16.dp)) {
         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF123046))
+                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF2C416D))
                     .border(1.dp, Color(0x553D9CAB), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
