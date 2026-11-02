@@ -1,13 +1,14 @@
 {
-  "version": "trlka-mobile-0.2",
+  "version": "trlka-mobile-0.2.1",
   "units": "points-on-ios-dp-on-android",
   "colors": {
-    "background": "#050D17",
-    "surface": "#091620",
-    "stroke": "#1F3B4D",
-    "muted": "#87A3B5",
-    "accentStart": "#3DE3ED",
-    "accentEnd": "#407DFF",
+    "background": "#020914",
+    "surface": "#0D1626",
+    "stroke": "#293648",
+    "muted": "#9AABC1",
+    "accentStart": "#8DA6DC",
+    "accentEnd": "#4B7FFF",
+    "online": "#55E6A5",
     "goodConnection": "#4ADBA3",
     "destructive": "#E8305C"
   },
@@ -37,8 +38,8 @@
     "chatAvatar": 48,
     "messageAvatar": 36,
     "participantAvatar": 50,
-    "callButtonHeight": 68,
-    "callButtonRowMaxWidth": 360,
+    "callButtonHeight": 54,
+    "callButtonRowMaxWidth": 300,
     "contentMaxWidth": 850,
     "callContentMaxWidth": 900
   },
@@ -47,7 +48,22 @@
     "primaryPress": 150,
     "tab": 180,
     "scrollToLatest": 200,
-    "waitingPulse": 1200
+    "waitingPulse": 1200,
+    "videoAppearance": 260,
+    "callLayout": 280,
+    "videoFocusSpringResponse": 340,
+    "returnToAudioDebounce": 550
+  },
+  "callVideo": {
+    "layout": "equal-area-rows",
+    "maximumParticipants": 8,
+    "tileGap": 10,
+    "minimumRowHeightBeforeScroll": 112,
+    "previewAspectRatio": "4:3",
+    "previewWidthMin": 96,
+    "previewWidthMax": 240,
+    "previewWidthMaxFraction": 0.7,
+    "previewBoundsInset": 8
   },
   "navigation": [
     {
