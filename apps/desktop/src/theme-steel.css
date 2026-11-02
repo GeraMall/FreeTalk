@@ -10,6 +10,10 @@
     backdrop-filter: none;
     border-right-color: #202a38;
     box-shadow: none;
+    border-top-right-radius: 16px;
+  }
+  .account-sidebar-resizer::after {
+    top: 16px;
   }
   .account-sidebar nav button {
     color: #c4cfdf;
