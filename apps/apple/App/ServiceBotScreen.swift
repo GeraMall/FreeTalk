@@ -66,7 +66,7 @@ struct ServiceBotScreen: View {
                 if let error { Text(error).font(.caption).foregroundStyle(.pink).frame(maxWidth: .infinity, alignment: .leading) }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 6) { actions }
-                    VStack(alignment: .leading, spacing: 6) { HStack(spacing: 6) { action("Ошибка", "ladybug", "/bug"); action("Предложить улучшение", "lightbulb", "/idea") }; action("Подписка", "sparkles", "/subscription") }
+                    VStack(alignment: .leading, spacing: 6) { HStack(spacing: 6) { action("Сообщить об ошибке", "ladybug", "/bug"); action("Предложить улучшение", "lightbulb", "/idea") }; action("Подписка", "sparkles", "/subscription") }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 HStack(alignment: .bottom, spacing: 8) {
                     TextField("Сообщение или /help", text: $draft, axis: .vertical).lineLimit(1...5).webInput().accessibilityIdentifier("bot.composer")
@@ -82,7 +82,7 @@ struct ServiceBotScreen: View {
             .task(id: account.revision) { await load() }
             .sheet(isPresented: $profile) { BotProfileScreen() }
     }
-    private var actions: some View { Group { action("Ошибка", "ladybug", "/bug"); action("Предложение", "lightbulb", "/idea"); action("Подписка", "sparkles", "/subscription") } }
+    private var actions: some View { Group { action("Сообщить об ошибке", "ladybug", "/bug"); action("Предложить улучшение", "lightbulb", "/idea"); action("Подписка", "sparkles", "/subscription") } }
     private func action(_ title: String, _ icon: String, _ command: String) -> some View {
         Button { Task { await send(command) } } label: { Label(title, systemImage: icon).font(.system(size: 11)).padding(.horizontal, 10).padding(.vertical, 9).webPanel(9) }
             .buttonStyle(.plain).disabled(busy)

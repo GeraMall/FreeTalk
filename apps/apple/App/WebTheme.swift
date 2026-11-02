@@ -41,6 +41,7 @@ struct WebSearchField: View {
     }
 }
 struct WebMessageBubble: View {
+    @AppStorage("trlka.chatTextScale") private var textScale = 1.0
     let text: String
     let date: Date?
     let own: Bool
@@ -48,7 +49,7 @@ struct WebMessageBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let author { Text(author).font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.accent) }
-            Text(text).font(.system(size: 14)).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.system(size: CGFloat(14 * textScale))).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             if let date { Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted) }
         }.padding(.vertical, 10).padding(.horizontal, 12).foregroundStyle(Color.white.opacity(0.95))
             .background(own ? Brand.outgoing : Brand.incoming)
