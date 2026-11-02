@@ -133,7 +133,7 @@ private struct FloatingCallPreview: View {
             .accessibilityLabel("Мини-превью. Нажмите, чтобы поменять местами")
             .accessibilityIdentifier("call.self-preview")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction(onSwap)
+            .accessibilityAction { onSwap() }
             .position(center)
     }
     private func clamp(_ value: CGFloat, _ minimum: CGFloat, _ maximum: CGFloat) -> CGFloat { min(maximum, max(minimum, value)) }
