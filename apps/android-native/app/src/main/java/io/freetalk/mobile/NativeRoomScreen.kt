@@ -60,7 +60,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     val hasVideo = media?.videos?.isNotEmpty() == true
     LaunchedEffect(hasVideo) { if (hasVideo) videoMode = true else { delay(550); videoMode = false; focused = null } }
     LaunchedEffect(state.peers.map { it.id }) { if (focused != null && state.peers.none { it.id == focused }) focused = null }
-    LaunchedEffect(media?.connections?.toMap()) { onQuality(when { media?.connections?.values?.any { it.contains("Ошибка") || it.contains("Потеря") } == true -> "poor"; media?.connections?.values?.any { it == "Подключён" } == true -> "good"; else -> "connecting" }) }
+    LaunchedEffect(media?.connections?.toMap()) { onQuality(when { media?.connections?.values?.any { it.contains("Ошибка") } == true -> "poor"; media?.connections?.values?.any { it.contains("потер", ignoreCase = true) } == true -> "weak"; media?.connections?.values?.any { it == "Подключён" } == true -> "good"; else -> "connecting" }) }
     BackHandler(enabled = expanded) { if (focused != null) focused = null else { sheet = null; onMinimize() } }
     val cyan = Color(0xFF8DA6DC)
     val secondary = Color(0xFF8D9FB3)

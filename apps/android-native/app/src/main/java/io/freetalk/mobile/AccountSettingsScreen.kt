@@ -67,7 +67,12 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
                     Text("Устройства вывода звука и переключение камеры доступны в меню «Ещё» во время звонка.", fontSize = 13.sp, color = MobileDesign.muted)
                 }
                 "Устройства" -> devices.forEach { device ->
-                    SettingsItem(if (device.current) "Это устройство" else device.userAgent, "Последняя активность: ${device.lastActiveAt.take(16).replace('T', ' ')}", Icons.Outlined.Devices) {}
+                    Surface(color = MobileDesign.incoming, shape = RoundedCornerShape(14.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(if (device.current) "Это устройство" else device.userAgent, fontWeight = FontWeight.SemiBold)
+                            Text("Последняя активность: ${device.lastActiveAt.take(16).replace('T', ' ')}", fontSize = 12.sp, color = MobileDesign.muted)
+                        }
+                    }
                 }
                 "Чаты" -> {
                     Text("Размер текста", fontWeight = FontWeight.SemiBold)

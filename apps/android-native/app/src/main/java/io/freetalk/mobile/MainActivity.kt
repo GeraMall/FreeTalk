@@ -65,6 +65,8 @@ import androidx.compose.material.icons.outlined.VideocamOff
 import androidx.compose.material.icons.outlined.CallEnd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -344,7 +346,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     Box(Modifier.fillMaxSize()) {
       Column(Modifier.fillMaxSize()) {
         if (roomId != null && !callExpanded) {
-            val indicator = when (callQuality) { "good" -> MobileDesign.green; "poor" -> MobileDesign.red; else -> MobileDesign.muted }
+            val indicator = when (callQuality) { "good" -> MobileDesign.green; "weak" -> Color(0xFFE6BC62); "poor" -> MobileDesign.red; else -> MobileDesign.muted }
             Row(Modifier.fillMaxWidth().background(indicator.copy(alpha = .15f)).statusBarsPadding()
                 .clickable { callExpanded = true }.padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -405,7 +407,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                         api.accessToken?.let { signaling.join(code, user, it) }
                     },
                 )
-                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true })
+                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true }, friends = data?.friends.orEmpty(), onNewChat = { id -> scope.launch { runCatching { api.directChat(id) }.onSuccess { activeChat = it; load() }.onFailure { error = it.message ?: "Не удалось открыть чат" } } }, onJoinLink = { link -> api.accessToken?.let { signaling.join(normalizeRoomCode(link), profile, it) } })
                 page == 2 -> FriendsPage(api, profile, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load, onChat = { activeChat = it })
                 else -> HistoryPage(data?.calls.orEmpty(), data?.devices.orEmpty(), cache)
             }
@@ -613,16 +615,24 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit, onService: () -> Unit) {
+internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit, onService: () -> Unit,
+    friends: List<FriendSummary> = emptyList(), onNewChat: (String) -> Unit = {}, onJoinLink: (String) -> Unit = {}) {
     var query by remember { mutableStateOf("") }
+    var create by remember { mutableStateOf(false) }
+    var invite by remember { mutableStateOf(false) }
+    var inviteCode by remember { mutableStateOf("") }
     val shown = chats.filter { it.displayTitle(user.id).contains(query, true) }
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Чаты", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, "Обновить чаты") }
+            IconButton(onClick = { create = true }) { Icon(Icons.Outlined.Add, "Новый чат") }
         }
-        MobileSearch(query, { query = it }, "Поиск по чатам", Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MobileSearch(query, { query = it }, "Поиск по чатам", Modifier.weight(1f))
+            IconButton(onClick = { invite = true }, modifier = Modifier.background(MobileDesign.incoming, RoundedCornerShape(12.dp))) { Icon(Icons.Outlined.Link, "Войти по приглашению") }
+        }
         LazyColumn(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if ("TRLKA".contains(query, true)) item {
                 Row(Modifier.fillMaxWidth().clickable(onClick = onService).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -642,6 +652,18 @@ internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat:
             }
         }
     }
+    if (create) ModalBottomSheet(onDismissRequest = { create = false }, containerColor = MobileDesign.canvas) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Новый чат", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (friends.isEmpty()) Text("Добавьте друзей, чтобы начать переписку.", color = MobileDesign.muted)
+            friends.forEach { friend -> TextButton(onClick = { create = false; onNewChat(friend.id) }) { MobileAvatar(friend.displayName, friend.avatarUrl); Text(friend.displayName, Modifier.padding(start = 12.dp)) } }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+    if (invite) AlertDialog(onDismissRequest = { invite = false }, title = { Text("Войти по приглашению") },
+        text = { OutlinedTextField(inviteCode, { inviteCode = it }, label = { Text("Код или ссылка комнаты") }) },
+        confirmButton = { TextButton(enabled = inviteCode.isNotBlank(), onClick = { invite = false; onJoinLink(inviteCode) }) { Text("Войти") } },
+        dismissButton = { TextButton(onClick = { invite = false }) { Text("Отмена") } })
 }
 
 @Composable
