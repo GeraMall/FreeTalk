@@ -16,7 +16,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/landing.css?v=beta178" />
+    <link rel="stylesheet" href="/assets/landing.css?v=product-tour-1" />
   </head>
   <body>
     <header class="topbar">
@@ -28,7 +28,7 @@
           <a href="#possibilities">Возможности</a><a href="#privacy">Приватность</a
           ><a href="#download">Скачать</a>
         </div>
-        <a class="nav-login" href="/app/">Вход</a>
+        <a class="nav-login" href="https://trlka.com/app/">Вход</a>
         <a
           class="nav-cta"
           href="https://github.com/GeraMall/FreeTalk/releases/download/v0.4.0-beta.178/Trlka_0.4.0-beta.178_x64-setup.exe"
@@ -65,54 +65,29 @@
           ><a class="button button-secondary" href="#possibilities">Посмотреть возможности</a>
         </div>
         <div class="hero-note">beta.178 · Windows 10/11, 64-bit · бесплатно</div>
-        <div class="app-stage" data-reveal>
-          <div class="app-window">
-            <div class="window-bar">
-              <div class="traffic"><span></span><span></span><span></span></div>
-              <div class="window-brand">TRLKA</div>
-            </div>
-            <div class="window-grid">
-              <aside class="sidebar" aria-hidden="true">
-                <div class="side-search"></div>
-                <div class="side-item active"><span class="side-dot"></span> Текущий звонок</div>
-                <div class="side-item"><span class="side-dot"></span> Главная</div>
-                <div class="side-item"><span class="side-dot"></span> Друзья</div>
-                <div class="side-item"><span class="side-dot"></span> История</div>
-              </aside>
-              <div class="room">
-                <div class="signal">● Сигнал отличный</div>
-                <div class="cards">
-                  <div class="person-card">
-                    <div class="person-row">
-                      <div class="avatar">Я</div>
-                      <div>
-                        <div class="person-name">Ты</div>
-                        <div class="person-state">● Слушает</div>
-                      </div>
-                      <div class="levels">▮▮▮▮</div>
-                    </div>
-                  </div>
-                  <div class="person-card warm">
-                    <div class="person-row">
-                      <div class="avatar">Д</div>
-                      <div>
-                        <div class="person-name">Твой друг</div>
-                        <div class="person-state">● Говорит</div>
-                      </div>
-                      <div class="levels">▮▮▮▮</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="controls" aria-hidden="true">
-                  <div class="control on">●</div>
-                  <div class="control">▣</div>
-                  <div class="control">↗</div>
-                  <div class="control end">↪</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <figure class="app-stage product-preview" data-reveal>
+          <button
+            class="tour-launch"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="productTour"
+            aria-label="Посмотреть TRLKA в действии — 29 секунд"
+          >
+            <img
+              src="/assets/demo/screen.webp"
+              width="1280"
+              height="800"
+              alt="Настоящий интерфейс TRLKA: Сергей, Аня и Макс обсуждают маршрут во время звонка с демонстрацией экрана"
+              fetchpriority="high"
+            />
+            <span class="tour-play"
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 5 11 7-11 7Z" fill="currentColor" /></svg
+              >Посмотреть в действии <small>0:29</small></span
+            >
+          </button>
+          <figcaption>Настоящий интерфейс TRLKA · демонстрационные участники</figcaption>
+        </figure>
       </section>
       <div class="marquee" aria-hidden="true">
         <div class="marquee-track">
@@ -146,25 +121,43 @@
               Быстро подключайтесь к друзьям, управляйте звуком каждого участника и убирайте лишний
               шум.
             </p>
-            <div class="feature-art">
-              <div class="wave">
-                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              </div>
+            <div class="feature-capture feature-capture-call-detail">
+              <img
+                src="/assets/demo/call-detail.webp"
+                width="1005"
+                height="250"
+                alt="Карточки участников настоящего звонка TRLKA и управление громкостью"
+                loading="lazy"
+                decoding="async"
+              />
             </div>
           </article>
           <article class="feature" data-reveal>
             <h3>Покажи свой экран</h3>
             <p>Смотрите, объясняйте и делитесь моментом прямо во время звонка.</p>
-            <div class="feature-art"><div class="screen-demo"></div></div>
+            <div class="feature-capture feature-capture-screen-detail">
+              <img
+                src="/assets/demo/screen-detail.webp"
+                width="990"
+                height="560"
+                alt="Демонстрация экрана в TRLKA: обсуждение маршрута с друзьями"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
           </article>
           <article class="feature" data-reveal>
             <h3>Чаты остаются рядом</h3>
             <p>Сообщения и реакции не теряются, когда разговор заканчивается.</p>
-            <div class="feature-art">
-              <div class="chat-stack">
-                <div class="bubble">Вы уже в комнате?</div>
-                <div class="bubble mine">Да, залетай ✦</div>
-              </div>
+            <div class="feature-capture feature-capture-chat-detail">
+              <img
+                src="/assets/demo/chat-detail.webp"
+                width="1020"
+                height="475"
+                alt="Групповой чат TRLKA с сообщениями и реакциями"
+                loading="lazy"
+                decoding="async"
+              />
             </div>
           </article>
           <article class="feature" id="privacy" data-reveal>
@@ -173,7 +166,16 @@
               Приватные комнаты и прямое WebRTC-соединение созданы для разговоров без лишних
               слушателей.
             </p>
-            <div class="feature-art"><div class="shield">◇</div></div>
+            <div class="feature-capture feature-capture-invite">
+              <img
+                src="/assets/demo/invite.webp"
+                width="480"
+                height="478"
+                alt="Приглашение друга в приватную комнату TRLKA"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
           </article>
         </div>
       </section>
@@ -224,6 +226,24 @@
         </div>
       </div>
     </footer>
-    <script src="/assets/landing.js?v=beta178"></script>
+    <dialog class="product-tour" id="productTour" aria-labelledby="tourTitle">
+      <div class="tour-heading">
+        <h2 id="tourTitle">Один вечер в TRLKA</h2>
+        <button class="tour-close" type="button" aria-label="Закрыть видео">×</button>
+      </div>
+      <video
+        controls
+        playsinline
+        preload="none"
+        poster="/assets/demo/screen.webp"
+        aria-label="Обзор TRLKA: друзья, переписка, звонок и демонстрация экрана"
+      >
+        <source data-src="/assets/demo/trlka-tour.mp4" type="video/mp4" />
+        <track kind="captions" src="/assets/demo/tour-ru.vtt" srclang="ru" label="Русский" />
+        Ваш браузер не поддерживает видео. <a href="/assets/demo/trlka-tour.mp4">Скачать ролик</a>.
+      </video>
+      <p>Реальный интерфейс, вымышленные участники. Ролик с музыкой, без озвучки.</p>
+    </dialog>
+    <script src="/assets/landing.js?v=product-tour-1"></script>
   </body>
 </html>

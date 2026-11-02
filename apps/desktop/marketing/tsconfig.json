@@ -1,0 +1,4 @@
+{
+  "extends": "../tsconfig.app.json",
+  "include": ["stand.tsx", "../src/build-info.d.ts"]
+}

@@ -351,6 +351,7 @@ export function RoomView({
   }, [callDetached]);
 
   useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void listen('call-popout-restored', () => {

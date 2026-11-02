@@ -175,6 +175,11 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it('does not subscribe to native window events in a browser', () => {
+    render(view());
+    expect(listenMock).not.toHaveBeenCalled();
+  });
+
   it('shows account presence on a call card and applies realtime changes without reopening it', async () => {
     const accountId = '33333333-3333-4333-8333-333333333333';
     const request = vi

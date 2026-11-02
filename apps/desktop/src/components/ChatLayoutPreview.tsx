@@ -147,7 +147,7 @@ export function ChatLayoutPreview() {
           onLogout={() => {}}
         />
       ) : null}
-      <section className="account-content account-content-chat">
+      <section className={`account-content${previewFriends ? '' : ' account-content-chat'}`}>
         {previewFriends ? (
           <FriendsPage
             userId={self.id}
