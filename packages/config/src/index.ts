@@ -63,3 +63,5 @@ export function withCloudflareTurnIpFallbacks(iceServers: RTCIceServer[], ipv4Ad
   });
   return [...iceServers, ...fallbackServers];
 }
+export const SERVICE_CHAT_ID = '00000000-0000-4000-a000-00000000724c';
+export const SERVICE_BOT_ID = '00000000-0000-4000-a000-00000000724b';

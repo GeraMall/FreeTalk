@@ -17,7 +17,7 @@ describe('conversation call lifecycle', () => {
     ).toBeUndefined();
   });
 
-  it('keeps an established call joinable beyond eight minutes, including a solo rejoin', () => {
+  it('keeps an established call joinable beyond five minutes, including a solo rejoin', () => {
     expect(
       remainingUnansweredConversationWaitMs(
         {
@@ -33,8 +33,8 @@ describe('conversation call lifecycle', () => {
 
   it('still expires a creator waiting alone for an unanswered call', () => {
     const call = { startedAt: 1_000, joined: true, joining: false, established: false };
-    expect(remainingUnansweredConversationWaitMs(call, 480_999)).toBe(1);
-    expect(remainingUnansweredConversationWaitMs(call, 481_000)).toBe(0);
+    expect(remainingUnansweredConversationWaitMs(call, 300_999)).toBe(1);
+    expect(remainingUnansweredConversationWaitMs(call, 301_000)).toBe(0);
   });
 
   it('keeps invited cards for exactly 30 seconds', () => {
@@ -42,16 +42,16 @@ describe('conversation call lifecycle', () => {
     expect(remainingConversationWaitMs(1_000, WAITING_PARTICIPANT_CARD_MS, 31_000)).toBe(0);
   });
 
-  it('ends an empty conversation call after eight minutes', () => {
-    expect(remainingConversationWaitMs(10_000, EMPTY_CONVERSATION_CALL_TIMEOUT_MS, 489_999)).toBe(
+  it('ends an empty conversation call after five minutes', () => {
+    expect(remainingConversationWaitMs(10_000, EMPTY_CONVERSATION_CALL_TIMEOUT_MS, 309_999)).toBe(
       1,
     );
-    expect(remainingConversationWaitMs(10_000, EMPTY_CONVERSATION_CALL_TIMEOUT_MS, 490_000)).toBe(
+    expect(remainingConversationWaitMs(10_000, EMPTY_CONVERSATION_CALL_TIMEOUT_MS, 310_000)).toBe(
       0,
     );
   });
 
-  it('marks only solo calls older than eight minutes as abandoned', () => {
+  it('marks only solo calls older than five minutes as abandoned', () => {
     const startedAt = '2026-09-08T10:00:00.000Z';
     const beforeTimeout = Date.parse(startedAt) + EMPTY_CONVERSATION_CALL_TIMEOUT_MS - 1;
     const atTimeout = Date.parse(startedAt) + EMPTY_CONVERSATION_CALL_TIMEOUT_MS;

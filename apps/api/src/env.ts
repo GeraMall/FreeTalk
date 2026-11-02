@@ -25,6 +25,7 @@ const envSchema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     EMAIL_FROM: z.string().default('Trlka <noreply@localhost>'),
+    SUPPORT_EMAIL: z.string().email().optional(),
     IP_HASH_SALT: z.string().min(16),
     KLIPY_API_KEY: z.string().min(1).optional(),
     WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(40).optional(),

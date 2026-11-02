@@ -270,7 +270,10 @@ describe('HomeView chat navigation', () => {
     await waitFor(() =>
       expect(onSidebarStateChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          chats: [expect.objectContaining({ id: 'chat-1' })],
+          chats: expect.arrayContaining([
+            expect.objectContaining({ id: 'chat-1' }),
+            expect.objectContaining({ title: 'TRLKA' }),
+          ]),
           chatsLoading: false,
           openChat: expect.any(Function),
           createGroup: expect.any(Function),

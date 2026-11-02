@@ -23,6 +23,7 @@ import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { ChatRealtimeClient } from './lib/chat-realtime';
 import { markVoiceActivity, setCallActive } from './lib/presence-activity';
+import { queueCallTimeoutNotice, startServiceDelivery } from './lib/service-chat';
 import { IncomingCallRingtone } from './lib/incoming-call-ringtone';
 import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
 import type { VideoPreferences } from './lib/video-quality';
@@ -519,6 +520,8 @@ export function App() {
     setCallExiting(true);
     callExitTimer.current = window.setTimeout(cleanup, 220);
   }, [cleanup]);
+
+  useEffect(() => (accountUser?.id ? startServiceDelivery() : undefined), [accountUser?.id]);
 
   useEffect(() => {
     remoteAudio.current.setMasterVolume(deafened ? 0 : settings.outputVolume);
@@ -1272,6 +1275,7 @@ export function App() {
 
   useEffect(() => {
     if (!roomId || !callChatId || !roomStartedAt) return;
+    const accountId = accountUser?.id;
     const remaining = remainingUnansweredConversationWaitMs({
       startedAt: roomStartedAt,
       joined: joinedRoom.current,
@@ -1279,19 +1283,35 @@ export function App() {
       established: conversationPeerJoined.current,
     });
     if (remaining === undefined) return;
-    const closeEmptyConversationCall = () => {
-      if (conversationPeerJoined.current) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const closeEmptyConversationCall = async () => {
+      if (disposed || conversationPeerJoined.current) return;
+      try {
+        const current = await accountClient.request<{
+          call: { participants: Array<{ userId?: string }> } | null;
+        }>(`/v1/calls/${roomId}`);
+        if (disposed || conversationPeerJoined.current) return;
+        if (current.call?.participants.some((person) => person.userId !== accountId)) {
+          conversationPeerJoined.current = true;
+          return;
+        }
+      } catch {
+        if (!disposed) timer = setTimeout(() => void closeEmptyConversationCall(), 5000);
+        return;
+      }
+      if (disposed || conversationPeerJoined.current) return;
       clearBrowserActiveCall();
       cleanup();
-      setNotice('Звонок завершён: за 8 минут никто не подключился');
+      if (accountId) queueCallTimeoutNotice(accountId, roomId);
+      setNotice('Звонок завершён: за 5 минут никто не подключился. Уведомление — в чате TRLKA.');
     };
-    if (remaining <= 0) {
-      closeEmptyConversationCall();
-      return;
-    }
-    const timer = window.setTimeout(closeEmptyConversationCall, remaining);
-    return () => window.clearTimeout(timer);
-  }, [callChatId, cleanup, joining, participants, roomId, roomStartedAt]);
+    timer = setTimeout(() => void closeEmptyConversationCall(), Math.max(0, remaining));
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [callChatId, cleanup, joining, participants, roomId, roomStartedAt, accountUser?.id]);
 
   useEffect(() => {
     if (roomId) signaling.current?.send({ type: 'mute-changed', muted });

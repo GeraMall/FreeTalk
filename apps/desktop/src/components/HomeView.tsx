@@ -34,6 +34,8 @@ import { BrandLogo } from './BrandLogo';
 import { MobileNavigation } from './MobileNavigation';
 import { CachedMediaImage } from './CachedMedia';
 import { useMobileLayout } from '../lib/mobile-layout';
+import { serviceChat, SERVICE_CHAT_ID, SERVICE_CHAT_UPDATED } from '../lib/service-chat';
+import { ServiceChat } from './ServiceChat';
 import type { PresenceStatus } from '@freetalk/protocol';
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
@@ -126,6 +128,14 @@ export function HomeView({
   const [friendsLoading, setFriendsLoading] = useState(controlledPage === 'friends');
   const [friendsLoadError, setFriendsLoadError] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [serviceSummary, setServiceSummary] = useState<Partial<ChatItem>>({});
+  const visibleChats = useMemo(
+    () => [
+      { ...serviceChat(user.id), ...serviceSummary },
+      ...chats.filter((chat) => chat.id !== SERVICE_CHAT_ID),
+    ],
+    [user.id, chats, serviceSummary],
+  );
   const [activeChat, setActiveChat] = useState<string>();
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [pinnedMessage, setPinnedMessage] = useState<MessageItem>();
@@ -202,6 +212,17 @@ export function HomeView({
   useEffect(() => {
     const realtime = new ChatRealtimeClient(
       (event) => {
+        if (event.type === 'message-created' && event.chatId === SERVICE_CHAT_ID) {
+          setServiceSummary((current) => ({
+            ...current,
+            lastMessage: event.message.body,
+            lastMessageAt: event.message.created_at,
+            unreadCount:
+              activeChatRef.current === SERVICE_CHAT_ID ? 0 : (current.unreadCount ?? 0) + 1,
+          }));
+          window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED));
+          return;
+        }
         if (event.type === 'friends-updated') {
           void accountClient
             .request<{ friends: FriendItem[]; pending: PendingItem[]; blocked: BlockedItem[] }>(
@@ -423,7 +444,7 @@ export function HomeView({
         // Repair visible call cards after subscription is authenticated, without
         // resetting pagination, the draft or the message loading state.
         const chatId = activeChatRef.current;
-        if (!chatId) return;
+        if (!chatId || chatId === SERVICE_CHAT_ID) return;
         void accountClient
           .request<{ messages: MessageItem[] }>(`/v1/chats/${chatId}/messages`)
           .then(({ messages: snapshot }) => {
@@ -520,6 +541,11 @@ export function HomeView({
   }, [loadPage, page]);
 
   const loadChatMessages = useCallback(async (chatId: string, silent = false) => {
+    if (chatId === SERVICE_CHAT_ID) {
+      setMessagesLoading(false);
+      setMessagesError('');
+      return true;
+    }
     const requestId = ++messagesRequestIdRef.current;
     if (!silent) {
       setMessagesLoading(true);
@@ -555,6 +581,8 @@ export function HomeView({
       activeChatRef.current = chatId;
       messagesPageStartRef.current = { chatId };
       setActiveChat(chatId);
+      if (chatId === SERVICE_CHAT_ID)
+        setServiceSummary((current) => ({ ...current, unreadCount: 0 }));
       setChats((current) =>
         current.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat)),
       );
@@ -972,13 +1000,13 @@ export function HomeView({
 
   useEffect(() => {
     onSidebarStateChange?.({
-      chats,
+      chats: visibleChats,
       friends: chatFriendOptions,
       chatsLoading,
       openChat,
       createGroup,
     });
-  }, [chatFriendOptions, chats, chatsLoading, createGroup, onSidebarStateChange, openChat]);
+  }, [chatFriendOptions, visibleChats, chatsLoading, createGroup, onSidebarStateChange, openChat]);
 
   const createInvite = async () => {
     if (!activeChat) return;
@@ -1226,7 +1254,7 @@ export function HomeView({
           user={user}
           activePage={page}
           readingChatId={activeChat}
-          chats={chats}
+          chats={visibleChats}
           friends={chatFriendOptions}
           chatsLoading={chatsLoading}
           updateStatus={updateStatus}
@@ -1426,14 +1454,22 @@ export function HomeView({
             }}
           />
         )}
-        {page === 'chats' && (
+        {page === 'chats' && activeChat === SERVICE_CHAT_ID && (
+          <ServiceChat
+            onBack={() => {
+              activeChatRef.current = undefined;
+              setActiveChat(undefined);
+            }}
+          />
+        )}
+        {page === 'chats' && activeChat !== SERVICE_CHAT_ID && (
           <ChatsPage
             joinedChatId={joinedChatId}
             joinedRoomId={joinedRoomId}
             externalSidebar={!mobileLayout}
             mobile={mobileLayout}
             userId={user.id}
-            chats={chats}
+            chats={visibleChats}
             friends={chatFriendOptions}
             activeChatId={activeChat}
             messages={messages}

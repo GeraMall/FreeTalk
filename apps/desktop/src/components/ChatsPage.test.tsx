@@ -327,7 +327,7 @@ describe('MessageList rendering', () => {
     expect(queryByLabelText(/^Время разговора/)).toBeNull();
   });
 
-  it('freezes an abandoned single-participant call at the eight-minute timeout', () => {
+  it('freezes an abandoned single-participant call at the five-minute timeout', () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2026-08-26T10:12:00.000Z'));
@@ -343,9 +343,9 @@ describe('MessageList rendering', () => {
       const rendered = render(view('chat-a', [call]));
 
       expect(rendered.getByText('Звонок завершён')).toBeTruthy();
-      expect(rendered.getByLabelText('Время разговора 8:00')).toBeTruthy();
+      expect(rendered.getByLabelText('Время разговора 5:00')).toBeTruthy();
       act(() => vi.advanceTimersByTime(30_000));
-      expect(rendered.getByLabelText('Время разговора 8:00')).toBeTruthy();
+      expect(rendered.getByLabelText('Время разговора 5:00')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

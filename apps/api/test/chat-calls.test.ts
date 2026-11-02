@@ -78,7 +78,7 @@ describe('conversation calls', () => {
     expect(response.json()).toEqual({ call: null });
     expect(query.mock.calls).toContainEqual([
       expect.stringContaining('stale_sessions'),
-      [chat, 8 * 60_000],
+      [chat, 5 * 60_000],
     ]);
     expect(query.mock.calls.find(([sql]) => sql.includes('stale_sessions'))?.[0]).toContain(
       'participant.left_at IS NULL',

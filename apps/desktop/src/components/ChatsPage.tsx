@@ -1,3 +1,4 @@
+import { SERVICE_CHAT_ID } from '@freetalk/config';
 import {
   useCallback,
   useEffect,
@@ -591,7 +592,9 @@ export function ChatsPage({
     const query = search.trim().toLocaleLowerCase('ru-RU');
     return chats.filter(
       (chat) =>
-        archivedChatIds.has(chat.id) === showArchived &&
+        (chat.id === SERVICE_CHAT_ID
+          ? !showArchived
+          : archivedChatIds.has(chat.id) === showArchived) &&
         (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
     );
   }, [archivedChatIds, chats, search, showArchived, userId]);
@@ -1341,7 +1344,7 @@ function ChatListItem({
     <div
       className={`swipe-chat-row${actionsRevealed ? ' actions-visible' : ''}${dragging ? ' is-dragging' : ''}`}
       onPointerDown={(event) => {
-        if (!mobile || event.pointerType === 'mouse') return;
+        if (!mobile || event.pointerType === 'mouse' || chat.id === SERVICE_CHAT_ID) return;
         dragRef.current = {
           pointerId: event.pointerId,
           startX: event.clientX,
@@ -1371,7 +1374,7 @@ function ChatListItem({
       onPointerUp={finishSwipe}
       onPointerCancel={finishSwipe}
     >
-      {mobile && (
+      {mobile && chat.id !== SERVICE_CHAT_ID && (
         <div
           className="conversation-swipe-actions"
           aria-hidden={!actionsRevealed}
@@ -1445,9 +1448,11 @@ function ChatListItem({
         <span className="conversation-card-copy">
           <strong>{name}</strong>
           <small>
-            {chat.type === 'direct' && other
-              ? `${presenceLabel(other.presence)} · ${preview}`
-              : preview}
+            {chat.id === SERVICE_CHAT_ID
+              ? 'Уведомления и помощь'
+              : chat.type === 'direct' && other
+                ? `${presenceLabel(other.presence)} · ${preview}`
+                : preview}
           </small>
         </span>
         <span className="conversation-meta">

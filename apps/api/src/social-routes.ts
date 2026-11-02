@@ -41,7 +41,7 @@ const callRoomParams = z.object({
 });
 const callInvitationParams = z.object({ invitationId: uuid });
 const CALL_INVITATION_TTL_MS = 30_000;
-const ABANDONED_CONVERSATION_CALL_MS = 8 * 60_000;
+const ABANDONED_CONVERSATION_CALL_MS = 5 * 60_000;
 const MAX_CHAT_FILE_BYTES = 30 * 1024 * 1024;
 
 function safeAttachmentName(value: string | undefined) {

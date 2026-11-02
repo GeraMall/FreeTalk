@@ -33,6 +33,7 @@ import { presenceAudience } from './presence-audience.js';
 import { startCallReconciliation } from './call-reconciliation.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
 import { registerWebPush, startWebPush } from './web-push.js';
+import { registerServiceChat, startSupportDelivery } from './service-chat.js';
 import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
 import {
   displayNameSchema,
@@ -1028,6 +1029,8 @@ app.get('/v1/legal/privacy', async () => ({
 }));
 
 registerSocialRoutes(app, requireUser);
+registerServiceChat(app, requireUser);
+startSupportDelivery(app);
 registerMobileBetaRoutes(app);
 registerAndroidPush(app, requireUser);
 startAndroidPush(app);
