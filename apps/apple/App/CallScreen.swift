@@ -29,14 +29,17 @@ struct CallScreen: View {
                 Button { invite = true } label: { Label("Добавить", systemImage: "person.badge.plus").font(.caption.weight(.semibold)) }
                     .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
             }
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(call.participants) { participant in
-                        ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf)
-                    }
-                    ForEach(call.waiting) { person in WaitingPersonCard(person: person, account: account) }
-                    if call.participants.isEmpty { ProgressView("Подключаемся к комнате…").padding(40) }
-                }
+            GeometryReader { geometry in
+                let layout = CallTileLayout(width: geometry.size.width, height: geometry.size.height, count: call.participants.count + call.waiting.count)
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.side), spacing: 10), count: layout.columns), spacing: 10) {
+                        ForEach(call.participants) { participant in
+                            ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf, side: layout.side)
+                        }
+                        ForEach(call.waiting) { person in WaitingPersonCard(person: person, account: account, side: layout.side) }
+                        if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").frame(width: layout.side, height: layout.side) }
+                    }.frame(maxWidth: .infinity).padding(.vertical, 2)
+                }.scrollDisabled(!layout.needsScroll).scrollIndicators(.hidden)
             }
             HStack(spacing: 10) {
                 CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.accent) { call.setMuted(!call.muted) }
@@ -79,48 +82,58 @@ struct ParticipantCard: View {
     let participant: RoomParticipant
     let account: AccountStore
     let mirrorSelf: Bool
+    var side: CGFloat = 170
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let call = account.calls
-        VStack(alignment: .leading, spacing: 0) {
-            if let screen = call.video(participantID: participant.id, source: "screen") {
-                RTCVideoSurface(track: screen, mirrored: false).frame(height: 190).clipped()
-            }
-            if let video = call.video(participantID: participant.id) {
-                RTCVideoSurface(track: video, mirrored: participant.id == call.selfID && mirrorSelf)
+        let screen = call.video(participantID: participant.id, source: "screen")
+        let video = screen ?? call.video(participantID: participant.id)
+        ZStack {
+            LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: side < 140 ? 6 : 10) {
+                ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: min(64, side * 0.32))
+                identity.font(.system(size: side < 140 ? 12 : 14, weight: .semibold))
+                if side >= 135 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
+                activity
+            }.padding(12).opacity(video == nil ? 1 : 0)
+            if let video {
+                RTCVideoSurface(track: video, mirrored: screen == nil && participant.id == call.selfID && mirrorSelf)
                     #if os(macOS)
-                    .scaleEffect(x: participant.id == call.selfID && mirrorSelf ? -1 : 1, y: 1)
+                    .scaleEffect(x: screen == nil && participant.id == call.selfID && mirrorSelf ? -1 : 1, y: 1)
                     #endif
-                    .frame(height: 200).clipped()
+                    .frame(width: side, height: side).clipped()
+                    .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.97)))
+                VStack { Spacer(); HStack { identity.font(.system(size: 12, weight: .semibold)); Spacer(minLength: 4); activity }.padding(10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
+                    .transition(.opacity)
             }
-            HStack(spacing: 14) {
-                ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: 50)
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Text(participant.name).font(.system(size: 16, weight: .semibold)).lineLimit(1)
-                        if participant.id == call.selfID { Text("вы").font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.muted).padding(4).background(Brand.stroke, in: RoundedRectangle(cornerRadius: 4)) }
-                        if participant.isOwner { Image(systemName: "crown").font(.caption).foregroundStyle(.yellow) }
-                    }
-                    Text(call.connectionState(participant.id)).font(.system(size: 12)).foregroundStyle(Brand.muted)
-                }
-                Spacer(minLength: 4)
-                if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink) }
-                else {
-                    HStack(alignment: .center, spacing: 3) {
-                        ForEach(0..<4) { index in
-                            RoundedRectangle(cornerRadius: 2).fill(Brand.accent)
-                                .frame(width: 3, height: 3 + min(1, call.level(participant.id) * 6) * [12.0, 20.0, 16.0, 9.0][index])
-                        }
-                    }.frame(width: 24, height: 24)
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: call.level(participant.id))
-                }
-            }.padding(18)
         }
-        .background(LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing))
+        .frame(width: side, height: side)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: video?.trackId)
+        .accessibilityIdentifier("call.participant.\(participant.id)")
         .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } } }
+    }
+    private var identity: some View {
+        HStack(spacing: 4) {
+            Text(participant.name).lineLimit(1)
+            if participant.id == account.calls.selfID { Text("вы").font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.muted) }
+            if participant.isOwner { Image(systemName: "crown.fill").font(.system(size: 10)).foregroundStyle(.yellow) }
+        }
+    }
+    private var activity: some View {
+        Group {
+            if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink) }
+            else {
+                HStack(spacing: 3) {
+                    ForEach(0..<4) { index in
+                        RoundedRectangle(cornerRadius: 2).fill(Brand.accent)
+                            .frame(width: 3, height: 3 + min(1, account.calls.level(participant.id) * 6) * [12.0, 20.0, 16.0, 9.0][index])
+                    }
+                }.frame(width: 24, height: 22).animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: account.calls.level(participant.id))
+            }
+        }
     }
 }
 
