@@ -14,9 +14,12 @@
   background-color: var(--chat-canvas);
   background-image: linear-gradient(#07111dbb, #07111dbb), var(--ft-chat-wallpaper, none);
 }
-.chat-profile-panel,
-.chat-profile-island {
+.chat-profile-panel {
   background-color: var(--chat-canvas);
+}
+.messenger-layout > .chat-profile-panel > .chat-profile-island {
+  /* The panel clips outer shadows at the boundary with the conversation. */
+  box-shadow: inset 0 1px rgba(231, 248, 255, 0.025);
 }
 .message-scroll-container {
   background: transparent;

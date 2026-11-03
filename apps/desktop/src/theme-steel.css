@@ -30,8 +30,37 @@
   :root .room-account-shell > .account-sidebar::before {
     content: none;
   }
-  .account-sidebar-resizer::after {
+  .account-sidebar-resizer {
+    /* Keep the divider above the chat composer (35). */
+    z-index: 36;
+  }
+  .account-sidebar-resizer::after,
+  .account-sidebar-resizer:hover::after,
+  .account-sidebar-resizer:focus-visible::after,
+  .account-sidebar-resizer:active::after {
     top: 16px;
+    bottom: 0;
+    width: 1px;
+    background: #202a38;
+    box-shadow: none;
+    transform: none;
+  }
+  .conversation-sidebar-resizer:hover::after,
+  .conversation-sidebar-resizer:focus-visible::after {
+    width: 1px;
+    background: rgba(149, 173, 226, 0.13);
+    box-shadow: none;
+  }
+  .messenger-layout.external-sidebar > .active-chat-header::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 16px;
+    box-sizing: border-box;
+    border-top: 1px solid #202a38;
+    border-left: 1px solid #202a38;
+    border-top-left-radius: 16px;
+    content: '';
+    pointer-events: none;
   }
   .account-shell-with-chat-sidebar .account-content-chat,
   .messenger-layout.external-sidebar {
