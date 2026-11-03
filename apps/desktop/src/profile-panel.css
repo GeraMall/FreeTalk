@@ -156,7 +156,7 @@
     padding: 8px 6px;
     border-color: rgba(148, 171, 190, 0.16);
     border-radius: 12px;
-    background: #0d1a28;
+    background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
   }
 
@@ -185,7 +185,7 @@
   .account-sidebar-with-chats .account-profile-mini.with-audio-controls:hover {
     transform: none;
     border-color: rgba(148, 171, 190, 0.16);
-    background: #0d1a28;
+    background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
   }
 

@@ -2170,15 +2170,16 @@ function ChatsSettingsTab({
       }
     >
       {[
-        { name: 'М', text: 'Привет! Как тебе оформление?', time: '12:00', own: false },
-        { name: 'А', text: 'Отлично, так намного удобнее.', time: '12:01', own: true },
+        { name: 'Макс', text: 'Привет! Как тебе оформление?', time: '12:00', own: false },
+        { name: 'Алекс', text: 'Отлично, так намного удобнее.', time: '12:01', own: true },
       ].map(({ name, text, time, own }) => (
         <div className={`message-bubble-row ${own ? 'own' : 'remote'}`} key={time}>
           <span className="chat-avatar compact" aria-hidden="true">
-            {name}
+            {name[0]}
           </span>
           <div className="message-bubble-stack">
-            <div className="message-bubble">
+            <div className="message-bubble text-message-bubble">
+              <strong className="message-author compact-message-author">{name}</strong>
               <p>{text}</p>
               <span className="message-meta">
                 <time dateTime={time}>{time}</time>
@@ -2200,9 +2201,7 @@ function ChatsSettingsTab({
           </span>
           <div>
             <h3>Сообщения</h3>
-            <p className="settings-section-description">
-              Размер текста и удобный для вас вид переписки.
-            </p>
+            <p className="settings-section-description">Размер шрифта и вид переписки.</p>
           </div>
         </div>
         <label className="slider-setting chat-text-size-setting">

@@ -1,4 +1,4 @@
-import { SERVICE_CHAT_ID } from '@freetalk/config';
+import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
 import {
   useCallback,
   useEffect,
@@ -38,6 +38,8 @@ import {
   Pin,
   PinOff,
   Phone,
+  PhoneCall,
+  Video,
   Plus,
   RefreshCw,
   Reply,
@@ -45,9 +47,11 @@ import {
   Send,
   Save,
   Smile,
+  Sticker,
   Trash2,
   UserPlus,
   Users,
+  Volume2,
   X,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -153,6 +157,7 @@ export interface ChatItem {
   retentionHours?: 24 | 168 | 720 | null;
   currentUserRole?: 'owner' | 'admin' | 'member';
   unreadCount?: number;
+  hasActiveGroupCall?: boolean;
   avatarUrl?: string | null;
   avatarPositionX?: number;
   avatarPositionY?: number;
@@ -288,7 +293,7 @@ interface ChatsPageProps {
   onRevealMessage?(messageId: string): Promise<boolean>;
   onCreateGroup(title: string, memberIds: string[]): Promise<boolean>;
   onJoinInvite(token: string): Promise<boolean>;
-  onStartCall(): Promise<void>;
+  onStartCall(camera?: boolean): Promise<void>;
   onCreateInvite(): Promise<void>;
   onUpdateRetention(retentionHours: 24 | 168 | 720 | null): Promise<void>;
   onClearHistory(chatId?: string): Promise<void>;
@@ -360,6 +365,7 @@ export function ChatsPage({
   const [showGroup, setShowGroup] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showMember, setShowMember] = useState(false);
+  const [showPinned, setShowPinned] = useState(true);
   const [inviteToken, setInviteToken] = useState('');
   const [actionBusy, setActionBusy] = useState('');
   const actionBusyRef = useRef(false);
@@ -536,6 +542,7 @@ export function ChatsPage({
     setShowChatMenu(false);
     setShowChatSettings(false);
     setShowMember(false);
+    setShowPinned(true);
     setShowGroupAvatarEditor(false);
     setReplyTarget(undefined);
     setGroupProfileTarget(undefined);
@@ -820,7 +827,10 @@ export function ChatsPage({
           messageSearchIndex={activeMessageSearchIndex}
           onOpenProfile={() => setFullProfileOpen(true)}
           onToggleMember={() => setShowMember((visible) => !visible)}
-          onStartCall={() => void runAction('call', onStartCall)}
+          onStartCall={(camera) => void runAction('call', () => onStartCall(camera))}
+          hasPinned={Boolean(pinnedMessage || messages.some((message) => message.pinned_at))}
+          showPinned={showPinned}
+          onTogglePinned={() => setShowPinned((visible) => !visible)}
           onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
           onToggleProfile={() => setProfileVisible((visible) => !visible)}
           onToggleMenu={() => setShowChatMenu((visible) => !visible)}
@@ -932,6 +942,7 @@ export function ChatsPage({
               groupChat={activeChat.type === 'group'}
               messages={messages}
               pinnedMessage={pinnedMessage}
+              showPinned={showPinned}
               loading={messagesLoading}
               error={messagesError}
               sentMessageVersion={sentMessageVersion}
@@ -1096,12 +1107,25 @@ export function ChatsPage({
         onCreate={onCreateGroup}
       />
       <GroupInviteFriendsDialog
-        open={showMember && activeChat?.type === 'group'}
+        open={showMember && Boolean(activeChat)}
+        createGroup={activeChat?.type === 'direct'}
         groupTitle={activeChat ? chatName(activeChat, userId) : ''}
         friends={friends}
         memberIds={activeChat?.members.map((member) => member.id) ?? []}
         onClose={() => setShowMember(false)}
-        onInvite={addMembers}
+        onInvite={(usernames) => {
+          if (!activeChat || activeChat.type === 'group') return addMembers(usernames);
+          const invited = friends.filter((friend) => usernames.includes(friend.username));
+          if (!invited.length) return Promise.resolve(false);
+          const members = activeChat.members.filter((member) => member.id !== userId);
+          const title = [...members, ...invited]
+            .map((member) => member.displayName)
+            .join(', ')
+            .slice(0, 80);
+          return onCreateGroup(title, [
+            ...new Set([...members, ...invited].map((member) => member.id)),
+          ]);
+        }}
       />
       <UserProfileDialog
         viewerId={userId}
@@ -1440,6 +1464,7 @@ function ChatListItem({
           name={name}
           group={chat.type === 'group'}
           avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
+          activeCall={chat.hasActiveGroupCall}
           presence={chat.type === 'direct' ? other?.presence : undefined}
           positionX={chat.avatarPositionX}
           positionY={chat.avatarPositionY}
@@ -1482,6 +1507,9 @@ function ChatHeader({
   onOpenProfile,
   onToggleMember,
   onStartCall,
+  hasPinned,
+  showPinned,
+  onTogglePinned,
   onCreateInvite,
   onToggleProfile,
   onToggleMenu,
@@ -1504,7 +1532,10 @@ function ChatHeader({
   messageSearchIndex: number;
   onOpenProfile(): void;
   onToggleMember(): void;
-  onStartCall(): void;
+  onStartCall(camera?: boolean): void;
+  hasPinned: boolean;
+  showPinned: boolean;
+  onTogglePinned(): void;
   onCreateInvite(): void;
   onToggleProfile(): void;
   onToggleMenu(): void;
@@ -1584,9 +1615,27 @@ function ChatHeader({
           title="Начать голосовой звонок"
           aria-label="Начать голосовой звонок"
           disabled={actionBusy === 'call'}
-          onClick={onStartCall}
+          onClick={() => onStartCall()}
         >
-          <Phone />
+          <PhoneCall />
+        </button>
+        <button
+          title="Начать видеозвонок"
+          aria-label="Начать видеозвонок"
+          disabled={actionBusy === 'call'}
+          onClick={() => onStartCall(true)}
+        >
+          <Video />
+        </button>
+        <button
+          className="chat-pinned-toggle"
+          title={hasPinned ? 'Закреплённые сообщения' : 'Нет закреплённых сообщений'}
+          aria-label="Закреплённые сообщения"
+          aria-pressed={hasPinned && showPinned}
+          disabled={!hasPinned}
+          onClick={onTogglePinned}
+        >
+          <Pin />
         </button>
         {chat.type === 'group' && (
           <button
@@ -1598,16 +1647,14 @@ function ChatHeader({
             <Link2 />
           </button>
         )}
-        {chat.type === 'group' && (
-          <button
-            title="Добавить участника"
-            aria-label="Добавить участника"
-            aria-expanded={showMember}
-            onClick={onToggleMember}
-          >
-            <UserPlus />
-          </button>
-        )}
+        <button
+          title="Добавить участника"
+          aria-label="Добавить участника"
+          aria-expanded={showMember}
+          onClick={onToggleMember}
+        >
+          <UserPlus />
+        </button>
         <button
           data-chat-menu-trigger
           title="Действия с чатом"
@@ -2184,6 +2231,7 @@ export function MessageList({
   groupChat,
   messages,
   pinnedMessage: loadedPinnedMessage,
+  showPinned = true,
   loading,
   error,
   sentMessageVersion,
@@ -2210,6 +2258,7 @@ export function MessageList({
   groupChat: boolean;
   messages: MessageItem[];
   pinnedMessage?: MessageItem;
+  showPinned?: boolean;
   loading: boolean;
   error: string;
   sentMessageVersion: number;
@@ -2495,7 +2544,7 @@ export function MessageList({
 
   return (
     <div className="message-scroll-shell">
-      {pinnedMessage ? (
+      {showPinned && pinnedMessage ? (
         <div className="message-pinned-banner">
           <button
             type="button"
@@ -2907,6 +2956,15 @@ function MessageBubble({
   const forwardedName = forwardedFrom?.display_name ?? forwardedFrom?.displayName;
   const gif = message.metadata?.gif;
   const deleted = Boolean(message.deleted_at || message.metadata?.deleted);
+  const isPhoto = message.kind === 'image' && !gif && !deleted;
+  const messageMeta = (
+    <span className="message-meta">
+      {message.edited_at ? <small>изменено</small> : null}
+      {message.pinned_at ? <Pin aria-label="Закреплено" /> : null}
+      <time>{formatMessageTime(message.created_at)}</time>
+    </span>
+  );
+  const isPlainText = message.kind === 'text' && !gif && !isInvite;
   const canEdit = own && message.kind === 'text' && !gif && !deleted;
   const openContext = (x: number, y: number) => {
     if (deleted) return;
@@ -3019,11 +3077,15 @@ function MessageBubble({
           </div>
         ) : null}
         <div
-          className={`message-bubble${message.kind === 'image' ? ' image-message-bubble' : ''}${message.kind === 'file' ? ' file-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
+          className={`message-bubble${isPlainText ? ' text-message-bubble' : ''}${isPhoto ? ' image-message-bubble' : ''}${message.kind === 'file' ? ' file-message-bubble' : ''}${gif ? ' gif-message-bubble' : ''}${isInvite ? ' invite-message-bubble' : ''}${deleted ? ' deleted' : ''}`}
         >
           {showAuthor && !deleted ? (
             <strong className="message-author">
               {message.display_name || message.username || 'Участник'}
+            </strong>
+          ) : isPlainText && !grouped && !deleted ? (
+            <strong className="message-author compact-message-author">
+              {message.display_name || message.username || (own ? 'Вы' : 'Участник')}
             </strong>
           ) : null}
           {forwardedName && !deleted ? (
@@ -3050,7 +3112,7 @@ function MessageBubble({
           ) : gif ? (
             <GifMessage gif={gif} messageId={message.id} accountId={accountId} />
           ) : message.kind === 'image' ? (
-            <ChatImageMessage message={message} accountId={accountId} />
+            <ChatImageMessage message={message} accountId={accountId} meta={messageMeta} />
           ) : message.kind === 'file' ? (
             <ChatFileMessage message={message} />
           ) : inviteToken ? (
@@ -3060,11 +3122,7 @@ function MessageBubble({
           ) : (
             <MessageRichText text={message.body} />
           )}
-          <span className="message-meta">
-            {message.edited_at ? <small>изменено</small> : null}
-            {message.pinned_at ? <Pin aria-label="Закреплено" /> : null}
-            <time>{formatMessageTime(message.created_at)}</time>
-          </span>
+          {!isPhoto && messageMeta}
         </div>
         {!deleted && message.reactions?.length ? (
           <div className="message-reactions" aria-label="Реакции на сообщение">
@@ -3369,7 +3427,11 @@ function EditMessageDialog({
 }) {
   const [body, setBody] = useState(message.body);
   const trimmed = body.trim();
-  const canSave = Boolean(trimmed) && trimmed !== message.body && !busy;
+  const canSave =
+    Boolean(trimmed) &&
+    trimmed !== message.body &&
+    trimmed.length <= CHAT_MESSAGE_MAX_LENGTH &&
+    !busy;
   return createPortal(
     <div className="forward-message-backdrop" onPointerDown={onClose}>
       <section
@@ -3388,7 +3450,6 @@ function EditMessageDialog({
         <textarea
           autoFocus
           value={body}
-          maxLength={4000}
           aria-label="Текст сообщения"
           onChange={(event) => setBody(event.target.value)}
           onKeyDown={(event) => {
@@ -3399,7 +3460,11 @@ function EditMessageDialog({
           }}
         />
         <footer>
-          <small>Enter — сохранить, Shift + Enter — новая строка</small>
+          <small>
+            {trimmed.length > CHAT_MESSAGE_MAX_LENGTH
+              ? `Лимит: ${CHAT_MESSAGE_MAX_LENGTH} символов`
+              : 'Enter — сохранить, Shift + Enter — новая строка'}
+          </small>
           <button type="button" disabled={!canSave} onClick={() => onSave(trimmed)}>
             <Save /> {busy ? 'Сохраняем…' : 'Сохранить'}
           </button>
@@ -3732,7 +3797,15 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
   );
 }
 
-function ChatImageMessage({ message, accountId }: { message: MessageItem; accountId: string }) {
+function ChatImageMessage({
+  message,
+  accountId,
+  meta,
+}: {
+  message: MessageItem;
+  accountId: string;
+  meta: ReactNode;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
   const [thumbnailSource, setThumbnailSource] = useState('');
@@ -3828,40 +3901,35 @@ function ChatImageMessage({ message, accountId }: { message: MessageItem; accoun
   return (
     <>
       <div className="chat-image-message" ref={containerRef}>
-        {thumbnailSource ? (
-          <button
-            type="button"
-            className="chat-image-open"
-            aria-label="Открыть фотографию на весь экран"
-            onClick={() => {
-              setViewerClosing(false);
-              setViewerOpen(true);
-            }}
-          >
-            <img
-              src={thumbnailSource}
-              alt={alt}
+        <div className="chat-image-frame">
+          {thumbnailSource ? (
+            <button
+              type="button"
+              className="chat-image-open"
+              aria-label="Открыть фотографию на весь экран"
+              onClick={() => {
+                setViewerClosing(false);
+                setViewerOpen(true);
+              }}
+            >
+              <img src={thumbnailSource} alt={alt} />
+            </button>
+          ) : failed ? (
+            <span className="chat-image-error">Не удалось загрузить фотографию</span>
+          ) : (
+            <span
+              className="chat-image-loading"
+              role="status"
+              aria-label="Загружаем фотографию"
               style={
                 message.metadata?.width && message.metadata?.height
                   ? { aspectRatio: `${message.metadata.width} / ${message.metadata.height}` }
                   : undefined
               }
             />
-          </button>
-        ) : failed ? (
-          <span className="chat-image-error">Не удалось загрузить фотографию</span>
-        ) : (
-          <span
-            className="chat-image-loading"
-            role="status"
-            aria-label="Загружаем фотографию"
-            style={
-              message.metadata?.width && message.metadata?.height
-                ? { aspectRatio: `${message.metadata.width} / ${message.metadata.height}` }
-                : undefined
-            }
-          />
-        )}
+          )}
+          {meta}
+        </div>
         {message.body && <p>{message.body}</p>}
       </div>
       {viewerOpen &&
@@ -4139,7 +4207,8 @@ function MessageComposer({
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<globalThis.File>();
   const [imageError, setImageError] = useState('');
-  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [picker, setPicker] = useState<'gif' | 'stickers' | 'emoji'>();
+  const showGifPicker = picker === 'gif';
   const [gifError, setGifError] = useState('');
   const [gifFilePreview, setGifFilePreview] = useState('');
   const [composerMenu, setComposerMenu] = useState<{
@@ -4153,6 +4222,44 @@ function MessageComposer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerMenuRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const messageLimit = imageDataUrl || attachmentFile ? 1000 : CHAT_MESSAGE_MAX_LENGTH;
+  const remaining = messageLimit - value.trim().length;
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const resize = () => {
+      const scrollTop = textarea.scrollTop;
+      textarea.style.height = '0px';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+      textarea.scrollTop = scrollTop;
+    };
+    resize();
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = textarea.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      resize();
+    });
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, [value]);
+  useEffect(() => {
+    if (!picker || picker === 'gif') return;
+    const dismiss = (event: globalThis.PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setPicker(undefined);
+    };
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setPicker(undefined);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [picker]);
   useEffect(() => {
     if (
       !attachmentFile ||
@@ -4180,23 +4287,20 @@ function MessageComposer({
       document.removeEventListener('keydown', closeOnKey);
     };
   }, [composerMenu]);
+  const insertText = (text: string) => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? start;
+    setValue(`${value.slice(0, start)}${text}${value.slice(end)}`);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + text.length, start + text.length);
+    });
+  };
   const pasteClipboardText = async () => {
     try {
       const pasted = await navigator.clipboard.readText();
-      if (!pasted) return;
-      const textarea = textareaRef.current;
-      const start = textarea?.selectionStart ?? value.length;
-      const end = textarea?.selectionEnd ?? start;
-      const next = `${value.slice(0, start)}${pasted}${value.slice(end)}`.slice(
-        0,
-        imageDataUrl || attachmentFile ? 1000 : 4000,
-      );
-      setValue(next);
-      window.requestAnimationFrame(() => {
-        const cursor = Math.min(start + pasted.length, next.length);
-        textarea?.focus();
-        textarea?.setSelectionRange(cursor, cursor);
-      });
+      if (pasted) insertText(pasted);
     } catch {
       textareaRef.current?.focus();
     } finally {
@@ -4238,9 +4342,31 @@ function MessageComposer({
     setThumbnailDataUrl('');
     setAttachmentFile(file);
   };
+  const selectSticker = (emoji: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 192;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.font = '144px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(emoji, 96, 100);
+    canvas.toBlob((blob) => {
+      if (blob) prepareSelectedImage(new File([blob], 'sticker.png', { type: 'image/png' }));
+      else setImageError('Не удалось подготовить стикер');
+    }, 'image/png');
+    setPicker(undefined);
+  };
   const send = async () => {
     const body = value.trim();
-    if ((!body && !imageDataUrl && !attachmentFile) || sending || processingImage) return;
+    if (
+      disabled ||
+      remaining < 0 ||
+      (!body && !imageDataUrl && !attachmentFile) ||
+      sending ||
+      processingImage
+    )
+      return;
     setSending(true);
     try {
       const sent =
@@ -4273,7 +4399,7 @@ function MessageComposer({
     }
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void send();
   };
@@ -4356,46 +4482,112 @@ function MessageComposer({
       >
         <ImagePlus />
       </button>
-      <button
-        type="button"
-        className={`composer-gif-button${showGifPicker ? ' active' : ''}`}
-        title="Найти GIF"
-        aria-label="Открыть поиск GIF"
-        aria-expanded={showGifPicker}
-        disabled={disabled || sending || processingImage}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => setShowGifPicker((visible) => !visible)}
-      >
-        GIF
-      </button>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        rows={1}
-        maxLength={imageDataUrl || attachmentFile ? 1000 : 4000}
-        disabled={disabled}
-        spellCheck={spellCheckEnabled}
-        lang={composerLanguage === 'auto' ? undefined : composerLanguage}
-        placeholder="Написать сообщение…"
-        aria-label="Сообщение"
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={onKeyDown}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setComposerMenu({
-            x: Math.max(10, Math.min(event.clientX, window.innerWidth - 258)),
-            y: Math.max(10, Math.min(event.clientY, window.innerHeight - 286)),
-          });
-        }}
-        onPaste={(event) => {
-          const image = Array.from(event.clipboardData.items)
-            .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
-            ?.getAsFile();
-          if (!image) return;
-          event.preventDefault();
-          prepareSelectedAttachment(image);
-        }}
-      />
+      <div className="composer-editor">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          rows={1}
+          disabled={disabled}
+          spellCheck={spellCheckEnabled}
+          lang={composerLanguage === 'auto' ? undefined : composerLanguage}
+          placeholder="Написать сообщение…"
+          aria-label="Сообщение"
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={onKeyDown}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setComposerMenu({
+              x: Math.max(10, Math.min(event.clientX, window.innerWidth - 258)),
+              y: Math.max(10, Math.min(event.clientY, window.innerHeight - 286)),
+            });
+          }}
+          onPaste={(event) => {
+            const image = Array.from(event.clipboardData.items)
+              .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+              ?.getAsFile();
+            if (!image) return;
+            event.preventDefault();
+            prepareSelectedAttachment(image);
+          }}
+        />
+        <div className="composer-expression-tools" ref={pickerRef}>
+          <button
+            type="button"
+            className={`composer-gif-button${showGifPicker ? ' active' : ''}`}
+            title="Найти GIF"
+            aria-label="Открыть поиск GIF"
+            aria-expanded={showGifPicker}
+            disabled={disabled || sending || processingImage}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setPicker(showGifPicker ? undefined : 'gif')}
+          >
+            GIF
+          </button>
+          <button
+            type="button"
+            className="composer-expression-button"
+            aria-label="Стикеры"
+            aria-expanded={picker === 'stickers'}
+            disabled={disabled || sending || processingImage}
+            onClick={() => setPicker(picker === 'stickers' ? undefined : 'stickers')}
+          >
+            <Sticker />
+          </button>
+          <button
+            type="button"
+            className="composer-expression-button"
+            aria-label="Эмодзи"
+            aria-expanded={picker === 'emoji'}
+            disabled={disabled || sending}
+            onClick={() => setPicker(picker === 'emoji' ? undefined : 'emoji')}
+          >
+            <Smile />
+          </button>
+          {(picker === 'stickers' || picker === 'emoji') && (
+            <div
+              className="composer-expression-picker"
+              role="group"
+              aria-label={picker === 'stickers' ? 'Выбор стикера' : 'Выбор эмодзи'}
+            >
+              {(picker === 'stickers'
+                ? ['😎', '😂', '🔥', '❤️', '🎉', '👋']
+                : [
+                    '😀',
+                    '😂',
+                    '🥹',
+                    '😎',
+                    '😍',
+                    '😮',
+                    '😭',
+                    '👍',
+                    '👋',
+                    '🙏',
+                    '❤️',
+                    '🔥',
+                    '🎉',
+                    '✨',
+                    '🤝',
+                    '💯',
+                  ]
+              ).map((emoji) => (
+                <button
+                  type="button"
+                  key={emoji}
+                  onClick={() => {
+                    if (picker === 'stickers') selectSticker(emoji);
+                    else {
+                      insertText(emoji);
+                      setPicker(undefined);
+                    }
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
       {showSendButton ? (
         <button
           className="send-message-button"
@@ -4405,6 +4597,7 @@ function MessageComposer({
             disabled ||
             sending ||
             processingImage ||
+            remaining < 0 ||
             (!value.trim() && !imageDataUrl && !attachmentFile)
           }
           onClick={() => void send()}
@@ -4412,11 +4605,16 @@ function MessageComposer({
           <Send />
         </button>
       ) : null}
+      {remaining < 100 && (
+        <output className={`composer-character-count${remaining < 0 ? ' over-limit' : ''}`}>
+          {remaining < 0 ? `${remaining} · лимит ${messageLimit} символов` : remaining}
+        </output>
+      )}
       {showGifPicker ? (
         <GifPicker
           externalError={gifError}
           busy={sending || disabled}
-          onClose={() => setShowGifPicker(false)}
+          onClose={() => setPicker(undefined)}
           onSelect={(gif) => {
             if (sending || disabled) return;
             setGifError('');
@@ -4424,7 +4622,7 @@ function MessageComposer({
             void (replyTarget ? onSendGif(gif, replyTarget.id) : onSendGif(gif))
               .then((sent) => {
                 if (sent) {
-                  setShowGifPicker(false);
+                  setPicker(undefined);
                   onCancelReply();
                 }
               })
@@ -4609,6 +4807,7 @@ function ChatAvatar({
   group,
   avatarUrl,
   compact = false,
+  activeCall = false,
   presence,
   positionX = 50,
   positionY = 50,
@@ -4618,6 +4817,7 @@ function ChatAvatar({
   group: boolean;
   avatarUrl?: string | null;
   compact?: boolean;
+  activeCall?: boolean;
   presence?: PresenceStatus;
   positionX?: number;
   positionY?: number;
@@ -4644,6 +4844,11 @@ function ChatAvatar({
         <Users />
       ) : (
         name.slice(0, 1).toUpperCase()
+      )}
+      {group && activeCall && (
+        <span className="group-active-call-badge" title="Идёт звонок">
+          <Volume2 />
+        </span>
       )}
       {!group && presence ? <PresenceBadge status={presence} /> : null}
     </span>

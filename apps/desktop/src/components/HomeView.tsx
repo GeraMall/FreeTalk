@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Clock3, DoorOpen, History, PhoneCall, ShieldCheck, Users } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Clock3,
+  DoorOpen,
+  History,
+  PhoneCall,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import { ChatSendPacer } from '@freetalk/protocol';
@@ -97,8 +106,8 @@ export function HomeView({
   user: AccountUser;
   busy: boolean;
   error: string;
-  onCreateRoom(roomId?: string, chatId?: string): void;
-  onJoinRoom(code: string, chatId?: string): void;
+  onCreateRoom(roomId?: string, chatId?: string, camera?: boolean): void;
+  onJoinRoom(code: string, chatId?: string, camera?: boolean): void;
   callDock?: CallDockState;
   initialChatId?: string;
   joinedChatId?: string;
@@ -210,6 +219,26 @@ export function HomeView({
   }, [onPageChange, page]);
 
   useEffect(() => {
+    let callStatusRevision = 0;
+    const refreshGroupCallStatus = () => {
+      const revision = ++callStatusRevision;
+      void accountClient
+        .request<{ chats: ChatItem[] }>('/v1/chats')
+        .then(({ chats }) => {
+          if (revision !== callStatusRevision) return;
+          const activeGroups = new Set(
+            chats.filter((chat) => chat.hasActiveGroupCall).map((chat) => chat.id),
+          );
+          setChats((current) =>
+            current.map((chat) =>
+              chat.type === 'group'
+                ? { ...chat, hasActiveGroupCall: activeGroups.has(chat.id) }
+                : chat,
+            ),
+          );
+        })
+        .catch(() => undefined);
+    };
     const realtime = new ChatRealtimeClient(
       (event) => {
         if (event.type === 'message-created' && event.chatId === SERVICE_CHAT_ID) {
@@ -247,6 +276,12 @@ export function HomeView({
           if (activeChatRef.current === event.chatId)
             setMessages((current) => appendMessage(current, event.message));
         } else if (event.type === 'message-updated') {
+          if (
+            typeof event.metadata?.roomId === 'string' &&
+            typeof event.metadata.ended === 'boolean'
+          ) {
+            refreshGroupCallStatus();
+          }
           if (activeChatRef.current === event.chatId)
             setMessages((current) =>
               current.map((message) =>
@@ -440,6 +475,7 @@ export function HomeView({
       },
       undefined,
       () => {
+        refreshGroupCallStatus();
         // The end event can arrive while leaving the call remounts this view.
         // Repair visible call cards after subscription is authenticated, without
         // resetting pagination, the draft or the message loading state.
@@ -984,18 +1020,19 @@ export function HomeView({
     async (title: string, memberIds: string[]) => {
       if (!title.trim() || !memberIds.length) return false;
       try {
-        await accountClient.request('/v1/chats', {
+        const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
           method: 'POST',
           body: JSON.stringify({ type: 'group', title, memberIds }),
         });
         await loadPage('chats');
+        await openChat(result.chat.id);
         return true;
       } catch (caught) {
         setLocalError(caught instanceof Error ? caught.message : 'Не удалось создать группу');
         return false;
       }
     },
-    [loadPage],
+    [loadPage, openChat],
   );
 
   useEffect(() => {
@@ -1084,7 +1121,7 @@ export function HomeView({
     }
   };
 
-  const startChatCall = async () => {
+  const startChatCall = async (camera?: boolean) => {
     if (!activeChat) return;
     const chatId = activeChat;
     const roomId = generateRoomCode();
@@ -1093,7 +1130,7 @@ export function HomeView({
         `/v1/chats/${chatId}/active-call`,
       );
       if (existing.call && !isOwnAbandonedCall(existing.call)) {
-        onJoinRoom(existing.call.roomId, chatId);
+        onJoinRoom(existing.call.roomId, chatId, camera);
         return;
       }
       if (joinedRoomId) {
@@ -1104,14 +1141,14 @@ export function HomeView({
         method: 'POST',
         body: JSON.stringify({ roomId }),
       });
-      onCreateRoom(roomId, chatId);
+      onCreateRoom(roomId, chatId, camera);
     } catch (caught) {
       try {
         const recovered = await accountClient.request<{ call: ActiveChatCall | null }>(
           `/v1/chats/${chatId}/active-call`,
         );
         if (recovered.call && !isOwnAbandonedCall(recovered.call)) {
-          onJoinRoom(recovered.call.roomId, chatId);
+          onJoinRoom(recovered.call.roomId, chatId, camera);
           return;
         }
       } catch {
@@ -1521,38 +1558,170 @@ export function HomeView({
           />
         )}
         {page === 'history' && (
-          <div>
-            <Header title="История звонков" subtitle="Содержание разговоров не сохраняется" />
-            <div className="history-list">
-              {(['Сегодня', 'Вчера', 'Ранее'] as const).map((period) => {
-                const calls = history.filter((call) => historyPeriod(call.started_at) === period);
-                if (!calls.length) return null;
-                return (
-                  <section className="history-period" key={period}>
-                    <h2>{period}</h2>
-                    {calls.map((call) => (
-                      <HistoryCallCard call={call} key={call.id} onCallAgain={onCreateRoom} />
-                    ))}
-                  </section>
-                );
-              })}
-            </div>
-            {history.length === 0 && (
-              <div className="dashboard-empty">
-                <span>
-                  <History size={24} />
-                </span>
-                <strong>История звонков пуста</strong>
-                <p>Здесь будут отображаться только время, длительность и участники звонков.</p>
-              </div>
-            )}
-          </div>
+          <CallHistory history={history} loading={historyLoading} onCallAgain={onCreateRoom} />
         )}
       </section>
       {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
         <MobileNavigation activePage={page} onNavigate={navigatePage} />
       ) : null}
     </main>
+  );
+}
+
+const historyMonthFormat = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' });
+const historyCallPlural = new Intl.PluralRules('ru-RU');
+
+function historyMonth(date: Date) {
+  return date.getFullYear() * 12 + date.getMonth();
+}
+
+function historyMonthLabel(month: number) {
+  const label = historyMonthFormat.format(new Date(Math.floor(month / 12), month % 12, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function historySummary(calls: CallItem[]) {
+  const count = calls.length;
+  const plural = historyCallPlural.select(count);
+  const callsLabel = plural === 'one' ? 'звонок' : plural === 'few' ? 'звонка' : 'звонков';
+  const seconds = calls.reduce((total, call) => total + Math.max(0, call.duration_seconds), 0);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const duration = hours
+    ? [`${hours} ч`, remainder ? `${remainder} мин` : ''].filter(Boolean).join(' ')
+    : minutes || !seconds
+      ? `${minutes} мин`
+      : `${seconds} сек`;
+  return `${count} ${callsLabel} · ${duration}`;
+}
+
+function CallHistory({
+  history,
+  loading,
+  onCallAgain,
+}: {
+  history: CallItem[];
+  loading: boolean;
+  onCallAgain(): void;
+}) {
+  const [period, setPeriod] = useState('all');
+  const periodMenuRef = useRef<HTMLDetailsElement>(null);
+  const periodTriggerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const menu = periodMenuRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) {
+        menu.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, []);
+
+  const closePeriodMenu = () => {
+    if (periodMenuRef.current) periodMenuRef.current.open = false;
+    periodTriggerRef.current?.focus();
+  };
+
+  const currentMonth = historyMonth(new Date());
+  const grouped = new Map<number, CallItem[]>([[currentMonth, []]]);
+  for (const call of history) {
+    const month = historyMonth(new Date(call.started_at));
+    const calls = grouped.get(month) ?? [];
+    calls.push(call);
+    grouped.set(month, calls);
+  }
+
+  const months = [...grouped.keys()].sort((first, second) => second - first);
+  const selectedPeriod = grouped.has(Number(period)) ? period : 'all';
+  const visibleMonths = selectedPeriod === 'all' ? months : [Number(selectedPeriod)];
+  const visibleCalls = selectedPeriod === 'all' ? history : grouped.get(Number(selectedPeriod))!;
+
+  return (
+    <div>
+      <Header title="История звонков" subtitle="Содержание разговоров не сохраняется" />
+      <div className="history-filter">
+        <div className="history-filter-field">
+          <span>Период</span>
+          <details
+            className="history-period-menu"
+            ref={periodMenuRef}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                event.currentTarget.open = false;
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && event.currentTarget.open) {
+                event.preventDefault();
+                closePeriodMenu();
+              }
+            }}
+          >
+            <summary ref={periodTriggerRef} aria-label="Период звонков">
+              {selectedPeriod === 'all' ? 'Все' : historyMonthLabel(Number(selectedPeriod))}
+              <ChevronDown size={15} aria-hidden="true" />
+            </summary>
+            <div className="history-period-options" role="group" aria-label="Периоды звонков">
+              {[
+                { value: 'all', label: 'Все' },
+                ...months.map((month) => ({
+                  value: String(month),
+                  label: historyMonthLabel(month),
+                })),
+              ].map(({ value, label }) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={selectedPeriod === value}
+                  onClick={() => {
+                    setPeriod(value);
+                    closePeriodMenu();
+                  }}
+                >
+                  {label}
+                  {selectedPeriod === value && <Check size={15} aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+        <p aria-live="polite">{loading ? 'Загружаем звонки…' : historySummary(visibleCalls)}</p>
+      </div>
+      {history.length >= 100 && (
+        <p className="history-limit">Статистика по последним 100 звонкам.</p>
+      )}
+      {visibleCalls.length > 0 ? (
+        <div className="history-list">
+          {visibleMonths.map((month) => {
+            const calls = grouped.get(month)!;
+            if (!calls.length) return null;
+            return (
+              <section className="history-period" key={month}>
+                <h2>
+                  {historyMonthLabel(month)} — {historySummary(calls)}
+                </h2>
+                {calls.map((call) => (
+                  <HistoryCallCard call={call} key={call.id} onCallAgain={onCallAgain} />
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      ) : !loading ? (
+        <div className="dashboard-empty">
+          <span>
+            <History size={24} />
+          </span>
+          <strong>
+            {selectedPeriod === 'all' ? 'История звонков пуста' : 'За этот месяц звонков нет'}
+          </strong>
+          <p>Здесь будут отображаться только время, длительность и участники звонков.</p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -101,6 +101,7 @@ function closeIncomingCallNotification(invitationId: string) {
 }
 
 interface EnterRoomOptions {
+  camera?: boolean;
   chatId?: string;
   room?: string;
   authToken?: string;
@@ -1158,6 +1159,12 @@ export function App() {
         cardStyle: settings.participantCardStyle,
         cardDecoration: 'none',
       });
+      if (options.camera && !options.guest) {
+        const manager = video.current;
+        void manager.toggleCamera().catch(() => {
+          if (video.current === manager) setError('Не удалось включить камеру');
+        });
+      }
       setGuestMode(Boolean(options.guest));
       if (options.guest) {
         guestWarningTimer.current = window.setTimeout(
@@ -2010,8 +2017,12 @@ export function App() {
             busy={joining}
             error={error}
             onClearError={() => setError('')}
-            onCreateRoom={(code, chatId) => void enterRoom(true, { room: code, chatId })}
-            onJoinRoom={(code, chatId) => void enterRoom(false, { room: code, chatId })}
+            onCreateRoom={(code, chatId, camera) =>
+              void enterRoom(true, { room: code, chatId, camera })
+            }
+            onJoinRoom={(code, chatId, camera) =>
+              void enterRoom(false, { room: code, chatId, camera })
+            }
             onSettings={(tab) => openSettings(tab)}
             onLogout={() => void logoutAccount()}
             updateStatus={updateStatus}
@@ -2286,9 +2297,11 @@ export function App() {
                   setNotice('Вы уже находитесь в звонке');
                   setRoomDestination('room');
                 }}
-                onJoinRoom={(code) => {
-                  if (code === roomId) callDock.onOpen();
-                  else setNotice('Сначала завершите текущий звонок');
+                onJoinRoom={(code, _chatId, camera) => {
+                  if (code === roomId) {
+                    callDock.onOpen();
+                    if (camera && !localVideo.cameraEnabled) void runVideoAction('camera');
+                  } else setNotice('Сначала завершите текущий звонок');
                 }}
                 onSettings={(tab) => openSettings(tab)}
                 onLogout={() => void logoutAccount()}

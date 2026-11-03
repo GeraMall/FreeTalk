@@ -15,6 +15,7 @@ export interface GroupInviteFriend {
 
 export function GroupInviteFriendsDialog({
   open,
+  createGroup = false,
   groupTitle,
   friends,
   memberIds,
@@ -22,6 +23,7 @@ export function GroupInviteFriendsDialog({
   onInvite,
 }: {
   open: boolean;
+  createGroup?: boolean;
   groupTitle: string;
   friends: GroupInviteFriend[];
   memberIds: string[];
@@ -93,8 +95,10 @@ export function GroupInviteFriendsDialog({
             <UserPlus />
           </span>
           <div>
-            <h2 id="group-invite-title">Пригласить в группу</h2>
-            <p>{groupTitle}</p>
+            <h2 id="group-invite-title">
+              {createGroup ? 'Создать группу' : 'Пригласить в группу'}
+            </h2>
+            <p>{createGroup ? 'Выберите друзей для нового чата' : groupTitle}</p>
           </div>
           <button
             type="button"
@@ -188,7 +192,7 @@ export function GroupInviteFriendsDialog({
         <footer>
           <span>{selected.length ? `Выбрано: ${selected.length}` : 'Выберите друзей'}</span>
           <button type="button" disabled={!selected.length || busy} onClick={() => void invite()}>
-            {busy ? 'Добавляем…' : 'Пригласить'}
+            {busy ? 'Добавляем…' : createGroup ? 'Создать группу' : 'Пригласить'}
           </button>
         </footer>
       </section>

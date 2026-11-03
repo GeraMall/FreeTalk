@@ -12,7 +12,7 @@ import { inspectRemoteGif } from './remote-gif.js';
 import { registerGifLibraryRoutes, accessibleGif, privateGif } from './gif-library.js';
 import { resolveLinkPreview } from './link-preview.js';
 import { sendIncomingCallPush } from './web-push.js';
-import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
+import { CHAT_MESSAGE_MAX_LENGTH, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import {
   ChatSendPacer,
   chatGifMetadataSchema,
@@ -903,6 +903,13 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
        CASE WHEN c.avatar_data IS NOT NULL THEN $2::text || '/v1/chats/' || c.id ||
          '/avatar?v=' || (extract(epoch FROM c.avatar_updated_at)*1000)::bigint::text ELSE NULL END AS "avatarUrl",
        self.role AS "currentUserRole",
+       (c.type='group' AND EXISTS (
+         SELECT 1 FROM call_sessions session
+         JOIN call_participants participant ON participant.call_id=session.id
+         WHERE session.chat_id=c.id AND session.ended_at IS NULL AND participant.left_at IS NULL
+         GROUP BY session.id
+         HAVING COUNT(DISTINCT COALESCE(participant.user_id,participant.anonymous_user_id)) >= 2
+       )) AS "hasActiveGroupCall",
        latest.body AS "lastMessage",latest.created_at AS "lastMessageAt",latest.kind AS "lastMessageKind",
        COALESCE(json_agg(json_build_object('id',u.id,'username',u.username,'displayName',u.display_name,
          'role',members.role,
@@ -1259,7 +1266,10 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       if (!user) return;
       const { chatId } = chatIdParams.parse(request.params);
       const { body, replyToMessageId } = z
-        .object({ body: z.string().trim().min(1).max(4000), replyToMessageId: uuid.optional() })
+        .object({
+          body: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
+          replyToMessageId: uuid.optional(),
+        })
         .parse(request.body);
       if (!(await isChatMember(chatId, user.id)))
         return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
@@ -1350,7 +1360,9 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       const user = await requireUser(request, reply);
       if (!user) return;
       const { messageId } = z.object({ messageId: uuid }).parse(request.params);
-      const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(request.body);
+      const { body } = z
+        .object({ body: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH) })
+        .parse(request.body);
       const context = await db.query<{
         chat_id: string;
         sender_id: string | null;

@@ -35,10 +35,8 @@ html[data-chat-message-style='compact'] .message-bubble-row {
   max-width: min(70%, 640px);
 }
 .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
-html[data-chat-message-style='compact']
-  .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
 .room-chat-bubble {
-  padding: 10px 13px;
+  padding: var(--chat-bubble-padding, 10px 13px);
   border-color: #29384e;
   border-radius: 0 14px 14px;
   background: var(--chat-incoming);
@@ -50,9 +48,6 @@ html[data-chat-message-style='compact']
   line-height: 1.65;
 }
 .message-bubble-row.own
-  .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
-html[data-chat-message-style='compact']
-  .message-bubble-row.own
   .message-bubble:not(.image-message-bubble):not(.gif-message-bubble):not(.invite-message-bubble),
 .room-chat-message.own .room-chat-bubble {
   border-color: #3d5073;
@@ -102,6 +97,112 @@ html[data-chat-message-style='compact']
 }
 .room-chat-composer {
   background: var(--chat-canvas);
+}
+.modern-message-composer:has(> .composer-editor) {
+  grid-template-columns: var(--chat-control-height) minmax(0, 1fr) var(--chat-control-height);
+  align-items: start;
+}
+.modern-message-composer.send-button-hidden:has(> .composer-editor) {
+  grid-template-columns: var(--chat-control-height) minmax(0, 1fr);
+}
+.modern-message-composer:has(> .composer-editor) > .send-message-button {
+  align-self: start;
+}
+.composer-editor {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid #1c2b3e;
+  border-radius: 12px;
+  background: #050d18;
+}
+.composer-editor:focus-within {
+  border-color: #293b54;
+}
+.modern-message-composer .composer-editor textarea,
+.modern-message-composer .composer-editor textarea:focus {
+  width: 100%;
+  min-width: 0;
+  min-height: calc(var(--chat-control-height) - 2px);
+  max-height: min(540px, 60dvh);
+  height: auto;
+  overflow-y: auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+}
+.composer-expression-tools {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  min-height: calc(var(--chat-control-height) - 2px);
+}
+.modern-message-composer .composer-expression-tools button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: #adbed6;
+  background: transparent;
+  box-shadow: none;
+}
+.modern-message-composer .composer-expression-tools button:hover:not(:disabled),
+.modern-message-composer .composer-expression-tools button[aria-expanded='true'] {
+  background: #1a2c48;
+  color: #fff;
+}
+.composer-expression-tools svg {
+  width: 18px;
+  height: 18px;
+}
+.composer-expression-picker {
+  position: absolute;
+  z-index: 40;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  grid-template-columns: repeat(6, 32px);
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #334561;
+  border-radius: 12px;
+  background: #101e2e;
+  box-shadow: 0 12px 32px #0006;
+  font-size: 19px;
+}
+.composer-character-count {
+  grid-column: 1 / -1;
+  justify-self: end;
+  color: var(--ft-text-muted);
+  font-size: 12px;
+}
+.composer-character-count.over-limit {
+  color: #ff8096;
+}
+@media (max-width: 760px) {
+  .modern-message-composer:has(> .composer-editor) {
+    grid-template-columns: 38px minmax(0, 1fr) 44px;
+  }
+  .modern-message-composer.send-button-hidden:has(> .composer-editor) {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .modern-message-composer .composer-expression-tools button {
+    width: 26px;
+    min-width: 26px;
+  }
+  .composer-expression-picker {
+    grid-template-columns: repeat(6, 26px);
+  }
 }
 .selection-mode .message-selection-row {
   display: grid;
@@ -257,4 +358,107 @@ html[data-chat-message-style='compact']
     width: 38px;
     min-width: 38px;
   }
+}
+
+.text-message-bubble {
+  --chat-bubble-padding: 7px 11px;
+}
+
+.message-bubble > strong.compact-message-author {
+  display: none;
+}
+
+:is(
+    html[data-chat-message-style='compact'] .message-scroll-container,
+    .chat-settings-preview.compact
+  )
+  .message-bubble-row {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+:is(
+    html[data-chat-message-style='compact'] .message-scroll-container,
+    .chat-settings-preview.compact
+  )
+  .message-bubble-row
+  .message-bubble-stack {
+  align-items: flex-start;
+}
+
+html[data-chat-message-style='compact']
+  .message-scroll-container
+  .message-bubble-row.own.grouped
+  .message-bubble-stack {
+  margin-inline: 41px 0;
+}
+
+:is(
+    html[data-chat-message-style='compact'] .message-scroll-container,
+    .chat-settings-preview.compact
+  )
+  .message-bubble-row:is(.own, .remote)
+  .message-bubble.text-message-bubble {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(
+    html[data-chat-message-style='compact'] .message-scroll-container,
+    .chat-settings-preview.compact
+  )
+  .message-bubble
+  > .message-author {
+  display: block;
+  color: var(--ft-text);
+}
+
+html[data-chat-message-style='compact'] .room-chat-message.own {
+  grid-template-columns: 30px minmax(0, 1fr);
+}
+html[data-chat-message-style='compact'] .room-chat-message.own .room-chat-avatar {
+  grid-column: 1;
+}
+html[data-chat-message-style='compact'] .room-chat-message.own .room-chat-bubble {
+  grid-column: 2;
+  justify-self: start;
+}
+html[data-chat-message-style='compact'] .room-chat-message .room-chat-bubble {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.room-chat-message-text {
+  font-size: calc(11px * var(--ft-chat-text-scale, 1));
+}
+
+/* Photos keep only the image surface, including in compact and focused rows. */
+:is(.message-bubble-row, html[data-chat-message-style='compact'] .message-bubble-row.own)
+  .message-bubble.image-message-bubble {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.group-active-call-badge {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid #06121f;
+  border-radius: 50%;
+  color: #e7fff3;
+  background: #176145;
+}
+.group-active-call-badge > svg {
+  width: 11px;
+  height: 11px;
 }

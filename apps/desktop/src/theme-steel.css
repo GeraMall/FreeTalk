@@ -34,6 +34,9 @@
     /* Keep the divider above the chat composer (35). */
     z-index: 36;
   }
+  :root .account-shell > .account-sidebar:has(+ .account-sidebar-resizer) {
+    border-right-color: transparent;
+  }
   .account-sidebar-resizer::after,
   .account-sidebar-resizer:hover::after,
   .account-sidebar-resizer:focus-visible::after,
@@ -51,20 +54,27 @@
     background: rgba(149, 173, 226, 0.13);
     box-shadow: none;
   }
-  .messenger-layout.external-sidebar > .active-chat-header::before {
-    position: absolute;
-    inset: 0 0 auto;
-    height: 16px;
-    box-sizing: border-box;
-    border-top: 1px solid #202a38;
-    border-left: 1px solid #202a38;
-    border-top-left-radius: 16px;
-    content: '';
-    pointer-events: none;
+  .account-shell:has(.external-sidebar > .active-chat-header) > .account-sidebar-resizer::after {
+    content: none;
   }
-  .account-shell-with-chat-sidebar .account-content-chat,
-  .messenger-layout.external-sidebar {
-    border-top-left-radius: 16px;
+  .messenger-layout.external-sidebar:has(> .active-chat-header) {
+    border-block-start: 1px solid #202a38;
+    border-inline-start: 1px solid #202a38;
+    border-start-start-radius: 18px;
+    background: #091722;
+  }
+  :root .account-shell:has(.external-sidebar > .active-chat-header) > .account-sidebar::after {
+    content: none;
+  }
+  .account-shell-with-chat-sidebar
+    .account-content-chat:has(.external-sidebar > .active-chat-header) {
+    border-start-start-radius: 0;
+    background-color: var(--ft-chrome);
+  }
+  .account-shell-with-chat-sidebar
+    .account-content-chat:not(:has(.external-sidebar > .active-chat-header)),
+  .messenger-layout.external-sidebar:not(:has(> .active-chat-header)) {
+    border-start-start-radius: 16px;
   }
   .account-sidebar nav button {
     color: #c4cfdf;
@@ -108,10 +118,13 @@
   }
   .account-sidebar .account-chat-search:focus-within {
     border-color: #8da6dc;
-    box-shadow: 0 0 0 2px #8da6dc1a;
   }
-  .account-sidebar .account-profile-mini {
-    background: #101823;
+  .account-sidebar .account-profile-menu-anchor {
+    --ft-sidebar-profile-surface: #06121f;
+  }
+  .account-sidebar .account-profile-mini,
+  .account-sidebar .account-profile-mini:hover {
+    background: var(--ft-sidebar-profile-surface);
     border-color: #293648;
   }
   .account-sidebar .account-sidebar-chat-list small {
@@ -127,7 +140,7 @@
     padding-top: 0;
     border: 1px solid #293648;
     border-radius: 14px;
-    background: #101823;
+    background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
   }
   .account-sidebar .account-profile-menu-anchor.has-active-call > .sidebar-call-dock {

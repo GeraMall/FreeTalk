@@ -867,7 +867,10 @@ describe('Resizable chat list', () => {
     ],
   };
 
-  const renderPage = (onSendImage = vi.fn(async () => true)) =>
+  const renderPage = (
+    onSendImage = vi.fn(async () => true),
+    onSendMessage = vi.fn(async () => true),
+  ) =>
     render(
       <ChatsPage
         userId="self"
@@ -881,7 +884,7 @@ describe('Resizable chat list', () => {
         sentMessageVersion={0}
         onOpenChat={vi.fn(async () => undefined)}
         onRetryMessages={vi.fn()}
-        onSendMessage={vi.fn(async () => true)}
+        onSendMessage={onSendMessage}
         onSendImage={onSendImage}
         onCreateGroup={vi.fn(async () => true)}
         onJoinInvite={vi.fn(async () => true)}
@@ -893,6 +896,23 @@ describe('Resizable chat list', () => {
         onJoinCall={vi.fn()}
       />,
     );
+
+  it('preserves an over-limit draft and sends once it fits the limit', async () => {
+    const send = vi.fn(async () => true);
+    const { getByRole, getByText } = renderPage(undefined, send);
+    const input = getByRole('textbox', { name: 'Сообщение' }) as HTMLTextAreaElement;
+    const body = 'а'.repeat(2000);
+    fireEvent.change(input, { target: { value: body + 'а' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(send).not.toHaveBeenCalled();
+    expect(input.value).toHaveLength(2001);
+    expect(getByText('-1 · лимит 2000 символов')).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: body } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(send).toHaveBeenCalledOnce();
+  });
 
   it('renders the direct profile as a separate island', async () => {
     const { getByRole } = renderPage();
@@ -1284,6 +1304,12 @@ describe('Message interactions', () => {
     );
 
     expect(getByText('Переслано от Команда Trlka')).toBeTruthy();
+    expect(getByText('Закреплённое сообщение')).toBeTruthy();
+    const pinnedToggle = getByRole('button', { name: 'Закреплённые сообщения' });
+    expect(pinnedToggle.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(pinnedToggle);
+    expect(container.querySelector('.message-pinned-banner')).toBeNull();
+    fireEvent.click(pinnedToggle);
     expect(getByText('Закреплённое сообщение')).toBeTruthy();
     expect(container.querySelector('.message-reactions > button.mine')).not.toBeNull();
     fireEvent.contextMenu(container.querySelector('.message-bubble-row')!, {

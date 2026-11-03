@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   Users,
+  Volume2,
   X,
 } from 'lucide-react';
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -394,6 +395,7 @@ export function AccountSidebar({
                         name={name}
                         avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
                         group={chat.type === 'group'}
+                        activeCall={chat.hasActiveGroupCall}
                         presence={chat.type === 'direct' ? other?.presence : undefined}
                         positionX={chat.avatarPositionX}
                         positionY={chat.avatarPositionY}
@@ -641,6 +643,7 @@ function SidebarAvatar({
   name,
   avatarUrl,
   group = false,
+  activeCall = false,
   presence,
   positionX,
   positionY,
@@ -649,6 +652,7 @@ function SidebarAvatar({
   name: string;
   avatarUrl?: string | null;
   group?: boolean;
+  activeCall?: boolean;
   presence?: PresenceStatus;
   positionX?: number;
   positionY?: number;
@@ -666,6 +670,11 @@ function SidebarAvatar({
         />
       ) : (
         name[0] || '?'
+      )}
+      {group && activeCall && (
+        <span className="group-active-call-badge" title="Идёт звонок">
+          <Volume2 />
+        </span>
       )}
       {!group && presence ? <PresenceBadge status={presence} /> : null}
     </span>

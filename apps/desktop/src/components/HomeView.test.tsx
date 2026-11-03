@@ -50,6 +50,65 @@ function mobileMatchMedia() {
   } as unknown as MediaQueryList;
 }
 
+it('filters call history by month and totals the visible durations', async () => {
+  const participants = [{ displayName: 'QA' }, { displayName: 'Макс' }];
+  homeViewHarness.request.mockImplementation(async (path: string) => {
+    if (path === '/v1/chats') return { chats: [] };
+    if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+    if (path === '/v1/history') {
+      return {
+        calls: [
+          {
+            id: 'new',
+            room_id: 'new',
+            started_at: '2025-10-15T12:00:00Z',
+            duration_seconds: 4200,
+            participants,
+          },
+          {
+            id: 'old',
+            room_id: 'old',
+            started_at: '2025-09-15T12:00:00Z',
+            duration_seconds: 1200,
+            participants,
+          },
+        ],
+      };
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const view = render(
+    <HomeView
+      user={{
+        id: 'self',
+        email: 'qa@example.invalid',
+        username: 'qa_self',
+        displayName: 'QA',
+        emailVerified: true,
+        avatarUrl: null,
+        registeredAt: '2025-01-01T00:00:00Z',
+      }}
+      busy={false}
+      error=""
+      page="history"
+      onCreateRoom={vi.fn()}
+      onJoinRoom={vi.fn()}
+      onSettings={vi.fn()}
+      onLogout={vi.fn()}
+    />,
+  );
+  expect(await view.findByText('2 звонка · 1 ч 30 мин')).toBeTruthy();
+  const period = view.getByLabelText('Период звонков');
+  fireEvent.click(period);
+  fireEvent.click(view.getByRole('button', { name: /октябрь 2025/i }));
+  expect(view.getByText('1 звонок · 1 ч 10 мин')).toBeTruthy();
+  expect(view.getAllByRole('button', { name: 'Позвонить снова' })).toHaveLength(1);
+  expect(period.closest('details')?.open).toBe(false);
+  fireEvent.click(period);
+  fireEvent.click(view.getByRole('button', { name: 'Все' }));
+  expect(view.getByText('2 звонка · 1 ч 30 мин')).toBeTruthy();
+});
+
 describe('HomeView chat navigation', () => {
   it('repairs a missed call end after realtime reconnect without clearing the draft', async () => {
     let ended = false;
