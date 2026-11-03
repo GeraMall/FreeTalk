@@ -3,6 +3,7 @@ set -euo pipefail
 wrapper=apps/desktop/src-tauri/gen/android/gradlew
 test_status=0
 "$wrapper" -p apps/android-native :app:connectedDebugAndroidTest --console=plain || test_status=$?
+adb install -r apps/android-native/app/build/outputs/apk/debug/app-debug.apk
 mkdir -p apps/android-native/build/previews
 for mode in login home chats conversation bot settings friends history call video; do
   adb shell am force-stop io.freetalk.mobile
