@@ -132,9 +132,10 @@ describe('Message links and selection', () => {
     const scroller = screen.container.querySelector<HTMLElement>('.message-scroll-container')!;
     const entries = screen.container.querySelectorAll<HTMLElement>('[data-message-id]');
     const originalElementFromPoint = document.elementFromPoint;
+    let hovered = entries[1];
     Object.defineProperty(document, 'elementFromPoint', {
       configurable: true,
-      value: () => entries[1],
+      value: () => hovered,
     });
     const dispatchPointer = (target: Element, type: string, clientX: number, clientY: number) => {
       const event = new Event(type, { bubbles: true, cancelable: true });
@@ -150,6 +151,10 @@ describe('Message links and selection', () => {
     dispatchPointer(entries[0]!, 'pointerdown', 10, 10);
     dispatchPointer(scroller, 'pointermove', 30, 40);
     expect(screen.getByRole('toolbar', { name: 'Выбранные сообщения' }).textContent).toContain('2');
+    hovered = entries[0];
+    dispatchPointer(scroller, 'pointermove', 30, 10);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(1);
+    expect(screen.getAllByRole('checkbox', { checked: false })).toHaveLength(1);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
     Object.defineProperty(document, 'elementFromPoint', {

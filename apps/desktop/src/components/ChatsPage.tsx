@@ -2254,6 +2254,8 @@ export function MessageList({
   const [editingPending, setEditingPending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [dragSelecting, setDragSelecting] = useState(false);
+  const selectionMode = dragSelecting || selectedIds.size > 0;
   const menuRef = useRef<HTMLDivElement>(null);
   const dragSelectionRef = useRef<
     | {
@@ -2262,6 +2264,8 @@ export function MessageList({
         startY: number;
         startId: string;
         selecting: boolean;
+        baseline: Set<string>;
+        endId?: string;
         active: boolean;
       }
     | undefined
@@ -2283,6 +2287,7 @@ export function MessageList({
       if (event.key !== 'Escape') return;
       setSelectedIds(new Set());
       dragSelectionRef.current = undefined;
+      setDragSelecting(false);
       scrollRef.current?.classList.remove('is-drag-selecting');
     };
     document.addEventListener('keydown', cancelSelection);
@@ -2524,13 +2529,12 @@ export function MessageList({
         onDragStart={(event) => event.preventDefault()}
         onPointerDown={(event) => {
           if ((event.pointerType && event.pointerType !== 'mouse') || event.button !== 0) return;
+          suppressSelectionClickRef.current = false;
           const target = event.target as HTMLElement;
-          if (
-            target.closest(
-              '.message-bubble,a,button,input,textarea,select,[contenteditable="true"]',
-            )
-          )
+          const check = target.closest('.message-selection-check');
+          if (!check && target.closest('a,button,input,textarea,select,[contenteditable="true"]'))
             return;
+          if (!selectionMode && target.closest('.message-bubble')) return;
           const entry = target.closest<HTMLElement>('[data-message-id]');
           const startId = entry?.dataset.messageId;
           if (!startId) return;
@@ -2540,9 +2544,9 @@ export function MessageList({
             startY: event.clientY,
             startId,
             selecting: !selectedIds.has(startId),
+            baseline: selectedIds,
             active: false,
           };
-          event.currentTarget.setPointerCapture?.(event.pointerId);
         }}
         onPointerMove={(event) => {
           const drag = dragSelectionRef.current;
@@ -2550,39 +2554,53 @@ export function MessageList({
           if (!drag.active) {
             if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
             drag.active = true;
+            setDragSelecting(true);
+            event.currentTarget.setPointerCapture?.(event.pointerId);
             event.currentTarget.classList.add('is-drag-selecting');
           }
           event.preventDefault();
-          const hovered = document
-            .elementFromPoint?.(event.clientX, event.clientY)
-            ?.closest<HTMLElement>('[data-message-id]')?.dataset.messageId;
-          if (!hovered) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const hit = document
+            .elementFromPoint?.(
+              Math.max(bounds.left + 1, Math.min(bounds.right - 1, event.clientX)),
+              Math.max(bounds.top + 1, Math.min(bounds.bottom - 1, event.clientY)),
+            )
+            ?.closest<HTMLElement>('[data-message-id]');
+          if (!hit || !event.currentTarget.contains(hit)) return;
+          const hovered = hit.dataset.messageId;
+          if (!hovered || hovered === drag.endId) return;
           const startIndex = visibleMessages.findIndex((message) => message.id === drag.startId);
           const endIndex = visibleMessages.findIndex((message) => message.id === hovered);
           if (startIndex < 0 || endIndex < 0) return;
           const [from, to] =
             startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-          const range = visibleMessages.slice(from, to + 1).map((message) => message.id);
-          setSelectedIds((current) => {
-            const next = new Set(current);
-            for (const messageId of range) {
-              if (drag.selecting) next.add(messageId);
-              else next.delete(messageId);
-            }
-            return next;
-          });
+          drag.endId = hovered;
+          const next = new Set(drag.baseline);
+          for (const { id } of visibleMessages.slice(from, to + 1)) {
+            if (drag.selecting) next.add(id);
+            else next.delete(id);
+          }
+          setSelectedIds(next);
         }}
         onPointerUp={(event) => {
           const drag = dragSelectionRef.current;
           if (!drag || drag.pointerId !== event.pointerId) return;
           suppressSelectionClickRef.current = drag.active;
           dragSelectionRef.current = undefined;
+          setDragSelecting(false);
           event.currentTarget.classList.remove('is-drag-selecting');
           if (event.currentTarget.hasPointerCapture?.(event.pointerId))
             event.currentTarget.releasePointerCapture?.(event.pointerId);
         }}
         onPointerCancel={(event) => {
           dragSelectionRef.current = undefined;
+          setDragSelecting(false);
+          event.currentTarget.classList.remove('is-drag-selecting');
+        }}
+        onLostPointerCapture={(event) => {
+          if (dragSelectionRef.current?.pointerId !== event.pointerId) return;
+          dragSelectionRef.current = undefined;
+          setDragSelecting(false);
           event.currentTarget.classList.remove('is-drag-selecting');
         }}
         onClickCapture={(event) => {
@@ -2592,7 +2610,7 @@ export function MessageList({
           event.stopPropagation();
         }}
       >
-        <div className="message-stream" ref={contentRef}>
+        <div className={`message-stream${selectionMode ? ' selection-mode' : ''}`} ref={contentRef}>
           {olderBusy && (
             <div className="older-messages-loading">Загружаем предыдущие сообщения…</div>
           )}
@@ -2620,46 +2638,58 @@ export function MessageList({
                   key={message.id}
                 >
                   {showDate && <DateSeparator date={message.created_at} />}
-                  {message.kind === 'call' || message.kind === 'system' ? (
-                    <MessageEventRow
-                      message={message}
-                      selected={selectedIds.has(message.id)}
-                      onContextMenu={openMessageContext}
-                      onReply={() => onReply(message)}
-                      onForward={() => setForwardingMessage(message)}
-                      onToggleSelected={() => toggleSelected(message.id)}
-                    >
-                      {message.kind === 'call' ? (
-                        <SystemCallMessage message={message} onJoin={onJoinCall} />
-                      ) : (
-                        <div className="system-message">
-                          <span>{message.body}</span>
-                          <time>{formatMessageTime(message.created_at)}</time>
-                        </div>
-                      )}
-                    </MessageEventRow>
-                  ) : (
-                    <MessageBubble
-                      message={message}
-                      accountId={userId}
-                      own={message.sender_id === userId}
-                      grouped={grouped}
-                      showAuthor={groupChat && !grouped && message.sender_id !== userId}
-                      selected={selectedIds.has(message.id)}
-                      onJoinCall={onJoinCall}
-                      onJoinInvite={onJoinInvite}
-                      onContextMenu={openMessageContext}
-                      quickReactions={recentReactions}
-                      onToggleReaction={(emoji) => {
-                        if (emoji) rememberReaction(emoji);
-                        void onReact(message.id, emoji);
-                      }}
-                      onEdit={() => setEditingMessage(message)}
-                      onForward={() => setForwardingMessage(message)}
-                      onToggleSelected={() => toggleSelected(message.id)}
-                      onRevealMessage={(messageId) => void revealMessage(messageId)}
-                    />
-                  )}
+                  <div className="message-selection-row">
+                    {message.kind === 'call' || message.kind === 'system' ? (
+                      <MessageEventRow
+                        message={message}
+                        selected={selectedIds.has(message.id)}
+                        onContextMenu={openMessageContext}
+                        onReply={() => onReply(message)}
+                        onForward={() => setForwardingMessage(message)}
+                      >
+                        {message.kind === 'call' ? (
+                          <SystemCallMessage message={message} onJoin={onJoinCall} />
+                        ) : (
+                          <div className="system-message">
+                            <span>{message.body}</span>
+                            <time>{formatMessageTime(message.created_at)}</time>
+                          </div>
+                        )}
+                      </MessageEventRow>
+                    ) : (
+                      <MessageBubble
+                        message={message}
+                        accountId={userId}
+                        own={message.sender_id === userId}
+                        grouped={grouped}
+                        showAuthor={groupChat && !grouped && message.sender_id !== userId}
+                        selected={selectedIds.has(message.id)}
+                        onJoinCall={onJoinCall}
+                        onJoinInvite={onJoinInvite}
+                        onContextMenu={openMessageContext}
+                        quickReactions={recentReactions}
+                        onToggleReaction={(emoji) => {
+                          if (emoji) rememberReaction(emoji);
+                          void onReact(message.id, emoji);
+                        }}
+                        onEdit={() => setEditingMessage(message)}
+                        onForward={() => setForwardingMessage(message)}
+                        onRevealMessage={(messageId) => void revealMessage(messageId)}
+                      />
+                    )}
+                    {selectionMode && (
+                      <button
+                        type="button"
+                        className="message-selection-check"
+                        role="checkbox"
+                        aria-label="Выделение сообщения"
+                        aria-checked={selectedIds.has(message.id)}
+                        onClick={() => toggleSelected(message.id)}
+                      >
+                        <Check aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -2844,7 +2874,6 @@ function MessageBubble({
   onToggleReaction,
   onEdit,
   onForward,
-  onToggleSelected,
   onRevealMessage,
 }: {
   message: MessageItem;
@@ -2865,7 +2894,6 @@ function MessageBubble({
   onToggleReaction(emoji: string | null): void;
   onEdit(): void;
   onForward(): void;
-  onToggleSelected(): void;
   onRevealMessage(messageId: string): void;
 }) {
   const longPressTimerRef = useRef<number | undefined>(undefined);
@@ -3058,16 +3086,6 @@ function MessageBubble({
           </div>
         ) : null}
       </div>
-      {selected ? (
-        <button
-          type="button"
-          className="message-selection-check"
-          aria-label="Снять выделение сообщения"
-          onClick={onToggleSelected}
-        >
-          <CheckCircle2 />
-        </button>
-      ) : null}
     </article>
   );
 }
@@ -3889,7 +3907,6 @@ function MessageEventRow({
   onContextMenu,
   onReply,
   onForward,
-  onToggleSelected,
 }: {
   message: MessageItem;
   selected: boolean;
@@ -3897,7 +3914,6 @@ function MessageEventRow({
   onContextMenu(message: MessageItem, x: number, y: number): void;
   onReply(): void;
   onForward(): void;
-  onToggleSelected(): void;
 }) {
   const longPressTimerRef = useRef<number | undefined>(undefined);
   const longPressStartRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -3972,16 +3988,6 @@ function MessageEventRow({
         </button>
       </div>
       {children}
-      {selected ? (
-        <button
-          type="button"
-          className="message-selection-check"
-          aria-label="Снять выделение сообщения"
-          onClick={onToggleSelected}
-        >
-          <CheckCircle2 />
-        </button>
-      ) : null}
     </article>
   );
 }

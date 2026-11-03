@@ -2153,6 +2153,44 @@ function ChatsSettingsTab({
     }
   };
 
+  const chatPreview = (
+    <div
+      className={`chat-settings-preview ${settings.chatMessageStyle}`}
+      aria-label="Предпросмотр оформления чата"
+      style={
+        {
+          '--ft-chat-text-scale': settings.chatTextScale,
+          backgroundImage: settings.chatWallpaperDataUrl
+            ? `linear-gradient(#07111dbb, #07111dbb), url("${settings.chatWallpaperDataUrl}")`
+            : undefined,
+          backgroundSize: settings.chatWallpaperDataUrl
+            ? `100% 100%, ${settings.chatWallpaperFit}`
+            : undefined,
+        } as CSSProperties
+      }
+    >
+      {[
+        { name: 'М', text: 'Привет! Как тебе оформление?', time: '12:00', own: false },
+        { name: 'А', text: 'Отлично, так намного удобнее.', time: '12:01', own: true },
+      ].map(({ name, text, time, own }) => (
+        <div className={`message-bubble-row ${own ? 'own' : 'remote'}`} key={time}>
+          <span className="chat-avatar compact" aria-hidden="true">
+            {name}
+          </span>
+          <div className="message-bubble-stack">
+            <div className="message-bubble">
+              <p>{text}</p>
+              <span className="message-meta">
+                <time dateTime={time}>{time}</time>
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div className="preview-composer">Написать сообщение…</div>
+    </div>
+  );
+
   return (
     <section className="settings-section chat-settings-section">
       <div className="chat-settings-group">
@@ -2176,12 +2214,14 @@ function ChatsSettingsTab({
             aria-label="Размер текста сообщений"
             type="range"
             min="0.85"
-            max="1.3"
-            step="0.05"
+            max="1.55"
+            step="0.01"
             value={settings.chatTextScale}
             onChange={(event) => onSetting({ chatTextScale: Number(event.target.value) }, false)}
           />
         </label>
+
+        <div className="chat-live-size-preview">{chatPreview}</div>
 
         <div className="chat-style-setting">
           <strong>Вид сообщений</strong>
@@ -2285,25 +2325,7 @@ function ChatsSettingsTab({
         )}
 
         <div className="chat-settings-preview-card">
-          <div
-            className={`chat-settings-preview ${settings.chatMessageStyle}`}
-            aria-label="Предпросмотр оформления чата"
-            style={
-              {
-                '--preview-text-scale': settings.chatTextScale,
-                backgroundImage: settings.chatWallpaperDataUrl
-                  ? `linear-gradient(rgba(1, 10, 20, 0.6), rgba(1, 10, 20, 0.6)), url("${settings.chatWallpaperDataUrl}")`
-                  : undefined,
-                backgroundSize: settings.chatWallpaperDataUrl
-                  ? `100% 100%, ${settings.chatWallpaperFit}`
-                  : undefined,
-              } as CSSProperties
-            }
-          >
-            <div className="preview-message remote">Привет! Как тебе оформление?</div>
-            <div className="preview-message own">Отлично, так намного удобнее.</div>
-            <div className="preview-composer">Написать сообщение…</div>
-          </div>
+          {chatPreview}
           <div>
             <strong>Предпросмотр</strong>
             <small>Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.</small>

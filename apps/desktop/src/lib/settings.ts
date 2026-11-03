@@ -112,7 +112,9 @@ export function defaultSettings(): LocalSettings {
 
 export function loadSettings(): LocalSettings {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<LocalSettings>;
+    const value = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<LocalSettings> & {
+      chatTextScaleBasis?: number;
+    };
     const legacy = value as Partial<LocalSettings> & { pushToTalk?: boolean };
     const video = normalizeVideoPreferences(value);
     const macOS = isMacOS();
@@ -138,7 +140,15 @@ export function loadSettings(): LocalSettings {
         : [],
       chatTextScale:
         typeof value.chatTextScale === 'number'
-          ? Math.min(1.3, Math.max(0.85, value.chatTextScale))
+          ? Math.min(
+              1.55,
+              Math.max(
+                0.85,
+                Math.round(
+                  (value.chatTextScale / (value.chatTextScaleBasis === 2 ? 1 : 0.85)) * 100,
+                ) / 100,
+              ),
+            )
           : defaults.chatTextScale,
       chatWallpaperFit: value.chatWallpaperFit === 'contain' ? 'contain' : 'cover',
       chatMessageStyle: value.chatMessageStyle === 'compact' ? 'compact' : 'bubbles',
@@ -179,7 +189,7 @@ export function loadSettings(): LocalSettings {
       messageNotificationSound: value.messageNotificationSound !== false,
     };
     if (migrateMacScreenAudio) {
-      localStorage.setItem(KEY, JSON.stringify(settings));
+      saveSettings(settings);
       localStorage.setItem(MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION, 'done');
     }
     return settings;
@@ -189,5 +199,5 @@ export function loadSettings(): LocalSettings {
 }
 
 export function saveSettings(settings: LocalSettings) {
-  localStorage.setItem(KEY, JSON.stringify(settings));
+  localStorage.setItem(KEY, JSON.stringify({ ...settings, chatTextScaleBasis: 2 }));
 }

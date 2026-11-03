@@ -7989,31 +7989,8 @@ input[type='range']:hover::-webkit-slider-thumb {
   background: rgba(3, 10, 21, 0.56);
   font-size: 8px;
 }
-.preview-message {
-  width: fit-content;
-  max-width: 85%;
-  padding: 8px 10px;
-  border: 1px solid rgba(149, 173, 226, 0.16);
-  border-radius: 13px 13px 13px 4px;
-  color: var(--ft-text-secondary);
-  background: rgba(5, 18, 32, 0.93);
-  font-size: calc(11px * var(--preview-text-scale, 1));
-}
-.preview-message.own {
-  align-self: flex-end;
-  border-color: rgba(141, 166, 220, 0.22);
-  border-radius: 13px 13px 4px;
-  background: rgba(34, 43, 63, 0.94);
-}
-.chat-settings-preview.compact {
-  gap: 4px;
-}
-.chat-settings-preview.compact .preview-message {
-  padding: 5px 8px;
-  border-radius: 7px 7px 7px 3px;
-}
-.chat-settings-preview.compact .preview-message.own {
-  border-radius: 7px 7px 3px;
+.chat-live-size-preview .chat-settings-preview {
+  min-height: 0;
 }
 .chat-text-size-setting,
 .chat-style-setting,
@@ -12608,7 +12585,7 @@ html.notification-overlay-document #root {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: calc(12px * var(--ft-chat-text-scale, 1));
+  font-size: calc(12px * 0.85 * var(--ft-chat-text-scale, 1));
   line-height: 1.42;
 }
 .message-bubble time {
@@ -16679,7 +16656,7 @@ textarea::placeholder {
 }
 
 .message-bubble p {
-  font-size: calc(13px * var(--ft-chat-text-scale, 1));
+  font-size: calc(13px * 0.85 * var(--ft-chat-text-scale, 1));
   line-height: 1.48;
 }
 
@@ -17004,7 +16981,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #edf5fc;
-  font-size: calc(13px * var(--ft-chat-text-scale, 1));
+  font-size: calc(13px * 0.85 * var(--ft-chat-text-scale, 1));
   line-height: 1.4;
 }
 

@@ -12,6 +12,14 @@ describe('platform-specific settings defaults', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('rebases the old 85% size to 100% and preserves a newly selected 85%', () => {
+    localStorage.setItem('freetalk.settings.v1', JSON.stringify({ chatTextScale: 0.85 }));
+    expect(loadSettings().chatTextScale).toBe(1);
+
+    saveSettings({ ...loadSettings(), chatTextScale: 0.85 });
+    expect(loadSettings().chatTextScale).toBe(0.85);
+  });
+
   it('keeps screen audio enabled by default on Windows', () => {
     usePlatform('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     expect(defaultSettings()).toMatchObject({
