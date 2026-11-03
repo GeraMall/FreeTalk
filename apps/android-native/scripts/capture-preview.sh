@@ -7,8 +7,8 @@ adb install -r apps/android-native/app/build/outputs/apk/debug/app-debug.apk
 mkdir -p apps/android-native/build/previews
 for mode in login home chats conversation bot settings friends history call video; do
   adb shell am force-stop io.freetalk.mobile
-  adb shell am start -n io.freetalk.mobile/.DesignPreviewActivity --es mode "$mode"
-  sleep 3
+  adb shell am start -W -n io.freetalk.mobile/.DesignPreviewActivity --es mode "$mode"
+  sleep 2
   adb exec-out screencap -p > "apps/android-native/build/previews/phone-$mode.png"
 done
 for config in 'small 960x1704 480' 'tablet 1600x2560 320' 'landscape 1600x1000 240'; do
@@ -17,7 +17,7 @@ for config in 'small 960x1704 480' 'tablet 1600x2560 320' 'landscape 1600x1000 2
   adb shell wm density "$density"
   for mode in home conversation bot settings video; do
     adb shell am force-stop io.freetalk.mobile
-    adb shell am start -n io.freetalk.mobile/.DesignPreviewActivity --es mode "$mode"
+    adb shell am start -W -n io.freetalk.mobile/.DesignPreviewActivity --es mode "$mode"
     sleep 2
     adb exec-out screencap -p > "apps/android-native/build/previews/$name-$mode.png"
   done
