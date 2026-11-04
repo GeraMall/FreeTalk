@@ -173,3 +173,44 @@ it('bounds a stalled session restore and keeps the login available for retry', a
     vi.useRealTimers();
   }
 });
+
+it('shares an in-flight chat history request and waits before retrying a rate limit', async () => {
+  vi.useFakeTimers();
+  try {
+    const user = {
+      id: '00000000-0000-4000-8000-000000000001',
+      email: 'mac@example.com',
+      username: 'mac_user',
+      displayName: 'Mac user',
+      emailVerified: true,
+      registeredAt: new Date().toISOString(),
+    };
+    const session = {
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      accessExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+      refreshExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ user, session })))
+      .mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'Retry-After': '7' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ messages: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new AccountClient();
+    await client.mobileBetaLogin(user.email, 'Password123', 'TRLKA-TEST');
+
+    const first = client.chatHistory('test-chat');
+    const second = client.chatHistory('test-chat');
+    await vi.advanceTimersByTimeAsync(6999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { messages: [] },
+      { messages: [] },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.useRealTimers();
+  }
+});
