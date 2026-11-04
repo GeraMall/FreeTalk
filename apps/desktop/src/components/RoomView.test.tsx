@@ -915,6 +915,30 @@ describe('RoomView media layouts', () => {
     expect(stageShell?.classList.contains('media-workspace-fullscreen-shell')).toBe(false);
   });
 
+  it('keeps the share visible before the stage is measured and exposes playback recovery', () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const { container, getByRole } = render(view('screen'));
+      const stage = container.querySelector<HTMLElement>('.screen-stage-shell')!;
+      const video = stage.querySelector('video')!;
+      expect(stage.style.width).toBe('');
+      expect(stage.style.height).toBe('');
+      expect(stage.querySelector('.screen-stage-waiting')).not.toBeNull();
+      fireEvent.error(video);
+      expect(getByRole('button', { name: 'Повторить подключение' })).not.toBeNull();
+      fireEvent.playing(video);
+      expect(stage.querySelector('.screen-stage-waiting')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows screen as the stage and keeps the camera in the participant strip', () => {
     const { container } = render(view('both'));
     const stageShell = container.querySelector<HTMLElement>('.screen-stage-shell');

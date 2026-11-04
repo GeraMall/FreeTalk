@@ -25,7 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @freetalk/desktop typecheck
-      - run: pnpm --filter @freetalk/desktop test src/lib/video-quality.test.ts src/lib/video-manager.test.ts src/lib/peer-manager.video.test.ts
+      - run: pnpm --filter @freetalk/desktop test src/components/RoomView.test.tsx src/lib/video-quality.test.ts src/lib/video-manager.test.ts src/lib/peer-manager.video.test.ts
       - run: pnpm --filter @freetalk/desktop tauri build --target aarch64-apple-darwin --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - name: Verify and launch the Mac bundle
         shell: bash

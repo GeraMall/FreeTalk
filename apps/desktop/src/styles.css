@@ -3466,6 +3466,21 @@ input[type='range']:hover::-webkit-slider-thumb {
   box-shadow: none;
   cursor: zoom-in;
 }
+.screen-stage-waiting {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--ft-text);
+  text-align: center;
+  pointer-events: none;
+}
+.screen-stage-waiting button {
+  pointer-events: auto;
+}
 .screen-stage:fullscreen,
 .screen-stage.screen-stage-window-fullscreen {
   position: fixed;
@@ -19501,6 +19516,15 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   border-start-start-radius: 16px;
   clip-path: inset(0 round 16px 0 0 0);
 }
+/* WKWebView can lose the clipped call layer while animating the initial split. */
+.mac-desktop-app .account-room-workspace.conversation-call-workspace,
+.mac-desktop-app .conversation-call-workspace > :is(.room-view-slot, .account-page-slot) {
+  animation: none;
+  transition: none;
+}
+.mac-desktop-app .conversation-call-workspace > .room-view-slot:not(:has(.call-fullscreen)) {
+  clip-path: none;
+}
 .conversation-call-workspace > .conversation-call-resizer {
   grid-row: 2;
   height: 8px;
@@ -19729,6 +19753,32 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 .conversation-call-compact:not(.call-fullscreen) .room-mode-audio .participants-grid {
   overflow: auto;
   align-content: safe center;
+}
+@media (min-width: 761px) {
+  .mac-desktop-app
+    .conversation-call-compact:not(.call-fullscreen)
+    .room-mode-audio
+    .participants-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 310px));
+    align-content: start;
+    align-content: safe center;
+    padding-block: 48px 24px;
+  }
+
+  .mac-desktop-app
+    .conversation-call-compact:not(.call-fullscreen)
+    .room-mode-audio
+    .participants-grid[data-count='1'] {
+    grid-template-columns: minmax(0, 310px);
+  }
+
+  .mac-desktop-app
+    .conversation-call-compact:not(.call-fullscreen)
+    .room-mode-audio
+    .participant-card.audio-tile {
+    width: 100%;
+  }
 }
 .conversation-call-compact:not(.call-fullscreen) .room-mode-audio .invite-empty {
   display: none;

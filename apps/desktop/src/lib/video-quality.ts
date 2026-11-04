@@ -1,3 +1,5 @@
+import { usesMacDesktop } from './window-chrome';
+
 export type ScreenResolution = '720p' | '1080p' | '1440p';
 export type ScreenFrameRate = 15 | 30 | 60;
 export type ScreenContentMode = 'text' | 'balanced' | 'video';
@@ -54,12 +56,8 @@ const VIDEO_SCALE_BY_LEVEL = [1, 1.5, 2, 3] as const;
 const VIDEO_FPS_BY_LEVEL = [1, 1, 0.75, 0.5] as const;
 
 export function screenSenderPreferences(preferences: VideoPreferences): VideoPreferences {
-  const macApp =
-    typeof window !== 'undefined' &&
-    '__TAURI_INTERNALS__' in window &&
-    /Macintosh|Mac OS X/i.test(navigator.userAgent);
   // WebKit can otherwise downscale static content aggressively at call startup.
-  return macApp && preferences.screenContentMode === 'balanced'
+  return usesMacDesktop() && preferences.screenContentMode === 'balanced'
     ? { ...preferences, screenContentMode: 'text' }
     : preferences;
 }

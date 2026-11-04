@@ -12,7 +12,7 @@ import { CustomTitleBar } from './components/CustomTitleBar';
 import { NotificationOverlay } from './components/NotificationOverlay';
 import { installInteractionGuards } from './lib/interaction-guards';
 import { installMobileViewport } from './lib/mobile-viewport';
-import { usesCustomWindowChrome } from './lib/window-chrome';
+import { usesCustomWindowChrome, usesMacDesktop } from './lib/window-chrome';
 import './styles.css';
 import './profile-panel.css';
 import './gif-library.css';
@@ -21,6 +21,7 @@ import './chat-theme.css';
 import './control-motion.css';
 
 document.documentElement.lang = appLanguage();
+document.documentElement.classList.toggle('mac-desktop-app', usesMacDesktop());
 installInteractionGuards();
 installMobileViewport();
 

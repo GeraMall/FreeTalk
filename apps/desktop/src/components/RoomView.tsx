@@ -1879,6 +1879,7 @@ function ScreenShareStage({
         Math.min(bounds.height, visibleBottom - bounds.top) - SCREEN_STAGE_BOTTOM_GAP,
       );
       const width = Math.min(availableWidth, availableHeight * aspectRatio);
+      if (width < 1) return;
       const height = width / aspectRatio;
       setStageSize((current) =>
         current && Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
@@ -2018,14 +2019,26 @@ function ParticipantVideo({
   onExpand?(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
+  const [playback, setPlayback] = useState<'waiting' | 'playing' | 'failed'>('waiting');
+  const play = useCallback(() => {
+    if (!element) return;
+    void element.play().catch((error: unknown) => {
+      if (
+        element.srcObject === stream &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      )
+        setPlayback('failed');
+    });
+  }, [element, stream]);
   useEffect(() => {
     if (!element) return;
+    setPlayback('waiting');
     element.srcObject = stream;
-    void element.play().catch(() => undefined);
+    play();
     return () => {
       if (element.srcObject === stream) element.srcObject = null;
     };
-  }, [element, stream]);
+  }, [element, play, stream]);
   useEffect(() => {
     if (!element) return;
     element.muted = muted;
@@ -2082,6 +2095,8 @@ function ParticipantVideo({
         autoPlay
         muted={muted}
         playsInline
+        onPlaying={() => setPlayback('playing')}
+        onError={() => setPlayback('failed')}
         onLoadedMetadata={(event) => {
           const video = event.currentTarget;
           if (video.videoWidth > 0 && video.videoHeight > 0)
@@ -2105,6 +2120,24 @@ function ParticipantVideo({
             onAspectRatioChange?.(video.videoWidth / video.videoHeight);
         }}
       />
+      {source === 'screen' && playback !== 'playing' && (
+        <div className="screen-stage-waiting" role="status">
+          <span>{playback === 'failed' ? t('Демонстрация экрана') : t('Подключение…')}</span>
+          {playback === 'failed' && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPlayback('waiting');
+                play();
+              }}
+            >
+              {t('Повторить подключение')}
+            </button>
+          )}
+        </div>
+      )}
       {showExpand && onExpand && (
         <button
           className="video-fullscreen"
