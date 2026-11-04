@@ -1,0 +1,607 @@
+.device-control-icon {
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.device-control-icon > svg {
+  grid-area: 1 / 1;
+}
+.profile-audio-cut {
+  stroke-dasharray: 1.12;
+  stroke-dashoffset: 1.12;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 140ms ease-in;
+}
+.device-control-icon[data-off='true'] .profile-audio-cut {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 175ms var(--ft-ease);
+}
+.profile-audio-slash {
+  stroke: #ff617a;
+  stroke-width: 2.2;
+}
+
+.account-sidebar .account-profile-settings-button:active:not(:disabled),
+.profile-audio-device > button[aria-pressed]:active:not(:disabled),
+.modern-message-composer > button:active:not(:disabled),
+.modern-message-composer .composer-expression-tools > button:active:not(:disabled),
+:is(
+    .chat-voice-action,
+    .chat-video-action,
+    .chat-pinned-toggle,
+    .chat-invite-action,
+    .chat-profile-toggle,
+    [data-chat-menu-trigger]
+  ):active:not(:disabled),
+.voice-dock
+  :is(.dock-control, .dock-device-arrow, .leave-button, .mobile-call-more-toggle):active:not(
+    :disabled
+  ),
+.room-shell
+  :is(.conversation-chat-hide, .conversation-invite, .call-view-controls > button):active:not(
+    :disabled
+  ),
+.modern-message-composer > .send-message-button:hover:not(:disabled) {
+  transform: none;
+}
+.modern-message-composer > .send-message-button {
+  overflow: hidden;
+}
+
+.system-call-message:not(.ended):has(> button) {
+  border-color: rgba(85, 218, 148, 0.3);
+  background: linear-gradient(112deg, rgba(85, 218, 148, 0.09), rgba(75, 127, 255, 0.04));
+}
+.system-call-message:not(.ended):has(> button) .system-call-icon {
+  color: #7ce3a9;
+  background: rgba(85, 218, 148, 0.11);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .system-call-message:not(.ended):has(> button) {
+    position: relative;
+    isolation: isolate;
+    overflow: clip;
+  }
+  .system-call-message:not(.ended):has(> button)::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: linear-gradient(
+      108deg,
+      transparent 16%,
+      rgba(85, 218, 148, 0.15) 48%,
+      transparent 81%
+    );
+    animation: system-call-green-sweep 5s ease-in-out infinite;
+    pointer-events: none;
+    content: '';
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .account-sidebar
+    nav
+    > button:hover
+    > .lucide-door-open
+    > path:is(:nth-of-type(2), :nth-of-type(4)) {
+    transform-box: view-box;
+    transform-origin: 45.833% 50%;
+    animation: sidebar-door-open 450ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-door-open > path:nth-of-type(3) {
+    animation: sidebar-detail-light 450ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-users > :is(path:first-of-type, circle) {
+    animation: sidebar-friends-greet 430ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-users > path:is(:nth-of-type(2), :nth-of-type(3)) {
+    animation: sidebar-friends-answer 430ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-store > path:nth-of-type(2) {
+    transform-box: view-box;
+    transform-origin: 50% 36%;
+    animation: sidebar-store-awning 440ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-store > path:first-of-type {
+    animation: sidebar-detail-light 440ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-history > path:not(:last-of-type) {
+    transform-box: view-box;
+    transform-origin: center;
+    animation: sidebar-history-ring 460ms ease-in-out;
+  }
+  .account-sidebar nav > button:hover > .lucide-history > path:last-of-type {
+    transform-box: view-box;
+    transform-origin: center;
+    animation: sidebar-history-rewind 460ms ease-in-out;
+  }
+  :is(.account-profile-avatar-trigger, .profile-popover-avatar-trigger) > .profile-avatar-small {
+    transition: transform 180ms var(--ft-ease);
+  }
+  :is(.account-profile-avatar-trigger, .profile-popover-avatar-trigger):is(:hover, :focus-visible)
+    > .profile-avatar-small {
+    transform: scale(1.055);
+  }
+  .profile-audio-device:first-child > button:hover > .device-control-icon {
+    animation: profile-mic-nod 340ms ease-in-out;
+  }
+  .profile-audio-device:nth-child(2) > button:hover > .device-control-icon {
+    animation: profile-headphones-bounce 360ms ease-in-out;
+  }
+  .account-profile-settings-button:is(:hover, :focus-visible) > svg {
+    animation: profile-gear-turn 350ms cubic-bezier(0.16, 0.84, 0.3, 1) both;
+  }
+  .composer-add-button:is(:hover, :focus-visible):not(:disabled) > svg {
+    animation: composer-photo-lift 430ms ease-in-out;
+  }
+  .composer-add-button:is(:hover, :focus-visible):not(:disabled) > svg > circle {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: composer-photo-glint 430ms ease-in-out;
+  }
+  .composer-sticker-button:is(:hover, :focus-visible):not(:disabled) > svg {
+    animation: composer-sticker-sway 470ms ease-in-out;
+  }
+  .composer-emoji-button:is(:hover, :focus-visible):not(:disabled) > svg > line:last-of-type {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: composer-emoji-wink 360ms ease-in-out;
+  }
+  .composer-gif-button:is(:hover, :focus-visible):not(:disabled) > span {
+    background-image: linear-gradient(105deg, #9bb2da 34%, #eff5ff 50%, #9bb2da 66%);
+    background-size: 280% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: composer-gif-shimmer 540ms ease-out;
+  }
+  .account-profile-settings-button:active > svg,
+  .profile-audio-device > button[aria-pressed]:active > .device-control-icon,
+  .composer-add-button:active:not(:disabled) > svg,
+  .composer-expression-tools > button:active:not(:disabled) > :is(svg, span) {
+    scale: 0.9;
+  }
+  .chat-voice-action {
+    --chat-action-motion: chat-voice-ring;
+  }
+  .chat-video-action {
+    --chat-action-motion: chat-video-focus;
+  }
+  .chat-pinned-toggle {
+    --chat-action-motion: chat-pin-tap;
+  }
+  .chat-invite-action {
+    --chat-action-motion: chat-invite-pop;
+  }
+  .chat-profile-toggle {
+    --chat-action-motion: chat-profile-slide;
+    --chat-profile-slide: -2px;
+  }
+  .chat-profile-toggle[aria-pressed='true'] {
+    --chat-profile-slide: 2px;
+  }
+  :is(
+      .chat-voice-action,
+      .chat-video-action,
+      .chat-pinned-toggle,
+      .chat-invite-action,
+      .chat-profile-toggle,
+      [data-chat-menu-trigger]
+    )
+    > svg {
+    transition: scale 130ms ease-out;
+  }
+  :is(
+      .chat-voice-action,
+      .chat-video-action,
+      .chat-pinned-toggle,
+      .chat-invite-action,
+      .chat-profile-toggle
+    ):is(:hover, :focus-visible):not(:disabled)
+    > svg {
+    animation: var(--chat-action-motion) 350ms ease-in-out;
+  }
+  :is(
+      .chat-voice-action,
+      .chat-video-action,
+      .chat-pinned-toggle,
+      .chat-invite-action,
+      .chat-profile-toggle,
+      [data-chat-menu-trigger]
+    ):active:not(:disabled)
+    > svg {
+    scale: 0.82;
+    transition-duration: 55ms;
+  }
+  [data-chat-menu-trigger]:is(:hover, :focus-visible) > svg > circle {
+    animation: chat-menu-dot-hop 220ms ease-in-out;
+  }
+  [data-chat-menu-trigger]:is(:hover, :focus-visible) > svg > circle:nth-of-type(2) {
+    animation-delay: 45ms;
+  }
+  [data-chat-menu-trigger]:is(:hover, :focus-visible) > svg > circle:nth-of-type(3) {
+    animation-delay: 90ms;
+  }
+
+  .voice-dock
+    :is(.mic-control, .video-control:not(.screen-control)):is(:hover, :focus-visible):not(:disabled)
+    .device-control-icon {
+    animation: chat-video-focus 350ms ease-in-out;
+  }
+  .voice-dock .dock-device-arrow > svg {
+    transition:
+      rotate 170ms var(--ft-ease),
+      translate 140ms var(--ft-ease);
+  }
+  .voice-dock .dock-device-arrow:is(:hover, :focus-visible) > svg {
+    translate: 0 -2px;
+  }
+  .voice-dock .dock-device-arrow[aria-expanded='true'] > svg {
+    rotate: 180deg;
+  }
+  .voice-dock .screen-control:is(:hover, :focus-visible):not(:disabled) .dock-icon > svg {
+    animation: call-screen-lift 350ms ease-in-out;
+  }
+  .voice-dock .dock-recording-control:is(:hover, :focus-visible):not(:disabled) .dock-icon > svg {
+    animation: call-record-pulse 350ms ease-in-out;
+  }
+  .voice-dock .reaction-button:is(:hover, :focus-visible) .dock-icon > svg {
+    animation: call-reaction-wiggle 350ms ease-in-out;
+  }
+  :is(.room-chat-control, .conversation-chat-hide):is(:hover, :focus-visible) svg {
+    animation: call-chat-pop 350ms ease-in-out;
+  }
+  :is(.dock-settings-control, .mobile-call-more-toggle):is(:hover, :focus-visible)
+    :is(.dock-desktop-more-icon, .lucide-ellipsis)
+    > circle {
+    animation: chat-menu-dot-hop 220ms ease-in-out;
+  }
+  :is(.dock-settings-control, .mobile-call-more-toggle):is(:hover, :focus-visible)
+    .lucide-ellipsis
+    > circle:nth-of-type(2) {
+    animation-delay: 45ms;
+  }
+  :is(.dock-settings-control, .mobile-call-more-toggle):is(:hover, :focus-visible)
+    .lucide-ellipsis
+    > circle:nth-of-type(3) {
+    animation-delay: 90ms;
+  }
+  .dock-settings-control:is(:hover, :focus-visible) .dock-mobile-settings-icon {
+    animation: call-reaction-wiggle 350ms ease-in-out;
+  }
+  .voice-dock .leave-button:is(:hover, :focus-visible) > svg {
+    animation: call-exit-nudge 330ms ease-in-out;
+  }
+  .sidebar-call-status .dock-hangup:is(:hover, :focus-visible) > svg {
+    animation: sidebar-hangup-settle 330ms ease-in-out;
+  }
+  .sidebar-call-location:hover > .lucide-wifi > path {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: sidebar-signal-wave 300ms ease-in-out;
+  }
+  .sidebar-call-location:hover > .lucide-wifi > path:nth-of-type(4) {
+    animation-delay: 45ms;
+  }
+  .sidebar-call-location:hover > .lucide-wifi > path:nth-of-type(3) {
+    animation-delay: 90ms;
+  }
+  .sidebar-call-location:hover > .lucide-wifi > path:nth-of-type(2) {
+    animation-delay: 135ms;
+  }
+  .sidebar-call-tools
+    > button:is(:hover, :focus-visible):not(:disabled)
+    > :is(.lucide-camera, .lucide-camera-off) {
+    animation: chat-video-focus 350ms ease-in-out;
+  }
+  .sidebar-call-tools
+    > button:is(:hover, :focus-visible):not(:disabled)
+    > .lucide-monitor-up
+    > path:nth-of-type(-n + 2) {
+    animation: sidebar-share-arrow 360ms ease-in-out;
+  }
+  .sidebar-call-tools > button:is(:hover, :focus-visible) > .lucide-smile-plus > line:last-of-type {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: composer-emoji-wink 360ms ease-in-out;
+  }
+  .sidebar-call-tools > button:is(:hover, :focus-visible) > .lucide-audio-lines > path {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: sidebar-noise-wave 310ms ease-in-out;
+  }
+  .sidebar-call-tools
+    > button:is(:hover, :focus-visible)
+    > .lucide-audio-lines
+    > path:nth-of-type(even) {
+    animation-delay: 45ms;
+  }
+  .call-popout-action:is(:hover, :focus-visible) > svg {
+    animation: call-popout-lift 350ms ease-in-out;
+  }
+  .call-fullscreen-action:is(:hover, :focus-visible) > svg {
+    animation: chat-video-focus 350ms ease-in-out;
+  }
+  :is(.conversation-invite, .presentation-participants-dock-toggle):is(:hover, :focus-visible)
+    > svg:first-child {
+    animation: chat-invite-pop 350ms ease-in-out;
+  }
+  .voice-dock
+    :is(.dock-control, .leave-button, .mobile-call-more-toggle):active:not(:disabled)
+    > :is(.dock-icon, svg),
+  .room-shell
+    :is(.conversation-chat-hide, .conversation-invite, .call-view-controls > button):active:not(
+      :disabled
+    )
+    > svg {
+    scale: 0.84;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-control-icon .profile-audio-cut {
+    transition: none;
+  }
+}
+
+@media (any-hover: hover) and (any-pointer: fine) and (prefers-reduced-motion: no-preference) {
+  :is(.account-sidebar .call-navigation, .mobile-call-return-button):is(:hover, :focus-visible)
+    > .lucide-phone-call {
+    animation: chat-voice-ring 350ms ease-in-out;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-call-return-button > .lucide-phone-call {
+    transition: transform 120ms ease-out;
+  }
+  .mobile-call-return-button:active > .lucide-phone-call {
+    transform: rotate(-12deg) scale(0.9);
+  }
+}
+
+@keyframes sidebar-door-open {
+  38%,
+  54% {
+    scale: 0.56 1;
+  }
+  82% {
+    scale: 1.035 1;
+  }
+}
+@keyframes system-call-green-sweep {
+  0% {
+    transform: translateX(-105%);
+  }
+  52%,
+  100% {
+    transform: translateX(105%);
+  }
+}
+@keyframes sidebar-detail-light {
+  42%,
+  62% {
+    stroke: #d5e3ff;
+  }
+}
+@keyframes sidebar-friends-greet {
+  35% {
+    translate: -1.3px -1.7px;
+    stroke: #d5e3ff;
+  }
+  70% {
+    translate: -0.3px 0.4px;
+  }
+}
+@keyframes sidebar-friends-answer {
+  28% {
+    translate: 0 0;
+  }
+  61% {
+    translate: 1.2px -1.4px;
+    stroke: #d5e3ff;
+  }
+}
+@keyframes sidebar-store-awning {
+  34% {
+    translate: 0 -1.5px;
+    scale: 1.07 0.88;
+    stroke: #d5e3ff;
+  }
+  66% {
+    translate: 0 0.6px;
+    scale: 0.97 1.04;
+  }
+}
+@keyframes sidebar-history-ring {
+  38%,
+  55% {
+    rotate: -19deg;
+  }
+}
+@keyframes sidebar-history-rewind {
+  42%,
+  54% {
+    rotate: -88deg;
+  }
+  80% {
+    rotate: 9deg;
+  }
+}
+@keyframes profile-mic-nod {
+  35% {
+    transform: translate(-1px, -1px) rotate(-19deg) scale(1.08);
+  }
+  68% {
+    transform: translate(1px, -1px) rotate(9deg);
+  }
+}
+@keyframes profile-headphones-bounce {
+  38% {
+    transform: translateY(-2px) rotate(9deg) scale(1.16, 0.95);
+  }
+  72% {
+    transform: rotate(-7deg) scale(0.98, 1.08);
+  }
+}
+@keyframes profile-gear-turn {
+  to {
+    transform: rotate(180deg);
+  }
+}
+@keyframes composer-photo-lift {
+  38% {
+    transform: translateY(-2px) rotate(-7deg) scale(1.08);
+  }
+  70% {
+    transform: translateY(-0.5px) rotate(3deg);
+  }
+}
+@keyframes composer-photo-glint {
+  42% {
+    transform: scale(1.42);
+    stroke: #e2edff;
+  }
+}
+@keyframes composer-sticker-sway {
+  27% {
+    transform: translateX(-2px) rotate(-12deg);
+  }
+  56% {
+    transform: translateX(2px) rotate(10deg);
+  }
+  78% {
+    transform: translateX(-0.5px) rotate(-4deg);
+  }
+}
+@keyframes chat-voice-ring {
+  28% {
+    transform: rotate(-14deg);
+  }
+  58% {
+    transform: rotate(11deg);
+  }
+  78% {
+    transform: rotate(-5deg);
+  }
+}
+@keyframes chat-video-focus {
+  40% {
+    transform: scale(1.15);
+  }
+  72% {
+    transform: scale(0.96);
+  }
+}
+@keyframes chat-pin-tap {
+  30% {
+    transform: translateY(-2px) rotate(-12deg);
+  }
+  66% {
+    transform: translateY(1px);
+  }
+}
+@keyframes chat-invite-pop {
+  42% {
+    transform: translateY(-2px) scale(1.14);
+  }
+  72% {
+    transform: scale(0.96);
+  }
+}
+@keyframes chat-profile-slide {
+  48% {
+    transform: translateX(var(--chat-profile-slide));
+  }
+}
+@keyframes chat-menu-dot-hop {
+  45% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes call-screen-lift {
+  42% {
+    translate: 0 -2px;
+  }
+  70% {
+    translate: 0 0.5px;
+  }
+}
+@keyframes call-record-pulse {
+  30%,
+  68% {
+    scale: 1.14;
+  }
+  48% {
+    scale: 0.96;
+  }
+}
+@keyframes call-reaction-wiggle {
+  32% {
+    rotate: -12deg;
+  }
+  66% {
+    rotate: 8deg;
+  }
+}
+@keyframes call-chat-pop {
+  40% {
+    scale: 1.14 1.08;
+  }
+  68% {
+    scale: 0.96 1;
+  }
+}
+@keyframes call-exit-nudge {
+  48% {
+    translate: 3px 0;
+  }
+}
+@keyframes sidebar-hangup-settle {
+  40% {
+    translate: 0 1.5px;
+    rotate: 12deg;
+  }
+  73% {
+    rotate: -4deg;
+  }
+}
+@keyframes sidebar-signal-wave {
+  28% {
+    opacity: 0.55;
+  }
+  55% {
+    scale: 1.14;
+  }
+}
+@keyframes sidebar-share-arrow {
+  43% {
+    translate: 0 -1.5px;
+  }
+}
+@keyframes sidebar-noise-wave {
+  38% {
+    scale: 1 0.65;
+  }
+  68% {
+    scale: 1 1.12;
+  }
+}
+@keyframes call-popout-lift {
+  44% {
+    translate: 1.5px -1.5px;
+    scale: 1.1;
+  }
+}
+@keyframes composer-emoji-wink {
+  35%,
+  65% {
+    transform: scale(2.45, 0.48);
+  }
+}
+@keyframes composer-gif-shimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}

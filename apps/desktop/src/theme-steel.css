@@ -54,29 +54,38 @@
     background: rgba(149, 173, 226, 0.13);
     box-shadow: none;
   }
-  .account-shell:has(.external-sidebar > .active-chat-header) > .account-sidebar-resizer::after {
+  .account-shell:has(.external-sidebar > .active-chat-header, .account-content-chat > .service-chat)
+    > .account-sidebar-resizer::after {
     content: none;
   }
-  .messenger-layout.external-sidebar:has(> .active-chat-header) {
+  .messenger-layout.external-sidebar:has(> .active-chat-header),
+  .account-content-chat > .service-chat {
     border-block-start: 1px solid #202a38;
     border-inline-start: 1px solid #202a38;
     border-start-start-radius: 18px;
-    background: #091722;
+  }
+  .messenger-layout.external-sidebar:has(> .active-chat-header) {
+    background: var(--chat-header-surface);
   }
   .conversation-call-workspace .messenger-layout.external-sidebar:has(> .active-chat-header) {
     border-block-start: 0;
     border-start-start-radius: 0;
   }
-  :root .account-shell:has(.external-sidebar > .active-chat-header) > .account-sidebar::after {
+  :root
+    .account-shell:has(
+      .external-sidebar > .active-chat-header,
+      .account-content-chat > .service-chat
+    )
+    > .account-sidebar::after {
     content: none;
   }
   .account-shell-with-chat-sidebar
-    .account-content-chat:has(.external-sidebar > .active-chat-header) {
+    .account-content-chat:has(.external-sidebar > .active-chat-header, > .service-chat) {
     border-start-start-radius: 0;
     background-color: var(--ft-chrome);
   }
   .account-shell-with-chat-sidebar
-    .account-content-chat:not(:has(.external-sidebar > .active-chat-header)),
+    .account-content-chat:not(:has(.external-sidebar > .active-chat-header, > .service-chat)),
   .messenger-layout.external-sidebar:not(:has(> .active-chat-header)) {
     border-start-start-radius: 16px;
   }
@@ -98,9 +107,10 @@
     border-color: #536b99;
     box-shadow: inset 2px 0 #8da6dc;
   }
-  .account-sidebar .account-sidebar-chat-open:hover .account-sidebar-chat-avatar,
-  .account-sidebar .account-sidebar-chat-open.active .account-sidebar-chat-avatar {
-    border-color: #7186ad;
+  .account-sidebar nav button:hover,
+  .account-sidebar .account-sidebar-chat-row:hover .account-sidebar-chat-open,
+  .account-sidebar-chat-leave:is(:hover, :focus-visible) {
+    background: #0d1725;
   }
   .account-sidebar .account-chat-search {
     overflow: hidden;

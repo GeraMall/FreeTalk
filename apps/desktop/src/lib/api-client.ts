@@ -44,6 +44,7 @@ export interface AccountUser {
   username: string;
   displayName: string;
   emailVerified: boolean;
+  canAccessStore?: boolean;
   avatarUrl: string | null;
   coverUrl?: string | null;
   bio?: string | null;

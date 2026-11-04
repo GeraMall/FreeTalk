@@ -1705,6 +1705,7 @@ function ChatHeader({
       </div>
       <div className="active-chat-actions">
         <button
+          className="chat-voice-action"
           data-tooltip={t('Начать голосовой звонок')}
           aria-label={t('Начать голосовой звонок')}
           disabled={actionBusy === 'call'}
@@ -1713,6 +1714,7 @@ function ChatHeader({
           <PhoneCall />
         </button>
         <button
+          className="chat-video-action"
           data-tooltip={t('Начать видеозвонок')}
           aria-label={t('Начать видеозвонок')}
           disabled={actionBusy === 'call'}
@@ -1732,6 +1734,7 @@ function ChatHeader({
           </button>
         )}
         <button
+          className="chat-invite-action"
           data-tooltip={t('Добавить участника')}
           aria-label={t('Добавить участника')}
           aria-expanded={showMember}
@@ -4406,6 +4409,21 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
+const sendFlightKeyframes = [
+  { offset: 0, transform: 'translate(0, 0) scale(1)', opacity: 1 },
+  { offset: 0.4, transform: 'translate(24px, -24px) scale(.72)', opacity: 0 },
+  { offset: 0.46, transform: 'translate(-19px, 19px) scale(.8)', opacity: 0 },
+  { offset: 1, transform: 'translate(0, 0) scale(1)', opacity: 1 },
+];
+const longSendFlightKeyframes = [
+  sendFlightKeyframes[0]!,
+  { offset: 0.09, transform: 'translate(3px, -3px) rotate(-8deg)' },
+  { offset: 0.17, transform: 'translate(-2px, 2px) rotate(5deg)' },
+  { offset: 0.25, transform: 'translate(3px, -3px) rotate(-6deg)' },
+  { offset: 0.32, transform: 'translate(-1px, 1px)' },
+  ...sendFlightKeyframes.map((frame) => ({ ...frame, offset: 0.36 + frame.offset * 0.64 })),
+];
+
 function MessageComposer({
   disabled,
   onSend,
@@ -4448,6 +4466,8 @@ function MessageComposer({
   const [showSendButton, setShowSendButton] = useState(true);
   const [composerLanguage, setComposerLanguage] = useState<'ru' | 'en' | 'auto'>('ru');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const sendIconRef = useRef<SVGSVGElement>(null);
+  const sendAnimationRef = useRef<Animation>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerMenuRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -4596,6 +4616,18 @@ function MessageComposer({
     )
       return;
     setSending(true);
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      const longMessage = body.length >= 200;
+      sendAnimationRef.current?.cancel();
+      sendAnimationRef.current =
+        sendIconRef.current?.animate?.(
+          longMessage ? longSendFlightKeyframes : sendFlightKeyframes,
+          {
+            duration: longMessage ? 560 : 360,
+            easing: longMessage ? 'linear' : 'cubic-bezier(.22,.61,.36,1)',
+          },
+        ) ?? null;
+    }
     try {
       const sent =
         attachmentFile &&
@@ -4749,11 +4781,11 @@ function MessageComposer({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setPicker(showGifPicker ? undefined : 'gif')}
           >
-            GIF
+            <span>GIF</span>
           </button>
           <button
             type="button"
-            className="composer-expression-button"
+            className="composer-expression-button composer-sticker-button"
             aria-label={t('Стикеры')}
             aria-expanded={picker === 'stickers'}
             disabled={disabled || sending || processingImage}
@@ -4763,7 +4795,7 @@ function MessageComposer({
           </button>
           <button
             type="button"
-            className="composer-expression-button"
+            className="composer-expression-button composer-emoji-button"
             aria-label={t('Эмодзи')}
             aria-expanded={picker === 'emoji'}
             disabled={disabled || sending}
@@ -4818,6 +4850,7 @@ function MessageComposer({
       </div>
       {showSendButton ? (
         <button
+          type="button"
           className="send-message-button"
           data-tooltip={t('Отправить')}
           aria-label={t('Отправить сообщение')}
@@ -4830,7 +4863,7 @@ function MessageComposer({
           }
           onClick={() => void send()}
         >
-          <Send />
+          <Send ref={sendIconRef} aria-hidden="true" />
         </button>
       ) : null}
       {remaining < 100 && (
@@ -5032,7 +5065,7 @@ function MessageSkeleton() {
   );
 }
 
-function ChatAvatar({
+export function ChatAvatar({
   name,
   group,
   avatarUrl,

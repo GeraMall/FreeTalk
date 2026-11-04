@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const request = vi.hoisted(() => vi.fn());
 vi.mock('../lib/api-client', () => ({ accountClient: { request } }));
 import { ServiceChat } from './ServiceChat';
+const user = { displayName: 'Алекс', username: 'alex', avatarUrl: null };
 const welcome = {
   id: 'welcome',
   author: 'bot',
@@ -22,7 +23,7 @@ afterEach(() => {
 });
 describe('service chat', () => {
   it('opens the official bot profile without requesting a user profile', async () => {
-    render(<ServiceChat onBack={() => {}} />);
+    render(<ServiceChat user={user} onBack={() => {}} />);
     await screen.findByText('Служебный чат TRLKA');
     fireEvent.click(screen.getByRole('button', { name: 'Показать профиль' }));
     expect(screen.getByRole('complementary', { name: 'Профиль бота TRLKA' })).toBeTruthy();
@@ -36,7 +37,7 @@ describe('service chat', () => {
     );
   });
   it('opens an explicit report flow and sends text with a retry-safe request id', async () => {
-    render(<ServiceChat onBack={() => {}} />);
+    render(<ServiceChat user={user} onBack={() => {}} />);
     await screen.findByText('Служебный чат TRLKA');
     fireEvent.click(screen.getByRole('button', { name: 'Сообщить об ошибке' }));
     await waitFor(() =>
@@ -83,14 +84,17 @@ describe('service chat', () => {
       ).toBe(''),
     );
   });
-  it('does not erase a draft when opening subscription information', async () => {
-    render(<ServiceChat onBack={() => {}} />);
+  it.each([
+    ['Подписка', '/subscription'],
+    ['Отмена', '/cancel'],
+  ])('sends %s as a quick command without erasing the draft', async (label, command) => {
+    render(<ServiceChat user={user} onBack={() => {}} />);
     await screen.findByText('Служебный чат TRLKA');
     fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение боту TRLKA' }), {
       target: { value: 'Мой подробный черновик' },
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Подписка' }));
+      fireEvent.click(screen.getByRole('button', { name: label }));
     });
     expect(
       (screen.getByRole('textbox', { name: 'Сообщение боту TRLKA' }) as HTMLTextAreaElement).value,
@@ -100,7 +104,7 @@ describe('service chat', () => {
         ([url, opts]) =>
           url === '/v1/service-chat/messages' &&
           opts?.method === 'POST' &&
-          JSON.parse(opts.body).body === '/subscription',
+          JSON.parse(opts.body).body === command,
       ),
     ).toBe(true);
   });

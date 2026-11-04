@@ -7,6 +7,8 @@ import type {
   ClientMessage,
   Participant,
   Reaction,
+  RoomActivity,
+  RoomActivityAction,
   RoomChatMessage,
   ServerMessage,
 } from '@freetalk/protocol';
@@ -230,6 +232,7 @@ export function App() {
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
+  const [roomActivity, setRoomActivity] = useState<RoomActivity>();
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
   const [recordingBannerMessage, setRecordingBannerMessage] = useState('');
@@ -504,6 +507,7 @@ export function App() {
     if (guestWarningTimer.current) window.clearTimeout(guestWarningTimer.current);
     guestWarningTimer.current = undefined;
     reactionTimers.current.clear();
+    setRoomActivity(undefined);
     setRoomId(undefined);
     setRoomDestination('room');
     setParticipants([]);
@@ -768,6 +772,7 @@ export function App() {
         if (message.participants.some((participant) => participant.id !== selfId.current))
           conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
+        setRoomActivity(message.activity);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
         if (accountUser && pendingRoomId.current) {
           saveBrowserActiveCall({
@@ -919,6 +924,12 @@ export function App() {
           old.map((participant) =>
             participant.id === message.participant.id ? message.participant : participant,
           ),
+        );
+        return;
+      }
+      if (message.type === 'activity-state') {
+        setRoomActivity((previous) =>
+          !previous || previous.revision <= message.activity.revision ? message.activity : previous,
         );
         return;
       }
@@ -1793,6 +1804,11 @@ export function App() {
     );
   };
 
+  const sendActivity = (action: RoomActivityAction) => {
+    if (!roomActivity || awaitingRejoin.current) return;
+    signaling.current?.send({ type: 'activity-action', revision: roomActivity.revision, action });
+  };
+
   const sendReaction = (reaction: Reaction) => {
     const sent = signaling.current?.send({ type: 'reaction', id: crypto.randomUUID(), reaction });
     if (!sent) setNotice('Не удалось отправить реакцию');
@@ -2085,6 +2101,8 @@ export function App() {
       roomStartedAt={roomStartedAt}
       reactions={reactions}
       roomChatMessages={roomChatMessages}
+      activity={roomActivity}
+      onActivity={roomActivity && accountUser ? sendActivity : undefined}
       screenFocusMode={screenFocusMode}
       settings={settings}
       signalingState={signalState}
@@ -2311,6 +2329,7 @@ export function App() {
           {mobileFocusedCall && mobileCallMinimized ? (
             <MobileNavigation
               activePage={roomDestination === 'room' ? 'home' : roomDestination}
+              storeUnlocked={accountUser.canAccessStore}
               onNavigate={(page) => {
                 setRoomDestination(page);
                 if (page !== 'chats') setRoomActiveChatId(undefined);

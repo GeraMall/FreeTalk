@@ -1,3 +1,15 @@
+import { roomActivityActionSchema, roomActivitySchema } from './room-activity.js';
+export type {
+  ActivityGame,
+  ActivityRegion,
+  RoomActivity,
+  RoomActivityAction,
+} from './room-activity.js';
+export {
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
+} from './room-activity-session.js';
 import { DISPLAY_NAME_PATTERN, ROOM_CODE_PATTERN } from '@freetalk/config';
 import { z } from 'zod';
 
@@ -177,6 +189,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     text: roomChatTextSchema,
   }),
   z.object({ type: z.literal('recording-started') }),
+  z.object({
+    type: z.literal('activity-action'),
+    revision: z.number().int().nonnegative(),
+    action: roomActivityActionSchema,
+  }),
   z.object({ type: z.literal('moderation-mute'), targetParticipantId: clientId }),
   z.object({ type: z.literal('telemetry-report'), report: telemetryReportSchema }),
   z.object({ type: z.literal('ping'), timestamp: z.number().int().nonnegative() }),
@@ -198,7 +215,9 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     roomStartedAt: z.number().int().nonnegative().optional(),
     participants: z.array(participantSchema),
     roomChatMessages: z.array(roomChatMessageSchema).max(200).optional(),
+    activity: roomActivitySchema.optional(),
   }),
+  z.object({ type: z.literal('activity-state'), activity: roomActivitySchema }),
   z.object({ type: z.literal('participants'), participants: z.array(participantSchema) }),
   z.object({ type: z.literal('participant-joined'), participant: participantSchema }),
   z.object({ type: z.literal('participant-updated'), participant: participantSchema }),

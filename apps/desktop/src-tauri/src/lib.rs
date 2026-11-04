@@ -1,6 +1,8 @@
 #[cfg(desktop)]
 mod diagnostics;
 #[cfg(desktop)]
+mod food_webview;
+#[cfg(desktop)]
 mod macos_screen_audio;
 mod secure_session;
 mod signaling;
@@ -433,6 +435,9 @@ pub fn run() {
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
             open_passkey_browser,
+            food_webview::food_vendor_open_browser,
+            food_webview::food_vendor_view,
+            food_webview::food_vendor_browser_action,
             diagnostics::save_connection_diagnostics,
             signaling::signaling_connect,
             signaling::signaling_receive,

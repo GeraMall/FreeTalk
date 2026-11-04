@@ -12,14 +12,20 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import type { Participant, PresenceStatus, Reaction, RoomChatMessage } from '@freetalk/protocol';
+import type {
+  Participant,
+  PresenceStatus,
+  Reaction,
+  RoomActivity,
+  RoomActivityAction,
+  RoomChatMessage,
+} from '@freetalk/protocol';
 import { useRoomPresence } from '../lib/use-room-presence';
 import { AWAY_AFTER_MS } from '../lib/chat-realtime';
 import {
   Ban,
   Check,
   Camera,
-  CameraOff,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -35,6 +41,7 @@ import {
   MoreHorizontal,
   SmilePlus,
   ShieldCheck,
+  Shapes,
   Square,
   UserPlus,
   UserRound,
@@ -52,6 +59,8 @@ import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { RoomChatPanel } from './RoomChatPanel';
+import { CallActivity } from './CallActivity';
+import { DeviceControlIcon } from './CallDock';
 import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
 import {
@@ -110,6 +119,8 @@ interface RoomViewProps {
   roomStartedAt: number;
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   roomChatMessages: RoomChatMessage[];
+  activity?: RoomActivity;
+  onActivity?(action: RoomActivityAction): void;
   screenFocusMode: boolean;
   signalingState: SignalingState;
   signalStrength?: number;
@@ -170,6 +181,8 @@ export function RoomView({
   roomStartedAt,
   reactions,
   roomChatMessages,
+  activity,
+  onActivity,
   screenFocusMode,
   signalingState,
   signalStrength = 100,
@@ -828,6 +841,8 @@ export function RoomView({
                 </div>
               </div>
             </div>
+          ) : activity?.open ? (
+            <CallActivity activity={activity} onAction={onActivity} />
           ) : (
             <div
               className="participants-grid"
@@ -1039,6 +1054,7 @@ export function RoomView({
 
       <div className="call-view-controls" aria-label={t('Режим отображения звонка')}>
         <button
+          className="call-popout-action"
           aria-label={
             callDetached
               ? t('Вернуть звонок в основное окно')
@@ -1050,6 +1066,7 @@ export function RoomView({
           <PictureInPicture2 size={19} />
         </button>
         <button
+          className="call-fullscreen-action"
           aria-label={
             callFullscreen ? t('Выйти из полноэкранного режима') : t('Открыть звонок во весь экран')
           }
@@ -1099,7 +1116,9 @@ export function RoomView({
               data-tooltip={muted ? t('Включить микрофон') : t('Выключить микрофон')}
               onClick={onMute}
             >
-              <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
+              <span className="dock-icon">
+                <DeviceControlIcon icon={Mic} off={muted} />
+              </span>
               <span className="dock-mobile-label">{t('Микрофон')}</span>
             </button>
             <button
@@ -1138,7 +1157,7 @@ export function RoomView({
               }}
             >
               <span className="dock-icon">
-                {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
+                <DeviceControlIcon icon={Camera} off={!localVideo.cameraEnabled} />
               </span>
               <span className="dock-mobile-label">{t('Камера')}</span>
             </button>
@@ -1175,6 +1194,22 @@ export function RoomView({
           <span className="dock-mobile-label">{t('Ещё')}</span>
         </button>
         <div className="dock-island dock-secondary-actions">
+          {onActivity && (
+            <button
+              type="button"
+              className={`dock-control activity-control ${activity?.open ? 'active' : ''}`}
+              aria-label={t('Активность')}
+              aria-pressed={activity?.open ?? false}
+              data-tooltip={t('Активность')}
+              disabled={signalingState !== 'connected'}
+              onClick={() => onActivity({ kind: activity?.open ? 'close' : 'open' })}
+            >
+              <span className="dock-icon">
+                <Shapes aria-hidden="true" />
+              </span>
+              <span className="dock-mobile-label">{t('Активность')}</span>
+            </button>
+          )}
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
             aria-busy={videoBusy}
@@ -1280,7 +1315,7 @@ export function RoomView({
             </button>
           )}
           <button
-            className="dock-control dock-control-secondary"
+            className="dock-control dock-control-secondary dock-settings-control"
             aria-label={t('Настройки аудио и устройств')}
             data-tooltip={t('Настройки аудио и устройств')}
             onClick={onSettings}

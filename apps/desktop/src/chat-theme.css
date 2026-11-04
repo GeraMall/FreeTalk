@@ -1,9 +1,11 @@
 /* Shared chat surfaces and a composer baseline aligned with the profile dock. */
 :root {
   --chat-canvas: #07111d;
+  --chat-header-surface: #0a1623;
   --chat-incoming: #101e2e;
   --chat-outgoing: #1a2c48;
   --chat-control-height: 60px;
+  --chat-action-surface: #101a28;
 }
 .room-chat-panel,
 .room-chat-messages {
@@ -298,7 +300,6 @@ html[data-chat-message-style='compact'] .message-bubble-row {
   }
   .service-chat-message.user {
     justify-content: flex-start;
-    padding-left: 40px;
   }
 }
 @media (max-width: 760px) {

@@ -24,6 +24,7 @@ export interface UserRow {
   updated_at: Date;
   deleted_at: Date | null;
   role: 'user' | 'admin';
+  can_access_store?: boolean;
 }
 
 export interface AuthenticatedUser extends UserRow {
@@ -37,6 +38,7 @@ export function publicUser(user: UserRow) {
     username: user.username,
     displayName: user.display_name,
     emailVerified: Boolean(user.email_verified_at),
+    canAccessStore: user.can_access_store === true,
     avatarUrl: user.avatar_data
       ? publicApiUrl(`/v1/users/${user.id}/avatar?v=${user.updated_at.getTime()}`)
       : null,

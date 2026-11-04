@@ -32,6 +32,8 @@ import {
 } from '../lib/call-history';
 import mascot from '../assets/freetalk-mascot.png';
 import { AccountSidebar, type AccountPage } from './AccountSidebar';
+import { StoreLocked, StorePage } from './StorePage';
+import { FoodPage } from './FoodPage';
 import {
   ChatsPage,
   type ChatItem,
@@ -48,7 +50,7 @@ import { serviceChat, SERVICE_CHAT_ID, SERVICE_CHAT_UPDATED } from '../lib/servi
 import { ServiceChat } from './ServiceChat';
 import type { PresenceStatus } from '@freetalk/protocol';
 
-const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'history'];
+const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'store', 'food', 'history'];
 const NAVIGATION_STATE_KEY = 'freetalkAccountPage';
 function isAccountPage(value: unknown): value is AccountPage {
   return typeof value === 'string' && ACCOUNT_PAGES.includes(value as AccountPage);
@@ -1359,7 +1361,7 @@ export function HomeView({
         </header>
       ) : null}
       <section
-        className={`account-content page-enter ${page === 'chats' ? 'account-content-chat' : ''}`}
+        className={`account-content page-enter ${page === 'chats' ? 'account-content-chat' : ''}${page === 'food' ? ' account-content-food' : ''}`}
       >
         <TransientNotice
           message={error || localError}
@@ -1517,6 +1519,7 @@ export function HomeView({
         )}
         {page === 'chats' && activeChat === SERVICE_CHAT_ID && (
           <ServiceChat
+            user={user}
             onBack={() => {
               activeChatRef.current = undefined;
               setActiveChat(undefined);
@@ -1583,12 +1586,28 @@ export function HomeView({
             onJoinCall={(code) => onJoinRoom(code, activeChat)}
           />
         )}
+        {page === 'store' &&
+          (user.canAccessStore ? (
+            <StorePage onOpenFood={mobileLayout ? () => navigatePage('food') : undefined} />
+          ) : (
+            <StoreLocked onOpenFood={mobileLayout ? () => navigatePage('food') : undefined} />
+          ))}
+        {page === 'food' && (
+          <FoodPage
+            allowEmbedded={!embedded && !mobileLayout}
+            onBack={mobileLayout ? () => navigatePage('store') : undefined}
+          />
+        )}
         {page === 'history' && (
           <CallHistory history={history} loading={historyLoading} onCallAgain={onCreateRoom} />
         )}
       </section>
       {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
-        <MobileNavigation activePage={page} onNavigate={navigatePage} />
+        <MobileNavigation
+          activePage={page}
+          storeUnlocked={user.canAccessStore}
+          onNavigate={navigatePage}
+        />
       ) : null}
     </main>
   );

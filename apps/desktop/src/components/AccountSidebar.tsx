@@ -8,14 +8,17 @@ import {
   Edit3,
   EyeOff,
   History,
+  LockKeyhole,
   LogOut,
   MessageCircle,
   MinusCircle,
   Moon,
   PhoneCall,
   Plus,
+  Pizza,
   Search,
   Settings,
+  Store,
   Users,
   Volume2,
   X,
@@ -51,7 +54,7 @@ import { playNotificationSound } from '../lib/notification-sounds';
 import { loadSettings } from '../lib/settings';
 import { CallDock, ProfileAudioControls, type CallDockState } from './CallDock';
 
-export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
+export type AccountPage = 'home' | 'friends' | 'chats' | 'store' | 'food' | 'history';
 export type AccountDestination = AccountPage | 'room';
 
 export function AccountSidebar({
@@ -332,12 +335,14 @@ export function AccountSidebar({
           active={activePage === 'home'}
           icon={<DoorOpen />}
           label={t('Главная')}
+          clickMotion
           onClick={() => onNavigate('home')}
         />
         <Nav
           active={activePage === 'friends'}
           icon={<Users />}
           label={t('Друзья')}
+          clickMotion
           onClick={() => onNavigate('friends')}
         />
         {!chatNavigationEnabled && (
@@ -350,9 +355,24 @@ export function AccountSidebar({
           />
         )}
         <Nav
+          active={activePage === 'store'}
+          icon={user.canAccessStore ? <Store /> : <LockKeyhole />}
+          label={t('Магазин')}
+          clickMotion
+          onClick={() => onNavigate('store')}
+        />
+        <Nav
+          active={activePage === 'food'}
+          icon={<Pizza />}
+          label={t('Еда')}
+          clickMotion
+          onClick={() => onNavigate('food')}
+        />
+        <Nav
           active={activePage === 'history'}
           icon={<History />}
           label={t('История')}
+          clickMotion
           onClick={() => onNavigate('history')}
         />
       </nav>
@@ -744,6 +764,7 @@ function Nav({
   live = false,
   passive = false,
   unread = 0,
+  clickMotion = false,
   onClick,
 }: {
   active: boolean;
@@ -752,8 +773,10 @@ function Nav({
   live?: boolean;
   passive?: boolean;
   unread?: number;
+  clickMotion?: boolean;
   onClick?(): void;
 }) {
+  const iconAnimation = useRef<Animation>(null);
   return (
     <button
       className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''} ${passive ? 'passive' : ''}`}
@@ -762,7 +785,28 @@ function Nav({
       }
       aria-current={active ? 'page' : undefined}
       aria-disabled={passive || undefined}
-      onClick={passive ? undefined : onClick}
+      onClick={
+        passive
+          ? undefined
+          : (event) => {
+              if (clickMotion && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+                iconAnimation.current?.cancel();
+                iconAnimation.current =
+                  event.currentTarget
+                    .querySelector('svg')
+                    ?.animate?.(
+                      [
+                        { transform: 'scale(1)' },
+                        { offset: 0.22, transform: 'scale(0.86)' },
+                        { offset: 0.55, transform: 'scale(1.16) rotate(-8deg)' },
+                        { transform: 'scale(1)' },
+                      ],
+                      { duration: 300, easing: 'ease-in-out' },
+                    ) ?? null;
+              }
+              onClick?.();
+            }
+      }
     >
       {icon}
       <span>{label}</span>

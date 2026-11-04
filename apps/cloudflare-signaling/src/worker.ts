@@ -10,6 +10,9 @@ import {
 } from '@freetalk/config';
 import {
   parseClientMessage,
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
   type Participant,
   type ParticipantCardDecoration,
   type ParticipantCardStyle,
@@ -101,6 +104,7 @@ interface SocketAttachment {
   timestamps: number[];
   profileChanges?: number[];
   lastReactionAt?: number;
+  lastActivityAt?: number;
   clientConnectionId: string;
   serverConnectionId: string;
   edgeColo: string;
@@ -297,6 +301,20 @@ export class VoiceRoom implements DurableObject {
         });
         return;
       }
+      if (message.type === 'activity-action') {
+        if (now - (attachment.lastActivityAt ?? 0) < 125) return;
+        attachment.lastActivityAt = now;
+        socket.serializeAttachment(attachment);
+        const activity = await this.state.storage.transaction(async (txn) => {
+          const current = (await txn.get<RoomActivitySession>('activity')) ?? emptyRoomActivity();
+          const next = applyRoomActivity(current, message.revision, message.action);
+          if (next === current) return undefined;
+          await txn.put('activity', next);
+          return next.view;
+        });
+        if (activity) this.broadcast({ type: 'activity-state', activity });
+        return;
+      }
       if (message.type === 'reaction') {
         if (now - (attachment.lastReactionAt ?? 0) >= 500) {
           attachment.lastReactionAt = now;
@@ -466,7 +484,7 @@ export class VoiceRoom implements DurableObject {
       const grace = await this.state.storage.get<{ expiresAt: number }>('grace');
       if (!grace || grace.expiresAt <= now) {
         await this.clearRoomChat();
-        await this.state.storage.delete(['grace', 'roomStartedAt']);
+        await this.state.storage.delete(['grace', 'roomStartedAt', 'activity']);
       } else await this.state.storage.setAlarm(grace.expiresAt);
     }
   }
@@ -492,9 +510,10 @@ export class VoiceRoom implements DurableObject {
       message.type === 'create-room' &&
       active.length === 0 &&
       (!grace || grace.expiresAt < Date.now())
-    )
+    ) {
       await this.clearRoomChat();
-    await this.state.storage.delete('roomStartedAt');
+      await this.state.storage.delete(['roomStartedAt', 'activity']);
+    }
     if (message.type === 'create-room' && active.length > 0) {
       this.send(socket, {
         type: 'error',
@@ -559,6 +578,7 @@ export class VoiceRoom implements DurableObject {
       muted: sameAttachment?.muted ?? false,
       profileChanges: sameAttachment?.profileChanges ?? [],
       lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
+      lastActivityAt: sameAttachment?.lastActivityAt ?? 0,
       isOwner:
         sameAttachment?.isOwner ??
         (message.type === 'create-room' && active.filter((entry) => entry !== same).length === 0),
@@ -575,6 +595,8 @@ export class VoiceRoom implements DurableObject {
     const storedRoomStartedAt = await this.state.storage.get<number>('roomStartedAt');
     const roomStartedAt = storedRoomStartedAt ?? Date.now();
     const roomChatMessages = await this.roomChatHistory();
+    const activity =
+      (await this.state.storage.get<RoomActivitySession>('activity')) ?? emptyRoomActivity();
     if (!storedRoomStartedAt) await this.state.storage.put('roomStartedAt', roomStartedAt);
     this.send(socket, iceConfig);
     this.send(socket, {
@@ -586,6 +608,7 @@ export class VoiceRoom implements DurableObject {
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
       roomChatMessages,
+      activity: activity.view,
     });
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });

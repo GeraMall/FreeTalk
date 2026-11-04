@@ -14,17 +14,25 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import { accountClient } from '../lib/api-client';
+import { accountClient, type AccountUser } from '../lib/api-client';
 import { SERVICE_CHAT_UPDATED, type ServiceMessage } from '../lib/service-chat';
 import mascot from '../assets/freetalk-mascot.png';
+import { ChatAvatar } from './ChatsPage';
 import './service-chat.css';
 
 const actions = [
   { command: '/bug', label: 'Сообщить об ошибке', Icon: Bug },
   { command: '/idea', label: 'Предложить улучшение', Icon: Lightbulb },
   { command: '/subscription', label: 'Подписка', Icon: Sparkles },
+  { command: '/cancel', label: 'Отмена', Icon: X },
 ];
-export function ServiceChat({ onBack }: { onBack(): void }) {
+export function ServiceChat({
+  user,
+  onBack,
+}: {
+  user: Pick<AccountUser, 'displayName' | 'username' | 'avatarUrl'>;
+  onBack(): void;
+}) {
   const [messages, setMessages] = useState<ServiceMessage[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -171,7 +179,16 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
               key={message.id}
               className={`service-chat-message ${message.author} kind-${message.kind}`}
             >
-              {message.author === 'bot' && <img src={mascot} alt="TRLKA" />}
+              {message.author === 'bot' ? (
+                <img src={mascot} alt="TRLKA" />
+              ) : (
+                <ChatAvatar
+                  name={user.displayName || user.username}
+                  avatarUrl={user.avatarUrl}
+                  group={false}
+                  compact
+                />
+              )}
               <div>
                 {message.kind === 'call-timeout' && (
                   <span className="service-chat-event-label">
@@ -209,9 +226,9 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
         )}
         <div className="service-chat-actions">
           {actions.map(({ command, label, Icon }) => (
-            <button key={command} disabled={busy} onClick={() => void send(command)}>
+            <button type="button" key={command} disabled={busy} onClick={() => void send(command)}>
               <Icon size={16} />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>

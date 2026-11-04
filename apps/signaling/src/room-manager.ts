@@ -1,4 +1,10 @@
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
+import {
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
+  type RoomActivityAction,
+} from '@freetalk/protocol';
 import type {
   Participant,
   ParticipantCardDecoration,
@@ -19,6 +25,7 @@ interface Peer {
   lastSeen: number;
   profileChanges: number[];
   lastReactionAt: number;
+  lastActivityAt: number;
 }
 
 interface Room {
@@ -28,6 +35,7 @@ interface Room {
   peers: Map<string, Peer>;
   createdAt: number;
   chatMessages: RoomChatMessage[];
+  activity: RoomActivitySession;
 }
 
 export type RoomAuthority =
@@ -66,6 +74,7 @@ export class RoomManager {
       peers: new Map(),
       createdAt: Date.now(),
       chatMessages: [],
+      activity: emptyRoomActivity(),
     });
     return this.join(
       roomId,
@@ -133,6 +142,7 @@ export class RoomManager {
       lastSeen: Date.now(),
       profileChanges: existing?.profileChanges ?? [],
       lastReactionAt: existing?.lastReactionAt ?? 0,
+      lastActivityAt: existing?.lastActivityAt ?? 0,
     };
     room.peers.set(clientId, peer);
     const ownerChanged = this.reconcileOwner(room);
@@ -144,6 +154,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
+      activity: room.activity.view,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -230,6 +241,19 @@ export class RoomManager {
     peer.participant.cardDecoration = 'none';
     this.broadcast(room, { type: 'participant-updated', participant: peer.participant });
     return true;
+  }
+
+  updateActivity(roomId: string, clientId: string, revision: number, action: RoomActivityAction) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer) return;
+    const now = Date.now();
+    if (now - peer.lastActivityAt < 125) return;
+    peer.lastActivityAt = now;
+    const next = applyRoomActivity(room.activity, revision, action);
+    if (next === room.activity) return;
+    room.activity = next;
+    this.broadcast(room, { type: 'activity-state', activity: next.view });
   }
 
   react(
