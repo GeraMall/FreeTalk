@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { ArrowLeft, ArrowUpRight, RotateCw, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { t } from '../lib/app-language';
@@ -7,10 +7,6 @@ import './food-page.css';
 
 type Vendor = (typeof vendors)[number];
 type Bounds = { x: number; y: number; width: number; height: number };
-
-export function canEmbedPrivateFood() {
-  return isTauri() && /Windows|Macintosh/i.test(navigator.userAgent);
-}
 
 // Serialize native view changes, including cleanup after leaving the page.
 let viewOperation: Promise<void> = Promise.resolve();

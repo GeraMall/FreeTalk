@@ -13,7 +13,7 @@ import woltLogo from '../assets/food/wolt.png';
 import yandexLogo from '../assets/food/yandex.png';
 import { t } from '../lib/app-language';
 import vendors from '../lib/food-vendors.json';
-import { canEmbedPrivateFood, PrivateFoodBrowser } from './PrivateFoodBrowser';
+import { PrivateFoodBrowser } from './PrivateFoodBrowser';
 import './call-activity.css';
 
 const vendorLogos: Partial<Record<string, string>> = {
@@ -195,7 +195,7 @@ export function CallActivity({
                 type="button"
                 onClick={() => {
                   setDeliveryError(false);
-                  if (canEmbedPrivateFood()) {
+                  if (/Windows|Macintosh/i.test(navigator.userAgent)) {
                     setPrivateVendor(selected);
                     return;
                   }

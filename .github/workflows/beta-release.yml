@@ -65,7 +65,7 @@ jobs:
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
   macos:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.187' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.188' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -179,7 +179,7 @@ jobs:
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          draft: ${{ github.ref_name == 'v0.4.0-beta.187' }}
+          draft: ${{ github.ref_name == 'v0.4.0-beta.188' }}
           prerelease: false
           make_latest: true
           generate_release_notes: true
