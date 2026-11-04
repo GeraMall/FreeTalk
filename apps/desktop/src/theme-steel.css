@@ -63,6 +63,10 @@
     border-start-start-radius: 18px;
     background: #091722;
   }
+  .conversation-call-workspace .messenger-layout.external-sidebar:has(> .active-chat-header) {
+    border-block-start: 0;
+    border-start-start-radius: 0;
+  }
   :root .account-shell:has(.external-sidebar > .active-chat-header) > .account-sidebar::after {
     content: none;
   }
@@ -219,9 +223,9 @@
 .dock-reactions {
   gap: 4px;
   padding: 6px;
-  border: 1px solid #405372;
+  border: 1px solid #29394d;
   border-radius: 14px;
-  background: #101823;
+  background: var(--ft-sidebar-profile-surface, #0a1523);
 }
 .reaction-menu button,
 .dock-reactions button {
@@ -238,7 +242,7 @@
 .reaction-menu button:focus-visible,
 .dock-reactions button:hover,
 .dock-reactions button:focus-visible {
-  border-color: #7186ad;
-  background: #253550;
+  border-color: #4d6384;
+  background: #1a2a41;
   transform: translateY(-2px);
 }

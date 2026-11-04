@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { BellRing, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { browserPushSupported, enableBrowserPush, restoreBrowserPush } from '../lib/browser-push';
@@ -29,7 +30,7 @@ export function BrowserNotificationPrompt() {
         <button
           type="button"
           className="browser-notification-close"
-          aria-label="Напомнить позже"
+          aria-label={t('Напомнить позже')}
           onClick={() => setOpen(false)}
         >
           <X aria-hidden="true" />
@@ -37,10 +38,11 @@ export function BrowserNotificationPrompt() {
         <span className="browser-notification-icon" aria-hidden="true">
           <BellRing />
         </span>
-        <h2 id="browser-notification-title">Не пропускайте сообщения</h2>
+        <h2 id="browser-notification-title">{t('Не пропускайте сообщения')}</h2>
         <p>
-          Разрешите уведомления Trlka — новые сообщения будут приходить сразу, даже когда приложение
-          свёрнуто.
+          {t(
+            'Разрешите уведомления Trlka — новые сообщения будут приходить сразу, даже когда приложение свёрнуто.',
+          )}
         </p>
         {error ? <div className="browser-notification-error">{error}</div> : null}
         <button
@@ -61,10 +63,10 @@ export function BrowserNotificationPrompt() {
           }}
         >
           <BellRing aria-hidden="true" />
-          {busy ? 'Подключаем…' : 'Включить уведомления'}
+          {busy ? t('Подключаем…') : t('Включить уведомления')}
         </button>
         <button type="button" className="browser-notification-later" onClick={() => setOpen(false)}>
-          Позже
+          {t('Позже')}
         </button>
       </section>
     </div>

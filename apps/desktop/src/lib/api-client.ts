@@ -217,6 +217,7 @@ export class AccountClient {
     password: string;
     acceptedTerms: true;
     acceptedPrivacy: true;
+    legalVersion?: string;
     captchaToken?: string;
   }) {
     return this.publicRequest<{ user: AccountUser; verificationRequired: true }>(
@@ -254,6 +255,32 @@ export class AccountClient {
     await this.acceptSession(result.session);
     this.user = result.user;
     return result.user;
+  }
+
+  startQrLogin(signal: AbortSignal) {
+    return this.publicRequest<{ challenge: string; pollToken: string; expiresIn: number }>(
+      '/v1/auth/qr/start',
+      { method: 'POST', signal, body: '{}' },
+    );
+  }
+
+  async redeemQrLogin(pollToken: string, signal: AbortSignal) {
+    const result = await this.publicRequest<
+      | { status: 'pending' | 'expired' }
+      | { status: 'approved'; user: AccountUser; session: SessionPayload }
+    >('/v1/auth/qr/redeem', { method: 'POST', signal, body: JSON.stringify({ pollToken }) });
+    if (result.status !== 'approved') return result;
+    signal.throwIfAborted();
+    await this.acceptSession(result.session);
+    this.user = result.user;
+    return { status: 'approved', user: result.user } as const;
+  }
+
+  approveQrLogin(challenge: string) {
+    return this.request<{ approved: true }>('/v1/auth/qr/approve', {
+      method: 'POST',
+      body: JSON.stringify({ challenge }),
+    });
   }
 
   async mobileBetaLogin(login: string, password: string, key?: string) {

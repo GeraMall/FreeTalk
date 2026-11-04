@@ -209,7 +209,38 @@ describe('RoomView media layouts', () => {
         result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
       ).toBe('away');
       expect(result.getByText('Нет на месте')).toBeTruthy();
+      result.rerender(
+        view('none', {}, true, vi.fn(), vi.fn(), vi.fn(), {
+          viewerId: selfId,
+          participants: [{ ...participants[1]!, accountId }],
+        }),
+      );
+      expect(result.getByText('Говорит')).toBeTruthy();
+      expect(result.queryByText('Нет на месте')).toBeNull();
+      expect(
+        result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+      ).toBe('online');
+      vi.useFakeTimers();
+      result.rerender(
+        view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+          viewerId: selfId,
+          participants: [{ ...participants[1]!, accountId }],
+        }),
+      );
+      expect(
+        result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+      ).toBe('online');
+      act(() => vi.advanceTimersByTime(299_999));
+      expect(
+        result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+      ).toBe('online');
+      act(() => vi.advanceTimersByTime(1));
+      expect(
+        result.container.querySelector('.participant-avatar')?.getAttribute('data-presence'),
+      ).toBe('away');
+      expect(result.getByText('Нет на месте')).toBeTruthy();
     } finally {
+      vi.useRealTimers();
       request.mockRestore();
     }
   });
@@ -609,8 +640,26 @@ describe('RoomView media layouts', () => {
     );
     expect(queryByText(/Создатель/)).toBeNull();
     expect(getByRole('button', { name: 'Начать запись экрана' })).not.toBeNull();
-    fireEvent.click(getByRole('button', { name: 'Действия для Друг' }));
+    const trigger = getByRole('button', { name: 'Действия для Друг' });
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ x: 150, y: 100, width: 30, height: 28 }),
+    );
+    fireEvent.click(trigger);
     const drawer = getByRole('dialog', { name: 'Управление участником Друг' });
+    expect(drawer.style.top).toBe('136px');
+    expect(drawer.dataset.side).toBe('below');
+    vi.mocked(trigger.getBoundingClientRect).mockReturnValue(
+      DOMRect.fromRect({ x: 150, y: window.innerHeight - 25, width: 30, height: 25 }),
+    );
+    fireEvent(window, new Event('resize'));
+    expect(drawer.dataset.side).toBe('above');
+    vi.spyOn(trigger.closest('.participant-card')!, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ x: 110, y: 80, width: 210, height: 150 }),
+    );
+    Object.defineProperty(drawer, 'offsetWidth', { configurable: true, value: 224 });
+    fireEvent(window, new Event('resize'));
+    expect(drawer.dataset.side).toBe('right');
+    expect(drawer.style.left).toBe('328px');
     expect(drawer.closest('.participant-card')).toBeNull();
     expect(queryByRole('menuitem', { name: 'Выключить микрофон' })).toBeNull();
     fireEvent.mouseDown(document.body);

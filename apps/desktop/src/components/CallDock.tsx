@@ -1,8 +1,10 @@
+import { t } from '../lib/app-language';
 import { useEffect, useRef, useState } from 'react';
 import {
   AudioLines,
   Camera,
   CameraOff,
+  Check,
   ChevronDown,
   Headphones,
   HeadphoneOff,
@@ -57,20 +59,26 @@ export function CallDock({ state }: { state: CallDockState }) {
   return (
     <div className="sidebar-call-dock">
       <div className={`sidebar-call-status ${tone}`}>
-        <div className="sidebar-call-location" title={state.title} aria-label="Состояние звонка">
+        <div
+          className="sidebar-call-location"
+          data-tooltip={state.title}
+          aria-label={t('Состояние звонка')}
+        >
           <Wifi size={18} />
           <span>
-            <strong>{state.pingMs ? `Пинг · ${state.pingMs} мс` : 'Пинг · —'}</strong>
+            <strong>
+              {state.pingMs ? t('Пинг · {p0} мс', { p0: state.pingMs }) : t('Пинг · —')}
+            </strong>
             <small>{state.title}</small>
           </span>
         </div>
-        <button className="dock-hangup" onClick={state.onLeave} aria-label="Завершить звонок">
+        <button className="dock-hangup" onClick={state.onLeave} aria-label={t('Завершить звонок')}>
           <PhoneOff size={18} />
         </button>
       </div>
       <div className="sidebar-call-tools">
         <button
-          aria-label={state.camera ? 'Выключить камеру' : 'Включить камеру'}
+          aria-label={state.camera ? t('Выключить камеру') : t('Включить камеру')}
           aria-pressed={state.camera}
           disabled={state.busy}
           onClick={state.onCamera}
@@ -78,7 +86,7 @@ export function CallDock({ state }: { state: CallDockState }) {
           {state.camera ? <Camera /> : <CameraOff />}
         </button>
         <button
-          aria-label={state.screen ? 'Остановить демонстрацию' : 'Демонстрация экрана'}
+          aria-label={state.screen ? t('Остановить демонстрацию') : t('Демонстрация экрана')}
           aria-pressed={state.screen}
           disabled={state.busy}
           onClick={state.onScreen}
@@ -86,16 +94,16 @@ export function CallDock({ state }: { state: CallDockState }) {
           <MonitorUp />
         </button>
         <button
-          aria-label="Отправить реакцию"
+          aria-label={t('Отправить реакцию')}
           aria-expanded={reactions}
           onClick={() => setReactions(!reactions)}
         >
           <SmilePlus />
         </button>
         <button
-          aria-label="Шумоподавление"
+          aria-label={t('Шумоподавление')}
           aria-pressed={state.noiseSuppression}
-          data-tooltip="Шумоподавление"
+          data-tooltip={t('Шумоподавление')}
           onClick={state.onNoise}
         >
           <AudioLines />
@@ -106,7 +114,7 @@ export function CallDock({ state }: { state: CallDockState }) {
           {(['👍', '❤️', '😂', '🔥', '🎉'] as const).map((reaction) => (
             <button
               key={reaction}
-              aria-label={`Реакция ${reaction}`}
+              aria-label={t('Реакция {p0}', { p0: reaction })}
               onClick={() => {
                 state.onReaction(reaction);
                 setReactions(false);
@@ -124,14 +132,27 @@ export function CallDock({ state }: { state: CallDockState }) {
 export function ProfileAudioControls({ state }: { state: CallDockState }) {
   const [deviceMenu, setDeviceMenu] = useState<'input' | 'output'>();
   const controlsRef = useRef<HTMLDivElement>(null);
+  const inputTrigger = useRef<HTMLButtonElement>(null);
+  const outputTrigger = useRef<HTMLButtonElement>(null);
+  const selectedId = (deviceMenu === 'input' ? state.inputId : state.outputId) || 'default';
+  const devices = deviceMenu === 'input' ? state.inputs : state.outputs;
+  const deviceLabel = deviceMenu === 'input' ? 'Микрофон' : 'Наушники / динамики';
   useEffect(() => {
     if (!deviceMenu) return;
     const dismissOutside = (event: Event) => {
       if (!controlsRef.current?.contains(event.target as Node)) setDeviceMenu(undefined);
     };
     const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDeviceMenu(undefined);
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setDeviceMenu(undefined);
+      (deviceMenu === 'input' ? inputTrigger : outputTrigger).current?.focus();
     };
+    const menu = controlsRef.current?.querySelector('.profile-device-menu');
+    (
+      menu?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ??
+      menu?.querySelector<HTMLButtonElement>('button')
+    )?.focus({ preventScroll: true });
     document.addEventListener('pointerdown', dismissOutside);
     document.addEventListener('focusin', dismissOutside);
     document.addEventListener('keydown', dismissOnEscape);
@@ -147,7 +168,7 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
         className={`profile-audio-device${state.muted ? ' is-muted' : ''}${deviceMenu === 'input' ? ' is-open' : ''}`}
       >
         <button
-          aria-label={state.muted ? 'Включить микрофон' : 'Выключить микрофон'}
+          aria-label={state.muted ? t('Включить микрофон') : t('Выключить микрофон')}
           aria-pressed={state.muted}
           onClick={state.onMute}
         >
@@ -155,7 +176,8 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
         </button>
         <button
           className="audio-device-chevron"
-          aria-label="Выбор микрофона"
+          ref={inputTrigger}
+          aria-label={t('Выбор микрофона')}
           aria-expanded={deviceMenu === 'input'}
           onClick={() => {
             state.onDevices();
@@ -169,7 +191,9 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
         className={`profile-audio-device${state.deafened ? ' is-muted' : ''}${deviceMenu === 'output' ? ' is-open' : ''}`}
       >
         <button
-          aria-label={state.deafened ? 'Включить звук собеседников' : 'Выключить звук собеседников'}
+          aria-label={
+            state.deafened ? t('Включить звук собеседников') : t('Выключить звук собеседников')
+          }
           aria-pressed={state.deafened}
           onClick={state.onDeafen}
         >
@@ -177,7 +201,8 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
         </button>
         <button
           className="audio-device-chevron"
-          aria-label="Выбор наушников"
+          ref={outputTrigger}
+          aria-label={t('Выбор наушников')}
           aria-expanded={deviceMenu === 'output'}
           onClick={() => {
             state.onDevices();
@@ -188,32 +213,31 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
         </button>
       </span>
       {deviceMenu && (
-        <div
-          className="dock-device-menu"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setDeviceMenu(undefined);
-          }}
-        >
-          <label>
-            {deviceMenu === 'input' ? 'Микрофон' : 'Наушники / динамики'}
-            <select
-              value={deviceMenu === 'input' ? state.inputId : state.outputId}
-              onChange={(event) => {
-                (deviceMenu === 'input' ? state.onInput : state.onOutput)(event.target.value);
+        <div className="dock-device-menu profile-device-menu" role="group" aria-label={deviceLabel}>
+          <strong>{deviceLabel}</strong>
+          {[
+            { id: 'default', label: 'Системное устройство' },
+            ...devices
+              .filter((device) => device.deviceId && device.deviceId !== 'default')
+              .map((device, index) => ({
+                id: device.deviceId,
+                label: device.label || `Устройство ${index + 1}`,
+              })),
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={selectedId === id}
+              onClick={() => {
+                (deviceMenu === 'input' ? state.onInput : state.onOutput)(id);
                 setDeviceMenu(undefined);
+                (deviceMenu === 'input' ? inputTrigger : outputTrigger).current?.focus();
               }}
             >
-              <option value="default">Системное устройство</option>
-              {(deviceMenu === 'input' ? state.inputs : state.outputs)
-                .filter((device) => device.deviceId !== 'default')
-                .map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Устройство ${index + 1}`}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <button onClick={() => setDeviceMenu(undefined)}>Закрыть</button>
+              <span>{label}</span>
+              {selectedId === id && <Check size={15} aria-hidden="true" />}
+            </button>
+          ))}
         </div>
       )}
     </div>

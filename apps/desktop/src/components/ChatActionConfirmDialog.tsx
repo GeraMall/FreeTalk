@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { AlertTriangle, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -47,17 +48,17 @@ export function ChatActionConfirmDialog({
             <h2 id="chat-confirm-title">{title}</h2>
             <p id="chat-confirm-description">{description}</p>
           </div>
-          <button type="button" aria-label="Закрыть" disabled={busy} onClick={onCancel}>
+          <button type="button" aria-label={t('Закрыть')} disabled={busy} onClick={onCancel}>
             <X />
           </button>
         </header>
         {error ? <small className="chat-confirm-error">{error}</small> : null}
         <footer>
           <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button type="button" className="destructive" disabled={busy} onClick={onConfirm}>
-            {busy ? 'Подождите…' : confirmLabel}
+            {busy ? t('Подождите…') : confirmLabel}
           </button>
         </footer>
       </section>

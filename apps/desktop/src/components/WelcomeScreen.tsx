@@ -1,3 +1,11 @@
+import { QrLoginDialog } from './QrLoginDialog';
+import type { AccountUser } from '../lib/api-client';
+import { LanguagePicker } from './LanguagePicker';
+import {
+  REGISTRATION_LEGAL_VERSION,
+  registrationLegalDocuments as LEGAL_DOCUMENTS,
+} from '@freetalk/protocol';
+import { t } from '../lib/app-language';
 import { useEffect, useState, type KeyboardEventHandler } from 'react';
 import {
   ArrowLeft,
@@ -8,6 +16,7 @@ import {
   FileText,
   LogIn,
   MailCheck,
+  QrCode,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -33,27 +42,9 @@ interface RegistrationInput {
   password: string;
   acceptedTerms: true;
   acceptedPrivacy: true;
+  legalVersion: typeof REGISTRATION_LEGAL_VERSION;
   captchaToken?: string;
 }
-
-const LEGAL_DOCUMENTS = {
-  terms: {
-    title: 'Пользовательское соглашение Trlka',
-    paragraphs: [
-      'Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.',
-      'Trlka предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.',
-      'Сервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером Trlka.',
-    ],
-  },
-  privacy: {
-    title: 'Политика конфиденциальности Trlka',
-    paragraphs: [
-      'Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.',
-      'Для работы аккаунта обрабатываются email, username, отображаемое имя, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.',
-      'Аудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper.',
-    ],
-  },
-} as const;
 
 interface WelcomeScreenProps {
   error: string;
@@ -62,6 +53,7 @@ interface WelcomeScreenProps {
   updateStatus: UpdateStatus;
   savedDisplayName: string;
   initialRoomCode?: string;
+  onQrLogin?(user: AccountUser): Promise<void>;
   onLogin(login: string, password: string, captchaToken?: string): void;
   onRegister(input: RegistrationInput): Promise<boolean>;
   onResendVerification(email: string): Promise<boolean>;
@@ -112,7 +104,7 @@ function PasswordField({
           type="button"
           className="password-visibility-toggle"
           aria-label={action}
-          title={action}
+          data-tooltip={action}
           onClick={() => setVisible((current) => !current)}
         >
           {visible ? <EyeOff size={19} /> : <Eye size={19} />}
@@ -130,6 +122,7 @@ export function WelcomeScreen({
   savedDisplayName,
   initialRoomCode,
   onLogin,
+  onQrLogin,
   onRegister,
   onResendVerification,
   onVerifyEmail,
@@ -140,6 +133,7 @@ export function WelcomeScreen({
 }: WelcomeScreenProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [login, setLogin] = useState('');
+  const [qrOpen, setQrOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
@@ -201,6 +195,7 @@ export function WelcomeScreen({
       password,
       acceptedTerms: true,
       acceptedPrivacy: true,
+      legalVersion: REGISTRATION_LEGAL_VERSION,
       captchaToken: captchaToken || undefined,
     });
     if (registered) {
@@ -223,9 +218,16 @@ export function WelcomeScreen({
       <AuroraBackground />
       <div className="welcome-topbar">
         <BrandLogo variant="compact" />
-        <button className="icon-button quiet" aria-label="Открыть настройки" onClick={onSettings}>
-          <Settings size={21} />
-        </button>
+        <div className="welcome-topbar-actions">
+          <LanguagePicker compact />
+          <button
+            className="icon-button quiet"
+            aria-label={t('Открыть настройки')}
+            onClick={onSettings}
+          >
+            <Settings size={21} />
+          </button>
+        </div>
       </div>
       <section className="welcome-card account-card" aria-labelledby="welcome-title">
         <div className="auth-brand">
@@ -233,11 +235,11 @@ export function WelcomeScreen({
           <h1 id="welcome-title" className="visually-hidden">
             Trlka
           </h1>
-          <p className="eyebrow">СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!</p>
+          <p className="eyebrow">{t('СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!')}</p>
         </div>
         {updateStatus.kind === 'available' && (
           <button className="update-banner" onClick={onSettings}>
-            <Download size={16} /> Доступна версия {updateStatus.version}
+            <Download size={16} /> {t('Доступна версия')} {updateStatus.version}
           </button>
         )}
         {verificationEmail ? (
@@ -245,17 +247,19 @@ export function WelcomeScreen({
             <div className="verification-icon" aria-hidden="true">
               <MailCheck size={34} />
             </div>
-            <p className="verification-kicker">ПОЧТИ ГОТОВО</p>
-            <h2 id="verification-title">Подтвердите почту</h2>
+            <p className="verification-kicker">{t('ПОЧТИ ГОТОВО')}</p>
+            <h2 id="verification-title">{t('Подтвердите почту')}</h2>
             <p className="verification-copy">
-              Мы отправили шестизначный код на <strong>{verificationEmail}</strong>
+              {t('Мы отправили шестизначный код на')} <strong>{verificationEmail}</strong>
             </p>
             <div className={`verification-timer ${remainingSeconds === 0 ? 'expired' : ''}`}>
               <Clock3 size={17} />
-              {remainingSeconds > 0 ? `Код действует ещё ${verificationTime}` : 'Срок кода истёк'}
+              {remainingSeconds > 0
+                ? t('Код действует ещё {p0}', { p0: verificationTime })
+                : t('Срок кода истёк')}
             </div>
             <label className="verification-code-label">
-              Код из письма
+              {t('Код из письма')}
               <input
                 autoFocus
                 className="verification-code-input"
@@ -283,14 +287,15 @@ export function WelcomeScreen({
               disabled={busy || verificationToken.length !== 6 || remainingSeconds === 0}
               onClick={() => void onVerifyEmail(verificationEmail, verificationToken)}
             >
-              <MailCheck size={18} /> {busy ? 'Проверяем…' : 'Подтвердить и войти'}
+              <MailCheck size={18} />
+              {busy ? t('Проверяем…') : t('Подтвердить и войти')}
             </button>
             <button
               className="text-action verification-resend"
               disabled={busy}
               onClick={() => void resendVerification()}
             >
-              <RefreshCw size={15} /> Отправить новый код
+              <RefreshCw size={15} /> {t('Отправить новый код')}
             </button>
             <button
               className="text-action verification-back"
@@ -300,7 +305,7 @@ export function WelcomeScreen({
                 setVerificationToken('');
               }}
             >
-              <ArrowLeft size={15} /> Изменить данные регистрации
+              <ArrowLeft size={15} /> {t('Изменить данные регистрации')}
             </button>
           </div>
         ) : (
@@ -308,7 +313,7 @@ export function WelcomeScreen({
             <div
               className={`auth-switch auth-switch-${mode}`}
               role="tablist"
-              aria-label="Режим входа"
+              aria-label={t('Режим входа')}
             >
               <button
                 type="button"
@@ -317,7 +322,7 @@ export function WelcomeScreen({
                 className={mode === 'login' ? 'active' : ''}
                 onClick={() => setMode('login')}
               >
-                Войти
+                {t('Войти')}
               </button>
               <button
                 type="button"
@@ -326,7 +331,7 @@ export function WelcomeScreen({
                 className={mode === 'register' ? 'active' : ''}
                 onClick={() => setMode('register')}
               >
-                Регистрация
+                {t('Регистрация')}
               </button>
             </div>
 
@@ -336,7 +341,7 @@ export function WelcomeScreen({
                   {resetMode ? (
                     <>
                       <label className="field-label">
-                        Почта аккаунта
+                        {t('Почта аккаунта')}
                         <input
                           type="email"
                           value={login}
@@ -346,7 +351,7 @@ export function WelcomeScreen({
                         />
                       </label>
                       <label className="field-label">
-                        Код из письма
+                        {t('Код из письма')}
                         <input
                           autoFocus
                           value={resetToken}
@@ -361,7 +366,7 @@ export function WelcomeScreen({
                       </label>
                       <PasswordField
                         id="reset-password"
-                        label="Новый пароль"
+                        label={t('Новый пароль')}
                         value={resetPassword}
                         autoComplete="new-password"
                         onChange={setResetPassword}
@@ -376,16 +381,16 @@ export function WelcomeScreen({
                         }
                         onClick={() => onResetPassword(resetToken, resetPassword, login)}
                       >
-                        Сохранить новый пароль
+                        {t('Сохранить новый пароль')}
                       </button>
                       <button className="text-action" onClick={() => setResetMode(false)}>
-                        Вернуться ко входу
+                        {t('Вернуться ко входу')}
                       </button>
                     </>
                   ) : (
                     <>
                       <label className="field-label">
-                        Почта или @username
+                        {t('Почта или @username')}
                         <input
                           autoFocus
                           value={login}
@@ -396,7 +401,7 @@ export function WelcomeScreen({
                       </label>
                       <PasswordField
                         id="login-password"
-                        label="Пароль"
+                        label={t('Пароль')}
                         value={password}
                         disabled={busy}
                         autoComplete="current-password"
@@ -409,17 +414,31 @@ export function WelcomeScreen({
                         disabled={busy || !login || !password || (captchaRequired && !captchaToken)}
                         onClick={submit}
                       >
-                        <LogIn size={18} /> {busy ? 'Входим…' : 'Войти'}
+                        <LogIn size={18} />
+                        {busy ? t('Входим…') : t('Войти')}
                       </button>
+                      {onQrLogin && (
+                        <button
+                          className="qr-login-trigger"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setQrOpen(true)}
+                        >
+                          <QrCode size={17} /> {t('Войти по QR-коду')}
+                        </button>
+                      )}
+                      {qrOpen && onQrLogin && (
+                        <QrLoginDialog onClose={() => setQrOpen(false)} onLogin={onQrLogin} />
+                      )}
                       <button
                         className="text-action"
                         disabled={!login.includes('@')}
                         onClick={() => onForgotPassword(login)}
                       >
-                        Забыли пароль?
+                        {t('Забыли пароль?')}
                       </button>
                       <button className="text-action" onClick={() => setResetMode(true)}>
-                        У меня есть код сброса
+                        {t('У меня есть код сброса')}
                       </button>
                     </>
                   )}
@@ -431,13 +450,13 @@ export function WelcomeScreen({
                       <UserPlus size={21} />
                     </span>
                     <div>
-                      <h2>Создайте аккаунт</h2>
-                      <p>Один профиль для друзей, звонков и истории общения.</p>
+                      <h2>{t('Создайте аккаунт')}</h2>
+                      <p>{t('Один профиль для друзей, звонков и истории общения.')}</p>
                     </div>
                   </div>
                   <div className="auth-grid">
                     <label className="field-label">
-                      Почта
+                      {t('Почта')}
                       <input
                         value={email}
                         type="email"
@@ -447,7 +466,7 @@ export function WelcomeScreen({
                       />
                     </label>
                     <label className="field-label">
-                      Уникальный @username
+                      {t('Уникальный @username')}
                       <input
                         value={username}
                         placeholder="username"
@@ -466,10 +485,10 @@ export function WelcomeScreen({
                     </small>
                   )}
                   <label className="field-label">
-                    Отображаемое имя
+                    {t('Отображаемое имя')}
                     <input
                       value={displayName}
-                      placeholder="Как вас увидят другие"
+                      placeholder={t('Как вас увидят другие')}
                       maxLength={48}
                       onChange={(event) => setDisplayName(event.target.value)}
                     />
@@ -477,14 +496,14 @@ export function WelcomeScreen({
                   <div className="auth-grid">
                     <PasswordField
                       id="registration-password"
-                      label="Пароль"
+                      label={t('Пароль')}
                       value={password}
                       autoComplete="new-password"
                       onChange={setPassword}
                     />
                     <PasswordField
                       id="registration-password-confirmation"
-                      label="Повторите пароль"
+                      label={t('Повторите пароль')}
                       value={confirmation}
                       invalid={Boolean(password && confirmation && password !== confirmation)}
                       autoComplete="new-password"
@@ -492,7 +511,7 @@ export function WelcomeScreen({
                     />
                   </div>
                   {password && confirmation && password !== confirmation && (
-                    <small className="validation-error">Пароли не совпадают</small>
+                    <small className="validation-error">{t('Пароли не совпадают')}</small>
                   )}
                   <div className="registration-legal">
                     <div className="legal-check-row">
@@ -500,10 +519,10 @@ export function WelcomeScreen({
                         <input
                           type="checkbox"
                           checked={terms}
-                          aria-label="Я принимаю Пользовательское соглашение"
+                          aria-label={t('Я принимаю Пользовательское соглашение')}
                           onChange={(event) => setTerms(event.target.checked)}
                         />
-                        <span>Я принимаю</span>
+                        <span>{t('Я принимаю')}</span>
                       </label>
                       <button
                         type="button"
@@ -511,7 +530,7 @@ export function WelcomeScreen({
                         aria-expanded={openLegal === 'terms'}
                         onClick={() => setOpenLegal(openLegal === 'terms' ? undefined : 'terms')}
                       >
-                        Пользовательское соглашение
+                        {t('Пользовательское соглашение')}
                       </button>
                     </div>
                     <div className="legal-check-row">
@@ -519,10 +538,10 @@ export function WelcomeScreen({
                         <input
                           type="checkbox"
                           checked={privacy}
-                          aria-label="Я принимаю Политику конфиденциальности"
+                          aria-label={t('Я ознакомился с политикой конфиденциальности')}
                           onChange={(event) => setPrivacy(event.target.checked)}
                         />
-                        <span>Я принимаю</span>
+                        <span>{t('Я ознакомился с')}</span>
                       </label>
                       <button
                         type="button"
@@ -532,7 +551,7 @@ export function WelcomeScreen({
                           setOpenLegal(openLegal === 'privacy' ? undefined : 'privacy')
                         }
                       >
-                        Политику конфиденциальности
+                        {t('политикой конфиденциальности')}
                       </button>
                     </div>
                   </div>
@@ -547,12 +566,12 @@ export function WelcomeScreen({
                         </span>
                         <div>
                           <strong>{LEGAL_DOCUMENTS[openLegal].title}</strong>
-                          <small>Версия от 25 августа 2026 года</small>
+                          <small>{REGISTRATION_LEGAL_VERSION}</small>
                         </div>
                         <button
                           type="button"
                           className="icon-button quiet"
-                          aria-label="Закрыть документ"
+                          aria-label={t('Закрыть документ')}
                           onClick={() => setOpenLegal(undefined)}
                         >
                           <X size={17} />
@@ -580,10 +599,12 @@ export function WelcomeScreen({
                     }
                     onClick={submit}
                   >
-                    <UserPlus size={18} /> {busy ? 'Создаём…' : 'Создать аккаунт'}
+                    <UserPlus size={18} />
+                    {busy ? t('Создаём…') : t('Создать аккаунт')}
                   </button>
                   <p className="registration-security">
-                    <ShieldCheck size={14} /> После регистрации подтвердите почту кодом из письма
+                    <ShieldCheck size={14} />{' '}
+                    {t('После регистрации подтвердите почту кодом из письма')}
                   </p>
                 </>
               )}
@@ -592,21 +613,21 @@ export function WelcomeScreen({
             {mode === 'login' && (
               <>
                 <div className="divider">
-                  <span>или войдите как гость</span>
+                  <span>{t('или войдите как гость')}</span>
                 </div>
                 <div className="guest-join">
                   <div className="join-row">
                     <input
-                      aria-label="Код или ссылка комнаты"
+                      aria-label={t('Код или ссылка комнаты')}
                       value={guestRoom}
-                      placeholder="Код или ссылка комнаты"
+                      placeholder={t('Код или ссылка комнаты')}
                       onChange={(event) => setGuestRoom(event.target.value)}
                     />
                     <button
                       disabled={busy || !guestRoom || !guestCaptcha}
                       onClick={() => onGuestJoin(guestRoom, guestCaptcha)}
                     >
-                      Войти
+                      {t('Войти')}
                     </button>
                   </div>
                   <CaptchaBox onToken={setGuestCaptcha} />
@@ -625,16 +646,19 @@ export function WelcomeScreen({
             <div className="auth-info-row">
               <UserRound size={18} />
               <span>
-                <strong>Гостевой режим</strong>
-                До 2 входов в сутки и до 3 часов за звонок. Камера, экран, друзья и история
-                недоступны.
+                <strong>{t('Гостевой режим')}</strong>
+                {t(
+                  'До 2 входов в сутки и до 3 часов за звонок. Камера, экран, друзья и история недоступны.',
+                )}
               </span>
             </div>
             <div className="auth-info-row privacy-note">
               <ShieldCheck size={18} />
               <span>
-                <strong>Приватная связь</strong>
-                Разговоры идут через WebRTC. API не получает аудио, видео или содержимое экрана.
+                <strong>{t('Приватная связь')}</strong>
+                {t(
+                  'Разговоры идут через WebRTC. API не получает аудио, видео или содержимое экрана.',
+                )}
               </span>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import {
   Activity,
   Ban,
@@ -297,7 +298,7 @@ export function FullProfileView({
         <button
           type="button"
           className="full-profile-close"
-          aria-label="Закрыть профиль"
+          aria-label={t('Закрыть профиль')}
           onClick={onClose}
         >
           <X />
@@ -309,7 +310,7 @@ export function FullProfileView({
         </div>
         <div className="full-profile-avatar">
           {avatarUrl ? (
-            <CachedMediaImage src={avatarUrl} alt={`Аватар ${displayName}`} />
+            <CachedMediaImage src={avatarUrl} alt={t('Аватар {p0}', { p0: displayName })} />
           ) : (
             <span>{displayName.trim().slice(0, 1).toLocaleUpperCase('ru-RU')}</span>
           )}
@@ -319,7 +320,8 @@ export function FullProfileView({
           <h2>{displayName}</h2>
           {username ? <p>@{username}</p> : null}
           <span className={presence}>
-            <i /> {presenceLabel(presence)}
+            <i />
+            {presenceLabel(presence)}
           </span>
         </div>
         {!preview ? (
@@ -340,7 +342,7 @@ export function FullProfileView({
           <div className="full-profile-since">
             <CalendarDays />
             <span>
-              <small>В Trlka с</small>
+              <small>{t('В Trlka с')}</small>
               <strong>{formatRegistrationDate(profile.registeredAt)}</strong>
             </span>
           </div>
@@ -348,10 +350,10 @@ export function FullProfileView({
       </section>
       <section className="full-profile-content">
         <header>
-          <span>ПОЛНЫЙ ПРОФИЛЬ</span>
-          {loading ? <i>Обновляем…</i> : null}
+          <span>{t('ПОЛНЫЙ ПРОФИЛЬ')}</span>
+          {loading ? <i>{t('Обновляем…')}</i> : null}
         </header>
-        <nav className="full-profile-tabs" aria-label="Разделы профиля">
+        <nav className="full-profile-tabs" aria-label={t('Разделы профиля')}>
           {(
             [
               ['profile', 'Профиль'],
@@ -430,12 +432,12 @@ function ProfileActions({
     <div className="full-profile-actions">
       {relationship === 'none' && onAddFriend ? (
         <button className="primary" disabled={Boolean(busy)} onClick={onAddFriend}>
-          <UserPlus /> Добавить
+          <UserPlus /> {t('Добавить')}
         </button>
       ) : null}
       {relationship === 'outgoing' ? (
         <button className="request-sent" disabled>
-          <Clock3 /> Запрос отправлен
+          <Clock3 /> {t('Запрос отправлен')}
         </button>
       ) : null}
       {canMessage ? (
@@ -444,13 +446,13 @@ function ProfileActions({
           disabled={Boolean(busy)}
           onClick={() => void onRun('message', () => actions!.onMessage!(targetId))}
         >
-          <MessageCircle /> Написать
+          <MessageCircle /> {t('Написать')}
         </button>
       ) : null}
       {canCall ? (
         <button
           className="secondary icon-action"
-          aria-label="Позвонить"
+          aria-label={t('Позвонить')}
           disabled={Boolean(busy)}
           onClick={() => void onRun('call', () => actions!.onCall!(targetId))}
         >
@@ -459,13 +461,13 @@ function ProfileActions({
       ) : null}
       {canManage ? (
         <details className="full-profile-more">
-          <summary aria-label="Другие действия">
+          <summary aria-label={t('Другие действия')}>
             <MoreHorizontal />
           </summary>
           <div>
             {actions?.onRemoveFriend ? (
               <button onClick={() => void onRun('remove', () => actions.onRemoveFriend!(targetId))}>
-                <UserMinus /> Удалить из друзей
+                <UserMinus /> {t('Удалить из друзей')}
               </button>
             ) : null}
             {actions?.onBlock ? (
@@ -473,7 +475,7 @@ function ProfileActions({
                 className="destructive"
                 onClick={() => void onRun('block', () => actions.onBlock!(targetId))}
               >
-                <Ban /> Заблокировать
+                <Ban /> {t('Заблокировать')}
               </button>
             ) : null}
           </div>
@@ -501,12 +503,12 @@ function ProfileTabContent({
   return (
     <>
       <section className="full-profile-section full-profile-about">
-        <h3>О СЕБЕ</h3>
+        <h3>{t('О СЕБЕ')}</h3>
         <p>{profile?.bio || 'Пользователь пока ничего не добавил.'}</p>
       </section>
       <section className="full-profile-section">
         <div className="full-profile-section-heading">
-          <h3>{isSelf ? 'ТВОИ ДРУЗЬЯ' : 'ОБЩИЕ ДРУЗЬЯ'}</h3>
+          <h3>{isSelf ? t('ТВОИ ДРУЗЬЯ') : t('ОБЩИЕ ДРУЗЬЯ')}</h3>
           <small>{profile?.mutualFriendsCount ?? 0}</small>
         </div>
         {(profile?.mutualFriends.length ?? 0) > 0 ? (
@@ -539,7 +541,7 @@ function ProfileTabContent({
       </section>
       <section className="full-profile-section">
         <div className="full-profile-section-heading">
-          <h3>{isSelf ? 'ТВОИ ЧАТЫ' : 'ОБЩИЕ ЧАТЫ'}</h3>
+          <h3>{isSelf ? t('ТВОИ ЧАТЫ') : t('ОБЩИЕ ЧАТЫ')}</h3>
           <small>{profile?.commonChatsCount ?? 0}</small>
         </div>
         {commonChats.length > 0 ? (
@@ -554,7 +556,7 @@ function ProfileTabContent({
                   />
                   <span>
                     <strong>{chat.title}</strong>
-                    <small>{chat.type === 'group' ? 'Групповой чат' : 'Личный чат'}</small>
+                    <small>{chat.type === 'group' ? t('Групповой чат') : t('Личный чат')}</small>
                   </span>
                   <small>
                     {chat.lastInteractionAt ? formatRelativeDate(chat.lastInteractionAt) : ''}
@@ -591,7 +593,7 @@ function ProfileTabContent({
         <section className="full-profile-section full-profile-joined-section">
           <CalendarDays />
           <span>
-            <h3>В TRLKA С</h3>
+            <h3>{t('В TRLKA С')}</h3>
             <p>{formatRegistrationDate(profile.registeredAt)}</p>
           </span>
         </section>
@@ -609,7 +611,7 @@ function ActivityTab({
     return <ProfileEmpty icon="activity" text="Недавней активности пока нет." />;
   return (
     <section className="full-profile-section">
-      <h3>НЕДАВНЯЯ АКТИВНОСТЬ</h3>
+      <h3>{t('НЕДАВНЯЯ АКТИВНОСТЬ')}</h3>
       <div className="full-profile-activity-list">
         {items.map((item, index) => (
           <div key={`${item.icon}-${index}`}>
@@ -650,26 +652,26 @@ function CommonTab({
         <div>
           <Users />
           <strong>{profile?.mutualFriendsCount ?? 0}</strong>
-          <small>{isSelf ? 'твоих друзей' : 'общих друзей'}</small>
+          <small>{isSelf ? t('твоих друзей') : t('общих друзей')}</small>
         </div>
         <div>
           <Hash />
           <strong>{profile?.commonChatsCount ?? commonChats.length}</strong>
-          <small>{isSelf ? 'твоих чатов' : 'общих чатов'}</small>
+          <small>{isSelf ? t('твоих чатов') : t('общих чатов')}</small>
         </div>
         <div>
           <Phone />
           <strong>{sharedCalls.count}</strong>
-          <small>{isSelf ? 'твоих звонков' : 'звонков вместе'}</small>
+          <small>{isSelf ? t('твоих звонков') : t('звонков вместе')}</small>
         </div>
       </div>
       {sharedCalls.lastStartedAt ? (
         <section className="full-profile-section full-profile-call-summary">
           <Phone />
           <span>
-            <h3>ПОСЛЕДНИЙ ЗВОНОК</h3>
+            <h3>{t('ПОСЛЕДНИЙ ЗВОНОК')}</h3>
             <p>
-              {formatRelativeDate(sharedCalls.lastStartedAt)} ·{' '}
+              {formatRelativeDate(sharedCalls.lastStartedAt)} ·
               {formatDuration(sharedCalls.lastDurationSeconds)}
             </p>
           </span>

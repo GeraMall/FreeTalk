@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { appLanguage } from './lib/app-language';
+import { AppTooltips } from './components/AppTooltips';
 import { NativeScreenSourcePicker } from './components/NativeScreenSourcePicker';
 import { BrowserPlatformGate } from './components/BrowserPlatformGate';
 import { ChatLayoutPreview } from './components/ChatLayoutPreview';
@@ -16,6 +18,7 @@ import './gif-library.css';
 import './theme-steel.css';
 import './chat-theme.css';
 
+document.documentElement.lang = appLanguage();
 installInteractionGuards();
 installMobileViewport();
 
@@ -54,6 +57,7 @@ const customWindowChrome = usesCustomWindowChrome();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NativeScreenSourcePicker />
+    <AppTooltips />
     {customWindowChrome && !notificationOverlay ? (
       <div className="desktop-app-frame">
         <CustomTitleBar />

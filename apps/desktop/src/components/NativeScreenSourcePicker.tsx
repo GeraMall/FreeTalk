@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { AppWindow, Monitor, X } from 'lucide-react';
@@ -27,21 +28,21 @@ export function NativeScreenSourcePicker() {
     >
       <header>
         <div>
-          <h2>Демонстрация экрана</h2>
-          <p>Выберите, что увидят участники звонка</p>
+          <h2>{t('Демонстрация экрана')}</h2>
+          <p>{t('Выберите, что увидят участники звонка')}</p>
         </div>
-        <button aria-label="Отмена" onClick={() => request.complete(null)}>
+        <button aria-label={t('Отмена')} onClick={() => request.complete(null)}>
           <X size={20} />
         </button>
       </header>
-      <div role="tablist" aria-label="Источник демонстрации">
+      <div role="tablist" aria-label={t('Источник демонстрации')}>
         <button role="tab" aria-selected={tab === 'screen'} onClick={() => setTab('screen')}>
           <Monitor size={18} />
-          Экраны
+          {t('Экраны')}
         </button>
         <button role="tab" aria-selected={tab === 'window'} onClick={() => setTab('window')}>
           <AppWindow size={18} />
-          Окна
+          {t('Окна')}
         </button>
       </div>
       <div className="native-screen-sources">
@@ -54,16 +55,16 @@ export function NativeScreenSourcePicker() {
             </button>
           ))}
         {!request.sources.some((source) => source.kind === tab) && (
-          <p>Нет доступных окон. Откройте нужное приложение и повторите выбор.</p>
+          <p>{t('Нет доступных окон. Откройте нужное приложение и повторите выбор.')}</p>
         )}
       </div>
       <footer>
         <span>
           {tab === 'window'
-            ? 'Будет показано только выбранное окно'
-            : 'Участники увидят всё на выбранном экране'}
+            ? t('Будет показано только выбранное окно')
+            : t('Участники увидят всё на выбранном экране')}
         </span>
-        <button onClick={() => request.complete(null)}>Отмена</button>
+        <button onClick={() => request.complete(null)}>{t('Отмена')}</button>
       </footer>
     </dialog>,
     document.body,

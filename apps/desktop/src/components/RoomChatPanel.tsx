@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RoomChatMessage } from '@freetalk/protocol';
 import { ArrowDown, MessageCircle, Send, X } from 'lucide-react';
@@ -61,7 +62,7 @@ export function RoomChatPanel({
   return (
     <aside
       className={`room-chat-panel ${closing ? 'closing' : ''}`}
-      aria-label="Чат комнаты"
+      aria-label={t('Чат комнаты')}
       onAnimationEnd={(event) => {
         if (closing && event.currentTarget === event.target) onClosed?.();
       }}
@@ -71,10 +72,10 @@ export function RoomChatPanel({
           <MessageCircle size={18} />
         </span>
         <span>
-          <strong>Чат комнаты</strong>
-          <small>Исчезнет после завершения звонка</small>
+          <strong>{t('Чат комнаты')}</strong>
+          <small>{t('Исчезнет после завершения звонка')}</small>
         </span>
-        <button aria-label="Закрыть чат комнаты" onClick={onClose}>
+        <button aria-label={t('Закрыть чат комнаты')} onClick={onClose}>
           <X size={18} />
         </button>
       </header>
@@ -90,8 +91,8 @@ export function RoomChatPanel({
         {messages.length === 0 ? (
           <div className="room-chat-empty">
             <MessageCircle size={28} />
-            <strong>Сообщений пока нет</strong>
-            <span>Напишите первое сообщение участникам комнаты.</span>
+            <strong>{t('Сообщений пока нет')}</strong>
+            <span>{t('Напишите первое сообщение участникам комнаты.')}</span>
           </div>
         ) : (
           messages.map((message) => {
@@ -107,7 +108,7 @@ export function RoomChatPanel({
                 </span>
                 <span className="room-chat-bubble">
                   <span className="room-chat-message-meta">
-                    <strong>{own ? 'Вы' : message.senderName}</strong>
+                    <strong>{own ? t('Вы') : message.senderName}</strong>
                     <time dateTime={new Date(message.timestamp).toISOString()}>
                       {new Date(message.timestamp).toLocaleTimeString('ru-RU', {
                         hour: '2-digit',
@@ -125,14 +126,14 @@ export function RoomChatPanel({
 
       {showNewMessages && (
         <button className="room-chat-new" onClick={() => scrollToBottom()}>
-          <ArrowDown size={14} /> Новые сообщения
+          <ArrowDown size={14} /> {t('Новые сообщения')}
         </button>
       )}
 
       <div className="room-chat-composer">
         <textarea
-          aria-label="Сообщение в чат комнаты"
-          placeholder="Написать сообщение…"
+          aria-label={t('Сообщение в чат комнаты')}
+          placeholder={t('Написать сообщение…')}
           maxLength={2_000}
           rows={1}
           value={draft}
@@ -143,7 +144,7 @@ export function RoomChatPanel({
             submit();
           }}
         />
-        <button aria-label="Отправить сообщение" disabled={!draft.trim()} onClick={submit}>
+        <button aria-label={t('Отправить сообщение')} disabled={!draft.trim()} onClick={submit}>
           <Send size={17} />
         </button>
       </div>

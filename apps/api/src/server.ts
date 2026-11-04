@@ -32,9 +32,15 @@ import { API_VERSION } from './app-version.js';
 import { presenceAudience } from './presence-audience.js';
 import { startCallReconciliation } from './call-reconciliation.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
+import { registerQrLoginRoutes } from './qr-login.js';
 import { registerWebPush, startWebPush } from './web-push.js';
 import { registerServiceChat, startSupportDelivery } from './service-chat.js';
-import { chatRealtimeClientMessageSchema } from '@freetalk/protocol';
+import {
+  chatRealtimeClientMessageSchema,
+  LEGACY_REGISTRATION_LEGAL_VERSION,
+  REGISTRATION_LEGAL_VERSION,
+  registrationLegalDocuments,
+} from '@freetalk/protocol';
 import {
   displayNameSchema,
   emailSchema,
@@ -50,8 +56,6 @@ import {
   verifyPassword,
 } from './security.js';
 
-const TERMS_VERSION = '2026-08-25';
-const PRIVACY_VERSION = '2026-08-25';
 const app = Fastify({
   logger: {
     redact: {
@@ -175,6 +179,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
   let authenticated = false;
   let authenticationStarted = false;
   let authenticatedUserId: string | undefined;
+  let authenticatedSessionId: string | undefined;
   let removeFromHub: (() => void) | undefined;
   let heartbeatAlive = true;
   const authenticationTimeout = setTimeout(() => {
@@ -189,6 +194,19 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
     }
     heartbeatAlive = false;
     socket.ping();
+    if (authenticatedSessionId) {
+      void db
+        .query(
+          'SELECT 1 FROM sessions WHERE id=$1 AND revoked_at IS NULL AND refresh_expires_at>now()',
+          [authenticatedSessionId],
+        )
+        .then((result) => {
+          if (!result.rowCount && socket.readyState === 1) socket.close(4401, 'Session ended');
+        })
+        .catch((error: unknown) =>
+          app.log.warn({ err: error }, 'Could not validate realtime session'),
+        );
+    }
   }, 30_000);
   heartbeat.unref();
   socket.on('pong', () => {
@@ -228,6 +246,7 @@ app.get('/v1/chats/realtime', { websocket: true }, (socket, request) => {
         if (socket.readyState !== 1) return;
         authenticated = true;
         authenticatedUserId = user.id;
+        authenticatedSessionId = user.sessionId;
         clearTimeout(authenticationTimeout);
         removeFromHub = chatRealtimeHub.add(user.id, socket);
         try {
@@ -272,6 +291,7 @@ app.post(
         password: passwordSchema,
         acceptedTerms: z.literal(true),
         acceptedPrivacy: z.literal(true),
+        legalVersion: z.literal(REGISTRATION_LEGAL_VERSION).optional(),
         captchaToken: z.string().max(4096).optional(),
       })
       .parse(request.body);
@@ -296,7 +316,11 @@ app.post(
       const row = created.rows[0]!;
       await client.query(
         `INSERT INTO terms_acceptance(user_id,terms_version,privacy_version) VALUES($1,$2,$3)`,
-        [row.id, TERMS_VERSION, PRIVACY_VERSION],
+        [
+          row.id,
+          input.legalVersion ?? LEGACY_REGISTRATION_LEGAL_VERSION,
+          input.legalVersion ?? LEGACY_REGISTRATION_LEGAL_VERSION,
+        ],
       );
       await client.query(
         `INSERT INTO email_verifications(id,user_id,token_hash,expires_at)
@@ -461,6 +485,22 @@ app.get('/v1/me/sessions', async (request, reply) => {
       expiresAt: session.refresh_expires_at.toISOString(),
     })),
   };
+});
+
+app.delete('/v1/me/sessions/:id', async (request, reply) => {
+  const user = await requireUser(request, reply);
+  if (!user) return;
+  const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+  if (id.toLowerCase() === user.sessionId) {
+    return reply
+      .code(409)
+      .send({ code: 'CURRENT_SESSION', message: 'Используйте выход из аккаунта.' });
+  }
+  await db.query(
+    'UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND id=$2 AND id<>$3 AND revoked_at IS NULL',
+    [user.id, id, user.sessionId],
+  );
+  return reply.code(204).send();
 });
 
 app.patch('/v1/me', async (request, reply) => {
@@ -1015,23 +1055,20 @@ app.post(
   },
 );
 
-app.get('/v1/legal/terms', async () => ({
-  version: TERMS_VERSION,
-  title: 'Пользовательское соглашение',
-  status: 'draft',
-  content: 'Документ будет опубликован до production-релиза.',
-}));
-app.get('/v1/legal/privacy', async () => ({
-  version: PRIVACY_VERSION,
-  title: 'Политика конфиденциальности',
-  status: 'draft',
-  content: 'Документ будет опубликован до production-релиза.',
-}));
+for (const kind of ['terms', 'privacy'] as const) {
+  app.get('/v1/legal/' + kind, async () => ({
+    version: REGISTRATION_LEGAL_VERSION,
+    title: registrationLegalDocuments[kind].title,
+    status: 'draft',
+    content: registrationLegalDocuments[kind].paragraphs.join('\n\n'),
+  }));
+}
 
 registerSocialRoutes(app, requireUser);
 registerServiceChat(app, requireUser);
 startSupportDelivery(app);
 registerMobileBetaRoutes(app);
+registerQrLoginRoutes(app, requireUser);
 registerAndroidPush(app, requireUser);
 startAndroidPush(app);
 registerWebPush(app, requireUser);

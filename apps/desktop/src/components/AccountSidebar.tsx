@@ -1,3 +1,4 @@
+import { formatChatCallLabel, t } from '../lib/app-language';
 import {
   Check,
   ChevronDown,
@@ -268,14 +269,18 @@ export function AccountSidebar({
             <BrandLogo variant="compact" />
             <label className="account-chat-search">
               <Search aria-hidden="true" />
-              <span className="sr-only">Поиск по чатам</span>
+              <span className="sr-only">{t('Поиск по чатам')}</span>
               <input
                 value={chatSearch}
-                placeholder="Поиск по чатам"
+                placeholder={t('Поиск по чатам')}
                 onChange={(event) => setChatSearch(event.target.value)}
               />
               {chatSearch ? (
-                <button type="button" aria-label="Очистить поиск" onClick={() => setChatSearch('')}>
+                <button
+                  type="button"
+                  aria-label={t('Очистить поиск')}
+                  onClick={() => setChatSearch('')}
+                >
                   <X />
                 </button>
               ) : null}
@@ -291,7 +296,7 @@ export function AccountSidebar({
           <Nav
             active={activePage === 'room'}
             icon={<PhoneCall />}
-            label="Текущий звонок"
+            label={t('Текущий звонок')}
             live
             onClick={() => onNavigate('room')}
           />
@@ -307,8 +312,8 @@ export function AccountSidebar({
           <Download aria-hidden="true" />
           <span>
             {updateStatus?.kind === 'downloading'
-              ? `Загрузка ${Math.round(updateStatus.progress)}%`
-              : `Обновиться до версии ${compactVersionLabel(updateVersion)}`}
+              ? t('Загрузка {p0}%', { p0: Math.round(updateStatus.progress) })
+              : t('Обновиться до версии {p0}', { p0: compactVersionLabel(updateVersion) })}
           </span>
         </button>
       ) : null}
@@ -318,7 +323,7 @@ export function AccountSidebar({
           <Nav
             active={activePage === 'room'}
             icon={<PhoneCall />}
-            label="Текущий звонок"
+            label={t('Текущий звонок')}
             live
             onClick={() => onNavigate('room')}
           />
@@ -326,20 +331,20 @@ export function AccountSidebar({
         <Nav
           active={activePage === 'home'}
           icon={<DoorOpen />}
-          label="Главная"
+          label={t('Главная')}
           onClick={() => onNavigate('home')}
         />
         <Nav
           active={activePage === 'friends'}
           icon={<Users />}
-          label="Друзья"
+          label={t('Друзья')}
           onClick={() => onNavigate('friends')}
         />
         {!chatNavigationEnabled && (
           <Nav
             active={activePage === 'chats'}
             icon={<MessageCircle />}
-            label="Чаты"
+            label={t('Чаты')}
             unread={unreadChatCount}
             onClick={() => onNavigate('chats')}
           />
@@ -347,21 +352,21 @@ export function AccountSidebar({
         <Nav
           active={activePage === 'history'}
           icon={<History />}
-          label="История"
+          label={t('История')}
           onClick={() => onNavigate('history')}
         />
       </nav>
       {chatNavigationEnabled ? (
-        <section className="account-sidebar-chats" aria-label="Чаты и группы">
+        <section className="account-sidebar-chats" aria-label={t('Чаты и группы')}>
           <header>
             <span className="account-sidebar-chat-heading">
-              <span>Чаты и группы</span>
+              <span>{t('Чаты и группы')}</span>
               {unreadChatCount > 0 ? <b>{unreadChatCount > 99 ? '99+' : unreadChatCount}</b> : null}
             </span>
             <button
               type="button"
               className="account-sidebar-chat-add"
-              aria-label="Создать групповой чат"
+              aria-label={t('Создать групповой чат')}
               aria-expanded={groupFormOpen}
               onClick={() => setGroupFormOpen(true)}
             >
@@ -370,7 +375,7 @@ export function AccountSidebar({
           </header>
           <div className="account-sidebar-chat-list">
             {chatsLoading && (chats?.length ?? 0) === 0 ? (
-              <div className="account-sidebar-chat-state">Загружаем чаты…</div>
+              <div className="account-sidebar-chat-state">{t('Загружаем чаты…')}</div>
             ) : sidebarChats.length > 0 ? (
               sidebarChats.map((chat) => {
                 const name = sidebarChatName(chat, user.id);
@@ -385,7 +390,11 @@ export function AccountSidebar({
                       type="button"
                       className={`account-sidebar-chat-open${chat.id === readingChatId ? ' active' : ''}`}
                       aria-current={chat.id === readingChatId ? 'true' : undefined}
-                      aria-label={unread > 0 ? `${name}, непрочитанных сообщений: ${unread}` : name}
+                      aria-label={
+                        unread > 0
+                          ? t('{p0}, непрочитанных сообщений: {p1}', { p0: name, p1: unread })
+                          : name
+                      }
                       onClick={() => {
                         onNavigate('chats');
                         void onOpenChat?.(chat.id);
@@ -404,12 +413,13 @@ export function AccountSidebar({
                       <span>
                         <strong>{name}</strong>
                         <small>
-                          {chat.lastMessage ||
+                          {(chat.lastMessage &&
+                            formatChatCallLabel(chat.lastMessageKind, chat.lastMessage)) ||
                             (chat.type === 'group'
-                              ? `${chat.members.length} участников`
+                              ? t('{count} участников', { count: chat.members.length })
                               : other?.presence === 'online'
                                 ? 'В сети'
-                                : 'Личный чат')}
+                                : t('Личный чат'))}
                         </small>
                       </span>
                       {unread > 0 ? <b>{unread > 99 ? '99+' : unread}</b> : null}
@@ -418,7 +428,7 @@ export function AccountSidebar({
                       <button
                         type="button"
                         className="account-sidebar-chat-leave"
-                        aria-label={`Покинуть группу ${name}`}
+                        aria-label={t('Покинуть группу {p0}', { p0: name })}
                         onClick={() => {
                           setLeaveError('');
                           setLeaveTarget(chat);
@@ -432,7 +442,7 @@ export function AccountSidebar({
               })
             ) : (
               <div className="account-sidebar-chat-state">
-                {chats?.length ? 'Ничего не найдено' : 'Чатов пока нет'}
+                {chats?.length ? t('Ничего не найдено') : t('Чатов пока нет')}
               </div>
             )}
           </div>
@@ -444,7 +454,7 @@ export function AccountSidebar({
       >
         {callDock && <CallDock state={callDock} />}
         {menuOpen && (
-          <div className="account-profile-popover" role="dialog" aria-label="Профиль и статус">
+          <div className="account-profile-popover" role="dialog" aria-label={t('Профиль и статус')}>
             <div
               className={`profile-popover-cover${cachedCoverUrl ? ' has-cover' : ''}`}
               style={cachedCoverUrl ? { backgroundImage: `url(${cachedCoverUrl})` } : undefined}
@@ -452,7 +462,7 @@ export function AccountSidebar({
               <button
                 type="button"
                 className="profile-popover-avatar-trigger"
-                aria-label="Открыть полный профиль"
+                aria-label={t('Открыть полный профиль')}
                 onClick={() =>
                   setFullProfileTarget({
                     id: user.id,
@@ -489,8 +499,8 @@ export function AccountSidebar({
             >
               <Edit3 size={16} />
               <span>
-                <strong>Редактировать профиль</strong>
-                <small>Имя, аватар и информация о себе</small>
+                <strong>{t('Редактировать профиль')}</strong>
+                <small>{t('Имя, аватар и информация о себе')}</small>
               </span>
             </button>
             <div className="profile-presence-picker" ref={statusPickerRef}>
@@ -517,7 +527,7 @@ export function AccountSidebar({
                   id="profile-status-menu"
                   className="profile-presence-options"
                   role="menu"
-                  aria-label="Выбор статуса"
+                  aria-label={t('Выбор статуса')}
                 >
                   {(['auto', 'away', 'dnd', 'invisible'] as PresenceMode[]).map((mode) => (
                     <button
@@ -540,7 +550,8 @@ export function AccountSidebar({
               )}
             </div>
             <button type="button" className="profile-popover-logout" onClick={onLogout}>
-              <LogOut size={16} /> Выйти из аккаунта
+              <LogOut size={16} />
+              {t('Выйти из аккаунта')}
             </button>
           </div>
         )}
@@ -556,7 +567,7 @@ export function AccountSidebar({
           <button
             type="button"
             className="account-profile-avatar-trigger"
-            aria-label={menuOpen ? 'Закрыть свой профиль' : 'Открыть свой профиль'}
+            aria-label={menuOpen ? t('Закрыть свой профиль') : t('Открыть свой профиль')}
             aria-expanded={menuOpen}
             onClick={() => {
               setMenuOpen((current) => !current);
@@ -567,7 +578,7 @@ export function AccountSidebar({
           </button>
           <span
             className="account-profile-identity"
-            title={`${user.displayName} · @${user.username}`}
+            data-tooltip={`${user.displayName} · @${user.username}`}
           >
             <strong>{user.displayName}</strong>
             <small>
@@ -581,7 +592,7 @@ export function AccountSidebar({
           <button
             type="button"
             className="account-profile-settings-button"
-            aria-label="Открыть настройки профиля"
+            aria-label={t('Открыть настройки профиля')}
             onClick={() => {
               setMenuOpen(false);
               setStatusOpen(false);
@@ -595,8 +606,10 @@ export function AccountSidebar({
       </div>
       {leaveTarget ? (
         <ChatActionConfirmDialog
-          title={`Покинуть «${sidebarChatName(leaveTarget, user.id)}»?`}
-          description="После выхода группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника."
+          title={t('Покинуть «{p0}»?', { p0: sidebarChatName(leaveTarget, user.id) })}
+          description={t(
+            'После выхода группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника.',
+          )}
           confirmLabel="Покинуть группу"
           busy={leaveBusy}
           error={leaveError}
@@ -672,7 +685,7 @@ function SidebarAvatar({
         name[0] || '?'
       )}
       {group && activeCall && (
-        <span className="group-active-call-badge" title="Идёт звонок">
+        <span className="group-active-call-badge" data-tooltip={t('Идёт звонок')}>
           <Volume2 />
         </span>
       )}
@@ -682,10 +695,10 @@ function SidebarAvatar({
 }
 
 function presenceText(status: PresenceStatus) {
-  if (status === 'online') return 'В сети';
-  if (status === 'away') return 'Нет на месте';
-  if (status === 'dnd') return 'Не беспокоить';
-  return 'Не в сети';
+  if (status === 'online') return t('В сети');
+  if (status === 'away') return t('Нет на месте');
+  if (status === 'dnd') return t('Не беспокоить');
+  return t('Не в сети');
 }
 
 function presenceModeDescription(mode: PresenceMode) {
@@ -744,7 +757,9 @@ function Nav({
   return (
     <button
       className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''} ${passive ? 'passive' : ''}`}
-      aria-label={unread > 0 ? `${label}, непрочитанных сообщений: ${unread}` : label}
+      aria-label={
+        unread > 0 ? t('{p0}, непрочитанных сообщений: {p1}', { p0: label, p1: unread }) : label
+      }
       aria-current={active ? 'page' : undefined}
       aria-disabled={passive || undefined}
       onClick={passive ? undefined : onClick}
@@ -756,7 +771,7 @@ function Nav({
           {unread >= 99 ? '99+' : unread}
         </b>
       )}
-      {live && <i aria-label="Звонок продолжается" />}
+      {live && <i aria-label={t('Звонок продолжается')} />}
     </button>
   );
 }

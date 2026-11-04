@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { accountClient, type AccountUser } from '../lib/api-client';
+import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
 import { NotificationSounds } from '../lib/notification-sounds';
@@ -274,20 +274,37 @@ describe('SettingsPanel profile actions', () => {
     expect(queryByText(/рядом/i)).toBeNull();
   });
 
-  it('shows active account devices with the current session marked', async () => {
-    const { findByText, getByText } = renderProfile();
+  it('groups matching device labels and disconnects only the confirmed session', async () => {
+    const { findByText, getByText, getAllByText } = renderProfile();
 
-    expect(await findByText('2 устройства')).toBeTruthy();
+    expect(await findByText('Сеансы: 3')).toBeTruthy();
     fireEvent.click(getByText('Подключённые устройства'));
-    expect(getByText('Trlka · Windows')).toBeTruthy();
-    expect(getByText('Это устройство')).toBeTruthy();
+    expect(getAllByText('Trlka · Windows')).toHaveLength(1);
     expect(getByText('Trlka Web · macOS')).toBeTruthy();
+    const group = getByText('Trlka · Windows').closest('details')!;
+    expect(group.hasAttribute('open')).toBe(false);
+    fireEvent.click(getByText('Trlka · Windows'));
+    fireEvent.click(within(group).getByText('Отключить'));
+    expect(accountClient.request).toHaveBeenCalledTimes(1);
+    const confirm = within(group).getByText('Завершить сеанс');
+    expect(confirm.classList).toContain('session-disconnect-danger');
+    vi.mocked(accountClient.request).mockRejectedValueOnce(new ApiError('NOT_FOUND', '', 404));
+    fireEvent.click(confirm);
+    expect(
+      await findByText('Отключение устройств станет доступно после обновления сервера.'),
+    ).toBeTruthy();
+    fireEvent.click(confirm);
+    expect(await findByText('Сеансы: 2')).toBeTruthy();
+    expect(accountClient.request).toHaveBeenCalledWith('/v1/me/sessions/session-windows-old', {
+      method: 'DELETE',
+    });
+    expect(getByText('Это устройство')).toBeTruthy();
   });
 
   it('keeps the profile available when the sessions response is malformed', async () => {
     const { findByText, getByRole, getByText } = renderProfile({ sessions: null });
 
-    expect(await findByText('0 устройств')).toBeTruthy();
+    expect(await findByText('Сеансы: 0')).toBeTruthy();
     fireEvent.click(getByText('Подключённые устройства'));
     expect(getByText('Активных устройств нет.')).toBeTruthy();
     expect(getByRole('button', { name: 'Готово' })).toBeTruthy();

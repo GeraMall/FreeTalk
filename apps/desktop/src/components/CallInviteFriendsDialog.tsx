@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { Check, Copy, Link2, Search, UserPlus, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -94,14 +95,14 @@ export function CallInviteFriendsDialog({
             <UserPlus />
           </span>
           <div>
-            <h2 id="call-friends-title">Добавить друзей</h2>
+            <h2 id="call-friends-title">{t('Добавить друзей')}</h2>
             <p>
-              Вы можете добавить ещё {openSlots} · {participantCount} из {capacity}
+              {t('Вы можете добавить ещё')} {openSlots} · {participantCount} {t('из')} {capacity}
             </p>
           </div>
           <button
             type="button"
-            aria-label="Закрыть список друзей"
+            aria-label={t('Закрыть список друзей')}
             onClick={onClose}
             disabled={busy}
           >
@@ -114,12 +115,12 @@ export function CallInviteFriendsDialog({
             <Link2 aria-hidden="true" />
           </span>
           <span>
-            <small>Ссылка на голосовую комнату</small>
+            <small>{t('Ссылка на голосовую комнату')}</small>
             <code>{roomId}</code>
           </span>
           <button type="button" onClick={onCopyInvite}>
             {inviteCopied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-            {inviteCopied ? 'Скопировано' : 'Копировать'}
+            {inviteCopied ? t('Скопировано') : t('Копировать')}
           </button>
         </div>
 
@@ -128,13 +129,13 @@ export function CallInviteFriendsDialog({
           <input
             autoFocus
             value={search}
-            aria-label="Поиск друзей для звонка"
-            placeholder="Найти друга"
+            aria-label={t('Поиск друзей для звонка')}
+            placeholder={t('Найти друга')}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
 
-        <div className="call-friends-list" aria-label="Друзья для приглашения">
+        <div className="call-friends-list" aria-label={t('Друзья для приглашения')}>
           {visibleFriends.map((friend) => {
             const alreadyPresent = present.has(friend.id);
             const checked = alreadyPresent || selected.includes(friend.id);
@@ -154,7 +155,9 @@ export function CallInviteFriendsDialog({
                 </span>
                 <span className="call-friend-copy">
                   <strong>{friend.displayName}</strong>
-                  <small>{alreadyPresent ? 'Уже в звонке' : presenceLabel(friend.presence)}</small>
+                  <small>
+                    {alreadyPresent ? t('Уже в звонке') : presenceLabel(friend.presence)}
+                  </small>
                 </span>
                 <input
                   type="checkbox"
@@ -162,8 +165,8 @@ export function CallInviteFriendsDialog({
                   disabled={alreadyPresent || selectionFull || busy}
                   aria-label={
                     alreadyPresent
-                      ? `${friend.displayName} уже в звонке`
-                      : `Пригласить ${friend.displayName}`
+                      ? t('{p0} уже в звонке', { p0: friend.displayName })
+                      : t('Пригласить {p0}', { p0: friend.displayName })
                   }
                   onChange={(event) =>
                     setSelected((current) =>
@@ -182,22 +185,24 @@ export function CallInviteFriendsDialog({
           {friends.length === 0 ? (
             <div className="call-friends-empty">
               <Users />
-              <strong>Пока некого пригласить</strong>
-              <small>Сначала добавьте друзей</small>
+              <strong>{t('Пока некого пригласить')}</strong>
+              <small>{t('Сначала добавьте друзей')}</small>
             </div>
           ) : visibleFriends.length === 0 ? (
             <div className="call-friends-empty">
               <Search />
-              <strong>Никого не найдено</strong>
+              <strong>{t('Никого не найдено')}</strong>
             </div>
           ) : null}
         </div>
 
         {error ? <p className="call-friends-error">{error}</p> : null}
         <footer>
-          <span>{selected.length ? `Выбрано: ${selected.length}` : 'Выберите друзей'}</span>
+          <span>
+            {selected.length ? t('Выбрано: {p0}', { p0: selected.length }) : t('Выберите друзей')}
+          </span>
           <button type="button" disabled={!selected.length || busy} onClick={() => void invite()}>
-            {busy ? 'Отправляем…' : 'Добавить'}
+            {busy ? t('Отправляем…') : t('Добавить')}
           </button>
         </footer>
       </section>

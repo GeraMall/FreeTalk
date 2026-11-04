@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import {
   useCallback,
   useEffect,
@@ -114,17 +115,27 @@ export function CustomTitleBar() {
       onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
     >
-      <nav className="titlebar-navigation" aria-label="Навигация">
-        <button type="button" aria-label="Назад" title="Назад" onClick={() => history.back()}>
+      <nav className="titlebar-navigation" aria-label={t('Навигация')}>
+        <button
+          type="button"
+          aria-label={t('Назад')}
+          data-tooltip={t('Назад')}
+          onClick={() => history.back()}
+        >
           <ChevronLeft size={15} aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Вперёд" title="Вперёд" onClick={() => history.forward()}>
+        <button
+          type="button"
+          aria-label={t('Вперёд')}
+          data-tooltip={t('Вперёд')}
+          onClick={() => history.forward()}
+        >
           <ChevronRight size={15} aria-hidden="true" />
         </button>
       </nav>
-      <div className="titlebar-meta" aria-label="Состояние приложения">
+      <div className="titlebar-meta" aria-label={t('Состояние приложения')}>
         <span className="titlebar-service-status">
-          <i aria-hidden="true" /> Сервисы доступны
+          <i aria-hidden="true" /> {t('Сервисы доступны')}
         </span>
         <span className="titlebar-version-badge">
           {compactVersionLabel(__FREETALK_APP_VERSION__)}
@@ -134,19 +145,19 @@ export function CustomTitleBar() {
       <span className="custom-titlebar-brand">
         <BrandLogo variant="compact" />
       </span>
-      <div className="window-controls" aria-label="Управление окном">
+      <div className="window-controls" aria-label={t('Управление окном')}>
         <button
           type="button"
-          aria-label="Свернуть"
-          title="Свернуть"
+          aria-label={t('Свернуть')}
+          data-tooltip={t('Свернуть')}
           onClick={() => void appWindow.minimize().catch(() => undefined)}
         >
           <Minus size={14} aria-hidden="true" />
         </button>
         <button
           type="button"
-          aria-label={maximized ? 'Восстановить' : 'Развернуть'}
-          title={maximized ? 'Восстановить' : 'Развернуть'}
+          aria-label={maximized ? t('Восстановить') : t('Развернуть')}
+          data-tooltip={maximized ? t('Восстановить') : t('Развернуть')}
           onClick={() => void toggleMaximize().catch(() => undefined)}
         >
           {maximized ? (
@@ -158,8 +169,8 @@ export function CustomTitleBar() {
         <button
           className="window-close-control"
           type="button"
-          aria-label="Свернуть в фон"
-          title="Свернуть в фон"
+          aria-label={t('Свернуть в фон')}
+          data-tooltip={t('Свернуть в фон')}
           onClick={() => void appWindow.close().catch(() => undefined)}
         >
           <X size={14} aria-hidden="true" />

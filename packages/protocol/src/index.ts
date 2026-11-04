@@ -506,3 +506,9 @@ export function parseServerMessage(raw: string): ServerMessage {
 export function parseChatRealtimeServerMessage(raw: string): ChatRealtimeServerMessage {
   return chatRealtimeServerMessageSchema.parse(JSON.parse(raw));
 }
+
+export {
+  LEGACY_REGISTRATION_LEGAL_VERSION,
+  REGISTRATION_LEGAL_VERSION,
+  registrationLegalDocuments,
+} from './registration-legal.js';

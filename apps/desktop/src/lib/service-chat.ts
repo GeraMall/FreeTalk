@@ -1,4 +1,5 @@
 import { SERVICE_BOT_ID, SERVICE_CHAT_ID } from '@freetalk/config';
+import { t } from './app-language';
 import { accountClient } from './api-client';
 import mascot from '../assets/freetalk-mascot.png';
 import type { ChatItem } from '../components/ChatsPage';
@@ -20,7 +21,7 @@ export function serviceChat(userId: string): ChatItem {
       { id: userId, username: '', displayName: '' },
       { id: SERVICE_BOT_ID, username: 'trlka', displayName: 'TRLKA', avatarUrl: mascot },
     ],
-    lastMessage: 'Уведомления и помощь',
+    lastMessage: t('Уведомления и помощь'),
     retentionHours: null,
   };
 }

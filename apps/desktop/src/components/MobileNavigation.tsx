@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { DoorOpen, History, MessageCircle, Users } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import type { AccountPage } from './AccountSidebar';
@@ -17,7 +18,7 @@ export function MobileNavigation({
   onNavigate(page: AccountPage): void;
 }) {
   const navigation = (
-    <nav className="mobile-bottom-navigation" aria-label="Основная навигация">
+    <nav className="mobile-bottom-navigation" aria-label={t('Основная навигация')}>
       {ITEMS.map(({ page, label, icon: Icon }) => (
         <button
           type="button"
@@ -27,7 +28,7 @@ export function MobileNavigation({
           onClick={() => onNavigate(page)}
         >
           <Icon aria-hidden="true" />
-          <span>{label}</span>
+          <span>{t(label)}</span>
         </button>
       ))}
     </nav>

@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useId, useRef } from 'react';
 
 declare global {
@@ -54,8 +55,8 @@ export function CaptchaBox({ onToken }: { onToken(token: string): void }) {
   if (!siteKey && import.meta.env.DEV)
     return (
       <button className="captcha-local" type="button" onClick={() => onToken('local-development')}>
-        Подтвердить локальную CAPTCHA
+        {t('Подтвердить локальную CAPTCHA')}
       </button>
     );
-  return <div id={id} ref={container} className="captcha-box" aria-label="Проверка CAPTCHA" />;
+  return <div id={id} ref={container} className="captcha-box" aria-label={t('Проверка CAPTCHA')} />;
 }

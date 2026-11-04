@@ -110,6 +110,15 @@ export function defaultSettings(): LocalSettings {
   };
 }
 
+export const CHAT_TEXT_BASE_SCALE = 1.1;
+
+function normalizeChatTextScale(scale: number, basis?: number) {
+  const previousScale = basis === 2 || basis === 3 ? scale : scale / 0.85;
+  const normalized =
+    basis === 3 || previousScale === 1 ? previousScale : previousScale / CHAT_TEXT_BASE_SCALE;
+  return Math.min(1.55, Math.max(0.85, Math.round(normalized * 100) / 100));
+}
+
 export function loadSettings(): LocalSettings {
   try {
     const value = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<LocalSettings> & {
@@ -139,16 +148,8 @@ export function loadSettings(): LocalSettings {
         ? value.profileChangeTimestamps.filter((time) => Number.isFinite(time))
         : [],
       chatTextScale:
-        typeof value.chatTextScale === 'number'
-          ? Math.min(
-              1.55,
-              Math.max(
-                0.85,
-                Math.round(
-                  (value.chatTextScale / (value.chatTextScaleBasis === 2 ? 1 : 0.85)) * 100,
-                ) / 100,
-              ),
-            )
+        typeof value.chatTextScale === 'number' && Number.isFinite(value.chatTextScale)
+          ? normalizeChatTextScale(value.chatTextScale, value.chatTextScaleBasis)
           : defaults.chatTextScale,
       chatWallpaperFit: value.chatWallpaperFit === 'contain' ? 'contain' : 'cover',
       chatMessageStyle: value.chatMessageStyle === 'compact' ? 'compact' : 'bubbles',
@@ -199,5 +200,5 @@ export function loadSettings(): LocalSettings {
 }
 
 export function saveSettings(settings: LocalSettings) {
-  localStorage.setItem(KEY, JSON.stringify({ ...settings, chatTextScaleBasis: 2 }));
+  localStorage.setItem(KEY, JSON.stringify({ ...settings, chatTextScaleBasis: 3 }));
 }

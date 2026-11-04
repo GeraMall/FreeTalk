@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -97,28 +98,28 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
   return (
     <section
       className={`service-chat${profileOpen ? ' service-profile-open' : ''}`}
-      aria-label="Служебный чат TRLKA"
+      aria-label={t('Служебный чат TRLKA')}
     >
       <header className="service-chat-header">
-        <button className="service-chat-back" aria-label="Вернуться к чатам" onClick={onBack}>
+        <button className="service-chat-back" aria-label={t('Вернуться к чатам')} onClick={onBack}>
           <ArrowLeft size={20} />
         </button>
         <button
           className="service-chat-identity"
-          aria-label="Открыть профиль TRLKA"
+          aria-label={t('Открыть профиль TRLKA')}
           onClick={() => setProfileOpen(true)}
         >
           <img src={mascot} alt="" />
           <span>
             <strong>
-              TRLKA <span>БОТ</span>
+              TRLKA <span>{t('БОТ')}</span>
             </strong>
-            <small>Уведомления и поддержка</small>
+            <small>{t('Уведомления и поддержка')}</small>
           </span>
         </button>
         <div className="service-chat-tools">
           <button
-            aria-label={profileOpen ? 'Скрыть профиль' : 'Показать профиль'}
+            aria-label={profileOpen ? t('Скрыть профиль') : t('Показать профиль')}
             aria-pressed={profileOpen}
             onClick={() => setProfileOpen((open) => !open)}
           >
@@ -129,12 +130,12 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
             <input
               value={query}
               maxLength={200}
-              aria-label="Искать в чате TRLKA"
-              placeholder="Искать в «TRLKA»"
+              aria-label={t('Искать в чате TRLKA')}
+              placeholder={t('Искать в «TRLKA»')}
               onChange={(event) => setQuery(event.target.value)}
             />
             {query && (
-              <button aria-label="Очистить поиск по сообщениям" onClick={() => setQuery('')}>
+              <button aria-label={t('Очистить поиск по сообщениям')} onClick={() => setQuery('')}>
                 <X size={14} />
               </button>
             )}
@@ -151,17 +152,19 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
         {!search && (
           <div className="service-chat-intro">
             <Bot size={26} />
-            <h2>На связи — TRLKA</h2>
-            <p>Здесь уведомления о звонках, сообщения об ошибках и ваши предложения.</p>
+            <h2>{t('На связи — TRLKA')}</h2>
+            <p>{t('Здесь уведомления о звонках, сообщения об ошибках и ваши предложения.')}</p>
           </div>
         )}
         {search && !loading && (
           <p className="service-chat-search-result">
-            {messages.length ? `Найдено сообщений: ${messages.length}` : 'Сообщения не найдены'}
+            {messages.length
+              ? t('Найдено сообщений: {p0}', { p0: messages.length })
+              : t('Сообщения не найдены')}
           </p>
         )}
         {loading ? (
-          <p>Загружаем сообщения…</p>
+          <p>{t('Загружаем сообщения…')}</p>
         ) : (
           messages.map((message) => (
             <article
@@ -173,13 +176,13 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
                 {message.kind === 'call-timeout' && (
                   <span className="service-chat-event-label">
                     <ShieldCheck size={14} />
-                    Ожидание завершено
+                    {t('Ожидание завершено')}
                   </span>
                 )}
                 {message.kind === 'accepted' && (
                   <span className="service-chat-event-label">
                     <ShieldCheck size={14} />
-                    Обращение принято
+                    {t('Обращение принято')}
                   </span>
                 )}
                 <p>{message.body}</p>
@@ -201,7 +204,7 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
           <div className="service-chat-error" role="alert">
             <AlertCircle size={16} />
             <span>{error}</span>
-            <button onClick={() => void refresh()}>Повторить</button>
+            <button onClick={() => void refresh()}>{t('Повторить')}</button>
           </div>
         )}
         <div className="service-chat-actions">
@@ -223,8 +226,8 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
             onChange={(event) => setText(event.target.value)}
             maxLength={4000}
             rows={1}
-            placeholder="Сообщение или /help"
-            aria-label="Сообщение боту TRLKA"
+            placeholder={t('Сообщение или /help')}
+            aria-label={t('Сообщение боту TRLKA')}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -232,16 +235,23 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
               }
             }}
           />
-          <button type="submit" disabled={busy || !text.trim()} aria-label="Отправить сообщение">
+          <button
+            type="submit"
+            disabled={busy || !text.trim()}
+            aria-label={t('Отправить сообщение')}
+          >
             <Send size={20} />
           </button>
         </form>
       </footer>
       {profileOpen && (
-        <aside className="chat-profile-panel service-chat-profile" aria-label="Профиль бота TRLKA">
+        <aside
+          className="chat-profile-panel service-chat-profile"
+          aria-label={t('Профиль бота TRLKA')}
+        >
           <button
             className="service-profile-close"
-            aria-label="Закрыть профиль TRLKA"
+            aria-label={t('Закрыть профиль TRLKA')}
             onClick={() => setProfileOpen(false)}
           >
             <X size={18} />
@@ -249,38 +259,40 @@ export function ServiceChat({ onBack }: { onBack(): void }) {
           <div className="chat-profile-island">
             <div className="chat-profile-cover" />
             <div className="chat-profile-avatar">
-              <img src={mascot} alt="Логотип TRLKA" />
+              <img src={mascot} alt={t('Логотип TRLKA')} />
             </div>
             <section className="chat-profile-identity">
               <h2>
-                TRLKA <span className="service-bot-badge">БОТ</span>
+                TRLKA <span className="service-bot-badge">{t('БОТ')}</span>
               </h2>
-              <p>Официальный служебный чат</p>
+              <p>{t('Официальный служебный чат')}</p>
             </section>
             <section className="chat-profile-block">
-              <h3>О БОТЕ</h3>
-              <p>Уведомления о звонках, сообщения об ошибках и ваши предложения команде TRLKA.</p>
-            </section>
-            <section className="chat-profile-block">
-              <h3>КОМАНДЫ</h3>
+              <h3>{t('О БОТЕ')}</h3>
               <p>
-                /bug — сообщить об ошибке
-                <br />
-                /idea — предложить улучшение
-                <br />
-                /subscription — подписка
-                <br />
-                /cancel — отменить обращение
-                <br />
-                /help — помощь
+                {t('Уведомления о звонках, сообщения об ошибках и ваши предложения команде TRLKA.')}
               </p>
             </section>
             <section className="chat-profile-block">
-              <h3>ПРЕДЛОЖЕНИЯ</h3>
-              <p>Одно предложение за 24 часа. Об ошибках можно сообщать отдельно.</p>
+              <h3>{t('КОМАНДЫ')}</h3>
+              <p>
+                {t('/bug — сообщить об ошибке')}
+                <br />
+                {t('/idea — предложить улучшение')}
+                <br />
+                {t('/subscription — подписка')}
+                <br />
+                {t('/cancel — отменить обращение')}
+                <br />
+                {t('/help — помощь')}
+              </p>
+            </section>
+            <section className="chat-profile-block">
+              <h3>{t('ПРЕДЛОЖЕНИЯ')}</h3>
+              <p>{t('Одно предложение за 24 часа. Об ошибках можно сообщать отдельно.')}</p>
             </section>
             <footer>
-              <ShieldCheck size={14} /> Проверенный бот TRLKA
+              <ShieldCheck size={14} /> {t('Проверенный бот TRLKA')}
             </footer>
           </div>
         </aside>

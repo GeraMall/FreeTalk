@@ -12,7 +12,11 @@ import { inspectRemoteGif } from './remote-gif.js';
 import { registerGifLibraryRoutes, accessibleGif, privateGif } from './gif-library.js';
 import { resolveLinkPreview } from './link-preview.js';
 import { sendIncomingCallPush } from './web-push.js';
-import { CHAT_MESSAGE_MAX_LENGTH, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  CHAT_MESSAGE_REACTION_LIMIT,
+  ROOM_MAX_PARTICIPANTS,
+} from '@freetalk/config';
 import {
   ChatSendPacer,
   chatGifMetadataSchema,
@@ -1402,46 +1406,81 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     },
   );
 
-  app.put(
-    '/v1/messages/:messageId/reaction',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const user = await requireUser(request, reply);
-      if (!user) return;
-      const { messageId } = z.object({ messageId: uuid }).parse(request.params);
-      const { emoji } = z.object({ emoji: chatReactionEmojiSchema.nullable() }).parse(request.body);
-      const context = await db.query<{ chat_id: string }>(
-        `SELECT message.chat_id FROM messages message
+  for (const route of ['reaction', 'reactions'] as const) {
+    app.put(
+      `/v1/messages/:messageId/${route}`,
+      { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) return;
+        const { messageId } = z.object({ messageId: uuid }).parse(request.params);
+        const { emoji, remove } =
+          route === 'reaction'
+            ? {
+                ...z.object({ emoji: chatReactionEmojiSchema.nullable() }).parse(request.body),
+                remove: false,
+              }
+            : z
+                .object({ emoji: chatReactionEmojiSchema, remove: z.boolean().default(false) })
+                .parse(request.body);
+        const context = await db.query<{ chat_id: string }>(
+          `SELECT message.chat_id FROM messages message
          JOIN chat_members member ON member.chat_id=message.chat_id
            AND member.user_id=$2 AND member.left_at IS NULL
          WHERE message.id=$1 AND (message.expires_at IS NULL OR message.expires_at>now())`,
-        [messageId, user.id],
-      );
-      const chatId = context.rows[0]?.chat_id;
-      if (!chatId) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
-      if (!(await canInteractInChat(chatId, user.id)))
-        return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
-      if (emoji === null)
-        await db.query('DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2', [
-          messageId,
-          user.id,
-        ]);
-      else
-        await db.query(
-          `INSERT INTO message_reactions(message_id,user_id,emoji) VALUES($1,$2,$3)
-           ON CONFLICT(message_id,user_id) DO UPDATE SET emoji=EXCLUDED.emoji,created_at=now()`,
-          [messageId, user.id, emoji],
+          [messageId, user.id],
         );
-      const reactions = await reactionSummaries(messageId);
-      await publishChatEvent(chatId, {
-        type: 'message-reactions-updated',
-        chatId,
-        messageId,
-        reactions,
-      });
-      return { reactions };
-    },
-  );
+        const chatId = context.rows[0]?.chat_id;
+        if (!chatId) return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+        if (!(await canInteractInChat(chatId, user.id)))
+          return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+        const outcome = await transaction(async (client) => {
+          // Serialize all writes for this message, including writes from older clients.
+          const locked = await client.query(
+            'SELECT id FROM messages WHERE id=$1 AND (expires_at IS NULL OR expires_at>now()) FOR UPDATE',
+            [messageId],
+          );
+          if (!locked.rowCount) return 'missing';
+
+          if (route === 'reaction') {
+            await client.query('DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2', [
+              messageId,
+              user.id,
+            ]);
+          } else if (remove) {
+            await client.query(
+              'DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3',
+              [messageId, user.id, emoji],
+            );
+            return 'ok';
+          }
+
+          if (emoji === null) return 'ok';
+          const existing = await client.query<{ emoji: string }>(
+            'SELECT emoji FROM message_reactions WHERE message_id=$1 AND user_id=$2',
+            [messageId, user.id],
+          );
+          if (existing.rows.some((reaction) => reaction.emoji === emoji)) return 'ok';
+          if (existing.rows.length >= CHAT_MESSAGE_REACTION_LIMIT) return 'limit';
+          await client.query(
+            'INSERT INTO message_reactions(message_id,user_id,emoji) VALUES($1,$2,$3)',
+            [messageId, user.id, emoji],
+          );
+          return 'ok';
+        });
+        if (outcome === 'missing') return reply.code(404).send({ code: 'MESSAGE_NOT_FOUND' });
+        if (outcome === 'limit') return reply.code(409).send({ code: 'REACTION_LIMIT_REACHED' });
+        const reactions = await reactionSummaries(messageId);
+        await publishChatEvent(chatId, {
+          type: 'message-reactions-updated',
+          chatId,
+          messageId,
+          reactions,
+        });
+        return { reactions };
+      },
+    );
+  }
 
   app.put('/v1/messages/:messageId/pin', async (request, reply) => {
     const user = await requireUser(request, reply);

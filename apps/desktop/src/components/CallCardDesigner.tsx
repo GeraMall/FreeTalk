@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { Crown, Sparkles } from 'lucide-react';
 
 export function CallCardDesigner({
@@ -15,8 +16,10 @@ export function CallCardDesigner({
     <section className="profile-zone profile-card-design call-card-designer">
       <div className="profile-card-design-heading">
         <span>
-          <strong>Ваша карточка в звонке</strong>
-          <small>Так выглядит карточка участника. Эффект сохранится по кнопке «Готово».</small>
+          <strong>{t('Ваша карточка в звонке')}</strong>
+          <small>
+            {t('Так выглядит карточка участника. Эффект сохранится по кнопке «Готово».')}
+          </small>
         </span>
         <Sparkles aria-hidden="true" />
       </div>
@@ -31,7 +34,7 @@ export function CallCardDesigner({
           ) : null}
           <div className="participant-card-top media-overlay-top">
             <span className="creator-badge">
-              <Crown size={13} /> Создатель комнаты
+              <Crown size={13} /> {t('Создатель комнаты')}
             </span>
           </div>
           <div className="participant-avatar" data-variant="1">
@@ -40,36 +43,36 @@ export function CallCardDesigner({
             ) : (
               <span>{name.trim().charAt(0).toUpperCase() || '?'}</span>
             )}
-            <i aria-label="В сети" />
+            <i aria-label={t('В сети')} />
           </div>
           <div className="participant-info">
             <div className="participant-name-row">
               <div className="participant-name">
                 <strong>{name.trim() || 'Ваше имя'}</strong>
-                <span>вы</span>
+                <span>{t('вы')}</span>
               </div>
             </div>
             <div className="participant-status">
-              <i /> Слушает
+              <i /> {t('Слушает')}
             </div>
           </div>
         </div>
       </div>
       <div className="call-card-glass-control">
         <span>
-          <strong>Жидкое стекло</strong>
+          <strong>{t('Жидкое стекло')}</strong>
           <small>
             {avatar
-              ? 'Мягкое размытие и оттенки вашей аватарки'
-              : 'Добавьте аватарку, чтобы включить эффект'}
+              ? t('Мягкое размытие и оттенки вашей аватарки')
+              : t('Добавьте аватарку, чтобы включить эффект')}
           </small>
         </span>
-        <span className="call-card-toggle-label">{glass ? 'С эффектом' : 'Без эффекта'}</span>
+        <span className="call-card-toggle-label">{glass ? t('С эффектом') : t('Без эффекта')}</span>
         <button
           type="button"
           className={`switch ${glass ? 'on' : ''}`}
           role="switch"
-          aria-label="Жидкое стекло"
+          aria-label={t('Жидкое стекло')}
           aria-checked={glass}
           disabled={!avatar}
           onClick={() => onGlass(!glass)}

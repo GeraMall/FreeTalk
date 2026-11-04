@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { t } from '../lib/app-language';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import type { Participant, PresenceStatus, Reaction, RoomChatMessage } from '@freetalk/protocol';
 import { useRoomPresence } from '../lib/use-room-presence';
+import { AWAY_AFTER_MS } from '../lib/chat-realtime';
 import {
   Ban,
   Check,
@@ -26,6 +37,7 @@ import {
   ShieldCheck,
   Square,
   UserPlus,
+  UserRound,
   Volume2,
   VolumeX,
   X,
@@ -80,6 +92,7 @@ interface RoomViewProps {
   conversation?: boolean;
   conversationType?: 'direct' | 'group';
   conversationHidden?: boolean;
+  onCallToolbarTarget?(target: HTMLDivElement | null): void;
   onConversationToggle?(): void;
   cameraPreviewRequest?: number;
   embedded?: boolean;
@@ -139,6 +152,7 @@ export function RoomView({
   conversation = false,
   conversationType,
   conversationHidden = false,
+  onCallToolbarTarget,
   onConversationToggle,
   cameraPreviewRequest = 0,
   embedded = false,
@@ -212,6 +226,7 @@ export function RoomView({
   const [waitingCardsVisible, setWaitingCardsVisible] = useState(false);
   const roomShellRef = useRef<HTMLElement>(null);
   const participantActionDrawerRef = useRef<HTMLElement>(null);
+  const participantActionAnchorRef = useRef<HTMLButtonElement>(null);
   const callControlsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callDetachedRef = useRef(false);
   const knownChatMessages = useRef(new Set(roomChatMessages.map((message) => message.id)));
@@ -326,6 +341,68 @@ export function RoomView({
     window.addEventListener('keydown', onFocusedCameraKeyDown);
     return () => window.removeEventListener('keydown', onFocusedCameraKeyDown);
   }, [closeFocusedCamera, fullscreenCameraId, menuFor]);
+
+  useLayoutEffect(() => {
+    const anchor = participantActionAnchorRef.current;
+    const panel = participantActionDrawerRef.current;
+    if (!actionParticipant || !anchor || !panel) return;
+
+    const positionMenu = () => {
+      const trigger = anchor.getBoundingClientRect();
+      const gutter = 10;
+      const gap = 8;
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      const card = anchor.closest('.participant-card')?.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      const below = viewportHeight - trigger.bottom - gap;
+      const above = trigger.top - gap;
+      const opensUp = height + gutter > below && above > below;
+      let side = opensUp ? 'above' : 'below';
+      let left = trigger.right - width;
+      let top = opensUp ? trigger.top - gap - height : trigger.bottom + gap;
+
+      if (card?.width) {
+        if (card.right + gap + width <= viewportWidth - gutter) {
+          side = 'right';
+          left = card.right + gap;
+          top = trigger.top;
+        } else if (card.left - gap - width >= gutter) {
+          side = 'left';
+          left = card.left - gap - width;
+          top = trigger.top;
+        } else if (card.bottom + gap + height <= viewportHeight - gutter) {
+          side = 'below';
+          top = card.bottom + gap;
+        } else if (card.top - gap - height >= gutter) {
+          side = 'above';
+          top = card.top - gap - height;
+        }
+      }
+
+      panel.style.left = Math.max(gutter, Math.min(left, viewportWidth - width - gutter)) + 'px';
+      panel.style.top = Math.max(gutter, Math.min(top, viewportHeight - height - gutter)) + 'px';
+      panel.dataset.side = side;
+    };
+
+    positionMenu();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(positionMenu);
+    observer?.observe(panel);
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [actionParticipant]);
+
+  const toggleParticipantActions = (id: string, anchor: HTMLButtonElement) => {
+    participantActionAnchorRef.current = anchor;
+    setMenuFor((previous) => (previous === id ? undefined : id));
+  };
 
   useEffect(() => {
     if (!menuFor) return;
@@ -453,12 +530,65 @@ export function RoomView({
     }
   };
 
+  const [recentSpeech, setRecentSpeech] = useState<{
+    room: string;
+    until: ReadonlyMap<string, number>;
+  }>();
+
+  useEffect(() => {
+    const now = Date.now();
+    setRecentSpeech((previous) => {
+      const existing = previous?.room === roomId ? previous.until : undefined;
+      const until = new Map<string, number>();
+      for (const participant of participants) {
+        const speaking =
+          !participant.muted &&
+          (participant.id === selfId ? localSpeaking : peerState[participant.id]?.speaking);
+        const prior = existing?.get(participant.id);
+        if (speaking) until.set(participant.id, Infinity);
+        else if (prior === Infinity) until.set(participant.id, now + AWAY_AFTER_MS);
+        else if (prior !== undefined && prior > now) until.set(participant.id, prior);
+      }
+      if (
+        existing?.size === until.size &&
+        [...until].every(([id, expiry]) => existing.get(id) === expiry)
+      ) {
+        return previous;
+      }
+      return { room: roomId, until };
+    });
+  }, [localSpeaking, participants, peerState, roomId, selfId]);
+
+  useEffect(() => {
+    if (!recentSpeech || recentSpeech.room !== roomId) return;
+    const nextExpiry = Math.min(...recentSpeech.until.values());
+    if (!Number.isFinite(nextExpiry)) return;
+    const timer = window.setTimeout(
+      () => {
+        const now = Date.now();
+        setRecentSpeech((current) => {
+          if (!current || current.room !== roomId) return current;
+          return {
+            room: roomId,
+            until: new Map([...current.until].filter(([, expiry]) => expiry > now)),
+          };
+        });
+      },
+      Math.max(0, nextExpiry - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [recentSpeech, roomId]);
+
   const renderParticipant = (participant: Participant, compact = false) => {
-    const presence = participant.accountId
+    const accountStatus = participant.accountId
       ? (accountPresence[participant.accountId] ?? 'online')
       : 'online';
     const isSelf = participant.id === selfId;
-    const speaking = isSelf ? localSpeaking : peerState[participant.id]?.speaking;
+    const speaking =
+      !participant.muted && (isSelf ? localSpeaking : peerState[participant.id]?.speaking);
+    const speechIsRecent = recentSpeech?.room === roomId && recentSpeech.until.has(participant.id);
+    const presence =
+      (speaking || speechIsRecent) && accountStatus === 'away' ? 'online' : accountStatus;
     const connection = isSelf ? 'connected' : (peerState[participant.id]?.connection ?? 'new');
     const hasAudio = isSelf || (peerState[participant.id]?.hasAudio ?? false);
     const locallyMuted = settings.mutedPeers[participant.id] ?? false;
@@ -466,8 +596,9 @@ export function RoomView({
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
     const cardStyle = participant.cardStyle ?? 'avatar-glass';
-    const status =
-      presence === 'away'
+    const status = speaking
+      ? 'Говорит'
+      : presence === 'away'
         ? 'Нет на месте'
         : presence === 'dnd'
           ? 'Не беспокоить'
@@ -475,9 +606,7 @@ export function RoomView({
             ? 'Не в сети'
             : participant.muted
               ? 'Микрофон выключен'
-              : speaking
-                ? 'Говорит'
-                : connectionLabel(connection, hasAudio);
+              : connectionLabel(connection, hasAudio);
 
     return (
       <article
@@ -520,9 +649,7 @@ export function RoomView({
             isSelf={isSelf}
             canModerate={canModerate}
             open={menuFor === participant.id}
-            onToggle={() =>
-              setMenuFor((old) => (old === participant.id ? undefined : participant.id))
-            }
+            onToggle={(event) => toggleParticipantActions(participant.id, event.currentTarget)}
           />
         </div>
 
@@ -551,7 +678,7 @@ export function RoomView({
           <div className="participant-name-row">
             <div className="participant-name">
               <strong>{participant.name}</strong>
-              {isSelf && <span>вы</span>}
+              {isSelf && <span>{t('вы')}</span>}
             </div>
             {!compact && <VoiceWave active={Boolean(speaking)} compact />}
           </div>
@@ -577,6 +704,18 @@ export function RoomView({
     );
   };
 
+  const conversationInvite =
+    onInviteFriends && openSlots > 0 ? (
+      <button
+        className="conversation-invite"
+        aria-label={t('Добавить друга в групповой звонок')}
+        data-tooltip={t('Добавить друга — продолжить в группе')}
+        onClick={() => setFriendsInviteOpen(true)}
+      >
+        <UserPlus size={18} />
+      </button>
+    ) : null;
+
   const roomContent = (
     <main
       ref={roomShellRef}
@@ -595,40 +734,41 @@ export function RoomView({
       <div className="room-session-meta">
         <span
           className="room-security"
-          title={turnAvailable ? 'WebRTC с резервным TURN-маршрутом' : 'Прямое WebRTC-соединение'}
+          data-tooltip={
+            turnAvailable ? t('WebRTC с резервным TURN-маршрутом') : t('Прямое WebRTC-соединение')
+          }
         >
-          <ShieldCheck size={14} /> Приватное соединение
+          <ShieldCheck size={14} /> {t('Приватное соединение')}
         </span>
         <span
           className={`call-timer${conversationBuffering ? ' buffering' : ''}`}
           aria-label={
-            conversationBuffering ? 'Ожидание подключения' : `Длительность звонка ${elapsed}`
+            conversationBuffering
+              ? t('Ожидание подключения')
+              : t('Длительность звонка {p0}', { p0: elapsed })
           }
         >
-          <i /> {conversationBuffering ? 'Ожидание' : elapsed}
+          <i />
+          {conversationBuffering ? t('Ожидание') : elapsed}
         </span>
       </div>
 
       {conversation &&
-        !conversationHidden &&
         !callFullscreen &&
-        onInviteFriends &&
-        openSlots > 0 && (
-          <button
-            className="conversation-invite"
-            aria-label="Добавить друга в групповой звонок"
-            title="Добавить друга — продолжить в группе"
-            onClick={() => setFriendsInviteOpen(true)}
-          >
-            <UserPlus size={18} />
-          </button>
-        )}
+        (onCallToolbarTarget ? (
+          <div className="conversation-toolbar active-chat-actions" ref={onCallToolbarTarget}>
+            {conversationInvite}
+          </div>
+        ) : (
+          !conversationHidden && conversationInvite
+        ))}
       {recordingBannerMessage && (
         <div className="recording-start-banner" role="status">
           <span>
-            <i /> {recordingBannerMessage}
+            <i />
+            {recordingBannerMessage}
           </span>
-          <button onClick={onRecordingBannerClose}>ОК</button>
+          <button onClick={onRecordingBannerClose}>{t('ОК')}</button>
         </div>
       )}
 
@@ -636,20 +776,20 @@ export function RoomView({
         <section className={`room-main room-mode-${roomMode}`}>
           <div className="participants-heading">
             <div>
-              <h1>Участники</h1>
+              <h1>{t('Участники')}</h1>
               <p>
-                {participants.length} из {ROOM_MAX_PARTICIPANTS}
+                {participants.length} {t('из')} {ROOM_MAX_PARTICIPANTS}
               </p>
             </div>
             {openSlots > 0 && (!conversation || (!conversationHidden && !callFullscreen)) && (
               <button
                 className="mobile-participants-invite"
-                aria-label="Добавить друзей в звонок"
-                title="Добавить друзей"
+                aria-label={t('Добавить друзей в звонок')}
+                data-tooltip={t('Добавить друзей')}
                 onClick={() => (onInviteFriends ? setFriendsInviteOpen(true) : onCopyInvite())}
               >
                 <UserPlus aria-hidden="true" />
-                <span>Добавить</span>
+                <span>{t('Добавить')}</span>
               </button>
             )}
           </div>
@@ -676,7 +816,7 @@ export function RoomView({
               <div
                 className={`presentation-participants ${presentationParticipantsVisible ? 'visible' : 'collapsed'}`}
               >
-                <div className="participant-strip" role="list" aria-label="Участники комнаты">
+                <div className="participant-strip" role="list" aria-label={t('Участники комнаты')}>
                   {ordered.map((participant) => renderParticipant(participant, true))}
                   {openSlots > 0 && (!conversation || (!conversationHidden && !callFullscreen)) && (
                     <InviteCallout
@@ -732,7 +872,7 @@ export function RoomView({
       {focusedCameraParticipant && focusedCameraStream && (
         <section
           className={`camera-focus-overlay${embedded && !callFullscreen && !callDetached ? ' media-workspace-fullscreen-shell' : ''}`}
-          aria-label={`Раскрытая камера ${focusedCameraParticipant.name}`}
+          aria-label={t('Раскрытая камера {p0}', { p0: focusedCameraParticipant.name })}
           onClick={(event) => {
             const target = event.target;
             if (target instanceof Element && target.closest('button, input, label')) return;
@@ -764,101 +904,114 @@ export function RoomView({
                 focusedCameraParticipant.id !== selfId,
               )}
               open={menuFor === focusedCameraParticipant.id}
-              onToggle={() =>
-                setMenuFor((old) =>
-                  old === focusedCameraParticipant.id ? undefined : focusedCameraParticipant.id,
-                )
+              onToggle={(event) =>
+                toggleParticipantActions(focusedCameraParticipant.id, event.currentTarget)
               }
             />
           </div>
           <div className="participant-overlay media-overlay-bottom">
             <div className="participant-name">
               <strong>{focusedCameraParticipant.name}</strong>
-              {focusedCameraParticipant.id === selfId && <span>вы</span>}
+              {focusedCameraParticipant.id === selfId && <span>{t('вы')}</span>}
             </div>
           </div>
         </section>
       )}
 
-      {actionParticipant && (
-        <aside
-          ref={participantActionDrawerRef}
-          id="participant-action-drawer"
-          className="participant-action-drawer"
-          role="dialog"
-          aria-label={`Управление участником ${actionParticipant.name}`}
-        >
-          <header>
-            <span className="participant-action-avatar" aria-hidden="true">
-              {actionParticipant.avatar ? (
-                <CachedMediaImage src={actionParticipant.avatar} alt="" />
-              ) : (
-                actionParticipant.name.slice(0, 1).toUpperCase()
-              )}
-            </span>
-            <span>
-              <small>Управление участником</small>
+      {actionParticipant &&
+        createPortal(
+          <aside
+            key={actionParticipant.id}
+            ref={participantActionDrawerRef}
+            id="participant-action-drawer"
+            className="participant-action-drawer"
+            role="dialog"
+            aria-label={t('Управление участником {p0}', { p0: actionParticipant.name })}
+          >
+            <header>
               <strong>{actionParticipant.name}</strong>
-            </span>
-            <button
-              type="button"
-              className="icon-button participant-action-close"
-              aria-label="Закрыть управление участником"
-              onClick={() => setMenuFor(undefined)}
-            >
-              <X size={17} />
-            </button>
-          </header>
-          {actionParticipant.id !== selfId && (
-            <button
-              type="button"
-              role="menuitem"
-              aria-label={
-                settings.mutedPeers[actionParticipant.id] ? 'Вернуть звук' : 'Не слышать локально'
-              }
-              onClick={() => {
-                onPeerMute(actionParticipant.id);
-                setMenuFor(undefined);
-              }}
-            >
-              {settings.mutedPeers[actionParticipant.id] ? (
-                <Volume2 size={17} />
-              ) : (
-                <VolumeX size={17} />
-              )}
-              <span>
-                <strong>
-                  {settings.mutedPeers[actionParticipant.id]
-                    ? 'Вернуть звук'
-                    : 'Не слышать локально'}
-                </strong>
-                <small>Изменение действует только для вас</small>
-              </span>
-            </button>
-          )}
-          {conversationType !== 'direct' && self?.isOwner && actionParticipant.id !== selfId && (
-            <button
-              type="button"
-              role="menuitem"
-              className="danger-action"
-              aria-label={actionParticipant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
-              disabled={actionParticipant.muted}
-              onClick={() => {
-                onModerationMute(actionParticipant.id, actionParticipant.name);
-                setMenuFor(undefined);
-              }}
-            >
-              <MicOff size={17} />
-              <span>
-                <strong>
-                  {actionParticipant.muted ? 'Микрофон уже выключен' : 'Выключить микрофон'}
-                </strong>
-                <small>Для всех участников звонка</small>
-              </span>
-            </button>
-          )}
-        </aside>
-      )}
+              <button
+                type="button"
+                className="icon-button participant-action-close"
+                aria-label={t('Закрыть управление участником')}
+                onClick={() => setMenuFor(undefined)}
+              >
+                <X size={15} />
+              </button>
+            </header>
+            {viewerId && actionParticipant.accountId && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setFullProfileTarget({
+                    id: actionParticipant.accountId!,
+                    displayName: actionParticipant.name,
+                    avatarUrl: actionParticipant.avatar,
+                    presence: accountPresence[actionParticipant.accountId!] ?? 'online',
+                  });
+                  setMenuFor(undefined);
+                }}
+              >
+                <UserRound size={16} />
+                <strong>{t('Полный профиль')}</strong>
+              </button>
+            )}
+            {actionParticipant.id !== selfId && (
+              <button
+                type="button"
+                role="menuitem"
+                aria-label={
+                  settings.mutedPeers[actionParticipant.id]
+                    ? t('Вернуть звук')
+                    : t('Не слышать локально')
+                }
+                onClick={() => {
+                  onPeerMute(actionParticipant.id);
+                  setMenuFor(undefined);
+                }}
+              >
+                {settings.mutedPeers[actionParticipant.id] ? (
+                  <Volume2 size={17} />
+                ) : (
+                  <VolumeX size={17} />
+                )}
+                <span>
+                  <strong>
+                    {settings.mutedPeers[actionParticipant.id]
+                      ? t('Вернуть звук')
+                      : t('Не слышать локально')}
+                  </strong>
+                  <small>{t('Изменение действует только для вас')}</small>
+                </span>
+              </button>
+            )}
+            {conversationType !== 'direct' && self?.isOwner && actionParticipant.id !== selfId && (
+              <button
+                type="button"
+                role="menuitem"
+                className="danger-action"
+                aria-label={
+                  actionParticipant.muted ? t('Микрофон уже выключен') : t('Выключить микрофон')
+                }
+                disabled={actionParticipant.muted}
+                onClick={() => {
+                  onModerationMute(actionParticipant.id, actionParticipant.name);
+                  setMenuFor(undefined);
+                }}
+              >
+                <MicOff size={17} />
+                <span>
+                  <strong>
+                    {actionParticipant.muted ? t('Микрофон уже выключен') : t('Выключить микрофон')}
+                  </strong>
+                  <small>{t('Для всех участников звонка')}</small>
+                </span>
+              </button>
+            )}
+          </aside>,
+          document.fullscreenElement ?? document.body,
+        )}
 
       <div className="reaction-burst-layer" aria-live="polite">
         {reactions.map((item) => {
@@ -875,30 +1028,34 @@ export function RoomView({
       {conversation && !callFullscreen && (
         <button
           className="conversation-chat-hide"
-          aria-label={conversationHidden ? 'Показать чат' : 'Скрыть чат'}
+          aria-label={conversationHidden ? t('Показать чат') : t('Скрыть чат')}
           aria-expanded={!conversationHidden}
           onClick={onConversationToggle}
         >
           <MessageCircle size={14} />
-          <span>{conversationHidden ? 'Показать чат' : 'Скрыть чат'}</span>
+          <span>{conversationHidden ? t('Показать чат') : t('Скрыть чат')}</span>
         </button>
       )}
 
-      <div className="call-view-controls" aria-label="Режим отображения звонка">
+      <div className="call-view-controls" aria-label={t('Режим отображения звонка')}>
         <button
           aria-label={
-            callDetached ? 'Вернуть звонок в основное окно' : 'Открыть звонок в отдельном окне'
+            callDetached
+              ? t('Вернуть звонок в основное окно')
+              : t('Открыть звонок в отдельном окне')
           }
-          data-tooltip={callDetached ? 'Вернуть в основное окно' : 'В отдельном окне'}
+          data-tooltip={callDetached ? t('Вернуть в основное окно') : t('В отдельном окне')}
           onClick={() => void toggleCallPopout()}
         >
           <PictureInPicture2 size={19} />
         </button>
         <button
           aria-label={
-            callFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть звонок во весь экран'
+            callFullscreen ? t('Выйти из полноэкранного режима') : t('Открыть звонок во весь экран')
           }
-          data-tooltip={callFullscreen ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим'}
+          data-tooltip={
+            callFullscreen ? t('Выйти из полноэкранного режима') : t('Полноэкранный режим')
+          }
           onClick={() => void toggleCallFullscreen()}
         >
           {callFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}
@@ -907,16 +1064,18 @@ export function RoomView({
 
       <footer
         className={`voice-dock ${mobileActionsOpen ? 'mobile-actions-open' : ''}`}
-        aria-label="Управление звонком"
+        aria-label={t('Управление звонком')}
       >
         {screenPresenter && (
           <button
             className={`presentation-participants-dock-toggle ${presentationParticipantsVisible ? 'active' : ''}`}
             aria-expanded={presentationParticipantsVisible}
             aria-label={
-              presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'
+              presentationParticipantsVisible ? t('Скрыть участников') : t('Показать участников')
             }
-            title={presentationParticipantsVisible ? 'Скрыть участников' : 'Показать участников'}
+            data-tooltip={
+              presentationParticipantsVisible ? t('Скрыть участников') : t('Показать участников')
+            }
             onMouseDown={(event) => {
               if (event.button !== 0) return;
               event.preventDefault();
@@ -935,17 +1094,17 @@ export function RoomView({
           <div className={`dock-split-control ${muted ? 'device-off' : 'device-on'}`}>
             <button
               className={`dock-control mic-control ${muted ? 'muted' : 'active'}`}
-              aria-label={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+              aria-label={muted ? t('Включить микрофон') : t('Выключить микрофон')}
               aria-pressed={!muted}
-              title={muted ? 'Включить микрофон' : 'Выключить микрофон'}
+              data-tooltip={muted ? t('Включить микрофон') : t('Выключить микрофон')}
               onClick={onMute}
             >
               <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
-              <span className="dock-mobile-label">Микрофон</span>
+              <span className="dock-mobile-label">{t('Микрофон')}</span>
             </button>
             <button
               className="dock-device-arrow"
-              aria-label="Выбрать аудиоустройство"
+              aria-label={t('Выбрать аудиоустройство')}
               aria-expanded={deviceMenu === 'audio'}
               onClick={() => setDeviceMenu((menu) => (menu === 'audio' ? undefined : 'audio'))}
             >
@@ -969,9 +1128,9 @@ export function RoomView({
             <button
               className={`dock-control video-control ${localVideo.cameraEnabled ? 'active' : ''}`}
               aria-busy={videoBusy}
-              aria-label={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+              aria-label={localVideo.cameraEnabled ? t('Выключить камеру') : t('Включить камеру')}
               aria-pressed={localVideo.cameraEnabled}
-              title={localVideo.cameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+              data-tooltip={localVideo.cameraEnabled ? t('Выключить камеру') : t('Включить камеру')}
               disabled={videoBusy}
               onClick={() => {
                 if (localVideo.cameraEnabled || !settings.cameraPreviewAlways) onCamera();
@@ -981,11 +1140,11 @@ export function RoomView({
               <span className="dock-icon">
                 {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
               </span>
-              <span className="dock-mobile-label">Камера</span>
+              <span className="dock-mobile-label">{t('Камера')}</span>
             </button>
             <button
               className="dock-device-arrow"
-              aria-label="Выбрать камеру"
+              aria-label={t('Выбрать камеру')}
               aria-expanded={deviceMenu === 'camera'}
               onClick={() => setDeviceMenu((menu) => (menu === 'camera' ? undefined : 'camera'))}
             >
@@ -1008,23 +1167,27 @@ export function RoomView({
         </div>
         <button
           className={`mobile-call-more-toggle ${mobileActionsOpen ? 'active' : ''}`}
-          aria-label={mobileActionsOpen ? 'Скрыть дополнительные действия' : 'Показать ещё'}
+          aria-label={mobileActionsOpen ? t('Скрыть дополнительные действия') : t('Показать ещё')}
           aria-expanded={mobileActionsOpen}
           onClick={() => setMobileActionsOpen((open) => !open)}
         >
           <MoreHorizontal aria-hidden="true" />
-          <span className="dock-mobile-label">Ещё</span>
+          <span className="dock-mobile-label">{t('Ещё')}</span>
         </button>
         <div className="dock-island dock-secondary-actions">
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
             aria-busy={videoBusy}
             aria-label={
-              localVideo.screenEnabled ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'
+              localVideo.screenEnabled
+                ? t('Остановить демонстрацию экрана')
+                : t('Демонстрация экрана')
             }
             aria-pressed={localVideo.screenEnabled}
-            title={
-              localVideo.screenEnabled ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'
+            data-tooltip={
+              localVideo.screenEnabled
+                ? t('Остановить демонстрацию экрана')
+                : t('Демонстрация экрана')
             }
             disabled={videoBusy}
             onClick={onScreen}
@@ -1032,24 +1195,24 @@ export function RoomView({
             <span className="dock-icon">
               {localVideo.screenEnabled ? <Square /> : <MonitorUp />}
             </span>
-            <span className="dock-mobile-label">Экран</span>
+            <span className="dock-mobile-label">{t('Экран')}</span>
           </button>
           {(conversationType === 'direct' || self?.isOwner) && (
             <button
               className={`dock-control dock-control-secondary dock-recording-control ${recordingState.phase === 'recording' ? 'active' : ''}`}
               aria-label={
                 recordingState.phase === 'recording'
-                  ? 'Остановить запись экрана'
+                  ? t('Остановить запись экрана')
                   : recordingState.phase === 'saving'
-                    ? 'Запись сохраняется'
-                    : 'Начать запись экрана'
+                    ? t('Запись сохраняется')
+                    : t('Начать запись экрана')
               }
-              title={
+              data-tooltip={
                 recordingState.phase === 'recording'
-                  ? 'Остановить запись'
+                  ? t('Остановить запись')
                   : recordingState.phase === 'saving'
-                    ? 'Запись сохраняется'
-                    : 'Запись'
+                    ? t('Запись сохраняется')
+                    : t('Запись')
               }
               disabled={recordingState.phase === 'saving'}
               onClick={onRecording}
@@ -1057,29 +1220,29 @@ export function RoomView({
               <span className="dock-icon">
                 {recordingState.phase === 'recording' ? <Square /> : <CircleDot />}
               </span>
-              <span className="dock-mobile-label">Запись</span>
+              <span className="dock-mobile-label">{t('Запись')}</span>
             </button>
           )}
           <div className="reaction-control">
             <button
               className={`dock-control dock-control-secondary reaction-button ${reactionMenuOpen ? 'active' : ''}`}
-              aria-label="Отправить реакцию"
+              aria-label={t('Отправить реакцию')}
               aria-expanded={reactionMenuOpen}
-              title="Отправить реакцию"
+              data-tooltip={t('Отправить реакцию')}
               onClick={() => setReactionMenuOpen((open) => !open)}
             >
               <span className="dock-icon">
                 <SmilePlus />
               </span>
-              <span className="dock-mobile-label">Реакции</span>
+              <span className="dock-mobile-label">{t('Реакции')}</span>
             </button>
             {reactionMenuOpen && (
-              <div className="reaction-menu" role="menu" aria-label="Реакции">
+              <div className="reaction-menu" role="menu" aria-label={t('Реакции')}>
                 {(['👍', '❤️', '😂', '🎉', '🔥'] as const).map((reaction) => (
                   <button
                     key={reaction}
                     role="menuitem"
-                    aria-label={`Отправить реакцию ${reaction}`}
+                    aria-label={t('Отправить реакцию {p0}', { p0: reaction })}
                     onClick={() => {
                       onReaction(reaction);
                       setReactionMenuOpen(false);
@@ -1096,13 +1259,13 @@ export function RoomView({
               className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
               aria-label={
                 conversation
-                  ? 'Показать чат'
+                  ? t('Показать чат')
                   : unreadChatCount > 0
-                    ? `Чат комнаты, непрочитанных сообщений: ${unreadChatCount}`
-                    : 'Чат комнаты'
+                    ? t('Чат комнаты, непрочитанных сообщений: {p0}', { p0: unreadChatCount })
+                    : t('Чат комнаты')
               }
               aria-expanded={conversation ? !conversationHidden : chatOpen}
-              title={conversation ? 'Показать чат' : 'Чат комнаты'}
+              data-tooltip={conversation ? t('Показать чат') : t('Чат комнаты')}
               onClick={conversation ? onConversationToggle : toggleRoomChat}
             >
               <span className="dock-icon">
@@ -1113,30 +1276,30 @@ export function RoomView({
                   </b>
                 )}
               </span>
-              <span className="dock-mobile-label">Чат</span>
+              <span className="dock-mobile-label">{t('Чат')}</span>
             </button>
           )}
           <button
             className="dock-control dock-control-secondary"
-            aria-label="Настройки аудио и устройств"
-            title="Настройки аудио и устройств"
+            aria-label={t('Настройки аудио и устройств')}
+            data-tooltip={t('Настройки аудио и устройств')}
             onClick={onSettings}
           >
             <span className="dock-icon">
               <MoreHorizontal className="dock-desktop-more-icon" />
               <SlidersHorizontal className="dock-mobile-settings-icon" />
             </span>
-            <span className="dock-mobile-label">Настройки</span>
+            <span className="dock-mobile-label">{t('Настройки')}</span>
           </button>
         </div>
         <button
           className="leave-button"
-          aria-label="Выйти из комнаты"
-          title="Выйти из комнаты"
+          aria-label={t('Выйти из комнаты')}
+          data-tooltip={t('Выйти из комнаты')}
           onClick={onLeave}
         >
           <LogOut size={18} />
-          <span className="dock-mobile-label">Выйти</span>
+          <span className="dock-mobile-label">{t('Выйти')}</span>
         </button>
       </footer>
       {cameraPreviewOpen && (
@@ -1225,8 +1388,8 @@ function DeviceMenu({
   };
   if (type === 'camera')
     return (
-      <div className="dock-device-menu camera-device-menu" role="menu" aria-label="Камера">
-        <strong>Камера</strong>
+      <div className="dock-device-menu camera-device-menu" role="menu" aria-label={t('Камера')}>
+        <strong>{t('Камера')}</strong>
         <button
           type="button"
           className="dock-device-current"
@@ -1242,7 +1405,7 @@ function DeviceMenu({
         </button>
         {cameraListOpen && (
           <DeviceMenuItem
-            label="Системная камера"
+            label={t('Системная камера')}
             selected={!settings.cameraDeviceId}
             onClick={() => choose(onCamera, '')}
           />
@@ -1266,7 +1429,7 @@ function DeviceMenu({
           }}
         >
           <span>
-            <Eye size={17} /> Предпросмотр камеры
+            <Eye size={17} /> {t('Предпросмотр камеры')}
           </span>
         </button>
         <button
@@ -1278,7 +1441,7 @@ function DeviceMenu({
           }}
         >
           <span>
-            <SlidersHorizontal size={17} /> Настройки видео
+            <SlidersHorizontal size={17} /> {t('Настройки видео')}
           </span>
         </button>
       </div>
@@ -1287,11 +1450,11 @@ function DeviceMenu({
     <div
       className="dock-device-menu audio-device-menu"
       role="menu"
-      aria-label="Выбор аудиоустройства"
+      aria-label={t('Выбор аудиоустройства')}
     >
-      <strong>Микрофон</strong>
+      <strong>{t('Микрофон')}</strong>
       <DeviceMenuItem
-        label="Системный микрофон"
+        label={t('Системный микрофон')}
         selected={!settings.inputDeviceId}
         onClick={() => choose(onInput, '')}
       />
@@ -1303,9 +1466,9 @@ function DeviceMenu({
           onClick={() => choose(onInput, device.deviceId)}
         />
       ))}
-      <strong>Динамики</strong>
+      <strong>{t('Динамики')}</strong>
       <DeviceMenuItem
-        label="Системные динамики"
+        label={t('Системные динамики')}
         selected={!settings.outputDeviceId}
         onClick={() => choose(onOutput, '')}
       />
@@ -1441,8 +1604,8 @@ function CameraPreviewDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
-          <h2 id="camera-preview-title">Готовы к видеочату?</h2>
-          <button type="button" aria-label="Закрыть предпросмотр" onClick={close}>
+          <h2 id="camera-preview-title">{t('Готовы к видеочату?')}</h2>
+          <button type="button" aria-label={t('Закрыть предпросмотр')} onClick={close}>
             <X />
           </button>
         </header>
@@ -1453,14 +1616,14 @@ function CameraPreviewDialog({
             muted
             playsInline
           />
-          {previewBusy && <span>Подготавливаем камеру…</span>}
+          {previewBusy && <span>{t('Подготавливаем камеру…')}</span>}
           {previewError && <span className="camera-preview-error">{previewError}</span>}
         </div>
         <div className="camera-preview-device-picker">
           <button
             type="button"
             className="camera-preview-device"
-            aria-label={`Выбрать камеру. ${selectedDeviceLabel}`}
+            aria-label={t('Выбрать камеру. {p0}', { p0: selectedDeviceLabel })}
             aria-haspopup="listbox"
             aria-expanded={deviceMenuOpen}
             onClick={() => setDeviceMenuOpen((open) => !open)}
@@ -1469,13 +1632,13 @@ function CameraPreviewDialog({
               <Camera size={17} />
             </span>
             <span className="camera-preview-device-copy">
-              <small>Камера</small>
+              <small>{t('Камера')}</small>
               <strong>{selectedDeviceLabel}</strong>
             </span>
             <ChevronDown className="camera-preview-device-chevron" size={17} />
           </button>
           {deviceMenuOpen && (
-            <div className="camera-preview-device-menu" role="listbox" aria-label="Камеры">
+            <div className="camera-preview-device-menu" role="listbox" aria-label={t('Камеры')}>
               <button
                 type="button"
                 role="option"
@@ -1486,8 +1649,8 @@ function CameraPreviewDialog({
                   <Camera size={16} />
                 </span>
                 <span>
-                  <strong>Системная камера</strong>
-                  <small>Выбирать автоматически</small>
+                  <strong>{t('Системная камера')}</strong>
+                  <small>{t('Выбирать автоматически')}</small>
                 </span>
                 {!deviceId && <Check size={16} />}
               </button>
@@ -1506,7 +1669,7 @@ function CameraPreviewDialog({
                     </span>
                     <span>
                       <strong>{label}</strong>
-                      <small>Видеоустройство</small>
+                      <small>{t('Видеоустройство')}</small>
                     </span>
                     {deviceId === device.deviceId && <Check size={16} />}
                   </button>
@@ -1516,7 +1679,7 @@ function CameraPreviewDialog({
           )}
         </div>
         <div className="camera-background-section">
-          <strong>Фон видео</strong>
+          <strong>{t('Фон видео')}</strong>
           <div className="camera-background-options">
             <button
               type="button"
@@ -1524,7 +1687,7 @@ function CameraPreviewDialog({
               onClick={() => setMode('none')}
             >
               <Ban />
-              <span>Пусто</span>
+              <span>{t('Пусто')}</span>
             </button>
             <button
               type="button"
@@ -1532,7 +1695,7 @@ function CameraPreviewDialog({
               onClick={() => setMode('blur')}
             >
               <Sparkles />
-              <span>Размытие</span>
+              <span>{t('Размытие')}</span>
             </button>
             <button
               type="button"
@@ -1547,7 +1710,7 @@ function CameraPreviewDialog({
               onClick={() => (dataUrl ? setMode('custom') : fileRef.current?.click())}
             >
               <ImagePlus />
-              <span>Свой фон</span>
+              <span>{t('Свой фон')}</span>
             </button>
           </div>
           <button
@@ -1555,7 +1718,8 @@ function CameraPreviewDialog({
             className="camera-background-upload"
             onClick={() => fileRef.current?.click()}
           >
-            <ImagePlus size={16} /> {dataUrl ? 'Заменить свой фон' : 'Выбрать изображение'}
+            <ImagePlus size={16} />
+            {dataUrl ? t('Заменить свой фон') : t('Выбрать изображение')}
           </button>
           <input
             ref={fileRef}
@@ -1572,7 +1736,7 @@ function CameraPreviewDialog({
               checked={previewAlways}
               onChange={(event) => setPreviewAlways(event.target.checked)}
             />
-            <span>Предпросмотр видео (всегда)</span>
+            <span>{t('Предпросмотр видео (всегда)')}</span>
           </label>
           <button
             type="button"
@@ -1580,7 +1744,7 @@ function CameraPreviewDialog({
             disabled={previewBusy || Boolean(previewError)}
             onClick={apply}
           >
-            {cameraEnabled ? 'Применить' : 'Включить камеру'}
+            {cameraEnabled ? t('Применить') : t('Включить камеру')}
           </button>
         </footer>
       </section>
@@ -1696,7 +1860,7 @@ function ScreenShareStage({
             <MonitorUp size={15} />
             <span>
               <strong>{presenter.name}</strong>
-              <small>Демонстрация экрана</small>
+              <small>{t('Демонстрация экрана')}</small>
             </span>
           </span>
           <span className="screen-stage-creator">
@@ -1705,17 +1869,17 @@ function ScreenShareStage({
             )}
           </span>
           <span className="screen-stage-quality">
-            <span aria-label="Параметры демонстрации экрана">
+            <span aria-label={t('Параметры демонстрации экрана')}>
               {playbackMetrics.width > 0 && playbackMetrics.height > 0
                 ? `${playbackMetrics.width}×${playbackMetrics.height}`
-                : 'Определяем качество'}
+                : t('Определяем качество')}
               {playbackMetrics.fps > 0 && ` · ${playbackMetrics.fps} FPS`}
             </span>
             <button
               type="button"
               className="screen-stage-expand"
               aria-label={
-                fullscreen ? 'Свернуть демонстрацию экрана' : 'Развернуть демонстрацию экрана'
+                fullscreen ? t('Свернуть демонстрацию экрана') : t('Развернуть демонстрацию экрана')
               }
               aria-pressed={fullscreen}
               onClick={(event) => {
@@ -1730,7 +1894,7 @@ function ScreenShareStage({
         <article
           ref={stageRef}
           className={`screen-stage media-surface ${fullscreen ? 'screen-stage-window-fullscreen' : ''}`}
-          aria-label={`Демонстрация экрана ${presenter.name}`}
+          aria-label={t('Демонстрация экрана {p0}', { p0: presenter.name })}
           onClick={(event) => {
             const target = event.target;
             if (target instanceof Element && target.closest('.screen-stage-volume')) return;
@@ -1751,9 +1915,9 @@ function ScreenShareStage({
           {presenter.id !== selfId && (
             <label className="screen-stage-volume">
               <Volume2 size={15} aria-hidden="true" />
-              <span>Звук демонстрации</span>
+              <span>{t('Звук демонстрации')}</span>
               <input
-                aria-label={`Громкость демонстрации ${presenter.name}`}
+                aria-label={t('Громкость демонстрации {p0}', { p0: presenter.name })}
                 type="range"
                 min="0"
                 max="1"
@@ -1890,12 +2054,12 @@ function ParticipantVideo({
           className="video-fullscreen"
           aria-label={`${expanded ? 'Свернуть' : 'Раскрыть'} ${source === 'screen' ? 'демонстрацию экрана' : 'камеру'} ${name}`}
           aria-pressed={expanded}
-          title={
+          data-tooltip={
             source === 'screen'
               ? expanded
-                ? 'Вернуть обычный вид'
-                : 'Развернуть демонстрацию'
-              : 'Развернуть камеру'
+                ? t('Вернуть обычный вид')
+                : t('Развернуть демонстрацию')
+              : t('Развернуть камеру')
           }
           onClick={onExpand}
         >
@@ -1917,13 +2081,14 @@ function ParticipantActions({
   isSelf: boolean;
   canModerate: boolean;
   open: boolean;
-  onToggle(): void;
+  onToggle(event: ReactMouseEvent<HTMLButtonElement>): void;
 }) {
   if (!canModerate && isSelf) return null;
   return (
     <button
+      type="button"
       className="icon-button participant-menu-button"
-      aria-label={`Действия для ${participant.name}`}
+      aria-label={t('Действия для {p0}', { p0: participant.name })}
       aria-expanded={open}
       aria-controls="participant-action-drawer"
       onClick={onToggle}
@@ -1950,13 +2115,13 @@ function ParticipantVolume({
     <div className="participant-volume">
       <button
         className="inline-icon"
-        aria-label={locallyMuted ? 'Включить звук участника' : 'Заглушить участника локально'}
+        aria-label={locallyMuted ? t('Включить звук участника') : t('Заглушить участника локально')}
         onClick={() => onPeerMute(participant.id)}
       >
         {locallyMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
       </button>
       <input
-        aria-label={`Громкость ${participant.name}`}
+        aria-label={t('Громкость {p0}', { p0: participant.name })}
         type="range"
         min="0"
         max="1"
@@ -1974,10 +2139,10 @@ function WaitingParticipantCard({ participant }: { participant: WaitingCallParti
     <article
       className="participant-card audio-tile waiting-participant-card"
       role="listitem"
-      aria-label={`${participant.displayName} — ожидаем подключения`}
+      aria-label={t('{p0} — ожидаем подключения', { p0: participant.displayName })}
     >
       <div className="participant-card-top">
-        <span className="waiting-participant-label">Вызов отправлен</span>
+        <span className="waiting-participant-label">{t('Вызов отправлен')}</span>
       </div>
       <div
         className="participant-avatar waiting-participant-avatar"
@@ -1998,7 +2163,7 @@ function WaitingParticipantCard({ participant }: { participant: WaitingCallParti
           </div>
         </div>
         <div className="participant-status waiting">
-          <i /> Ожидаем подключения
+          <i /> {t('Ожидаем подключения')}
         </div>
       </div>
     </article>
@@ -2020,7 +2185,7 @@ function InviteCallout({
         <UserPlus size={compact ? 18 : 20} />
       </span>
       <span className="invite-copy">
-        <strong>{compact ? 'Пригласить' : 'Добавить друзей'}</strong>
+        <strong>{compact ? t('Пригласить') : t('Добавить друзей')}</strong>
         <small>{slotsLabel(openSlots)}</small>
       </span>
       <UserPlus size={15} />
@@ -2054,7 +2219,7 @@ function ConnectionStatus({
         role="status"
       >
         <i />
-        <span>Подключение…</span>
+        <span>{t('Подключение…')}</span>
       </span>
     );
   const score = state === 'connected' ? Math.max(0, Math.min(100, Math.round(strength))) : 0;
@@ -2089,7 +2254,8 @@ function ConnectionStatus({
 function CreatorBadge({ compact = false, group = false }: { compact?: boolean; group?: boolean }) {
   return (
     <span className={`creator-badge ${compact ? 'compact' : ''}`}>
-      <Crown size={13} /> {group ? 'Создатель группы' : compact ? 'Создатель' : 'Создатель комнаты'}
+      <Crown size={13} />
+      {group ? t('Создатель группы') : compact ? t('Создатель') : t('Создатель комнаты')}
     </span>
   );
 }
@@ -2109,19 +2275,22 @@ function ParticipantAvatar({
   const content = (
     <>
       {participant.avatar ? (
-        <CachedMediaImage src={participant.avatar} alt={`Аватар ${participant.name}`} />
+        <CachedMediaImage
+          src={participant.avatar}
+          alt={t('Аватар {p0}', { p0: participant.name })}
+        />
       ) : (
         <span>{initials(participant.name)}</span>
       )}
       <i
         aria-label={
           presence === 'away'
-            ? 'Нет на месте'
+            ? t('Нет на месте')
             : presence === 'dnd'
-              ? 'Не беспокоить'
+              ? t('Не беспокоить')
               : presence === 'offline'
-                ? 'Не в сети'
-                : 'В сети'
+                ? t('Не в сети')
+                : t('В сети')
         }
       />
     </>
@@ -2133,7 +2302,7 @@ function ParticipantAvatar({
       className={className}
       data-variant={variant}
       data-presence={presence}
-      aria-label={`Открыть полный профиль ${participant.name}`}
+      aria-label={t('Открыть полный профиль {p0}', { p0: participant.name })}
       onClick={onOpenProfile}
     >
       {content}

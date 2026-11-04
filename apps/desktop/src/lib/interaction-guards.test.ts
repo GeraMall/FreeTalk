@@ -34,4 +34,24 @@ describe('interaction guards', () => {
     input.remove();
     chat.remove();
   });
+
+  it('switches focus styling between pointer clicks and Tab navigation', () => {
+    const cleanup = installInteractionGuards(document);
+    const root = document.documentElement;
+    try {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+      expect(root.dataset.focusInput).toBe('keyboard');
+
+      document.dispatchEvent(new Event('pointerdown'));
+      expect(root.dataset.focusInput).toBe('pointer');
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' }));
+      expect(root.dataset.focusInput).toBe('pointer');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
+      expect(root.dataset.focusInput).toBe('keyboard');
+    } finally {
+      cleanup();
+    }
+    expect(root.dataset.focusInput).toBeUndefined();
+  });
 });

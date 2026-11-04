@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Star, Upload, X, RefreshCw, ImagePlus } from 'lucide-react';
@@ -77,15 +78,15 @@ function GifTile({
         className="gif-tile-send"
         disabled={busy || failed}
         onClick={onSelect}
-        aria-label={`Отправить GIF: ${gif.alt}`}
-        title={gif.alt}
+        aria-label={t('Отправить GIF: {p0}', { p0: gif.alt })}
+        data-tooltip={gif.alt}
         onMouseEnter={() => setPlay(true)}
         onMouseLeave={() => setPlay(false)}
         onFocus={() => setPlay(true)}
         onBlur={() => setPlay(false)}
       >
         {failed ? (
-          <span className="gif-tile-error">Не удалось загрузить GIF</span>
+          <span className="gif-tile-error">{t('Не удалось загрузить GIF')}</span>
         ) : (
           <GifImage gif={gif} preview={!play} onError={() => setFailed(true)} />
         )}
@@ -95,8 +96,8 @@ function GifTile({
           className="gif-tile-remove"
           onClick={onRemove}
           disabled={busy}
-          aria-label={`Убрать из избранного: ${gif.alt}`}
-          title="Убрать из избранного"
+          aria-label={t('Убрать из избранного: {p0}', { p0: gif.alt })}
+          data-tooltip={t('Убрать из избранного')}
         >
           <Star fill="currentColor" />
         </button>
@@ -243,15 +244,15 @@ export function GifPicker({
           <strong>GIF</strong>
           <small>
             {pending
-              ? 'Свой GIF'
+              ? t('Свой GIF')
               : tab === 'favorites'
-                ? 'Твоя коллекция'
+                ? t('Твоя коллекция')
                 : config.provider
                   ? 'Powered by KLIPY'
-                  : 'Поиск GIF'}
+                  : t('Поиск GIF')}
           </small>
         </div>
-        <button aria-label="Закрыть GIF" onClick={onClose}>
+        <button aria-label={t('Закрыть GIF')} onClick={onClose}>
           <X />
         </button>
       </header>
@@ -260,7 +261,7 @@ export function GifPicker({
         type="file"
         hidden
         accept="image/gif,.gif"
-        aria-label="Выбрать свой GIF"
+        aria-label={t('Выбрать свой GIF')}
         onChange={(event) => {
           choose(event.target.files?.[0]);
           event.target.value = '';
@@ -273,16 +274,18 @@ export function GifPicker({
       ) : null}
       {pending ? (
         <div className="gif-upload-preview">
-          <img src={preview} alt="Предпросмотр своего GIF" />
+          <img src={preview} alt={t('Предпросмотр своего GIF')} />
           <strong>{pending.name}</strong>
-          <small>{(pending.size / 1024 / 1024).toFixed(1)} МБ · Сохранится в избранном</small>
-          <p>GIF увидят участники чата. В общий каталог он не попадёт.</p>
+          <small>
+            {(pending.size / 1024 / 1024).toFixed(1)} {t('МБ · Сохранится в избранном')}
+          </small>
+          <p>{t('GIF увидят участники чата. В общий каталог он не попадёт.')}</p>
           <div>
             <button onClick={() => setPending(undefined)} disabled={busy}>
-              Назад
+              {t('Назад')}
             </button>
             <button className="gif-send-local" onClick={() => onSelect(pending)} disabled={busy}>
-              {busy ? 'Отправляем…' : 'Отправить GIF'}
+              {busy ? t('Отправляем…') : t('Отправить GIF')}
             </button>
           </div>
         </div>
@@ -298,7 +301,7 @@ export function GifPicker({
               }}
             >
               <Star />
-              Избранное
+              {t('Избранное')}
             </button>
             <button
               aria-pressed={tab === 'search'}
@@ -310,7 +313,7 @@ export function GifPicker({
               }}
             >
               <Search />
-              Поиск
+              {t('Поиск')}
             </button>
             <button
               className="gif-upload-button"
@@ -318,15 +321,15 @@ export function GifPicker({
               disabled={busy}
             >
               <Upload />
-              Свой GIF
+              {t('Свой GIF')}
             </button>
           </div>
           <label className="gif-search-field">
             <Search />
             <input
               value={query}
-              placeholder={tab === 'favorites' ? 'Найти в избранном' : 'Поиск GIF'}
-              aria-label="Поиск GIF"
+              placeholder={tab === 'favorites' ? t('Найти в избранном') : t('Поиск GIF')}
+              aria-label={t('Поиск GIF')}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setVisibleCount(24);
@@ -340,7 +343,7 @@ export function GifPicker({
               {accountId && library.error ? (
                 <button onClick={() => void refreshGifLibrary(accountId)}>
                   <RefreshCw />
-                  Повторить
+                  {t('Повторить')}
                 </button>
               ) : null}
             </div>
@@ -349,11 +352,11 @@ export function GifPicker({
             {tab === 'search' && !config.provider ? (
               <div className="gif-library-empty">
                 <Search />
-                <strong>Поиск GIF скоро появится</strong>
-                <p>Пока можно отправить свой GIF или выбрать его из избранного.</p>
+                <strong>{t('Поиск GIF скоро появится')}</strong>
+                <p>{t('Пока можно отправить свой GIF или выбрать его из избранного.')}</p>
                 <button onClick={() => input.current?.click()}>
                   <Upload />
-                  Загрузить GIF
+                  {t('Загрузить GIF')}
                 </button>
               </div>
             ) : (tab === 'favorites' ? library.loading : loading && page === 1) ? (
@@ -371,15 +374,15 @@ export function GifPicker({
             ) : (
               <div className="gif-library-empty">
                 <ImagePlus />
-                <strong>{query ? 'Ничего не найдено' : 'Собери свои GIF'}</strong>
+                <strong>{query ? t('Ничего не найдено') : t('Собери свои GIF')}</strong>
                 <p>
                   {query
-                    ? 'Попробуй другой запрос.'
-                    : 'Загружай свои гифки или сохраняй понравившиеся из чата.'}
+                    ? t('Попробуй другой запрос.')
+                    : t('Загружай свои гифки или сохраняй понравившиеся из чата.')}
                 </p>
                 <button onClick={() => input.current?.click()}>
                   <Upload />
-                  Загрузить GIF
+                  {t('Загрузить GIF')}
                 </button>
               </div>
             )}
@@ -390,7 +393,7 @@ export function GifPicker({
               disabled={loading}
               onClick={() => setPage((value) => value + 1)}
             >
-              {loading ? 'Загружаем…' : 'Ещё GIF'}
+              {loading ? t('Загружаем…') : t('Ещё GIF')}
             </button>
           ) : null}
           {tab === 'favorites' && list.length > visibleCount ? (
@@ -398,19 +401,19 @@ export function GifPicker({
               className="gif-load-more"
               onClick={() => setVisibleCount((value) => value + 24)}
             >
-              Ещё GIF
+              {t('Ещё GIF')}
             </button>
           ) : null}
         </>
       )}
       <footer>
-        <span>Свои GIF · до 30 МБ</span>
+        <span>{t('Свои GIF · до 30 МБ')}</span>
         {tab === 'search' && config.provider ? (
           <a href="https://klipy.com" target="_blank" rel="noreferrer">
             Powered by KLIPY
           </a>
         ) : (
-          <span>Личное избранное</span>
+          <span>{t('Личное избранное')}</span>
         )}
       </footer>
     </div>,

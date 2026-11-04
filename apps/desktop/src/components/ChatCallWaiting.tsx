@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useState } from 'react';
 import { PhoneCall } from 'lucide-react';
 import { accountClient } from '../lib/api-client';
@@ -62,13 +63,16 @@ export function ChatCallWaiting({
   )
     return null;
   return (
-    <section className="chat-call-waiting" aria-label="Звонок в чате">
+    <section className="chat-call-waiting" aria-label={t('Звонок в чате')}>
       <div className="chat-call-waiting-cards">
-        {call.participants.map((person) => (
+        {call.participants.length === 0 && (
+          <PhoneCall className="waiting-call-icon" size={18} aria-hidden="true" />
+        )}
+        {call.participants.slice(0, 3).map((person) => (
           <div
             className="chat-call-waiting-avatar"
             key={person.userId}
-            aria-label={`${person.displayName} находится в звонке`}
+            aria-label={t('{p0} находится в звонке', { p0: person.displayName })}
           >
             {person.avatarUrl ? (
               <CachedMediaImage src={person.avatarUrl} alt="" />
@@ -77,15 +81,21 @@ export function ChatCallWaiting({
             )}
           </div>
         ))}
+        {call.participants.length > 3 && (
+          <span className="chat-call-waiting-avatar waiting-count">
+            +{call.participants.length - 3}
+          </span>
+        )}
       </div>
       <div className="chat-call-waiting-copy">
         <strong>
           {call.participants.length === 1 ? call.participants[0]?.displayName : call.title}
         </strong>
-        <p>{call.participants.length === 1 ? 'ждёт вас в звонке' : 'В чате идёт звонок'}</p>
+        <p>{call.participants.length === 1 ? t('ждёт вас в звонке') : t('В чате идёт звонок')}</p>
       </div>
-      <button className="primary" onClick={() => onJoin(call.roomId)}>
-        <PhoneCall size={17} /> Присоединиться
+      <button type="button" className="primary" onClick={() => onJoin(call.roomId)}>
+        <PhoneCall size={16} aria-hidden="true" />
+        {t('Присоединиться')}
       </button>
     </section>
   );

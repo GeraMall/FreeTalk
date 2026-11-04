@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { CachedMediaImage } from './CachedMedia';
@@ -22,10 +23,10 @@ export function ChatNotificationStack({
   onOpen(preview: ChatNotificationPreview): void;
 }) {
   return (
-    <section className="chat-notification-stack" aria-label="Новые сообщения">
+    <section className="chat-notification-stack" aria-label={t('Новые сообщения')}>
       {previews.length > 1 && (
         <button type="button" className="chat-notification-dismiss-all" onClick={onDismissAll}>
-          Скрыть все
+          {t('Скрыть все')}
         </button>
       )}
       {previews.map((preview) => (
@@ -70,7 +71,7 @@ function ChatMessageNotification({
       <button
         type="button"
         className="chat-message-notification-main"
-        aria-label={`Сообщение от ${preview.senderName}: ${preview.body}`}
+        aria-label={t('Сообщение от {p0}: {p1}', { p0: preview.senderName, p1: preview.body })}
         onClick={onOpen}
       >
         <span className="chat-message-notification-avatar">
@@ -88,7 +89,7 @@ function ChatMessageNotification({
       <button
         type="button"
         className="chat-message-notification-close"
-        aria-label={`Скрыть уведомление от ${preview.senderName}`}
+        aria-label={t('Скрыть уведомление от {p0}', { p0: preview.senderName })}
         onClick={onDismiss}
       >
         <X aria-hidden="true" />

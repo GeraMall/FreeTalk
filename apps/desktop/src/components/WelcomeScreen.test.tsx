@@ -72,13 +72,14 @@ describe('account-first welcome screen', () => {
 
     const termsCheckbox = view.getByLabelText('Я принимаю Пользовательское соглашение');
     fireEvent.click(view.getByRole('button', { name: 'Пользовательское соглашение' }));
-    expect(view.getByRole('region', { name: 'Пользовательское соглашение Trlka' })).not.toBeNull();
+    expect(view.getByRole('region', { name: 'Пользовательское соглашение TRLKA' })).not.toBeNull();
     expect((termsCheckbox as HTMLInputElement).checked).toBe(false);
 
-    fireEvent.click(view.getByRole('button', { name: 'Политику конфиденциальности' }));
-    expect(view.getByRole('region', { name: 'Политика конфиденциальности Trlka' })).not.toBeNull();
+    fireEvent.click(view.getByRole('button', { name: 'политикой конфиденциальности' }));
+    expect(view.getByRole('region', { name: 'Политика конфиденциальности TRLKA' })).not.toBeNull();
     expect(
-      (view.getByLabelText('Я принимаю Политику конфиденциальности') as HTMLInputElement).checked,
+      (view.getByLabelText('Я ознакомился с политикой конфиденциальности') as HTMLInputElement)
+        .checked,
     ).toBe(false);
   });
 
@@ -113,7 +114,7 @@ describe('account-first welcome screen', () => {
       target: { value: 'password123' },
     });
     fireEvent.click(view.getByLabelText(/Пользовательское соглашение/));
-    fireEvent.click(view.getByLabelText(/Политику конфиденциальности/));
+    fireEvent.click(view.getByLabelText(/политикой конфиденциальности/));
     fireEvent.click(view.getByRole('button', { name: 'Создать аккаунт' }));
 
     await waitFor(() => expect(view.getByText('Подтвердите почту')).not.toBeNull());

@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { QrScanDialog } from './QrLoginDialog';
+import { t } from '../lib/app-language';
+import { LanguagePicker } from './LanguagePicker';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AlignLeft,
   ArrowLeft,
@@ -6,6 +9,7 @@ import {
   Ban,
   Camera,
   ChevronDown,
+  Languages,
   ChevronRight,
   CircleDot,
   Download,
@@ -19,6 +23,7 @@ import {
   Mic2,
   MonitorSpeaker,
   Phone,
+  QrCode,
   RefreshCw,
   RotateCcw,
   Save,
@@ -30,7 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMobileLayout } from '../lib/mobile-layout';
-import type { LocalSettings } from '../lib/settings';
+import { CHAT_TEXT_BASE_SCALE, type LocalSettings } from '../lib/settings';
 import {
   prepareAvatar,
   prepareChatWallpaper,
@@ -39,7 +44,7 @@ import {
 } from '../lib/profile';
 import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
 import type { UpdateStatus } from '../lib/updater';
-import { accountClient, type AccountSession, type AccountUser } from '../lib/api-client';
+import { accountClient, ApiError, type AccountSession, type AccountUser } from '../lib/api-client';
 import {
   createCameraEffectCapture,
   imageFileToCameraBackground,
@@ -174,6 +179,7 @@ export function SettingsPanel({
   onClearChatCache,
 }: SettingsPanelProps) {
   const mobileLayout = useMobileLayout();
+  const [scanQr, setScanQr] = useState(false);
   const [tab, setTab] = useState<SettingsTab | null>(() =>
     mobileLayout && initialTab === 'audio' ? null : initialTab,
   );
@@ -314,7 +320,7 @@ export function SettingsPanel({
         className={`settings-modal${mobileLayout ? ' mobile-settings-modal' : ''}${tab ? ' mobile-settings-section-open' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Настройки"
+        aria-label={t('Настройки')}
       >
         <aside className="settings-sidebar">
           <div className="settings-sidebar-brand">
@@ -322,65 +328,71 @@ export function SettingsPanel({
           </div>
           <div className="settings-sidebar-title">
             <span>
-              Настройки
-              {mobileLayout && <small>Выберите раздел</small>}
+              {t('Настройки')}
+              {mobileLayout && <small>{t('Выберите раздел')}</small>}
             </span>
             {mobileLayout && (
               <button
                 className="icon-button quiet"
-                aria-label="Закрыть настройки"
+                aria-label={t('Закрыть настройки')}
                 onClick={requestClose}
               >
                 <X size={21} />
               </button>
             )}
           </div>
-          <nav aria-label="Разделы настроек">
+          <nav aria-label={t('Разделы настроек')}>
             <TabButton
               active={tab === 'audio'}
               icon={<AudioLines />}
-              label="Аудио"
+              label={t('Аудио')}
               onClick={() => setTab('audio')}
             />
             <TabButton
               active={tab === 'profile'}
               icon={<UserRound />}
-              label="Профиль"
+              label={t('Профиль')}
               onClick={() => setTab('profile')}
             />
             <TabButton
               active={tab === 'video'}
               icon={<Video />}
-              label="Видео и звуки"
+              label={t('Видео и звуки')}
               onClick={() => setTab('video')}
             />
             <TabButton
               active={tab === 'devices'}
               icon={<MonitorSpeaker />}
-              label="Устройства"
+              label={t('Устройства')}
               onClick={() => setTab('devices')}
             />
             <TabButton
               active={tab === 'recording'}
               icon={<CircleDot />}
-              label="Запись"
+              label={t('Запись')}
               onClick={() => setTab('recording')}
             />
             <TabButton
               active={tab === 'chats'}
               icon={<MessageCircle />}
-              label="Чаты"
+              label={t('Чаты')}
               onClick={() => setTab('chats')}
             />
             <TabButton
               active={tab === 'about'}
               icon={<Info />}
-              label="О приложении"
+              label={t('О приложении')}
               onClick={() => setTab('about')}
             />
           </nav>
+          {mobileLayout && accountUser && (
+            <button className="qr-login-trigger qr-scan-trigger" onClick={() => setScanQr(true)}>
+              <QrCode size={17} /> {t('Сканировать QR для входа')}
+            </button>
+          )}
           <button className="reset-settings" onClick={() => setConfirmReset(true)}>
-            <RotateCcw size={16} /> Сбросить настройки
+            <RotateCcw size={16} />
+            {t('Сбросить настройки')}
           </button>
         </aside>
 
@@ -390,7 +402,7 @@ export function SettingsPanel({
               {mobileLayout && (
                 <button
                   className="icon-button quiet mobile-settings-back"
-                  aria-label="Вернуться к разделам настроек"
+                  aria-label={t('Вернуться к разделам настроек')}
                   onClick={() => setTab(null)}
                 >
                   <ArrowLeft size={21} />
@@ -399,38 +411,38 @@ export function SettingsPanel({
               <div>
                 <p className="eyebrow">
                   {tab === 'audio'
-                    ? 'АУДИО'
+                    ? t('АУДИО')
                     : tab === 'profile'
-                      ? 'ПРОФИЛЬ'
+                      ? t('ПРОФИЛЬ')
                       : tab === 'video'
-                        ? 'ВИДЕО И ЗВУКИ'
+                        ? t('ВИДЕО И ЗВУКИ')
                         : tab === 'devices'
-                          ? 'УСТРОЙСТВА'
+                          ? t('УСТРОЙСТВА')
                           : tab === 'recording'
-                            ? 'ЗАПИСЬ'
+                            ? t('ЗАПИСЬ')
                             : tab === 'chats'
-                              ? 'ЧАТЫ'
+                              ? t('ЧАТЫ')
                               : 'TRLKA'}
                 </p>
                 <h2 id="settings-title">
                   {tab === 'audio'
-                    ? 'Настройки звука'
+                    ? t('Настройки звука')
                     : tab === 'profile'
-                      ? 'Ваш профиль'
+                      ? t('Ваш профиль')
                       : tab === 'video'
-                        ? 'Видео и звуки'
+                        ? t('Видео и звуки')
                         : tab === 'devices'
-                          ? 'Аудиоустройства'
+                          ? t('Аудиоустройства')
                           : tab === 'recording'
-                            ? 'Локальная запись'
+                            ? t('Локальная запись')
                             : tab === 'chats'
-                              ? 'Оформление чатов'
-                              : 'О приложении'}
+                              ? t('Оформление чатов')
+                              : t('О приложении')}
                 </h2>
               </div>
               <button
                 className="icon-button quiet"
-                aria-label="Закрыть настройки"
+                aria-label={t('Закрыть настройки')}
                 onClick={requestClose}
               >
                 <X size={21} />
@@ -527,13 +539,14 @@ export function SettingsPanel({
             {tab !== 'profile' && (
               <footer className="settings-footer">
                 <button className="primary settings-done" onClick={requestClose}>
-                  Готово
+                  {t('Готово')}
                 </button>
               </footer>
             )}
           </div>
         )}
       </section>
+      {scanQr && <QrScanDialog onClose={() => setScanQr(false)} />}
       {confirmProfileClose ? (
         <div className="profile-confirm-backdrop" onMouseDown={(event) => event.stopPropagation()}>
           <section
@@ -544,18 +557,18 @@ export function SettingsPanel({
           >
             <header>
               <div>
-                <p className="eyebrow">НЕСОХРАНЁННЫЕ ИЗМЕНЕНИЯ</p>
-                <h2 id="profile-confirm-title">Сохранить изменения?</h2>
+                <p className="eyebrow">{t('НЕСОХРАНЁННЫЕ ИЗМЕНЕНИЯ')}</p>
+                <h2 id="profile-confirm-title">{t('Сохранить изменения?')}</h2>
               </div>
               <button
                 className="icon-button quiet"
-                aria-label="Отмена"
+                aria-label={t('Отмена')}
                 onClick={() => setConfirmProfileClose(false)}
               >
                 <X />
               </button>
             </header>
-            <p>Изменения профиля ещё не применены. Выберите, что с ними сделать.</p>
+            <p>{t('Изменения профиля ещё не применены. Выберите, что с ними сделать.')}</p>
             {profileSaveError ? <small className="inline-error">{profileSaveError}</small> : null}
             <footer>
               <button
@@ -563,17 +576,17 @@ export function SettingsPanel({
                 disabled={profileSaving}
                 onClick={() => void saveProfileDraft(true)}
               >
-                {profileSaving ? 'Сохраняем…' : 'Сохранить и выйти'}
+                {profileSaving ? t('Сохраняем…') : t('Сохранить и выйти')}
               </button>
               <button className="secondary" disabled={profileSaving} onClick={onClose}>
-                Выйти без сохранения
+                {t('Выйти без сохранения')}
               </button>
               <button
                 className="secondary profile-confirm-cancel"
                 disabled={profileSaving}
                 onClick={() => setConfirmProfileClose(false)}
               >
-                Отмена
+                {t('Отмена')}
               </button>
             </footer>
           </section>
@@ -589,11 +602,13 @@ export function SettingsPanel({
           >
             <header>
               <div>
-                <p className="eyebrow">СБРОС НАСТРОЕК</p>
-                <h2 id="reset-confirm-title">Сбросить настройки?</h2>
+                <p className="eyebrow">{t('СБРОС НАСТРОЕК')}</p>
+                <h2 id="reset-confirm-title">{t('Сбросить настройки?')}</h2>
               </div>
             </header>
-            <p>Настройки звука, видео, записи и оформления вернутся к значениям по умолчанию.</p>
+            <p>
+              {t('Настройки звука, видео, записи и оформления вернутся к значениям по умолчанию.')}
+            </p>
             <footer>
               <button
                 className="danger"
@@ -602,10 +617,10 @@ export function SettingsPanel({
                   onReset();
                 }}
               >
-                Сбросить
+                {t('Сбросить')}
               </button>
               <button className="secondary" onClick={() => setConfirmReset(false)}>
-                Отмена
+                {t('Отмена')}
               </button>
             </footer>
           </section>
@@ -613,15 +628,6 @@ export function SettingsPanel({
       ) : null}
     </div>
   );
-}
-
-function deviceCountWord(count: number) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'устройств';
-  if (last === 1) return 'устройство';
-  if (last >= 2 && last <= 4) return 'устройства';
-  return 'устройств';
 }
 
 function sessionDevicePlatform(userAgent: string) {
@@ -642,26 +648,6 @@ function sessionDeviceName(userAgent: string, current = false) {
   const nativeCurrent = current && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const client = /FreeTalk|Trlka/i.test(userAgent) || nativeCurrent ? 'Trlka' : 'Trlka Web';
   return `${client} · ${sessionDevicePlatform(userAgent)}`;
-}
-
-function uniqueDeviceSessions(sessions: AccountSession[]) {
-  const devices = new Map<string, AccountSession>();
-  for (const session of sessions) {
-    const key = sessionDevicePlatform(session.userAgent).toLocaleLowerCase('ru-RU');
-    const current = devices.get(key);
-    if (
-      !current ||
-      session.current ||
-      (!current.current &&
-        new Date(session.lastActiveAt).getTime() > new Date(current.lastActiveAt).getTime())
-    ) {
-      devices.set(key, session);
-    }
-  }
-  return [...devices.values()].sort((first, second) => {
-    if (first.current !== second.current) return first.current ? -1 : 1;
-    return new Date(second.lastActiveAt).getTime() - new Date(first.lastActiveAt).getTime();
-  });
 }
 
 function ProfileTab({
@@ -699,11 +685,99 @@ function ProfileTab({
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [passwordChanging, setPasswordChanging] = useState(false);
   const [securityMessage, setSecurityMessage] = useState('');
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState(false);
-  const connectedDevices = useMemo(() => uniqueDeviceSessions(sessions), [sessions]);
+  const [sessionToDisconnect, setSessionToDisconnect] = useState<string>();
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [sessionActionError, setSessionActionError] = useState('');
+
+  const sessionGroups = new Map<string, AccountSession[]>();
+  for (const session of sessions) {
+    const name = sessionDeviceName(session.userAgent, session.current);
+    const entries = sessionGroups.get(name);
+    if (entries) entries.push(session);
+    else sessionGroups.set(name, [session]);
+  }
+
+  function renderSession(session: AccountSession, showDeviceName = true) {
+    return (
+      <article key={session.id}>
+        <Laptop />
+        <span>
+          {showDeviceName && (
+            <strong>{sessionDeviceName(session.userAgent, session.current)}</strong>
+          )}
+          <small>
+            {t('Активность:')} {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
+          </small>
+          <small>
+            {t('Подключено:')} {new Date(session.createdAt).toLocaleDateString('ru-RU')}
+          </small>
+        </span>
+        {session.current ? (
+          <em>{t('Это устройство')}</em>
+        ) : sessionToDisconnect === session.id ? (
+          <div className="session-disconnect-confirm">
+            <button
+              type="button"
+              className="secondary"
+              disabled={disconnecting}
+              onClick={() => {
+                setSessionToDisconnect(undefined);
+                setSessionActionError('');
+              }}
+            >
+              {t('Отмена')}
+            </button>
+            <button
+              type="button"
+              className="session-disconnect-danger"
+              disabled={disconnecting}
+              onClick={() => void disconnectSession(session.id)}
+            >
+              {t('Завершить сеанс')}
+            </button>
+            {sessionActionError && <small role="alert">{sessionActionError}</small>}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="secondary session-disconnect"
+            disabled={disconnecting}
+            onClick={() => {
+              setSessionActionError('');
+              setSessionToDisconnect(session.id);
+            }}
+          >
+            {t('Отключить')}
+          </button>
+        )}
+      </article>
+    );
+  }
+
+  async function disconnectSession(id: string) {
+    setDisconnecting(true);
+    setSessionActionError('');
+    try {
+      await accountClient.request('/v1/me/sessions/' + encodeURIComponent(id), {
+        method: 'DELETE',
+      });
+      setSessions((previous) => previous.filter((session) => session.id !== id));
+      setSessionToDisconnect(undefined);
+    } catch (error) {
+      setSessionActionError(
+        error instanceof ApiError && (error.status === 404 || error.status === 405)
+          ? t('Отключение устройств станет доступно после обновления сервера.')
+          : t('Не удалось завершить сеанс.'),
+      );
+    } finally {
+      setDisconnecting(false);
+    }
+  }
   const remaining = remainingProfileChanges(settings.profileChangeTimestamps);
   const usernameValid = isValidUsername(draft.username);
   const profileIdentityChanged =
@@ -743,16 +817,17 @@ function ProfileTab({
         <div className="profile-tab-scroll">
           <section className="settings-section locked-feature-card">
             <UserRound size={34} />
-            <h3>Профиль доступен после регистрации</h3>
+            <h3>{t('Профиль доступен после регистрации')}</h3>
             <p>
-              Зарегистрируйтесь, чтобы пользоваться всеми функциями профиля, друзьями, чатами и
-              историей.
+              {t(
+                'Зарегистрируйтесь, чтобы пользоваться всеми функциями профиля, друзьями, чатами и историей.',
+              )}
             </p>
           </section>
         </div>
         <footer className="profile-sticky-actions single-action">
           <button className="primary profile-done" onClick={onDone}>
-            Готово
+            {t('Готово')}
           </button>
         </footer>
       </div>
@@ -768,32 +843,32 @@ function ProfileTab({
                 <ShieldCheck />
               </span>
               <span>
-                <small>АККАУНТ</small>
-                <h3>Контактные данные</h3>
+                <small>{t('АККАУНТ')}</small>
+                <h3>{t('Контактные данные')}</h3>
               </span>
             </header>
             <div className="profile-account-grid">
               <article>
                 <Mail />
                 <span>
-                  <small>Почта</small>
+                  <small>{t('Почта')}</small>
                   <strong>{maskedEmail(accountUser.email)}</strong>
-                  <em>Подтверждена</em>
+                  <em>{t('Подтверждена')}</em>
                 </span>
               </article>
               <article>
                 <Phone />
                 <span>
-                  <small>Телефон</small>
-                  <strong>Не привязан</strong>
-                  <em>Поддержка появится позже</em>
+                  <small>{t('Телефон')}</small>
+                  <strong>{t('Не привязан')}</strong>
+                  <em>{t('Поддержка появится позже')}</em>
                 </span>
                 <button
                   className="secondary compact"
                   disabled
-                  title="Серверная привязка телефона пока не поддерживается"
+                  data-tooltip={t('Серверная привязка телефона пока не поддерживается')}
                 >
-                  Привязать
+                  {t('Привязать')}
                 </button>
               </article>
             </div>
@@ -805,8 +880,8 @@ function ProfileTab({
                 <UserRound />
               </span>
               <span>
-                <small>ПРОФИЛЬ</small>
-                <h3>Внешний вид и имя</h3>
+                <small>{t('ПРОФИЛЬ')}</small>
+                <h3>{t('Внешний вид и имя')}</h3>
               </span>
             </header>
             <div className="profile-media-editor">
@@ -818,7 +893,8 @@ function ProfileTab({
               >
                 <div className="profile-media-cover-actions">
                   <label className="secondary compact profile-file-button">
-                    <ImagePlus /> {draft.cover ? 'Заменить обложку' : 'Добавить обложку'}
+                    <ImagePlus />
+                    {draft.cover ? t('Заменить обложку') : t('Добавить обложку')}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -841,18 +917,19 @@ function ProfileTab({
                   </label>
                   {draft.cover ? (
                     <button className="secondary compact" onClick={() => onDraft({ cover: '' })}>
-                      <Trash2 /> Удалить
+                      <Trash2 />
+                      {t('Удалить')}
                     </button>
                   ) : null}
                 </div>
               </div>
               <div className="profile-media-avatar">
                 {cachedDraftAvatar ? (
-                  <img src={cachedDraftAvatar} alt="Предпросмотр аватара" />
+                  <img src={cachedDraftAvatar} alt={t('Предпросмотр аватара')} />
                 ) : (
                   <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
                 )}
-                <label className="profile-avatar-overlay" aria-label="Изменить аватар">
+                <label className="profile-avatar-overlay" aria-label={t('Изменить аватар')}>
                   <ImagePlus />
                   <input
                     type="file"
@@ -877,35 +954,36 @@ function ProfileTab({
               </div>
               <div className="profile-media-caption">
                 <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
-                <small>{draft.username ? `@${draft.username}` : 'Добавьте username'}</small>
+                <small>{draft.username ? `@${draft.username}` : t('Добавьте username')}</small>
                 {draft.avatar ? (
                   <button
                     type="button"
                     className="profile-remove-avatar"
                     onClick={() => onDraft({ avatar: '' })}
                   >
-                    <Trash2 size={15} aria-hidden="true" /> Удалить аватар
+                    <Trash2 size={15} aria-hidden="true" /> {t('Удалить аватар')}
                   </button>
                 ) : null}
               </div>
             </div>
             <p className="profile-media-help">
-              Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, Trlka подготовит
-              изображение 1800×700.
+              {t(
+                'Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, Trlka подготовит изображение 1800×700.',
+              )}
             </p>
             <div className="profile-fields-grid">
               <label className="field-label">
-                Отображаемое имя
+                {t('Отображаемое имя')}
                 <input
                   maxLength={32}
                   value={draft.displayName}
-                  placeholder="Ваше имя"
+                  placeholder={t('Ваше имя')}
                   onChange={(event) => onDraft({ displayName: event.target.value })}
                 />
                 <small>{draft.displayName.length}/32</small>
               </label>
               <label className="field-label">
-                Уникальный @username
+                {t('Уникальный @username')}
                 <input
                   minLength={USERNAME_MIN_LENGTH}
                   maxLength={USERNAME_MAX_LENGTH}
@@ -914,15 +992,15 @@ function ProfileTab({
                   value={draft.username}
                   onChange={(event) => onDraft({ username: normalizeUsername(event.target.value) })}
                 />
-                <small>5–24 символа: латиница, цифры и _. Изменение раз в 30 дней.</small>
+                <small>{t('5–24 символа: латиница, цифры и _. Изменение раз в 30 дней.')}</small>
               </label>
               <label className="field-label profile-bio-field">
-                О себе
+                {t('О себе')}
                 <textarea
                   value={draft.bio}
                   maxLength={200}
                   rows={4}
-                  placeholder="Несколько слов о себе"
+                  placeholder={t('Несколько слов о себе')}
                   onChange={(event) => onDraft({ bio: event.target.value })}
                 />
                 <small>{draft.bio.length}/200</small>
@@ -931,10 +1009,12 @@ function ProfileTab({
             <div className="profile-limit">
               <span>
                 {remaining > 0
-                  ? `Осталось изменений: ${remaining} из 5`
-                  : 'Лимит изменений исчерпан'}
+                  ? t('Осталось изменений: {p0} из 5', { p0: remaining })
+                  : t('Лимит изменений исчерпан')}
               </span>
-              <small>Имя и аватар вместе можно сохранять не более пяти раз за пять часов.</small>
+              <small>
+                {t('Имя и аватар вместе можно сохранять не более пяти раз за пять часов.')}
+              </small>
             </div>
           </section>
 
@@ -953,8 +1033,8 @@ function ProfileTab({
                 <ShieldCheck />
               </span>
               <span>
-                <small>БЕЗОПАСНОСТЬ</small>
-                <h3>Доступ к аккаунту</h3>
+                <small>{t('БЕЗОПАСНОСТЬ')}</small>
+                <h3>{t('Доступ к аккаунту')}</h3>
               </span>
             </header>
             <details className="connected-devices profile-accordion">
@@ -963,39 +1043,40 @@ function ProfileTab({
                   <Laptop />
                 </span>
                 <span>
-                  <strong>Подключённые устройства</strong>
+                  <strong>{t('Подключённые устройства')}</strong>
                   <small>
                     {sessionsLoading
-                      ? 'Проверяем активные сеансы…'
+                      ? t('Проверяем активные сеансы…')
                       : sessionsError
-                        ? 'Не удалось получить список'
-                        : `${connectedDevices.length} ${deviceCountWord(connectedDevices.length)}`}
+                        ? t('Не удалось получить список')
+                        : t('Сеансы: {count}', { count: sessions.length })}
                   </small>
                 </span>
-                {!sessionsLoading && !sessionsError && <b>{connectedDevices.length}</b>}
+                {!sessionsLoading && !sessionsError && <b>{sessions.length}</b>}
                 <ChevronDown className="connected-devices-chevron" />
               </summary>
               <div className="connected-device-list">
                 {sessionsError ? (
-                  <p>Не удалось загрузить информацию об устройствах.</p>
-                ) : connectedDevices.length === 0 && !sessionsLoading ? (
-                  <p>Активных устройств нет.</p>
+                  <p>{t('Не удалось загрузить информацию об устройствах.')}</p>
+                ) : sessions.length === 0 && !sessionsLoading ? (
+                  <p>{t('Активных устройств нет.')}</p>
                 ) : (
-                  connectedDevices.map((session) => (
-                    <article key={session.id}>
-                      <Laptop />
-                      <span>
-                        <strong>{sessionDeviceName(session.userAgent, session.current)}</strong>
-                        <small>
-                          Активность: {new Date(session.lastActiveAt).toLocaleString('ru-RU')}
-                        </small>
-                        <small>
-                          Подключено: {new Date(session.createdAt).toLocaleDateString('ru-RU')}
-                        </small>
-                      </span>
-                      {session.current && <em>Это устройство</em>}
-                    </article>
-                  ))
+                  Array.from(sessionGroups, ([name, entries]) =>
+                    entries.length === 1 ? (
+                      renderSession(entries[0]!)
+                    ) : (
+                      <details className="connected-session-group" key={name}>
+                        <summary>
+                          <Laptop aria-hidden="true" />
+                          <strong>{name}</strong>
+                          {entries.some((entry) => entry.current) && <em>{t('Это устройство')}</em>}
+                          <small>{t('Сеансы: {count}', { count: entries.length })}</small>
+                          <ChevronDown aria-hidden="true" />
+                        </summary>
+                        {entries.map((session) => renderSession(session, false))}
+                      </details>
+                    ),
+                  )
                 )}
               </div>
             </details>
@@ -1005,8 +1086,8 @@ function ProfileTab({
                   <ShieldCheck />
                 </span>
                 <span>
-                  <strong>Изменить пароль</strong>
-                  <small>Обновите пароль от аккаунта</small>
+                  <strong>{t('Изменить пароль')}</strong>
+                  <small>{t('Обновите пароль от аккаунта')}</small>
                 </span>
                 <ChevronDown className="connected-devices-chevron" />
               </summary>
@@ -1014,34 +1095,42 @@ function ProfileTab({
                 <input
                   type="password"
                   value={currentPassword}
-                  placeholder="Текущий пароль"
+                  placeholder={t('Текущий пароль')}
                   onChange={(event) => setCurrentPassword(event.target.value)}
                 />
                 <input
                   type="password"
                   value={newPassword}
-                  placeholder="Новый пароль"
+                  placeholder={t('Новый пароль')}
                   onChange={(event) => setNewPassword(event.target.value)}
                 />
                 <button
-                  disabled={!currentPassword || !newPassword}
+                  type="button"
+                  className="primary"
+                  disabled={!currentPassword || !newPassword || passwordChanging || disconnecting}
                   onClick={() => {
                     onDraftError('');
                     setSecurityMessage('');
+                    setPasswordChanging(true);
                     void onChangePassword(currentPassword, newPassword)
                       .then(() => {
                         setCurrentPassword('');
                         setNewPassword('');
-                        setSecurityMessage('Пароль успешно изменён.');
+                        setSecurityMessage(t('Пароль успешно изменён.'));
+                        setSessions((previous) => previous.filter((session) => session.current));
+                        setSessionToDisconnect(undefined);
                       })
                       .catch((caught: unknown) =>
                         onDraftError(
-                          caught instanceof Error ? caught.message : 'Не удалось изменить пароль',
+                          caught instanceof Error
+                            ? caught.message
+                            : t('Не удалось изменить пароль'),
                         ),
-                      );
+                      )
+                      .finally(() => setPasswordChanging(false));
                   }}
                 >
-                  Изменить пароль
+                  {t('Изменить пароль')}
                 </button>
               </div>
             </details>
@@ -1054,8 +1143,8 @@ function ProfileTab({
                 <LogOut />
               </span>
               <span>
-                <small>ДЕЙСТВИЯ</small>
-                <h3>Управление аккаунтом</h3>
+                <small>{t('ДЕЙСТВИЯ')}</small>
+                <h3>{t('Управление аккаунтом')}</h3>
               </span>
             </header>
             <div className="profile-account-actions-grid">
@@ -1064,8 +1153,8 @@ function ProfileTab({
                   <LogOut />
                 </span>
                 <span>
-                  <strong>Выйти из аккаунта</strong>
-                  <small>Завершить текущий сеанс</small>
+                  <strong>{t('Выйти из аккаунта')}</strong>
+                  <small>{t('Завершить текущий сеанс')}</small>
                 </span>
                 <ChevronRight className="profile-action-chevron" />
               </button>
@@ -1075,21 +1164,21 @@ function ProfileTab({
                     <Trash2 />
                   </span>
                   <span>
-                    <strong>Удалить аккаунт</strong>
-                    <small>Безвозвратно удалить личные данные</small>
+                    <strong>{t('Удалить аккаунт')}</strong>
+                    <small>{t('Безвозвратно удалить личные данные')}</small>
                   </span>
                   <ChevronDown />
                 </summary>
-                <p>Личные данные будут удалены или обезличены, а все сессии завершены.</p>
+                <p>{t('Личные данные будут удалены или обезличены, а все сессии завершены.')}</p>
                 <input
                   type="password"
                   value={deletePassword}
-                  placeholder="Текущий пароль"
+                  placeholder={t('Текущий пароль')}
                   onChange={(event) => setDeletePassword(event.target.value)}
                 />
                 <input
                   value={deleteConfirmation}
-                  placeholder="Введите УДАЛИТЬ"
+                  placeholder={t('Введите УДАЛИТЬ')}
                   onChange={(event) => setDeleteConfirmation(event.target.value)}
                 />
                 <button
@@ -1104,7 +1193,7 @@ function ProfileTab({
                     );
                   }}
                 >
-                  Удалить навсегда
+                  {t('Удалить навсегда')}
                 </button>
               </details>
             </div>
@@ -1118,14 +1207,14 @@ function ProfileTab({
       </div>
       <footer className="profile-sticky-actions single-action">
         {profileIdentityChanged && remaining === 0 ? (
-          <span role="status">Лимит изменений профиля исчерпан</span>
+          <span role="status">{t('Лимит изменений профиля исчерпан')}</span>
         ) : null}
         <button
           className="primary profile-done"
           disabled={isSaving || !usernameValid || (profileIdentityChanged && remaining === 0)}
           onClick={onDone}
         >
-          {isSaving ? 'Сохраняем…' : 'Готово'}
+          {isSaving ? t('Сохраняем…') : t('Готово')}
         </button>
       </footer>
     </div>
@@ -1158,8 +1247,8 @@ function VideoTab({
       {locked && (
         <div className="locked-feature-card">
           <Video size={30} />
-          <strong>Видео доступно после регистрации</strong>
-          <small>Гости могут общаться только голосом.</small>
+          <strong>{t('Видео доступно после регистрации')}</strong>
+          <small>{t('Гости могут общаться только голосом.')}</small>
         </div>
       )}
       <section className="settings-section video-settings-section">
@@ -1169,9 +1258,9 @@ function VideoTab({
               <MonitorSpeaker />
             </span>
             <div>
-              <h3>Демонстрация экрана</h3>
+              <h3>{t('Демонстрация экрана')}</h3>
               <p className="settings-section-description">
-                Качество изображения и звук при показе экрана.
+                {t('Качество изображения и звук при показе экрана.')}
               </p>
             </div>
           </div>
@@ -1181,7 +1270,7 @@ function VideoTab({
         </div>
         <div className="video-quality-grid">
           <label className="field-label">
-            Тип содержимого
+            {t('Тип содержимого')}
             <select
               value={settings.screenContentMode}
               onChange={(event) =>
@@ -1190,14 +1279,16 @@ function VideoTab({
                 })
               }
             >
-              <option value="text">Текст · максимальная чёткость</option>
-              <option value="balanced">Универсальный · чётко и плавно</option>
-              <option value="video">Видео · плавное движение</option>
+              <option value="text">{t('Текст · максимальная чёткость')}</option>
+              <option value="balanced">{t('Универсальный · чётко и плавно')}</option>
+              <option value="video">{t('Видео · плавное движение')}</option>
             </select>
-            <small>«Текст» бережёт детали, универсальный режим балансирует их с движением.</small>
+            <small>
+              {t('«Текст» бережёт детали, универсальный режим балансирует их с движением.')}
+            </small>
           </label>
           <label className="field-label">
-            Максимальное разрешение
+            {t('Максимальное разрешение')}
             <select
               value={settings.screenResolution}
               onChange={(event) =>
@@ -1210,10 +1301,10 @@ function VideoTab({
               <option value="1080p">Full HD · 1920×1080</option>
               <option value="1440p">2K · 2560×1440</option>
             </select>
-            <small>Задаёт верхнюю границу детализации передаваемого изображения.</small>
+            <small>{t('Задаёт верхнюю границу детализации передаваемого изображения.')}</small>
           </label>
           <label className="field-label">
-            Частота кадров
+            {t('Частота кадров')}
             <select
               value={settings.screenFrameRate}
               onChange={(event) =>
@@ -1222,37 +1313,41 @@ function VideoTab({
                 })
               }
             >
-              <option value="15">15 FPS · экономно</option>
-              <option value="30">30 FPS · рекомендуется</option>
-              <option value="60">60 FPS · плавно</option>
+              <option value="15">{t('15 FPS · экономно')}</option>
+              <option value="30">{t('30 FPS · рекомендуется')}</option>
+              <option value="60">{t('60 FPS · плавно')}</option>
             </select>
-            <small>Определяет плавность движения при достаточной скорости сети.</small>
+            <small>{t('Определяет плавность движения при достаточной скорости сети.')}</small>
           </label>
         </div>
         <div className="video-toggle-list">
           <Toggle
-            label="Передавать звук по умолчанию"
-            description="Запрашивает звук выбранного окна или экрана при запуске демонстрации."
+            label={t('Передавать звук по умолчанию')}
+            description={t('Запрашивает звук выбранного окна или экрана при запуске демонстрации.')}
             checked={settings.screenAudioByDefault}
             onChange={(value) => onVideoSetting({ screenAudioByDefault: value })}
           />
           <Toggle
-            label="Адаптивное качество"
-            description="Подстраивает FPS, разрешение и битрейт под сеть с учётом выбранного типа содержимого."
+            label={t('Адаптивное качество')}
+            description={t(
+              'Подстраивает FPS, разрешение и битрейт под сеть с учётом выбранного типа содержимого.',
+            )}
             checked={settings.screenAdaptiveQuality}
             onChange={(value) => onVideoSetting({ screenAdaptiveQuality: value })}
           />
         </div>
         <div className="adaptive-quality-note">
-          <strong>Без остановок на слабой сети</strong>
+          <strong>{t('Без остановок на слабой сети')}</strong>
           <small>
-            Каждый собеседник получает индивидуальное качество. После восстановления соединения
-            Trlka автоматически возвращает выбранные параметры.
+            {t(
+              'Каждый собеседник получает индивидуальное качество. После восстановления соединения Trlka автоматически возвращает выбранные параметры.',
+            )}
           </small>
         </div>
         <small className="video-apply-note">
-          Разрешение и FPS применятся при следующем запуске демонстрации. По умолчанию — 1080p/30
-          FPS; максимум — 2K/60 FPS.
+          {t(
+            'Разрешение и FPS применятся при следующем запуске демонстрации. По умолчанию — 1080p/30 FPS; максимум — 2K/60 FPS.',
+          )}
         </small>
       </section>
 
@@ -1262,9 +1357,9 @@ function VideoTab({
             <Camera />
           </span>
           <div>
-            <h3>Камера</h3>
+            <h3>{t('Камера')}</h3>
             <p className="settings-section-description">
-              Проверьте изображение и выберите фон перед звонком.
+              {t('Проверьте изображение и выберите фон перед звонком.')}
             </p>
           </div>
         </div>
@@ -1282,33 +1377,33 @@ function VideoTab({
             <AudioLines />
           </span>
           <div>
-            <h3>Звуки событий</h3>
+            <h3>{t('Звуки событий')}</h3>
             <p className="settings-section-description">
-              Каждый звук можно отключить отдельно и предварительно прослушать.
+              {t('Каждый звук можно отключить отдельно и предварительно прослушать.')}
             </p>
           </div>
         </div>
         <div className="sound-setting-list">
           <SoundSetting
-            label="Участник подключился"
+            label={t('Участник подключился')}
             checked={settings.participantJoinedSound}
             onChange={(value) => onVideoSetting({ participantJoinedSound: value })}
             onPreview={() => void previewParticipant(true)}
           />
           <SoundSetting
-            label="Участник отключился"
+            label={t('Участник отключился')}
             checked={settings.participantDisconnectedSound}
             onChange={(value) => onVideoSetting({ participantDisconnectedSound: value })}
             onPreview={() => void previewParticipant(false)}
           />
           <SoundSetting
-            label="Начало записи"
+            label={t('Начало записи')}
             checked={settings.recordingStartSound}
             onChange={(value) => onVideoSetting({ recordingStartSound: value })}
             onPreview={() => void playRecordingStartNotification(settings)}
           />
           <SoundSetting
-            label="Микрофон включён"
+            label={t('Микрофон включён')}
             checked={settings.microphoneEnabledSound}
             onChange={(value) => onVideoSetting({ microphoneEnabledSound: value })}
             onPreview={() =>
@@ -1316,7 +1411,7 @@ function VideoTab({
             }
           />
           <SoundSetting
-            label="Микрофон выключен"
+            label={t('Микрофон выключен')}
             checked={settings.microphoneDisabledSound}
             onChange={(value) => onVideoSetting({ microphoneDisabledSound: value })}
             onPreview={() =>
@@ -1324,13 +1419,13 @@ function VideoTab({
             }
           />
           <SoundSetting
-            label="Входящий звонок"
+            label={t('Входящий звонок')}
             checked={settings.incomingCallSound}
             onChange={(value) => onVideoSetting({ incomingCallSound: value })}
             onPreview={() => void playSettingsSound(INCOMING_CALL_RINGTONE_URL, settings)}
           />
           <SoundSetting
-            label="Уведомление о сообщении"
+            label={t('Уведомление о сообщении')}
             checked={settings.messageNotificationSound}
             onChange={(value) => onVideoSetting({ messageNotificationSound: value })}
             onPreview={() => void playSettingsSound(NOTIFICATION_SOUND_URL, settings)}
@@ -1440,10 +1535,10 @@ function CameraSettingsEditor({
         )}
         {!previewing && (
           <button type="button" className="primary" onClick={() => setPreviewing(true)}>
-            <Camera /> Проверить видео
+            <Camera /> {t('Проверить видео')}
           </button>
         )}
-        {previewBusy && <span>Подготавливаем камеру…</span>}
+        {previewBusy && <span>{t('Подготавливаем камеру…')}</span>}
         {previewError && <span className="camera-preview-error">{previewError}</span>}
         {previewing && (
           <button
@@ -1451,26 +1546,28 @@ function CameraSettingsEditor({
             className="settings-camera-preview-stop"
             onClick={() => setPreviewing(false)}
           >
-            Остановить предпросмотр
+            {t('Остановить предпросмотр')}
           </button>
         )}
       </div>
       <Toggle
-        label="Предпросмотр видео (всегда)"
-        description="Показывать окно подготовки каждый раз перед включением камеры."
+        label={t('Предпросмотр видео (всегда)')}
+        description={t('Показывать окно подготовки каждый раз перед включением камеры.')}
         checked={settings.cameraPreviewAlways}
         onChange={(value) => onVideoSetting({ cameraPreviewAlways: value })}
       />
       <Toggle
-        label="Отражать моё видео"
-        description="Показывать своё изображение как в зеркале. Собеседники всегда видят обычное изображение."
+        label={t('Отражать моё видео')}
+        description={t(
+          'Показывать своё изображение как в зеркале. Собеседники всегда видят обычное изображение.',
+        )}
         checked={settings.mirrorSelfVideo}
         onChange={(value) => onVideoSetting({ mirrorSelfVideo: value })}
       />
       <label className="field-label">
-        Камера
+        {t('Камера')}
         <select value={settings.cameraDeviceId} onChange={(event) => onCamera(event.target.value)}>
-          <option value="">Системная камера</option>
+          <option value="">{t('Системная камера')}</option>
           {cameras.map((device, index) => (
             <option key={device.deviceId} value={device.deviceId}>
               {device.label || `Камера ${index + 1}`}
@@ -1479,7 +1576,7 @@ function CameraSettingsEditor({
         </select>
       </label>
       <div className="settings-camera-backgrounds">
-        <strong>Фон видео</strong>
+        <strong>{t('Фон видео')}</strong>
         <div>
           <button
             type="button"
@@ -1487,7 +1584,7 @@ function CameraSettingsEditor({
             onClick={() => onVideoSetting({ cameraBackgroundMode: 'none' })}
           >
             <Ban />
-            <span>Пусто</span>
+            <span>{t('Пусто')}</span>
           </button>
           <button
             type="button"
@@ -1495,7 +1592,7 @@ function CameraSettingsEditor({
             onClick={() => onVideoSetting({ cameraBackgroundMode: 'blur' })}
           >
             <Sparkles />
-            <span>Размытие</span>
+            <span>{t('Размытие')}</span>
           </button>
           <button
             type="button"
@@ -1512,7 +1609,7 @@ function CameraSettingsEditor({
             }
           >
             <ImagePlus />
-            <span>Свой фон</span>
+            <span>{t('Свой фон')}</span>
           </button>
         </div>
         <button
@@ -1520,8 +1617,8 @@ function CameraSettingsEditor({
           className="secondary compact"
           onClick={() => fileRef.current?.click()}
         >
-          <ImagePlus />{' '}
-          {settings.cameraBackgroundDataUrl ? 'Заменить свой фон' : 'Выбрать свой фон'}
+          <ImagePlus />
+          {settings.cameraBackgroundDataUrl ? t('Заменить свой фон') : t('Выбрать свой фон')}
         </button>
         <input
           ref={fileRef}
@@ -1558,10 +1655,10 @@ function SoundSetting({
       <button
         type="button"
         className="secondary compact sound-preview-button"
-        aria-label={`Прослушать звук: ${label}`}
+        aria-label={t('Прослушать звук: {p0}', { p0: label })}
         onClick={onPreview}
       >
-        <AudioLines size={16} /> Прослушать
+        <AudioLines size={16} /> {t('Прослушать')}
       </button>
       <button
         type="button"
@@ -1618,15 +1715,15 @@ function AudioTab({
             <Mic2 />
           </span>
           <div>
-            <h3>Режим передачи</h3>
+            <h3>{t('Режим передачи')}</h3>
             <p className="settings-section-description">
-              Выберите, когда собеседники будут слышать ваш микрофон.
+              {t('Выберите, когда собеседники будут слышать ваш микрофон.')}
             </p>
           </div>
         </div>
-        <div className="transmission-modes" role="radiogroup" aria-label="Режим передачи">
+        <div className="transmission-modes" role="radiogroup" aria-label={t('Режим передачи')}>
           <ModeOption
-            title="По голосу (VAD)"
+            title={t('По голосу (VAD)')}
             detail="Передаёт голос, когда вы говорите"
             value="voice-activation"
             icon={<AudioLines />}
@@ -1634,7 +1731,7 @@ function AudioTab({
             onSetting={onSetting}
           />
           <ModeOption
-            title="Нажми и говори"
+            title={t('Нажми и говори')}
             detail="Удерживайте клавишу для передачи"
             value="push-to-talk"
             icon={<Mic2 />}
@@ -1642,7 +1739,7 @@ function AudioTab({
             onSetting={onSetting}
           />
           <ModeOption
-            title="Постоянная передача"
+            title={t('Постоянная передача')}
             detail="Микрофон передаёт постоянно"
             value="continuous"
             icon={<RefreshCw />}
@@ -1653,12 +1750,12 @@ function AudioTab({
         {settings.transmissionMode === 'voice-activation' && (
           <label className="slider-setting">
             <span>
-              <strong>Порог голосовой активности</strong>
+              <strong>{t('Порог голосовой активности')}</strong>
               <output>{Math.round((settings.vadThreshold / 0.1) * 100)}%</output>
             </span>
             <div
               className="level-meter"
-              aria-label={`Уровень микрофона ${Math.round(inputLevel * 100)}%`}
+              aria-label={t('Уровень микрофона {p0}%', { p0: Math.round(inputLevel * 100) })}
             >
               <span style={{ width: `${inputLevel * 100}%` }} />
               <i style={{ left: `${Math.min(100, (settings.vadThreshold / 0.12) * 100)}%` }} />
@@ -1671,14 +1768,16 @@ function AudioTab({
               value={settings.vadThreshold}
               onChange={(event) => onSetting({ vadThreshold: Number(event.target.value) }, false)}
             />
-            <small>Передача начинается, когда голос становится громче выбранного порога.</small>
+            <small>
+              {t('Передача начинается, когда голос становится громче выбранного порога.')}
+            </small>
           </label>
         )}
         {settings.transmissionMode === 'push-to-talk' && (
           <label className="key-setting">
             <span>
-              <strong>Клавиша push-to-talk</strong>
-              <small>Работает внутри окна и не срабатывает во время ввода текста.</small>
+              <strong>{t('Клавиша push-to-talk')}</strong>
+              <small>{t('Работает внутри окна и не срабатывает во время ввода текста.')}</small>
             </span>
             <button
               className={`key-capture ${capturing ? 'capturing' : ''}`}
@@ -1690,7 +1789,7 @@ function AudioTab({
                 onCapturing(false);
               }}
             >
-              {capturing ? 'Нажмите клавишу…' : prettyKey(settings.pushToTalkKey)}
+              {capturing ? t('Нажмите клавишу…') : prettyKey(settings.pushToTalkKey)}
             </button>
           </label>
         )}
@@ -1703,14 +1802,15 @@ function AudioTab({
               <AudioLines />
             </span>
             <div>
-              <h3>Обработка микрофона</h3>
+              <h3>{t('Обработка микрофона')}</h3>
               <p className="settings-section-description">
-                Уберите лишние звуки и выровняйте голос.
+                {t('Уберите лишние звуки и выровняйте голос.')}
               </p>
             </div>
           </div>
           <button className="secondary compact" disabled={recording} onClick={onRecord}>
-            <AudioLines size={16} /> {recording ? 'Запись 4 секунды…' : 'Записать тест'}
+            <AudioLines size={16} />
+            {recording ? t('Запись 4 секунды…') : t('Записать тест')}
           </button>
         </div>
         {(recordingUrl || testError) && (
@@ -1721,32 +1821,32 @@ function AudioTab({
         )}
         <div className="processing-grid">
           <Toggle
-            label="Шумоподавление"
-            description="Удаляет постоянный фоновый шум."
+            label={t('Шумоподавление')}
+            description={t('Удаляет постоянный фоновый шум.')}
             checked={settings.noiseSuppression}
             onChange={(value) => onSetting({ noiseSuppression: value }, true)}
           />
           <Toggle
-            label="Автоматическое усиление"
-            description="Выравнивает громкость микрофона."
+            label={t('Автоматическое усиление')}
+            description={t('Выравнивает громкость микрофона.')}
             checked={settings.autoGainControl}
             onChange={(value) => onSetting({ autoGainControl: value }, true)}
           />
           <Toggle
-            label="Подавлять щелчки клавиатуры"
-            description="Приостанавливает передачу при вводе."
+            label={t('Подавлять щелчки клавиатуры')}
+            description={t('Приостанавливает передачу при вводе.')}
             checked={settings.typingAttenuation}
             onChange={(value) => onSetting({ typingAttenuation: value }, false)}
           />
           <Toggle
-            label="Подавление эха"
-            description="Снижает эхо и обратную связь."
+            label={t('Подавление эха')}
+            description={t('Снижает эхо и обратную связь.')}
             checked={settings.echoCancellation}
             onChange={(value) => onSetting({ echoCancellation: value }, true)}
           />
           <Toggle
-            label="Комфортный шум"
-            description="Добавляет едва слышимый фон в паузах."
+            label={t('Комфортный шум')}
+            description={t('Добавляет едва слышимый фон в паузах.')}
             checked={settings.comfortNoise}
             onChange={(value) => onSetting({ comfortNoise: value }, true)}
           />
@@ -1759,22 +1859,22 @@ function AudioTab({
             <MonitorSpeaker />
           </span>
           <div>
-            <h3>Громкость собеседников</h3>
+            <h3>{t('Громкость собеседников')}</h3>
             <p className="settings-section-description">
-              Настройте приглушение голосов других участников.
+              {t('Настройте приглушение голосов других участников.')}
             </p>
           </div>
         </div>
         <Toggle
-          label="Приглушать собеседников"
-          description="Снижает громкость других участников."
+          label={t('Приглушать собеседников')}
+          description={t('Снижает громкость других участников.')}
           checked={settings.echoDucking}
           onChange={(value) => onSetting({ echoDucking: value }, false)}
         />
         {settings.echoDucking && (
           <label className="slider-setting compact-slider">
             <span>
-              <strong>Громкость при приглушении</strong>
+              <strong>{t('Громкость при приглушении')}</strong>
               <output>{Math.round(settings.echoDuckingLevel * 100)}%</output>
             </span>
             <input
@@ -1787,7 +1887,7 @@ function AudioTab({
                 onSetting({ echoDuckingLevel: Number(event.target.value) }, false)
               }
             />
-            <small>Оставшаяся громкость голосов: 0% — тишина, 100% — без приглушения.</small>
+            <small>{t('Оставшаяся громкость голосов: 0% — тишина, 100% — без приглушения.')}</small>
           </label>
         )}
       </section>
@@ -1812,11 +1912,11 @@ function DevicesTab({
 }) {
   return (
     <section className="settings-section device-section">
-      <h3>Микрофон</h3>
+      <h3>{t('Микрофон')}</h3>
       <label className="field-label">
-        Устройство захвата звука
+        {t('Устройство захвата звука')}
         <select value={settings.inputDeviceId} onChange={(event) => onInput(event.target.value)}>
-          <option value="">Системное устройство по умолчанию</option>
+          <option value="">{t('Системное устройство по умолчанию')}</option>
           {devices.inputs.map((device, index) => (
             <option key={device.deviceId} value={device.deviceId}>
               {device.label || `Микрофон ${index + 1}`}
@@ -1825,26 +1925,26 @@ function DevicesTab({
         </select>
       </label>
       <div className="section-separator" />
-      <h3>Динамики / наушники</h3>
+      <h3>{t('Динамики / наушники')}</h3>
       <label className="field-label">
-        Устройство воспроизведения
+        {t('Устройство воспроизведения')}
         <select
           disabled={!outputSupported}
           value={settings.outputDeviceId}
           onChange={(event) => onOutput(event.target.value)}
         >
-          <option value="">Системное устройство по умолчанию</option>
+          <option value="">{t('Системное устройство по умолчанию')}</option>
           {devices.outputs.map((device, index) => (
             <option key={device.deviceId} value={device.deviceId}>
               {device.label || `Динамики ${index + 1}`}
             </option>
           ))}
         </select>
-        {!outputSupported && <small>Выбор вывода не поддерживается текущим WebView.</small>}
+        {!outputSupported && <small>{t('Выбор вывода не поддерживается текущим WebView.')}</small>}
       </label>
       <label className="slider-setting">
         <span>
-          <strong>Общая громкость голосов</strong>
+          <strong>{t('Общая громкость голосов')}</strong>
           <output>{Math.round(settings.outputVolume * 100)}%</output>
         </span>
         <input
@@ -1920,34 +2020,34 @@ function AboutTab({
       </div>
       <div>
         <h3>Trlka</h3>
-        <p>Бесплатная голосовая связь для небольших закрытых компаний.</p>
+        <p>{t('Бесплатная голосовая связь для небольших закрытых компаний.')}</p>
       </div>
       <dl>
         <div>
-          <dt>Версия</dt>
+          <dt>{t('Версия')}</dt>
           <dd>{appVersion}</dd>
         </div>
         <div>
-          <dt>Аудио</dt>
+          <dt>{t('Аудио')}</dt>
           <dd>WebRTC · Opus</dd>
         </div>
         <div>
-          <dt>Телеметрия</dt>
-          <dd>Отсутствует</dd>
+          <dt>{t('Телеметрия')}</dt>
+          <dd>{t('Отсутствует')}</dd>
         </div>
         <div>
-          <dt>Резервное соединение</dt>
-          <dd>{turnAvailable ? 'TURN готов' : 'Прямой WebRTC (STUN)'}</dd>
+          <dt>{t('Резервное соединение')}</dt>
+          <dd>{turnAvailable ? t('TURN готов') : t('Прямой WebRTC (STUN)')}</dd>
         </div>
       </dl>
       <div className="update-section">
         <div>
-          <strong>Обновления</strong>
+          <strong>{t('Обновления')}</strong>
           <small>{updateMessage(updateStatus, appVersion)}</small>
         </div>
         {updateStatus.kind === 'available' ? (
           <button className="primary compact settings-action-button" onClick={onInstallUpdate}>
-            <Download size={16} /> Обновить до {updateStatus.version}
+            <Download size={16} /> {t('Обновить до')} {updateStatus.version}
           </button>
         ) : updateStatus.kind === 'downloading' ? (
           <progress max="100" value={updateStatus.progress} />
@@ -1958,28 +2058,32 @@ function AboutTab({
             onClick={onCheckUpdate}
           >
             <RefreshCw size={16} className={updateStatus.kind === 'checking' ? 'spin' : ''} />{' '}
-            {updateStatus.kind === 'checking' ? 'Проверяем…' : 'Проверить'}
+            {updateStatus.kind === 'checking' ? t('Проверяем…') : t('Проверить')}
           </button>
         )}
       </div>
       <div className="update-section">
         <div>
-          <strong>Диагностика подключения</strong>
-          <small>Обезличенный таймлайн ICE и RTP без адресов, SDP и секретов.</small>
-          {diagnosticPath && <small>Сохранено: {diagnosticPath}</small>}
+          <strong>{t('Диагностика подключения')}</strong>
+          <small>{t('Обезличенный таймлайн ICE и RTP без адресов, SDP и секретов.')}</small>
+          {diagnosticPath && (
+            <small>
+              {t('Сохранено:')} {diagnosticPath}
+            </small>
+          )}
           {diagnosticError && <small className="error-text">{diagnosticError}</small>}
         </div>
         <button className="secondary compact settings-action-button" onClick={onSaveDiagnostics}>
-          <Save size={16} /> Сохранить на рабочий стол
+          <Save size={16} /> {t('Сохранить на рабочий стол')}
         </button>
       </div>
       <div className="about-autostart">
         <Toggle
-          label="Запускать Trlka при включении компьютера"
+          label={t('Запускать Trlka при включении компьютера')}
           description={
             supported
-              ? 'Приложение автоматически запустится вместе с системой.'
-              : 'Настройка доступна в установленной версии Trlka.'
+              ? t('Приложение автоматически запустится вместе с системой.')
+              : t('Настройка доступна в установленной версии Trlka.')
           }
           checked={autostart}
           disabled={!supported || autostartBusy}
@@ -2033,14 +2137,14 @@ function RecordingSettingsTab({
             <FolderOpen />
           </span>
           <div>
-            <h3>Локальное хранилище записей</h3>
+            <h3>{t('Локальное хранилище записей')}</h3>
             <p className="settings-section-description">
-              Видео сохраняется только на этом компьютере и не загружается на сервер.
+              {t('Видео сохраняется только на этом компьютере и не загружается на сервер.')}
             </p>
           </div>
         </div>
         <div className="recording-directory-row">
-          <div className="recording-directory-value" title={directory}>
+          <div className="recording-directory-value" data-tooltip={directory}>
             <FolderOpen size={17} />
             <span>{directory}</span>
           </div>
@@ -2052,21 +2156,21 @@ function RecordingSettingsTab({
               )
             }
           >
-            Открыть
+            {t('Открыть')}
           </button>
           <button className="secondary compact" onClick={() => void changeDirectory()}>
-            Изменить
+            {t('Изменить')}
           </button>
         </div>
         {error && <small className="field-error">{error}</small>}
         {availableBytes !== undefined && (
           <small className="recording-space-available">
-            Свободно {formatStorageSize(availableBytes)}
+            {t('Свободно')} {formatStorageSize(availableBytes)}
           </small>
         )}
         <Toggle
-          label="Спрашивать папку перед записью"
-          description="Перед началом каждой записи Trlka спросит, куда сохранить видео."
+          label={t('Спрашивать папку перед записью')}
+          description={t('Перед началом каждой записи Trlka спросит, куда сохранить видео.')}
           checked={settings.recordingAskDirectory}
           onChange={(value) => onSetting({ recordingAskDirectory: value }, false)}
         />
@@ -2078,29 +2182,30 @@ function RecordingSettingsTab({
             <CircleDot />
           </span>
           <div>
-            <h3>Настройки записи</h3>
+            <h3>{t('Настройки записи')}</h3>
             <p className="settings-section-description">
-              Запись создаётся в WebM или MP4 с высоким битрейтом и исходным разрешением выбранного
-              экрана.
+              {t(
+                'Запись создаётся в WebM или MP4 с высоким битрейтом и исходным разрешением выбранного экрана.',
+              )}
             </p>
           </div>
         </div>
         <div className="video-toggle-list">
           <Toggle
-            label="Показывать имена участников"
-            description="Добавляет имена участников комнаты в нижнюю часть записи."
+            label={t('Показывать имена участников')}
+            description={t('Добавляет имена участников комнаты в нижнюю часть записи.')}
             checked={settings.recordingShowParticipantNames}
             onChange={(value) => onSetting({ recordingShowParticipantNames: value }, false)}
           />
           <Toggle
-            label="Добавить временную метку"
-            description="Показывает локальные дату и время в правом верхнем углу записи."
+            label={t('Добавить временную метку')}
+            description={t('Показывает локальные дату и время в правом верхнем углу записи.')}
             checked={settings.recordingAddTimestamp}
             onChange={(value) => onSetting({ recordingAddTimestamp: value }, false)}
           />
           <Toggle
-            label="Записывать видео при демонстрации экрана"
-            description="Использует уже выбранную демонстрацию без повторного запроса экрана."
+            label={t('Записывать видео при демонстрации экрана')}
+            description={t('Использует уже выбранную демонстрацию без повторного запроса экрана.')}
             checked={settings.recordingIncludeSharedVideo}
             onChange={(value) => onSetting({ recordingIncludeSharedVideo: value }, false)}
           />
@@ -2156,10 +2261,10 @@ function ChatsSettingsTab({
   const chatPreview = (
     <div
       className={`chat-settings-preview ${settings.chatMessageStyle}`}
-      aria-label="Предпросмотр оформления чата"
+      aria-label={t('Предпросмотр оформления чата')}
       style={
         {
-          '--ft-chat-text-scale': settings.chatTextScale,
+          '--ft-chat-text-scale': settings.chatTextScale * CHAT_TEXT_BASE_SCALE,
           backgroundImage: settings.chatWallpaperDataUrl
             ? `linear-gradient(#07111dbb, #07111dbb), url("${settings.chatWallpaperDataUrl}")`
             : undefined,
@@ -2188,29 +2293,41 @@ function ChatsSettingsTab({
           </div>
         </div>
       ))}
-      <div className="preview-composer">Написать сообщение…</div>
+      <div className="preview-composer">{t('Написать сообщение…')}</div>
     </div>
   );
 
   return (
     <section className="settings-section chat-settings-section">
+      <div className="chat-settings-group language-settings-card">
+        <div className="video-section-heading">
+          <span className="profile-zone-icon" aria-hidden="true">
+            <Languages />
+          </span>
+          <div>
+            <h3>{t('Язык программы')}</h3>
+            <p className="settings-section-description">{t('Язык изменится после перезапуска.')}</p>
+          </div>
+        </div>
+        <LanguagePicker />
+      </div>
       <div className="chat-settings-group">
         <div className="video-section-heading">
           <span className="profile-zone-icon">
             <MessageCircle />
           </span>
           <div>
-            <h3>Сообщения</h3>
-            <p className="settings-section-description">Размер шрифта и вид переписки.</p>
+            <h3>{t('Сообщения')}</h3>
+            <p className="settings-section-description">{t('Размер шрифта и вид переписки.')}</p>
           </div>
         </div>
         <label className="slider-setting chat-text-size-setting">
           <span>
-            <strong>Размер текста сообщений</strong>
+            <strong>{t('Размер текста сообщений')}</strong>
             <output>{Math.round(settings.chatTextScale * 100)}%</output>
           </span>
           <input
-            aria-label="Размер текста сообщений"
+            aria-label={t('Размер текста сообщений')}
             type="range"
             min="0.85"
             max="1.55"
@@ -2223,8 +2340,8 @@ function ChatsSettingsTab({
         <div className="chat-live-size-preview">{chatPreview}</div>
 
         <div className="chat-style-setting">
-          <strong>Вид сообщений</strong>
-          <div role="radiogroup" aria-label="Вид сообщений">
+          <strong>{t('Вид сообщений')}</strong>
+          <div role="radiogroup" aria-label={t('Вид сообщений')}>
             <button
               type="button"
               role="radio"
@@ -2232,7 +2349,8 @@ function ChatsSettingsTab({
               className={settings.chatMessageStyle === 'bubbles' ? 'active' : ''}
               onClick={() => onSetting({ chatMessageStyle: 'bubbles' }, false)}
             >
-              <MessageCircle size={20} aria-hidden="true" /> Пузырьки
+              <MessageCircle size={20} aria-hidden="true" />
+              {t('Пузырьки')}
             </button>
             <button
               type="button"
@@ -2241,7 +2359,8 @@ function ChatsSettingsTab({
               className={settings.chatMessageStyle === 'compact' ? 'active' : ''}
               onClick={() => onSetting({ chatMessageStyle: 'compact' }, false)}
             >
-              <AlignLeft size={20} aria-hidden="true" /> Компактно
+              <AlignLeft size={20} aria-hidden="true" />
+              {t('Компактно')}
             </button>
           </div>
         </div>
@@ -2252,21 +2371,22 @@ function ChatsSettingsTab({
             <ImagePlus />
           </span>
           <div>
-            <h3>Фон и предпросмотр</h3>
+            <h3>{t('Фон и предпросмотр')}</h3>
             <p className="settings-section-description">
-              Посмотрите, как будут выглядеть ваши чаты.
+              {t('Посмотрите, как будут выглядеть ваши чаты.')}
             </p>
           </div>
         </div>
         <div className="chat-wallpaper-setting">
           <div>
-            <strong>Обои всех чатов</strong>
-            <small>Исходные пропорции и качество сохраняются, если файл уже подходит.</small>
+            <strong>{t('Обои всех чатов')}</strong>
+            <small>{t('Исходные пропорции и качество сохраняются, если файл уже подходит.')}</small>
             {wallpaperError && <small className="error-text">{wallpaperError}</small>}
           </div>
           <div>
             <label className="secondary compact profile-file-button settings-action-button">
-              <ImagePlus size={16} /> {settings.chatWallpaperDataUrl ? 'Заменить' : 'Выбрать фото'}
+              <ImagePlus size={16} />
+              {settings.chatWallpaperDataUrl ? t('Заменить') : t('Выбрать фото')}
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
@@ -2291,7 +2411,7 @@ function ChatsSettingsTab({
                 className="secondary compact settings-action-button"
                 onClick={() => onSetting({ chatWallpaperDataUrl: '' }, false)}
               >
-                <Trash2 size={15} /> Убрать
+                <Trash2 size={15} /> {t('Убрать')}
               </button>
             )}
           </div>
@@ -2299,8 +2419,8 @@ function ChatsSettingsTab({
 
         {settings.chatWallpaperDataUrl && (
           <div className="chat-style-setting chat-wallpaper-fit-setting">
-            <strong>Размер обоев</strong>
-            <div role="radiogroup" aria-label="Размер обоев">
+            <strong>{t('Размер обоев')}</strong>
+            <div role="radiogroup" aria-label={t('Размер обоев')}>
               <button
                 type="button"
                 role="radio"
@@ -2308,7 +2428,7 @@ function ChatsSettingsTab({
                 className={settings.chatWallpaperFit === 'cover' ? 'active' : ''}
                 onClick={() => onSetting({ chatWallpaperFit: 'cover' }, false)}
               >
-                Заполнить чат
+                {t('Заполнить чат')}
               </button>
               <button
                 type="button"
@@ -2317,7 +2437,7 @@ function ChatsSettingsTab({
                 className={settings.chatWallpaperFit === 'contain' ? 'active' : ''}
                 onClick={() => onSetting({ chatWallpaperFit: 'contain' }, false)}
               >
-                Показать целиком
+                {t('Показать целиком')}
               </button>
             </div>
           </div>
@@ -2326,17 +2446,21 @@ function ChatsSettingsTab({
         <div className="chat-settings-preview-card">
           {chatPreview}
           <div>
-            <strong>Предпросмотр</strong>
-            <small>Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.</small>
+            <strong>{t('Предпросмотр')}</strong>
+            <small>
+              {t('Обои не двигаются вместе с сообщениями и продолжаются под панелью ввода.')}
+            </small>
           </div>
         </div>
       </div>
       <div className="chat-wallpaper-setting chat-cache-card">
         <div>
-          <strong>Кэш изображений</strong>
+          <strong>{t('Кэш изображений')}</strong>
           <small>
-            {formatCacheSize(cacheBytes)} · {cacheEntries} файлов. Кэш ускоряет повторное открытие
-            фотографий и хранится только на этом устройстве.
+            {formatCacheSize(cacheBytes)} · {cacheEntries}{' '}
+            {t(
+              'файлов. Кэш ускоряет повторное открытие фотографий и хранится только на этом устройстве.',
+            )}
           </small>
         </div>
         <button
@@ -2345,7 +2469,8 @@ function ChatsSettingsTab({
           disabled={cacheBusy || cacheEntries === 0}
           onClick={() => void clearCache()}
         >
-          <Trash2 size={15} /> {cacheBusy ? 'Очищаем…' : 'Очистить кэш'}
+          <Trash2 size={15} />
+          {cacheBusy ? t('Очищаем…') : t('Очистить кэш')}
         </button>
       </div>
     </section>

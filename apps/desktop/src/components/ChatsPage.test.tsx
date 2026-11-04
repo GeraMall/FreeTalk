@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ChatsPage, MessageList, type ChatItem, type MessageItem } from './ChatsPage';
 import { accountClient } from '../lib/api-client';
@@ -522,6 +522,35 @@ describe('MessageList rendering', () => {
     expect(queryByRole('dialog', { name: 'Фотография от Алексей' })).toBeNull();
   });
 
+  it('copies the full photo to the clipboard as an image from the message menu', async () => {
+    const png = new Blob(['photo'], { type: 'image/png' });
+    const fetchPhoto = vi.spyOn(accountClient, 'chatImageBlob').mockResolvedValue(png);
+    let clipboardImage: Promise<Blob> | undefined;
+    vi.stubGlobal(
+      'ClipboardItem',
+      class {
+        constructor(data: Record<string, Promise<Blob>>) {
+          clipboardImage = data['image/png'];
+        }
+      },
+    );
+    const write = vi.fn(async () => {});
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { write } } }));
+    try {
+      const photo = { ...message('8', 'friend', ''), kind: 'image' as const };
+      const screen = render(view('chat-copy-photo', [photo]));
+      fireEvent.contextMenu(screen.container.querySelector('.message-bubble-row')!);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Копировать фото' }));
+
+      await screen.findByText('Фото скопировано');
+      expect(fetchPhoto).toHaveBeenCalledWith(photo.id, 'full');
+      expect(write).toHaveBeenCalledOnce();
+      expect(await clipboardImage).toBe(png);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows a shimmer placeholder without loading text while a photo is fetched', () => {
     vi.spyOn(accountClient, 'chatImageBlob').mockReturnValue(new Promise(() => {}));
     const imageMessage: MessageItem = {
@@ -575,6 +604,53 @@ describe('Chat retention controls', () => {
     retentionHours: 720,
     currentUserRole: 'owner',
   };
+
+  it('uses the active call toolbar for pins, participant details and message search', () => {
+    const toolbar = document.createElement('div');
+    const revealChat = vi.fn();
+    const pinned = { ...message('1', 'self', 'План встречи'), pinned_at: '2026-08-26T10:00:00Z' };
+    const screen = render(
+      <ChatsPage
+        userId="self"
+        chats={[ownerChat]}
+        friends={[]}
+        activeChatId="chat-a"
+        joinedChatId="chat-a"
+        callToolbarTarget={toolbar}
+        onRevealCallChat={revealChat}
+        messages={[pinned]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />,
+    );
+    const actions = within(toolbar);
+    const pin = actions.getByRole('button', { name: 'Закреплённые сообщения' });
+    expect(pin.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(pin);
+    expect(pin.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(actions.getByRole('button', { name: 'Показать профиль' }));
+    expect(screen.container.querySelector('.group-members-panel')).toBeTruthy();
+
+    const search = actions.getByRole('textbox');
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: 'встречи' } });
+    expect(actions.getByText('1/1')).toBeTruthy();
+    expect(revealChat).toHaveBeenCalledTimes(3);
+  });
 
   it('lets the owner change retention and requires confirmation before clearing', async () => {
     const onUpdateRetention = vi.fn(async () => undefined);

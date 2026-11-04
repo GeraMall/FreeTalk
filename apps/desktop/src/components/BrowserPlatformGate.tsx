@@ -1,3 +1,5 @@
+import { REGISTRATION_LEGAL_VERSION, registrationLegalDocuments } from '@freetalk/protocol';
+import { t } from '../lib/app-language';
 import {
   ArrowLeft,
   Eye,
@@ -39,7 +41,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [accepted, setAccepted] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -106,6 +109,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
 
   const submitRegistration = async (event: FormEvent) => {
     event.preventDefault();
+    if (!acceptedTerms || !acknowledgedPrivacy) return;
     setBusy(true);
     setError('');
     try {
@@ -117,6 +121,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
         password,
         acceptedTerms: true,
         acceptedPrivacy: true,
+        legalVersion: REGISTRATION_LEGAL_VERSION,
         captchaToken: captchaToken || undefined,
       });
       setVerificationEmail(normalizedEmail);
@@ -179,20 +184,24 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
     <main className="browser-platform-gate">
       <section className="browser-platform-card" aria-labelledby="browser-platform-title">
         <img src={brandMark} alt="" className="browser-platform-logo" />
-        <p className="browser-platform-kicker">Закрытая мобильная бета</p>
-        <h1 id="browser-platform-title">Trlka на телефоне</h1>
+        <p className="browser-platform-kicker">{t('Закрытая мобильная бета')}</p>
+        <h1 id="browser-platform-title">{t('Trlka на телефоне')}</h1>
         {state === 'checking' ? (
-          <p className="browser-platform-status">Проверяем доступ этого аккаунта…</p>
+          <p className="browser-platform-status">{t('Проверяем доступ этого аккаунта…')}</p>
         ) : state === 'unavailable' ? (
           <div className="browser-platform-form" role="alert">
-            <p>Нет соединения с сервером. Ваш вход сохранён.</p>
+            <p>{t('Нет соединения с сервером. Ваш вход сохранён.')}</p>
             <button type="button" onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
-              Повторить подключение
+              {t('Повторить подключение')}
             </button>
           </div>
         ) : (
           <>
-            <div className="browser-platform-auth-switch" role="tablist" aria-label="Авторизация">
+            <div
+              className="browser-platform-auth-switch"
+              role="tablist"
+              aria-label={t('Авторизация')}
+            >
               <button
                 type="button"
                 role="tab"
@@ -204,7 +213,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   setError('');
                 }}
               >
-                Войти
+                {t('Войти')}
               </button>
               <button
                 type="button"
@@ -217,13 +226,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   setError('');
                 }}
               >
-                Регистрация
+                {t('Регистрация')}
               </button>
             </div>
             {mode === 'login' && !resetMode ? (
               <form className="browser-platform-form" onSubmit={submitLogin}>
                 <label>
-                  Почта или @username
+                  {t('Почта или @username')}
                   <input
                     autoFocus
                     value={login}
@@ -233,7 +242,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <div className="browser-platform-password-field">
-                  <label htmlFor="mobile-beta-password">Пароль</label>
+                  <label htmlFor="mobile-beta-password">{t('Пароль')}</label>
                   <div className="browser-platform-password">
                     <input
                       id="mobile-beta-password"
@@ -245,8 +254,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     />
                     <button
                       type="button"
-                      aria-label={passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}
-                      title={passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                      aria-label={passwordVisible ? t('Скрыть пароль') : t('Показать пароль')}
+                      data-tooltip={passwordVisible ? t('Скрыть пароль') : t('Показать пароль')}
                       onClick={() => setPasswordVisible((current) => !current)}
                     >
                       {passwordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
@@ -254,8 +263,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   </div>
                 </div>
                 <label>
-                  Ключ мобильной беты
-                  <span>Не нужен, если доступ уже привязан к аккаунту</span>
+                  {t('Ключ мобильной беты')}
+                  <span>{t('Не нужен, если доступ уже привязан к аккаунту')}</span>
                   <div className="browser-platform-key-input">
                     <KeyRound size={18} aria-hidden="true" />
                     <input
@@ -270,7 +279,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   </div>
                 </label>
                 <button type="submit" disabled={busy || !login || !password}>
-                  <LogIn size={18} /> {busy ? 'Проверяем…' : 'Войти'}
+                  <LogIn size={18} />
+                  {busy ? t('Проверяем…') : t('Войти')}
                 </button>
                 <button
                   type="button"
@@ -280,13 +290,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     setError('');
                   }}
                 >
-                  Забыли пароль?
+                  {t('Забыли пароль?')}
                 </button>
               </form>
             ) : mode === 'login' ? (
               <form className="browser-platform-form" onSubmit={submitPasswordReset}>
                 <label>
-                  Почта аккаунта
+                  {t('Почта аккаунта')}
                   <input
                     type="email"
                     value={login}
@@ -298,7 +308,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 {resetSent ? (
                   <>
                     <label>
-                      Шестизначный код из письма
+                      {t('Шестизначный код из письма')}
                       <input
                         value={resetCode}
                         inputMode="numeric"
@@ -311,7 +321,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                       />
                     </label>
                     <label>
-                      Новый пароль
+                      {t('Новый пароль')}
                       <input
                         type="password"
                         value={resetPassword}
@@ -323,7 +333,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                       type="submit"
                       disabled={busy || resetCode.length !== 6 || !resetPassword}
                     >
-                      Сохранить новый пароль
+                      {t('Сохранить новый пароль')}
                     </button>
                   </>
                 ) : (
@@ -332,7 +342,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     disabled={busy || !login.includes('@')}
                     onClick={sendResetCode}
                   >
-                    <MailCheck size={18} /> {busy ? 'Отправляем…' : 'Получить код'}
+                    <MailCheck size={18} />
+                    {busy ? t('Отправляем…') : t('Получить код')}
                   </button>
                 )}
                 <button
@@ -344,16 +355,16 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     setError('');
                   }}
                 >
-                  <ArrowLeft size={15} /> Вернуться ко входу
+                  <ArrowLeft size={15} /> {t('Вернуться ко входу')}
                 </button>
               </form>
             ) : verificationEmail ? (
               <form className="browser-platform-form" onSubmit={verifyRegistration}>
                 <p className="browser-platform-verification-copy">
-                  Мы отправили шестизначный код на <strong>{verificationEmail}</strong>
+                  {t('Мы отправили шестизначный код на')} <strong>{verificationEmail}</strong>
                 </p>
                 <label>
-                  Код подтверждения
+                  {t('Код подтверждения')}
                   <input
                     autoFocus
                     value={verificationCode}
@@ -367,13 +378,14 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <button type="submit" disabled={busy || verificationCode.length !== 6}>
-                  <MailCheck size={18} /> {busy ? 'Проверяем…' : 'Подтвердить и войти'}
+                  <MailCheck size={18} />
+                  {busy ? t('Проверяем…') : t('Подтвердить и войти')}
                 </button>
               </form>
             ) : (
               <form className="browser-platform-form" onSubmit={submitRegistration}>
                 <label>
-                  Почта
+                  {t('Почта')}
                   <input
                     type="email"
                     value={email}
@@ -382,7 +394,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <label>
-                  Уникальный @username
+                  {t('Уникальный @username')}
                   <input
                     value={username}
                     autoComplete="username"
@@ -391,14 +403,14 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <label>
-                  Отображаемое имя
+                  {t('Отображаемое имя')}
                   <input
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                   />
                 </label>
                 <label>
-                  Пароль
+                  {t('Пароль')}
                   <input
                     type="password"
                     value={password}
@@ -407,7 +419,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <label>
-                  Ключ мобильной беты
+                  {t('Ключ мобильной беты')}
                   <div className="browser-platform-key-input">
                     <KeyRound size={18} aria-hidden="true" />
                     <input
@@ -424,11 +436,29 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 <label className="browser-platform-consent">
                   <input
                     type="checkbox"
-                    checked={accepted}
-                    onChange={(event) => setAccepted(event.target.checked)}
+                    checked={acceptedTerms}
+                    onChange={(event) => setAcceptedTerms(event.target.checked)}
                   />
-                  <span>Принимаю пользовательское соглашение и политику конфиденциальности</span>
+                  <span>{t('Я принимаю Пользовательское соглашение')}</span>
                 </label>
+                <label className="browser-platform-consent">
+                  <input
+                    type="checkbox"
+                    checked={acknowledgedPrivacy}
+                    onChange={(event) => setAcknowledgedPrivacy(event.target.checked)}
+                  />
+                  <span>{t('Я ознакомился с политикой конфиденциальности')}</span>
+                </label>
+                {Object.values(registrationLegalDocuments).map(({ title, paragraphs }) => (
+                  <details className="browser-registration-document" key={title}>
+                    <summary>{title}</summary>
+                    <div>
+                      {paragraphs.map((paragraph) => (
+                        <p key={paragraph}>{paragraph}</p>
+                      ))}
+                    </div>
+                  </details>
+                ))}
                 <button
                   type="submit"
                   disabled={
@@ -438,10 +468,12 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     !displayName.trim() ||
                     !password ||
                     !key.trim() ||
-                    !accepted
+                    !acceptedTerms ||
+                    !acknowledgedPrivacy
                   }
                 >
-                  <UserPlus size={18} /> {busy ? 'Создаём…' : 'Зарегистрироваться'}
+                  <UserPlus size={18} />
+                  {busy ? t('Создаём…') : t('Зарегистрироваться')}
                 </button>
               </form>
             )}
@@ -453,12 +485,14 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
             <div className="browser-platform-note">
               <ShieldCheck size={18} aria-hidden="true" />
               <span>
-                Один ключ активирует один аккаунт. После этого можно входить с других телефонов.
+                {t(
+                  'Один ключ активирует один аккаунт. После этого можно входить с других телефонов.',
+                )}
               </span>
             </div>
           </>
         )}
-        <a href="/">Вернуться на сайт</a>
+        <a href="/">{t('Вернуться на сайт')}</a>
       </section>
     </main>
   );

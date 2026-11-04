@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -87,12 +88,11 @@ export function CallPopoutPlaceholder() {
         <div
           className="account-sidebar-resizer"
           role="separator"
-          aria-label="Изменить ширину боковой панели"
+          aria-label={t('Изменить ширину боковой панели')}
           aria-orientation="vertical"
           aria-valuemin={ACCOUNT_SIDEBAR_MIN_WIDTH}
           aria-valuemax={ACCOUNT_SIDEBAR_MAX_WIDTH}
           aria-valuenow={Math.round(sidebarWidth)}
-          title="Потяните для изменения ширины. Двойной щелчок — размер по умолчанию"
           tabIndex={0}
           onDoubleClick={resetWidth}
           onPointerDown={startResize}
@@ -105,9 +105,9 @@ export function CallPopoutPlaceholder() {
           <div className="call-placeholder-toolbar">
             <span>
               <PictureInPicture2 aria-hidden="true" />
-              Звонок открыт в отдельном окне
+              {t('Звонок открыт в отдельном окне')}
             </span>
-            <button onClick={restoreCall}>Вернуть звонок</button>
+            <button onClick={restoreCall}>{t('Вернуть звонок')}</button>
           </div>
           {notice && (
             <button className="call-placeholder-notice" onClick={() => setNotice('')}>
@@ -137,9 +137,9 @@ export function CallPopoutPlaceholder() {
     <main className="call-popout-placeholder">
       <div>
         <PictureInPicture2 size={30} aria-hidden="true" />
-        <strong>Вы вывели плеер в отдельное окно</strong>
-        <small>Звонок продолжается без переподключения.</small>
-        <button onClick={restoreCall}>Вернуть в приложение</button>
+        <strong>{t('Вы вывели плеер в отдельное окно')}</strong>
+        <small>{t('Звонок продолжается без переподключения.')}</small>
+        <button onClick={restoreCall}>{t('Вернуть в приложение')}</button>
       </div>
     </main>
   );

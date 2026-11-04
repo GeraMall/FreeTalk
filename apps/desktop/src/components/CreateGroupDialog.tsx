@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { Check, Search, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -84,12 +85,12 @@ export function CreateGroupDialog({
       >
         <header>
           <div>
-            <h2 id="create-group-title">Новый групповой чат</h2>
-            <p>Выберите друзей, которых хотите добавить в группу.</p>
+            <h2 id="create-group-title">{t('Новый групповой чат')}</h2>
+            <p>{t('Выберите друзей, которых хотите добавить в группу.')}</p>
           </div>
           <button
             type="button"
-            aria-label="Закрыть создание группы"
+            aria-label={t('Закрыть создание группы')}
             disabled={busy}
             onClick={onClose}
           >
@@ -98,31 +99,31 @@ export function CreateGroupDialog({
         </header>
 
         <label className="create-group-field">
-          <span>Название группы</span>
+          <span>{t('Название группы')}</span>
           <input
             autoFocus
             value={title}
             maxLength={80}
-            aria-label="Название группы"
-            placeholder="Название группы"
+            aria-label={t('Название группы')}
+            placeholder={t('Название группы')}
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
 
         <label className="create-group-field create-group-search">
-          <span>Участники</span>
+          <span>{t('Участники')}</span>
           <span className="create-group-search-control">
             <Search aria-hidden="true" />
             <input
               value={search}
-              aria-label="Поиск участников"
-              placeholder="Поиск участников"
+              aria-label={t('Поиск участников')}
+              placeholder={t('Поиск участников')}
               onChange={(event) => setSearch(event.target.value)}
             />
             {search ? (
               <button
                 type="button"
-                aria-label="Очистить поиск участников"
+                aria-label={t('Очистить поиск участников')}
                 onClick={() => setSearch('')}
               >
                 <X />
@@ -131,7 +132,7 @@ export function CreateGroupDialog({
           </span>
         </label>
 
-        <div className="create-group-friends" aria-label="Список друзей">
+        <div className="create-group-friends" aria-label={t('Список друзей')}>
           {visibleFriends.map((friend) => {
             const selected = members.includes(friend.id);
             return (
@@ -150,7 +151,7 @@ export function CreateGroupDialog({
                 </span>
                 <input
                   type="checkbox"
-                  aria-label={`Добавить ${friend.displayName}`}
+                  aria-label={t('Добавить {p0}', { p0: friend.displayName })}
                   checked={selected}
                   onChange={(event) =>
                     setMembers((current) =>
@@ -169,31 +170,35 @@ export function CreateGroupDialog({
           {friends.length === 0 ? (
             <div className="create-group-empty">
               <Users />
-              <strong>Пока некого добавить</strong>
-              <small>Сначала добавьте друзей</small>
+              <strong>{t('Пока некого добавить')}</strong>
+              <small>{t('Сначала добавьте друзей')}</small>
             </div>
           ) : visibleFriends.length === 0 ? (
             <div className="create-group-empty">
               <Search />
-              <strong>Никого не найдено</strong>
-              <small>Попробуйте другой запрос</small>
+              <strong>{t('Никого не найдено')}</strong>
+              <small>{t('Попробуйте другой запрос')}</small>
             </div>
           ) : null}
         </div>
 
         {error ? <p className="create-group-error">{error}</p> : null}
         <footer>
-          <span>{members.length > 0 ? `Выбрано: ${members.length}` : 'Выберите участников'}</span>
+          <span>
+            {members.length > 0
+              ? t('Выбрано: {p0}', { p0: members.length })
+              : t('Выберите участников')}
+          </span>
           <div>
             <button type="button" className="secondary" disabled={busy} onClick={onClose}>
-              Отмена
+              {t('Отмена')}
             </button>
             <button
               type="button"
               disabled={busy || !title.trim() || members.length === 0}
               onClick={() => void create()}
             >
-              {busy ? 'Создаём…' : 'Создать группу'}
+              {busy ? t('Создаём…') : t('Создать группу')}
             </button>
           </div>
         </footer>

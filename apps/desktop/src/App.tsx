@@ -1,3 +1,4 @@
+import { t } from './lib/app-language';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, PhoneCall, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -18,7 +19,13 @@ import { PeerManager } from './lib/peer-manager';
 import { RemoteAudio } from './lib/remote-audio';
 import { playMicrophoneToggleSound } from './lib/microphone-sounds';
 import { generateRoomCode, parseRoomCode } from './lib/room-code';
-import { defaultSettings, loadSettings, saveSettings, type LocalSettings } from './lib/settings';
+import {
+  CHAT_TEXT_BASE_SCALE,
+  defaultSettings,
+  loadSettings,
+  saveSettings,
+  type LocalSettings,
+} from './lib/settings';
 import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { ChatRealtimeClient } from './lib/chat-realtime';
@@ -184,6 +191,7 @@ export function App() {
   const pendingChatRing = useRef(false);
   const [callTitle, setCallTitle] = useState('Комната Trlka');
   const [deafened, setDeafened] = useState(false);
+  const [callToolbarTarget, setCallToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [conversationHidden, setConversationHidden] = useState(false);
   const [mobileCallMinimized, setMobileCallMinimized] = useState(false);
   const [callExiting, setCallExiting] = useState(false);
@@ -321,7 +329,10 @@ export function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--ft-chat-text-scale', String(settings.chatTextScale));
+    root.style.setProperty(
+      '--ft-chat-text-scale',
+      String(settings.chatTextScale * CHAT_TEXT_BASE_SCALE),
+    );
     root.style.setProperty(
       '--ft-chat-wallpaper',
       settings.chatWallpaperDataUrl ? `url("${settings.chatWallpaperDataUrl}")` : 'none',
@@ -1428,17 +1439,21 @@ export function App() {
     }
   };
 
+  const completeAccountLogin = async (user: AccountUser) => {
+    await warmInitialAccountMedia(user);
+    setAccountUser(user);
+    setName(user.displayName);
+    updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
+    setGuestMode(false);
+    setCaptchaRequired(false);
+  };
+
   const loginAccount = async (login: string, password: string, captchaToken?: string) => {
     setAuthBusy(true);
     setError('');
     try {
       const user = await accountClient.login(login, password, captchaToken);
-      await warmInitialAccountMedia(user);
-      setAccountUser(user);
-      setName(user.displayName);
-      updateSettings({ displayName: user.displayName, avatarDataUrl: user.avatarUrl ?? '' });
-      setGuestMode(false);
-      setCaptchaRequired(false);
+      await completeAccountLogin(user);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'CAPTCHA_REQUIRED')
         setCaptchaRequired(true);
@@ -1994,17 +2009,17 @@ export function App() {
     return (
       <>
         {!accountReady ? (
-          <main className="account-loading" aria-label="Восстанавливаем сессию">
+          <main className="account-loading" aria-label={t('Восстанавливаем сессию')}>
             <img className="account-loading-mascot" src={mascot} alt="" aria-hidden="true" />
           </main>
         ) : restoreFailed ? (
           <main className="browser-platform-gate">
             <section className="browser-platform-card" role="alert">
-              <h1>Нет соединения с сервером</h1>
-              <p>Ваш вход сохранён. Проверьте интернет и повторите подключение.</p>
+              <h1>{t('Нет соединения с сервером')}</h1>
+              <p>{t('Ваш вход сохранён. Проверьте интернет и повторите подключение.')}</p>
               <div className="browser-platform-form">
                 <button type="button" onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
-                  Повторить подключение
+                  {t('Повторить подключение')}
                 </button>
               </div>
             </section>
@@ -2037,6 +2052,7 @@ export function App() {
             savedDisplayName={name}
             initialRoomCode={pendingInviteRoom}
             onLogin={(login, password, captcha) => void loginAccount(login, password, captcha)}
+            onQrLogin={completeAccountLogin}
             onRegister={registerAccount}
             onResendVerification={resendVerificationAccount}
             onVerifyEmail={verifyEmailAccount}
@@ -2078,6 +2094,9 @@ export function App() {
       conversation={Boolean(callChatId)}
       conversationType={callConversation?.type}
       conversationHidden={conversationHidden || mobileFocusedCall}
+      onCallToolbarTarget={
+        conversationWorkspaceActive && !mobileLayout ? setCallToolbarTarget : undefined
+      }
       onConversationToggle={() => setConversationHidden((value) => !value)}
       cameraPreviewRequest={cameraPreviewRequest}
       embedded={Boolean(accountUser)}
@@ -2171,12 +2190,11 @@ export function App() {
           <div
             className="account-sidebar-resizer"
             role="separator"
-            aria-label="Изменить ширину боковой панели"
+            aria-label={t('Изменить ширину боковой панели')}
             aria-orientation="vertical"
             aria-valuemin={ACCOUNT_SIDEBAR_MIN_WIDTH}
             aria-valuemax={ACCOUNT_SIDEBAR_MAX_WIDTH}
             aria-valuenow={Math.round(roomSidebarWidth)}
-            title="Потяните для изменения ширины. Двойной щелчок — размер по умолчанию"
             tabIndex={0}
             onDoubleClick={resetRoomSidebarWidth}
             onPointerDown={startRoomSidebarResize}
@@ -2195,13 +2213,20 @@ export function App() {
                 data-quality={mobileCallQuality}
                 aria-label={
                   mobileCallQuality === 'connecting'
-                    ? 'Перейти к звонку. Подключение'
-                    : `Перейти к звонку. Качество связи: ${mobileCallQuality === 'good' ? 'хорошее' : mobileCallQuality === 'fair' ? 'среднее' : 'плохое'}`
+                    ? t('Перейти к звонку. Подключение')
+                    : t('Перейти к звонку. Качество связи: {p0}', {
+                        p0:
+                          mobileCallQuality === 'good'
+                            ? 'хорошее'
+                            : mobileCallQuality === 'fair'
+                              ? 'среднее'
+                              : 'плохое',
+                      })
                 }
                 onClick={() => setMobileCallMinimized(false)}
               >
                 <PhoneCall />
-                <span>Перейти к звонку</span>
+                <span>{t('Перейти к звонку')}</span>
               </button>
             ) : null}
             <div
@@ -2211,7 +2236,7 @@ export function App() {
                 <button
                   type="button"
                   className="mobile-call-minimize-button"
-                  aria-label="Свернуть звонок"
+                  aria-label={t('Свернуть звонок')}
                   onClick={() => {
                     setMobileCallMinimized(true);
                     setRoomDestination(callChatId ? 'chats' : 'home');
@@ -2231,7 +2256,7 @@ export function App() {
                 <div
                   className="conversation-call-resizer"
                   role="separator"
-                  aria-label="Изменить высоту звонка"
+                  aria-label={t('Изменить высоту звонка')}
                   aria-orientation="horizontal"
                   tabIndex={0}
                   onPointerDown={(event) => {
@@ -2283,6 +2308,10 @@ export function App() {
               <HomeView
                 initialChatId={callChatId}
                 joinedChatId={callChatId}
+                callToolbarTarget={
+                  conversationWorkspaceActive && !mobileLayout ? callToolbarTarget : null
+                }
+                onRevealCallChat={() => setConversationHidden(false)}
                 joinedRoomId={roomId}
                 embedded
                 page={roomDestination === 'room' ? 'home' : (roomDestination as AccountPage)}
@@ -2344,14 +2373,15 @@ export function App() {
             aria-labelledby="locked-feature-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="locked-feature-title">Эта функция доступна после регистрации</h2>
+            <h2 id="locked-feature-title">{t('Эта функция доступна после регистрации')}</h2>
             <p>
-              Создайте аккаунт, чтобы включать камеру и демонстрацию экрана без гостевых
-              ограничений.
+              {t(
+                'Создайте аккаунт, чтобы включать камеру и демонстрацию экрана без гостевых ограничений.',
+              )}
             </p>
             <div>
               <button className="secondary" onClick={() => setLockedFeatureOpen(false)}>
-                Остаться в комнате
+                {t('Остаться в комнате')}
               </button>
               <button
                 className="primary"
@@ -2360,7 +2390,7 @@ export function App() {
                   cleanup();
                 }}
               >
-                Создать аккаунт
+                {t('Создать аккаунт')}
               </button>
             </div>
           </section>
@@ -2383,7 +2413,7 @@ function AppToast({
   return (
     <div className={`toast ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>
       <span>{message}</span>
-      <button aria-label="Закрыть сообщение" onClick={onClose}>
+      <button aria-label={t('Закрыть сообщение')} onClick={onClose}>
         <X size={16} />
       </button>
     </div>

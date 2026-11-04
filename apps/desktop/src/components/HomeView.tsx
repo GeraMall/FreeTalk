@@ -1,3 +1,4 @@
+import { appLanguage, t } from '../lib/app-language';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Check,
@@ -86,6 +87,8 @@ export function HomeView({
   callDock,
   initialChatId,
   joinedChatId,
+  callToolbarTarget,
+  onRevealCallChat,
   joinedRoomId,
   user,
   busy,
@@ -111,6 +114,8 @@ export function HomeView({
   callDock?: CallDockState;
   initialChatId?: string;
   joinedChatId?: string;
+  callToolbarTarget?: HTMLElement | null;
+  onRevealCallChat?(): void;
   joinedRoomId?: string;
   onSettings(tab?: 'profile'): void;
   onLogout(): void;
@@ -823,14 +828,27 @@ export function HomeView({
     }
   };
 
-  const reactToMessage = async (messageId: string, emoji: string | null) => {
+  const reactToMessage = async (messageId: string, emoji: string, remove = false) => {
     if (!activeChat) return false;
     const chatId = activeChat;
     try {
-      const result = await accountClient.request<{ reactions: MessageReaction[] }>(
-        `/v1/messages/${messageId}/reaction`,
-        { method: 'PUT', body: JSON.stringify({ emoji }) },
-      );
+      const result = await accountClient
+        .request<{ reactions: MessageReaction[] }>(`/v1/messages/${messageId}/reactions`, {
+          method: 'PUT',
+          body: JSON.stringify({ emoji, remove }),
+        })
+        .catch((caught: unknown) => {
+          if (!(
+            caught instanceof ApiError &&
+            caught.status === 404 &&
+            caught.code === 'REQUEST_FAILED'
+          ))
+            throw caught;
+          return accountClient.request<{ reactions: MessageReaction[] }>(
+            `/v1/messages/${messageId}/reaction`,
+            { method: 'PUT', body: JSON.stringify({ emoji: remove ? null : emoji }) },
+          );
+        });
       if (activeChatRef.current === chatId)
         setMessages((current) =>
           current.map((message) =>
@@ -839,7 +857,13 @@ export function HomeView({
         );
       return true;
     } catch (caught) {
-      setLocalError(caught instanceof Error ? caught.message : 'Не удалось поставить реакцию');
+      setLocalError(
+        caught instanceof ApiError && caught.code === 'REACTION_LIMIT_REACHED'
+          ? t('На сообщение можно поставить до трёх реакций.')
+          : caught instanceof Error
+            ? caught.message
+            : 'Не удалось поставить реакцию',
+      );
       return false;
     }
   };
@@ -1308,12 +1332,11 @@ export function HomeView({
         <div
           className="account-sidebar-resizer"
           role="separator"
-          aria-label="Изменить ширину боковой панели"
+          aria-label={t('Изменить ширину боковой панели')}
           aria-orientation="vertical"
           aria-valuemin={ACCOUNT_SIDEBAR_MIN_WIDTH}
           aria-valuemax={ACCOUNT_SIDEBAR_MAX_WIDTH}
           aria-valuenow={Math.round(accountSidebarWidth)}
-          title="Потяните для изменения ширины. Двойной щелчок — размер по умолчанию"
           tabIndex={0}
           onDoubleClick={resetAccountSidebarWidth}
           onPointerDown={startAccountSidebarResize}
@@ -1326,7 +1349,7 @@ export function HomeView({
       {!embedded && mobileLayout && !(page === 'chats' && activeChat) ? (
         <header className="mobile-app-header">
           <BrandLogo variant="compact" />
-          <button type="button" aria-label="Открыть настройки" onClick={() => onSettings()}>
+          <button type="button" aria-label={t('Открыть настройки')} onClick={() => onSettings()}>
             {user.avatarUrl ? (
               <CachedMediaImage src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
             ) : (
@@ -1350,38 +1373,39 @@ export function HomeView({
           <div className="home-dashboard">
             <section className="home-hero">
               <img className="home-hero-watermark" src={mascot} alt="" aria-hidden="true" />
-              <p className="eyebrow">СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!</p>
-              <h1>Добрый вечер, {user.displayName}</h1>
-              <p>Создайте приватную комнату или войдите по приглашению.</p>
+              <p className="eyebrow">{t('СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!')}</p>
+              <h1>{t('Добрый вечер, {name}', { name: user.displayName })}</h1>
+              <p>{t('Создайте приватную комнату или войдите по приглашению.')}</p>
               <div className="home-room-actions">
                 <button
                   className="primary home-create"
                   disabled={busy}
                   onClick={() => onCreateRoom()}
                 >
-                  <DoorOpen /> Создать комнату
+                  <DoorOpen />
+                  {t('Создать комнату')}
                 </button>
                 <div className="join-row">
                   <input
                     value={roomCode}
-                    placeholder="Код или ссылка комнаты"
+                    placeholder={t('Код или ссылка комнаты')}
                     onChange={(event) => setRoomCode(event.target.value)}
                   />
                   <button disabled={busy || !roomCode} onClick={() => onJoinRoom(roomCode)}>
-                    Войти
+                    {t('Войти')}
                   </button>
                 </div>
               </div>
             </section>
-            <div className="home-proof-row" aria-label="Преимущества Trlka">
+            <div className="home-proof-row" aria-label={t('Преимущества Trlka')}>
               <span>
-                <Users size={17} /> До {ROOM_MAX_PARTICIPANTS} участников
+                <Users size={17} /> {t('До {count} участников', { count: ROOM_MAX_PARTICIPANTS })}
               </span>
               <span>
-                <ShieldCheck size={17} /> Приватный WebRTC
+                <ShieldCheck size={17} /> {t('Приватный WebRTC')}
               </span>
               <span>
-                <Clock3 size={17} /> Без записи разговоров
+                <Clock3 size={17} /> {t('Без записи разговоров')}
               </span>
             </div>
             <RecentRooms
@@ -1502,6 +1526,8 @@ export function HomeView({
         {page === 'chats' && activeChat !== SERVICE_CHAT_ID && (
           <ChatsPage
             joinedChatId={joinedChatId}
+            callToolbarTarget={callToolbarTarget}
+            onRevealCallChat={onRevealCallChat}
             joinedRoomId={joinedRoomId}
             externalSidebar={!mobileLayout}
             mobile={mobileLayout}
@@ -1568,8 +1594,10 @@ export function HomeView({
   );
 }
 
-const historyMonthFormat = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' });
-const historyCallPlural = new Intl.PluralRules('ru-RU');
+const historyMonthFormat = new Intl.DateTimeFormat(appLanguage(), {
+  month: 'long',
+  year: 'numeric',
+});
 
 function historyMonth(date: Date) {
   return date.getFullYear() * 12 + date.getMonth();
@@ -1582,18 +1610,18 @@ function historyMonthLabel(month: number) {
 
 function historySummary(calls: CallItem[]) {
   const count = calls.length;
-  const plural = historyCallPlural.select(count);
+  const plural = new Intl.PluralRules(appLanguage()).select(count);
   const callsLabel = plural === 'one' ? 'звонок' : plural === 'few' ? 'звонка' : 'звонков';
   const seconds = calls.reduce((total, call) => total + Math.max(0, call.duration_seconds), 0);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   const duration = hours
-    ? [`${hours} ч`, remainder ? `${remainder} мин` : ''].filter(Boolean).join(' ')
+    ? [`${hours} ${t('ч')}`, remainder ? `${remainder} ${t('мин')}` : ''].filter(Boolean).join(' ')
     : minutes || !seconds
-      ? `${minutes} мин`
-      : `${seconds} сек`;
-  return `${count} ${callsLabel} · ${duration}`;
+      ? `${minutes} ${t('мин')}`
+      : `${seconds} ${t('сек')}`;
+  return `${count} ${t(callsLabel)} · ${duration}`;
 }
 
 function CallHistory({
@@ -1641,10 +1669,10 @@ function CallHistory({
 
   return (
     <div>
-      <Header title="История звонков" subtitle="Содержание разговоров не сохраняется" />
+      <Header title={t('История звонков')} subtitle={t('Содержание разговоров не сохраняется')} />
       <div className="history-filter">
         <div className="history-filter-field">
-          <span>Период</span>
+          <span>{t('Период')}</span>
           <details
             className="history-period-menu"
             ref={periodMenuRef}
@@ -1660,11 +1688,11 @@ function CallHistory({
               }
             }}
           >
-            <summary ref={periodTriggerRef} aria-label="Период звонков">
-              {selectedPeriod === 'all' ? 'Все' : historyMonthLabel(Number(selectedPeriod))}
+            <summary ref={periodTriggerRef} aria-label={t('Период звонков')}>
+              {selectedPeriod === 'all' ? t('Все') : historyMonthLabel(Number(selectedPeriod))}
               <ChevronDown size={15} aria-hidden="true" />
             </summary>
-            <div className="history-period-options" role="group" aria-label="Периоды звонков">
+            <div className="history-period-options" role="group" aria-label={t('Периоды звонков')}>
               {[
                 { value: 'all', label: 'Все' },
                 ...months.map((month) => ({
@@ -1688,10 +1716,10 @@ function CallHistory({
             </div>
           </details>
         </div>
-        <p aria-live="polite">{loading ? 'Загружаем звонки…' : historySummary(visibleCalls)}</p>
+        <p aria-live="polite">{loading ? t('Загружаем звонки…') : historySummary(visibleCalls)}</p>
       </div>
       {history.length >= 100 && (
-        <p className="history-limit">Статистика по последним 100 звонкам.</p>
+        <p className="history-limit">{t('Статистика по последним 100 звонкам.')}</p>
       )}
       {visibleCalls.length > 0 ? (
         <div className="history-list">
@@ -1716,9 +1744,9 @@ function CallHistory({
             <History size={24} />
           </span>
           <strong>
-            {selectedPeriod === 'all' ? 'История звонков пуста' : 'За этот месяц звонков нет'}
+            {selectedPeriod === 'all' ? t('История звонков пуста') : t('За этот месяц звонков нет')}
           </strong>
-          <p>Здесь будут отображаться только время, длительность и участники звонков.</p>
+          <p>{t('Здесь будут отображаться только время, длительность и участники звонков.')}</p>
         </div>
       ) : null}
     </div>
@@ -1744,21 +1772,21 @@ function HistoryCallCard({ call, onCallAgain }: { call: CallItem; onCallAgain():
         {hiddenCount > 0 && <span className="history-avatar-overflow">+{hiddenCount}</span>}
       </span>
       <span className="history-call-copy">
-        <strong>{new Date(call.started_at).toLocaleString('ru-RU')}</strong>
+        <strong>{new Date(call.started_at).toLocaleString(appLanguage())}</strong>
         <small>
           {participants.length
             ? participants.map((participant) => participant.displayName).join(', ')
-            : 'Участники не указаны'}{' '}
-          · {Math.max(1, Math.round(call.duration_seconds / 60))} мин
+            : t('Участники не указаны')}{' '}
+          · {Math.max(1, Math.round(call.duration_seconds / 60))} {t('мин')}
         </small>
       </span>
       <button
         className="history-call-again-button"
-        title="Создать новую комнату"
+        data-tooltip={t('Создать новую комнату')}
         onClick={onCallAgain}
       >
         <PhoneCall size={16} aria-hidden="true" />
-        Позвонить снова
+        {t('Позвонить снова')}
       </button>
     </article>
   );
@@ -1783,13 +1811,13 @@ export function RecentRooms({
     <section className="recent-rooms" aria-labelledby="recent-rooms-title" aria-busy={loading}>
       <header>
         <div>
-          <p>ВАШИ ЗВОНКИ</p>
-          <h2 id="recent-rooms-title">Недавние комнаты</h2>
+          <p>{t('ВАШИ ЗВОНКИ')}</p>
+          <h2 id="recent-rooms-title">{t('Недавние комнаты')}</h2>
         </div>
-        <span>Последние {Math.min(4, recent.length) || '—'}</span>
+        <span>{t('Последние {count}', { count: Math.min(4, recent.length) || '—' })}</span>
       </header>
       {loading ? (
-        <div className="recent-room-grid recent-room-loading" aria-label="Загружаем историю">
+        <div className="recent-room-grid recent-room-loading" aria-label={t('Загружаем историю')}>
           <i />
           <i />
         </div>
@@ -1800,9 +1828,9 @@ export function RecentRooms({
             const others = participants.filter((participant) => participant.userId !== selfId);
             const title = others.length
               ? others.length === 1
-                ? `Комната с ${others[0].displayName}`
-                : `Групповой звонок · ${others.length + 1}`
-              : 'Приватная комната';
+                ? t('Комната с {name}', { name: others[0].displayName })
+                : t('Групповой звонок · {count}', { count: others.length + 1 })
+              : t('Приватная комната');
             return (
               <article
                 className="recent-room-card"
@@ -1832,12 +1860,11 @@ export function RecentRooms({
                 <span className="recent-room-copy">
                   <strong>{title}</strong>
                   <small>
-                    {formatRecentDate(call.started_at)} ·{' '}
-                    {formatCallDuration(call.duration_seconds)}
+                    {formatRecentDate(call.started_at)} ·{formatCallDuration(call.duration_seconds)}
                   </small>
                 </span>
                 <button onClick={onCreateAgain}>
-                  <PhoneCall size={15} /> Создать снова
+                  <PhoneCall size={15} /> {t('Создать снова')}
                 </button>
               </article>
             );
@@ -1849,8 +1876,8 @@ export function RecentRooms({
             <History size={20} />
           </span>
           <div>
-            <strong>Недавних комнат пока нет</strong>
-            <p>Создайте первую комнату — она появится здесь.</p>
+            <strong>{t('Недавних комнат пока нет')}</strong>
+            <p>{t('Создайте первую комнату — она появится здесь.')}</p>
           </div>
         </div>
       )}
@@ -1981,11 +2008,11 @@ function formatRecentDate(startedAt: string) {
   const date = new Date(startedAt);
   const period = historyPeriod(startedAt);
   if (period === 'Сегодня' || period === 'Вчера')
-    return `${period}, ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
-  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+    return `${t(period)}, ${date.toLocaleTimeString(appLanguage(), { hour: '2-digit', minute: '2-digit' })}`;
+  return date.toLocaleDateString(appLanguage(), { day: '2-digit', month: 'short' });
 }
 
 function formatCallDuration(seconds: number) {
-  if (seconds < 60) return 'меньше минуты';
-  return `${Math.max(1, Math.round(seconds / 60))} мин`;
+  if (seconds < 60) return t('меньше минуты');
+  return `${Math.max(1, Math.round(seconds / 60))} ${t('мин')}`;
 }

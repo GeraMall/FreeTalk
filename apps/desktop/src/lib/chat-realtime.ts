@@ -93,10 +93,15 @@ export class ChatRealtimeClient {
           // Ignore malformed server data without breaking subsequent realtime events.
         }
       });
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         window.clearTimeout(connectTimeout);
         if (this.socket === socket) this.socket = undefined;
         this.updateSelfPresence('offline');
+        if (!this.stopped && event.code === 4401 && event.reason === 'Session ended') {
+          this.stop();
+          window.location.reload();
+          return;
+        }
         this.scheduleReconnect();
       });
     } catch {

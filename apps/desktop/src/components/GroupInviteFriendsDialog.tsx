@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { Check, Search, UserPlus, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -96,13 +97,13 @@ export function GroupInviteFriendsDialog({
           </span>
           <div>
             <h2 id="group-invite-title">
-              {createGroup ? 'Создать группу' : 'Пригласить в группу'}
+              {createGroup ? t('Создать группу') : t('Пригласить в группу')}
             </h2>
-            <p>{createGroup ? 'Выберите друзей для нового чата' : groupTitle}</p>
+            <p>{createGroup ? t('Выберите друзей для нового чата') : groupTitle}</p>
           </div>
           <button
             type="button"
-            aria-label="Закрыть приглашение друзей"
+            aria-label={t('Закрыть приглашение друзей')}
             onClick={onClose}
             disabled={busy}
           >
@@ -115,13 +116,13 @@ export function GroupInviteFriendsDialog({
           <input
             autoFocus
             value={search}
-            aria-label="Поиск друзей для группы"
-            placeholder="Найти друга"
+            aria-label={t('Поиск друзей для группы')}
+            placeholder={t('Найти друга')}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
 
-        <div className="call-friends-list" aria-label="Друзья для приглашения в группу">
+        <div className="call-friends-list" aria-label={t('Друзья для приглашения в группу')}>
           {visibleFriends.map((friend) => {
             const alreadyMember = members.has(friend.id);
             const checked = alreadyMember || selected.includes(friend.id);
@@ -142,7 +143,7 @@ export function GroupInviteFriendsDialog({
                   <strong>{friend.displayName}</strong>
                   <small>
                     {alreadyMember
-                      ? 'Уже в группе'
+                      ? t('Уже в группе')
                       : `@${friend.username} · ${presenceLabel(friend.presence)}`}
                   </small>
                 </span>
@@ -152,8 +153,8 @@ export function GroupInviteFriendsDialog({
                   disabled={alreadyMember || busy}
                   aria-label={
                     alreadyMember
-                      ? `${friend.displayName} уже в группе`
-                      : `Пригласить ${friend.displayName}`
+                      ? t('{p0} уже в группе', { p0: friend.displayName })
+                      : t('Пригласить {p0}', { p0: friend.displayName })
                   }
                   onChange={(event) =>
                     setSelected((current) =>
@@ -172,27 +173,29 @@ export function GroupInviteFriendsDialog({
           {friends.length === 0 ? (
             <div className="call-friends-empty">
               <Users />
-              <strong>Пока некого пригласить</strong>
-              <small>Сначала добавьте друзей</small>
+              <strong>{t('Пока некого пригласить')}</strong>
+              <small>{t('Сначала добавьте друзей')}</small>
             </div>
           ) : availableFriends.length === 0 ? (
             <div className="call-friends-empty">
               <Check />
-              <strong>Все друзья уже в группе</strong>
+              <strong>{t('Все друзья уже в группе')}</strong>
             </div>
           ) : visibleFriends.length === 0 ? (
             <div className="call-friends-empty">
               <Search />
-              <strong>Никого не найдено</strong>
+              <strong>{t('Никого не найдено')}</strong>
             </div>
           ) : null}
         </div>
 
         {error ? <p className="call-friends-error">{error}</p> : null}
         <footer>
-          <span>{selected.length ? `Выбрано: ${selected.length}` : 'Выберите друзей'}</span>
+          <span>
+            {selected.length ? t('Выбрано: {p0}', { p0: selected.length }) : t('Выберите друзей')}
+          </span>
           <button type="button" disabled={!selected.length || busy} onClick={() => void invite()}>
-            {busy ? 'Добавляем…' : createGroup ? 'Создать группу' : 'Пригласить'}
+            {busy ? t('Добавляем…') : createGroup ? t('Создать группу') : t('Пригласить')}
           </button>
         </footer>
       </section>

@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { useRef, useState, type CSSProperties } from 'react';
 import type { PresenceStatus } from '@freetalk/protocol';
 import {
@@ -123,28 +124,30 @@ export function FriendsPage({
           <Users />
         </div>
         <div>
-          <p className="friends-eyebrow">ВАШ КРУГ ОБЩЕНИЯ</p>
-          <h1>Друзья</h1>
+          <p className="friends-eyebrow">{t('ВАШ КРУГ ОБЩЕНИЯ')}</p>
+          <h1>{t('Друзья')}</h1>
           <p>
-            {friendLabel} <span aria-hidden="true">•</span> {pendingLabel}
+            {friendLabel}
+            <span aria-hidden="true">•</span>
+            {pendingLabel}
           </p>
         </div>
       </header>
 
-      <section className="friends-toolbar" aria-label="Поиск и добавление друзей">
+      <section className="friends-toolbar" aria-label={t('Поиск и добавление друзей')}>
         <label className="friends-search">
           <Search aria-hidden="true" />
-          <span className="sr-only">Найти по username</span>
+          <span className="sr-only">{t('Найти по username')}</span>
           <input
             ref={searchRef}
             value={search}
             autoComplete="off"
-            placeholder="Найти по @username"
+            placeholder={t('Найти по @username')}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && void addFriend()}
           />
           {search && (
-            <button type="button" aria-label="Очистить поиск" onClick={() => setSearch('')}>
+            <button type="button" aria-label={t('Очистить поиск')} onClick={() => setSearch('')}>
               <X />
             </button>
           )}
@@ -154,26 +157,27 @@ export function FriendsPage({
           disabled={!search.trim() || busyAction === 'add'}
           onClick={() => void addFriend()}
         >
-          <UserPlus /> {busyAction === 'add' ? 'Отправляем…' : 'Добавить'}
+          <UserPlus />
+          {busyAction === 'add' ? t('Отправляем…') : t('Добавить')}
         </button>
       </section>
 
-      <div className="friends-filter-row" role="group" aria-label="Фильтры друзей">
+      <div className="friends-filter-row" role="group" aria-label={t('Фильтры друзей')}>
         <FilterButton
           active={filter === 'all'}
-          label="Все"
+          label={t('Все')}
           count={friends.length}
           onClick={() => setFilter('all')}
         />
         <FilterButton
           active={filter === 'pending'}
-          label="Ожидают"
+          label={t('Ожидают')}
           count={pending.length}
           onClick={() => setFilter('pending')}
         />
         <FilterButton
           active={filter === 'blocked'}
-          label="Заблокированные"
+          label={t('Заблокированные')}
           compactLabel="Блок"
           count={blocked.length}
           onClick={() => setFilter('blocked')}
@@ -189,7 +193,7 @@ export function FriendsPage({
           {filter === 'all' && (
             <>
               {visibleFriends.length > 0 ? (
-                <div className="friends-grid" aria-label="Список друзей">
+                <div className="friends-grid" aria-label={t('Список друзей')}>
                   {visibleFriends.map((friend, index) => (
                     <FriendCard
                       key={friend.id}
@@ -216,15 +220,15 @@ export function FriendsPage({
                 </div>
               ) : friends.length > 0 ? (
                 <FriendsEmpty
-                  title="Никого не найдено"
-                  description="Проверьте имя или username и попробуйте ещё раз."
+                  title={t('Никого не найдено')}
+                  description={t('Проверьте имя или username и попробуйте ещё раз.')}
                   action="Очистить поиск"
                   onAction={() => setSearch('')}
                 />
               ) : (
                 <FriendsEmpty
-                  title="У вас пока нет друзей"
-                  description="Добавьте пользователя по @username, чтобы начать общение."
+                  title={t('У вас пока нет друзей')}
+                  description={t('Добавьте пользователя по @username, чтобы начать общение.')}
                   action="Добавить друга"
                   onAction={() => searchRef.current?.focus()}
                 />
@@ -233,7 +237,7 @@ export function FriendsPage({
           )}
 
           {filter === 'pending' && (
-            <div className="friends-stack" aria-label="Ожидающие запросы">
+            <div className="friends-stack" aria-label={t('Ожидающие запросы')}>
               {pending.map((item, index) => {
                 const incoming = item.recipient_id === userId;
                 const profileId =
@@ -261,7 +265,8 @@ export function FriendsPage({
                       <strong>{item.displayName ?? item.display_name}</strong>
                       <small>@{item.username}</small>
                       <span className="friend-status pending">
-                        <Clock3 /> {incoming ? 'Входящий запрос' : 'Запрос отправлен'}
+                        <Clock3 />
+                        {incoming ? t('Входящий запрос') : t('Запрос отправлен')}
                       </span>
                     </div>
                     {incoming ? (
@@ -273,11 +278,11 @@ export function FriendsPage({
                             void runAction(`accept:${item.id}`, () => onAccept(item.id))
                           }
                         >
-                          <Check /> Принять
+                          <Check /> {t('Принять')}
                         </button>
                         <button
                           className="friend-icon-action"
-                          aria-label={`Отклонить запрос от ${item.username}`}
+                          aria-label={t('Отклонить запрос от {p0}', { p0: item.username })}
                           disabled={Boolean(busyAction)}
                           onClick={() =>
                             void runAction(`decline:${item.id}`, () => onDecline(item.id))
@@ -290,12 +295,13 @@ export function FriendsPage({
                       <button
                         className="friend-cancel-request"
                         disabled={Boolean(busyAction) || !onCancel}
-                        aria-label={`Отменить запрос к ${item.username}`}
+                        aria-label={t('Отменить запрос к {p0}', { p0: item.username })}
                         onClick={() =>
                           void runAction(`cancel:${item.id}`, () => onCancel!(item.id))
                         }
                       >
-                        <X /> {busyAction === `cancel:${item.id}` ? 'Отменяем…' : 'Отменить запрос'}
+                        <X />
+                        {busyAction === `cancel:${item.id}` ? t('Отменяем…') : t('Отменить запрос')}
                       </button>
                     )}
                   </article>
@@ -303,15 +309,15 @@ export function FriendsPage({
               })}
               {pending.length === 0 && (
                 <FriendsEmpty
-                  title="Нет ожидающих запросов"
-                  description="Новые приглашения появятся здесь."
+                  title={t('Нет ожидающих запросов')}
+                  description={t('Новые приглашения появятся здесь.')}
                 />
               )}
             </div>
           )}
 
           {filter === 'blocked' && (
-            <div className="friends-stack" aria-label="Заблокированные пользователи">
+            <div className="friends-stack" aria-label={t('Заблокированные пользователи')}>
               {blocked.map((item, index) => (
                 <article
                   className="friend-card blocked-friend-card"
@@ -323,7 +329,7 @@ export function FriendsPage({
                     <strong>{item.displayName ?? item.display_name}</strong>
                     <small>@{item.username}</small>
                     <span className="friend-status blocked">
-                      <Ban /> Заблокирован
+                      <Ban /> {t('Заблокирован')}
                     </span>
                   </div>
                   <button
@@ -331,14 +337,14 @@ export function FriendsPage({
                     disabled={Boolean(busyAction)}
                     onClick={() => void runAction(`unblock:${item.id}`, () => onUnblock(item.id))}
                   >
-                    <ShieldOff /> Разблокировать
+                    <ShieldOff /> {t('Разблокировать')}
                   </button>
                 </article>
               ))}
               {blocked.length === 0 && (
                 <FriendsEmpty
-                  title="Список блокировок пуст"
-                  description="Здесь появятся заблокированные вами пользователи."
+                  title={t('Список блокировок пуст')}
+                  description={t('Здесь появятся заблокированные вами пользователи.')}
                 />
               )}
             </div>
@@ -419,7 +425,8 @@ function FriendCard({
         <strong>{name}</strong>
         <small>@{friend.username}</small>
         <span className={`friend-status ${friend.presence ?? 'offline'}`}>
-          <i /> {presenceLabel(friend.presence)}
+          <i />
+          {presenceLabel(friend.presence)}
         </span>
       </div>
       <div className="friend-card-actions">
@@ -428,22 +435,22 @@ function FriendCard({
           disabled={Boolean(busyAction)}
           onClick={() => void onMessage()}
         >
-          <MessageCircle /> Написать
+          <MessageCircle /> {t('Написать')}
         </button>
         <details className="friend-actions-menu">
-          <summary aria-label={`Другие действия для ${name}`}>
+          <summary aria-label={t('Другие действия для {p0}', { p0: name })}>
             <MoreHorizontal />
           </summary>
           <div>
             <button disabled={Boolean(busyAction)} onClick={() => void onRemove()}>
-              <UserMinus /> Удалить из друзей
+              <UserMinus /> {t('Удалить из друзей')}
             </button>
             <button
               className="destructive"
               disabled={Boolean(busyAction)}
               onClick={() => void onBlock()}
             >
-              <Ban /> Заблокировать
+              <Ban /> {t('Заблокировать')}
             </button>
           </div>
         </details>
@@ -482,7 +489,7 @@ function FriendAvatar({
       <button
         type="button"
         className="friend-avatar friend-profile-trigger"
-        aria-label={`Открыть полный профиль ${name}`}
+        aria-label={t('Открыть полный профиль {p0}', { p0: name })}
         onClick={onOpenProfile}
       >
         {content}
@@ -515,7 +522,8 @@ function FriendsEmpty({
       <p>{description}</p>
       {action && onAction && (
         <button onClick={onAction}>
-          <UserPlus /> {action}
+          <UserPlus />
+          {action}
         </button>
       )}
     </div>
@@ -526,7 +534,7 @@ function FriendsSkeleton() {
   return (
     <div
       className="friends-grid friends-skeleton"
-      aria-label="Загрузка списка друзей"
+      aria-label={t('Загрузка списка друзей')}
       aria-busy="true"
     >
       {[0, 1, 2, 3].map((item) => (
@@ -549,11 +557,11 @@ function FriendsError({ message, onRetry }: { message: string; onRetry(): void }
     <div className="friends-error" role="alert">
       <span aria-hidden="true">!</span>
       <div>
-        <strong>Не удалось загрузить друзей</strong>
+        <strong>{t('Не удалось загрузить друзей')}</strong>
         <p>{message}</p>
       </div>
       <button onClick={onRetry}>
-        <RefreshCw /> Повторить
+        <RefreshCw /> {t('Повторить')}
       </button>
     </div>
   );

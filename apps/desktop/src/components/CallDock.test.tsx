@@ -79,18 +79,20 @@ describe('CallDock', () => {
     props.inputs = [{ deviceId: 'mic-2', label: 'USB Mic' } as MediaDeviceInfo];
     const view = render(<ProfileAudioControls state={props} />);
     fireEvent.click(view.getByLabelText('Выбор микрофона'));
-    fireEvent.change(view.getByRole('combobox'), { target: { value: 'mic-2' } });
+    expect(view.getByRole('button', { name: 'Системное устройство', pressed: true })).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'USB Mic' }));
     expect(props.onInput).toHaveBeenCalledWith('mic-2');
-    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.queryByRole('group')).toBeNull();
   });
   it('dismisses a device chooser when opening another control or pressing Escape', () => {
     const view = render(<ProfileAudioControls state={state()} />);
     fireEvent.click(view.getByLabelText('Выбор микрофона'));
-    expect(view.getByRole('combobox')).toBeTruthy();
+    expect(view.getByRole('group')).toBeTruthy();
     fireEvent.pointerDown(document.body);
-    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.queryByRole('group')).toBeNull();
     fireEvent.click(view.getByLabelText('Выбор наушников'));
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.queryByRole('group')).toBeNull();
+    expect(document.activeElement).toBe(view.getByLabelText('Выбор наушников'));
   });
 });

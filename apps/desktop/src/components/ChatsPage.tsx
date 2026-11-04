@@ -1,3 +1,4 @@
+import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
 import {
   useCallback,
@@ -10,6 +11,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import {
   Archive,
@@ -285,7 +287,7 @@ interface ChatsPageProps {
   ): Promise<boolean>;
   onSendFile?(file: globalThis.File, caption: string, replyToMessageId?: string): Promise<boolean>;
   onSendGif?(gif: GifMessageData | File, replyToMessageId?: string): Promise<boolean>;
-  onReactMessage?(messageId: string, emoji: string | null): Promise<boolean>;
+  onReactMessage?(messageId: string, emoji: string, remove?: boolean): Promise<boolean>;
   onPinMessage?(messageId: string, pinned: boolean): Promise<boolean>;
   onEditMessage?(messageId: string, body: string): Promise<boolean>;
   onDeleteMessage?(messageId: string): Promise<boolean>;
@@ -312,11 +314,15 @@ interface ChatsPageProps {
   onAddMember(username: string): Promise<boolean>;
   onJoinCall(roomId: string): void;
   joinedChatId?: string;
+  callToolbarTarget?: HTMLElement | null;
+  onRevealCallChat?(): void;
   joinedRoomId?: string;
 }
 
 export function ChatsPage({
   joinedChatId,
+  callToolbarTarget,
+  onRevealCallChat,
   joinedRoomId,
   externalSidebar = false,
   mobile = false,
@@ -480,6 +486,9 @@ export function ChatsPage({
   };
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const activeCallToolbar = activeChat && activeChat.id === joinedChatId ? callToolbarTarget : null;
+  const [callProfileChatId, setCallProfileChatId] = useState<string>();
+  const showProfile = activeCallToolbar ? callProfileChatId === activeChatId : profileVisible;
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLocaleLowerCase('ru-RU');
     if (!query) return [];
@@ -655,7 +664,7 @@ export function ChatsPage({
 
   return (
     <div
-      className={`messenger-layout page-enter ${profileVisible ? '' : 'profile-hidden'}${externalSidebar ? ' external-sidebar' : ''}${mobile ? ' mobile-messenger' : ''}${mobile && activeChat ? ' has-active-chat' : ''}${activeChat ? ` chat-${activeChat.type}` : ''}`}
+      className={`messenger-layout page-enter ${showProfile ? '' : 'profile-hidden'}${activeCallToolbar && showProfile ? ' call-chat-profile-visible' : ''}${externalSidebar ? ' external-sidebar' : ''}${mobile ? ' mobile-messenger' : ''}${mobile && activeChat ? ' has-active-chat' : ''}${activeChat ? ` chat-${activeChat.type}` : ''}`}
       style={
         chatSidebarWidth
           ? ({ '--conversation-sidebar-width': `${chatSidebarWidth}px` } as CSSProperties)
@@ -666,18 +675,18 @@ export function ChatsPage({
         <aside
           ref={conversationSidebarRef}
           className="conversation-sidebar"
-          aria-label="Список чатов"
+          aria-label={t('Список чатов')}
         >
           <header className="conversation-sidebar-header">
             <div>
-              <p className="messenger-eyebrow">СООБЩЕНИЯ</p>
-              <h1>Чаты</h1>
-              <p>Срок хранения задаётся для каждого чата</p>
+              <p className="messenger-eyebrow">{t('СООБЩЕНИЯ')}</p>
+              <h1>{t('Чаты')}</h1>
+              <p>{t('Срок хранения задаётся для каждого чата')}</p>
             </div>
             <button
               className="new-chat-button"
-              title="Новый групповой чат"
-              aria-label="Новый групповой чат"
+              data-tooltip={t('Новый групповой чат')}
+              aria-label={t('Новый групповой чат')}
               aria-expanded={showGroup}
               onClick={() => setShowGroup(true)}
             >
@@ -688,14 +697,14 @@ export function ChatsPage({
           <div className="conversation-top-actions">
             <label className="conversation-search">
               <Search aria-hidden="true" />
-              <span className="sr-only">Поиск по чатам</span>
+              <span className="sr-only">{t('Поиск по чатам')}</span>
               <input
                 value={search}
-                placeholder="Поиск по чатам"
+                placeholder={t('Поиск по чатам')}
                 onChange={(event) => setSearch(event.target.value)}
               />
               {search && (
-                <button aria-label="Очистить поиск" onClick={() => setSearch('')}>
+                <button aria-label={t('Очистить поиск')} onClick={() => setSearch('')}>
                   <X />
                 </button>
               )}
@@ -703,26 +712,27 @@ export function ChatsPage({
 
             <button
               className="join-chat-button"
-              title="Войти по приглашению"
-              aria-label="Войти по приглашению"
+              data-tooltip={t('Войти по приглашению')}
+              aria-label={t('Войти по приглашению')}
               aria-expanded={showInvite}
               onClick={() => setShowInvite((visible) => !visible)}
             >
-              <Link2 /> <span>Войти по приглашению</span>
+              <Link2 />
+              <span>{t('Войти по приглашению')}</span>
             </button>
           </div>
 
           {showInvite && (
             <div className="compact-chat-form chat-popover-card">
               <div>
-                <strong>Приглашение в чат</strong>
-                <button aria-label="Закрыть" onClick={() => setShowInvite(false)}>
+                <strong>{t('Приглашение в чат')}</strong>
+                <button aria-label={t('Закрыть')} onClick={() => setShowInvite(false)}>
                   <X />
                 </button>
               </div>
               <input
                 value={inviteToken}
-                placeholder="Вставьте ссылку или токен"
+                placeholder={t('Вставьте ссылку или токен')}
                 onChange={(event) => setInviteToken(event.target.value)}
                 onKeyDown={(event) => event.key === 'Enter' && void joinInvite()}
               />
@@ -730,7 +740,7 @@ export function ChatsPage({
                 disabled={!inviteToken.trim() || actionBusy === 'invite'}
                 onClick={() => void joinInvite()}
               >
-                Войти
+                {t('Войти')}
               </button>
             </div>
           )}
@@ -742,7 +752,7 @@ export function ChatsPage({
               onClick={() => setShowArchived((visible) => !visible)}
             >
               <Archive />
-              <span>{showArchived ? 'Вернуться к чатам' : 'Архив'}</span>
+              <span>{showArchived ? t('Вернуться к чатам') : t('Архив')}</span>
               <b>{archivedCount}</b>
               <ChevronRight />
             </button>
@@ -779,15 +789,15 @@ export function ChatsPage({
             ) : chats.length > 0 ? (
               <div className="conversation-list-empty">
                 <Search />
-                <strong>Чаты не найдены</strong>
-                <small>Попробуйте другой запрос</small>
+                <strong>{t('Чаты не найдены')}</strong>
+                <small>{t('Попробуйте другой запрос')}</small>
               </div>
             ) : (
               <div className="conversation-list-empty">
                 <MessageCircle />
-                <strong>Чатов пока нет</strong>
-                <small>Начните личный чат из раздела «Друзья»</small>
-                <button onClick={() => setShowGroup(true)}>Новый групповой чат</button>
+                <strong>{t('Чатов пока нет')}</strong>
+                <small>{t('Начните личный чат из раздела «Друзья»')}</small>
+                <button onClick={() => setShowGroup(true)}>{t('Новый групповой чат')}</button>
               </div>
             )}
           </div>
@@ -798,7 +808,7 @@ export function ChatsPage({
         <div
           className="conversation-sidebar-resizer"
           role="separator"
-          aria-label="Изменить ширину списка чатов"
+          aria-label={t('Изменить ширину списка чатов')}
           aria-orientation="vertical"
           aria-valuemin={CHAT_SIDEBAR_MIN_WIDTH}
           aria-valuemax={Math.round(defaultChatSidebarWidth())}
@@ -819,7 +829,9 @@ export function ChatsPage({
           userId={userId}
           showMember={showMember}
           actionBusy={actionBusy}
-          profileVisible={profileVisible}
+          profileVisible={showProfile}
+          callToolbarTarget={activeCallToolbar}
+          onRevealCallChat={onRevealCallChat}
           showMenu={showChatMenu}
           showAvatarEditor={showGroupAvatarEditor}
           messageSearch={messageSearch}
@@ -832,7 +844,13 @@ export function ChatsPage({
           showPinned={showPinned}
           onTogglePinned={() => setShowPinned((visible) => !visible)}
           onCreateInvite={() => void runAction('create-invite', onCreateInvite)}
-          onToggleProfile={() => setProfileVisible((visible) => !visible)}
+          onToggleProfile={() => {
+            if (activeCallToolbar) {
+              setCallProfileChatId((id) => (id === activeChat.id ? undefined : activeChat.id));
+            } else {
+              setProfileVisible((visible) => !visible);
+            }
+          }}
           onToggleMenu={() => setShowChatMenu((visible) => !visible)}
           onToggleAvatarEditor={() => setShowGroupAvatarEditor((visible) => !visible)}
           onCloseAvatarEditor={() => setShowGroupAvatarEditor(false)}
@@ -846,7 +864,7 @@ export function ChatsPage({
         />
       ) : null}
 
-      <section className="active-conversation" aria-label="Активный чат">
+      <section className="active-conversation" aria-label={t('Активный чат')}>
         {activeChat && (
           <ChatCallWaiting
             chatId={activeChat.id}
@@ -862,7 +880,7 @@ export function ChatsPage({
             {showChatMenu && (
               <div ref={chatMenuRef} className="chat-actions-popover" role="menu">
                 <button onClick={() => setShowChatSettings((visible) => !visible)}>
-                  <Clock3 /> Настройки чата
+                  <Clock3 /> {t('Настройки чата')}
                 </button>
                 {activeChat.type === 'direct' && profileTarget ? (
                   <>
@@ -873,7 +891,7 @@ export function ChatsPage({
                         setConfirmAction('block-direct');
                       }}
                     >
-                      <Ban /> Заблокировать
+                      <Ban /> {t('Заблокировать')}
                     </button>
                     <button
                       className="destructive"
@@ -882,7 +900,7 @@ export function ChatsPage({
                         setConfirmAction('delete-direct');
                       }}
                     >
-                      <Trash2 /> Удалить чат у обоих
+                      <Trash2 /> {t('Удалить чат у обоих')}
                     </button>
                   </>
                 ) : null}
@@ -898,7 +916,8 @@ export function ChatsPage({
                       });
                     }}
                   >
-                    <Trash2 /> {confirmClear ? 'Подтвердить очистку' : 'Очистить чат'}
+                    <Trash2 />
+                    {confirmClear ? t('Подтвердить очистку') : t('Очистить чат')}
                   </button>
                 )}
                 {activeChat.type === 'group' ? (
@@ -909,15 +928,17 @@ export function ChatsPage({
                       setConfirmAction('leave-group');
                     }}
                   >
-                    <X /> Покинуть группу
+                    <X /> {t('Покинуть группу')}
                   </button>
                 ) : null}
                 {showChatSettings && (
                   <div className="chat-menu-settings">
-                    <span>История: {retentionLabel(retentionHours)}</span>
+                    <span>
+                      {t('История:')} {retentionLabel(retentionHours)}
+                    </span>
                     {activeChat.type === 'group' && activeChat.currentUserRole === 'owner' ? (
                       <select
-                        aria-label="Срок хранения сообщений"
+                        aria-label={t('Срок хранения сообщений')}
                         value={retentionHours === null ? 'forever' : String(retentionHours)}
                         onChange={(event) => {
                           const value = event.target.value;
@@ -926,10 +947,10 @@ export function ChatsPage({
                             void runAction('retention', () => onUpdateRetention(next));
                         }}
                       >
-                        <option value="24">24 часа</option>
-                        <option value="168">7 дней</option>
-                        <option value="720">30 дней</option>
-                        <option value="forever">Без ограничения</option>
+                        <option value="24">{t('24 часа')}</option>
+                        <option value="168">{t('7 дней')}</option>
+                        <option value="720">{t('30 дней')}</option>
+                        <option value="forever">{t('Без ограничения')}</option>
                       </select>
                     ) : null}
                   </div>
@@ -985,7 +1006,7 @@ export function ChatsPage({
           <ChatEmptyState />
         )}
       </section>
-      {activeChat && profileVisible && (
+      {activeChat && showProfile && (
         <ProfilePanel
           profile={profile}
           loading={profileLoading}
@@ -1004,17 +1025,21 @@ export function ChatsPage({
         <ChatActionConfirmDialog
           title={
             confirmAction === 'leave-group'
-              ? `Покинуть «${chatName(activeChat, userId)}»?`
+              ? t('Покинуть «{p0}»?', { p0: chatName(activeChat, userId) })
               : confirmAction === 'delete-direct'
-                ? 'Удалить личный чат у обоих?'
-                : `Заблокировать ${profileTarget?.displayName ?? 'пользователя'}?`
+                ? t('Удалить личный чат у обоих?')
+                : t('Заблокировать {p0}?', { p0: profileTarget?.displayName ?? 'пользователя' })
           }
           description={
             confirmAction === 'leave-group'
-              ? 'Группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника.'
+              ? t(
+                  'Группа исчезнет из списка. Вернуться можно будет только по новому приглашению участника.',
+                )
               : confirmAction === 'delete-direct'
-                ? 'Вся переписка будет безвозвратно удалена у вас и у собеседника.'
-                : 'Пользователь не сможет писать вам. Он будет удалён из друзей, а личный чат исчезнет из списка.'
+                ? t('Вся переписка будет безвозвратно удалена у вас и у собеседника.')
+                : t(
+                    'Пользователь не сможет писать вам. Он будет удалён из друзей, а личный чат исчезнет из списка.',
+                  )
           }
           confirmLabel={
             confirmAction === 'leave-group'
@@ -1190,14 +1215,16 @@ function ChatSlowModeDialog({
         aria-describedby="chat-slow-mode-description"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button type="button" aria-label="Закрыть предупреждение" onClick={onClose}>
+        <button type="button" aria-label={t('Закрыть предупреждение')} onClick={onClose}>
           <X />
         </button>
-        <h2 id="chat-slow-mode-title">ВОУ, ВОУ, ПОЛЕГЧЕ!</h2>
-        <p id="chat-slow-mode-description">Вы отправляете сообщения слишком быстро!</p>
+        <h2 id="chat-slow-mode-title">{t('ВОУ, ВОУ, ПОЛЕГЧЕ!')}</h2>
+        <p id="chat-slow-mode-description">{t('Вы отправляете сообщения слишком быстро!')}</p>
         <button type="button" className="chat-slow-mode-rest" onClick={onClose}>
-          Вход в зону отдыха
-          <span>{remainingSeconds} с</span>
+          {t('Вход в зону отдыха')}
+          <span>
+            {remainingSeconds} {t('с')}
+          </span>
         </button>
       </section>
     </div>,
@@ -1253,11 +1280,12 @@ function MobileChatDeleteSheet({
             <p>
               {chat.type === 'direct' ? (
                 <>
-                  Удалить чат с <strong>{name}</strong>?
+                  {t('Удалить чат с')} <strong>{name}</strong>?
                 </>
               ) : (
                 <>
-                  Удалить «<strong>{name}</strong>»?
+                  {t('Удалить «')}
+                  <strong>{name}</strong>»?
                 </>
               )}
             </p>
@@ -1265,7 +1293,7 @@ function MobileChatDeleteSheet({
           {error ? <small>{error}</small> : null}
           {chat.type === 'direct' ? (
             <button className="danger" disabled={Boolean(busy)} onClick={() => onDelete(true)}>
-              {busy === 'block' ? 'Удаляем…' : 'Удалить и заблокировать'}
+              {busy === 'block' ? t('Удаляем…') : t('Удалить и заблокировать')}
             </button>
           ) : null}
           <button
@@ -1274,19 +1302,19 @@ function MobileChatDeleteSheet({
             onClick={() => onDelete(false)}
           >
             {busy === 'delete'
-              ? 'Удаляем…'
+              ? t('Удаляем…')
               : chat.type === 'group'
-                ? 'Покинуть и удалить чат'
-                : 'Удалить чат'}
+                ? t('Покинуть и удалить чат')
+                : t('Удалить чат')}
           </button>
           {canClear ? (
             <button className="primary" disabled={Boolean(busy)} onClick={onClear}>
-              {busy === 'clear' ? 'Очищаем…' : 'Очистить историю'}
+              {busy === 'clear' ? t('Очищаем…') : t('Очистить историю')}
             </button>
           ) : null}
         </section>
         <button className="cancel" disabled={Boolean(busy)} onClick={onCancel}>
-          Отмена
+          {t('Отмена')}
         </button>
       </div>
     </div>,
@@ -1334,16 +1362,16 @@ function ChatListItem({
   const other = chat.members.find((member) => member.id !== userId);
   const preview =
     chat.lastMessageKind === 'image'
-      ? chat.lastMessage || 'Фотография'
+      ? chat.lastMessage || t('Фотография')
       : chat.lastMessageKind === 'file'
-        ? chat.lastMessage || 'Файл'
+        ? chat.lastMessage || t('Файл')
         : chat.lastMessage
           ? chat.lastMessageKind === 'call'
-            ? 'Начат голосовой звонок'
+            ? t('Начат голосовой звонок')
             : chat.lastMessage
           : chat.type === 'group'
-            ? `${chat.members.length} участников`
-            : 'Откройте беседу';
+            ? t('{p0} участников', { p0: chat.members.length })
+            : t('Откройте беседу');
   const moveTo = (value: number) => {
     offsetRef.current = value;
     setOffset(value);
@@ -1417,7 +1445,7 @@ function ChatListItem({
             }}
           >
             <BellOff />
-            <span>{muted ? 'Со звуком' : 'Без звука'}</span>
+            <span>{muted ? t('Со звуком') : t('Без звука')}</span>
           </button>
           <button
             type="button"
@@ -1428,7 +1456,7 @@ function ChatListItem({
             }}
           >
             <Trash2 />
-            <span>Удалить</span>
+            <span>{t('Удалить')}</span>
           </button>
           <button
             type="button"
@@ -1439,7 +1467,7 @@ function ChatListItem({
             }}
           >
             {archived ? <ArchiveRestore /> : <Archive />}
-            <span>{archived ? 'Вернуть' : 'Архив'}</span>
+            <span>{archived ? t('Вернуть') : t('Архив')}</span>
           </button>
         </div>
       )}
@@ -1474,7 +1502,7 @@ function ChatListItem({
           <strong>{name}</strong>
           <small>
             {chat.id === SERVICE_CHAT_ID
-              ? 'Уведомления и помощь'
+              ? t('Уведомления и помощь')
               : chat.type === 'direct' && other
                 ? `${presenceLabel(other.presence)} · ${preview}`
                 : preview}
@@ -1482,7 +1510,7 @@ function ChatListItem({
         </span>
         <span className="conversation-meta">
           {muted && (
-            <BellOff className="conversation-muted-icon" aria-label="Уведомления отключены" />
+            <BellOff className="conversation-muted-icon" aria-label={t('Уведомления отключены')} />
           )}
           {chat.lastMessageAt && <time>{formatConversationTime(chat.lastMessageAt)}</time>}
           {Boolean(chat.unreadCount) && !muted && <b>{Math.min(chat.unreadCount ?? 0, 99)}</b>}
@@ -1499,6 +1527,8 @@ function ChatHeader({
   showMember,
   actionBusy,
   profileVisible,
+  callToolbarTarget,
+  onRevealCallChat,
   showMenu,
   showAvatarEditor,
   messageSearch,
@@ -1525,6 +1555,8 @@ function ChatHeader({
   showMember: boolean;
   actionBusy: string;
   profileVisible: boolean;
+  callToolbarTarget?: HTMLElement | null;
+  onRevealCallChat?(): void;
   showMenu: boolean;
   showAvatarEditor: boolean;
   messageSearch: string;
@@ -1555,13 +1587,74 @@ function ChatHeader({
   const other = chat.members.find((member) => member.id !== userId);
   const canEditAvatar =
     chat.type === 'group' && ['owner', 'admin'].includes(chat.currentUserRole ?? '');
+  const pinnedAction = (
+    <button
+      className="chat-pinned-toggle"
+      data-tooltip={hasPinned ? t('Закреплённые сообщения') : t('Нет закреплённых сообщений')}
+      aria-label={t('Закреплённые сообщения')}
+      aria-pressed={hasPinned && showPinned}
+      disabled={!hasPinned}
+      onClick={() => {
+        if (callToolbarTarget) onRevealCallChat?.();
+        onTogglePinned();
+      }}
+    >
+      <Pin />
+    </button>
+  );
+  const profileAction = (
+    <button
+      className="chat-profile-toggle"
+      data-tooltip={profileVisible ? t('Скрыть профиль') : t('Показать профиль')}
+      aria-label={profileVisible ? t('Скрыть профиль') : t('Показать профиль')}
+      aria-pressed={profileVisible}
+      onClick={() => {
+        if (callToolbarTarget) onRevealCallChat?.();
+        onToggleProfile();
+      }}
+    >
+      {callToolbarTarget ? <Users /> : profileVisible ? <PanelRightClose /> : <PanelRightOpen />}
+    </button>
+  );
+  const searchAction = (
+    <label className="active-chat-search">
+      <Search />
+      <input
+        value={messageSearch}
+        onFocus={callToolbarTarget ? onRevealCallChat : undefined}
+        aria-label={t('Искать в {p0}', { p0: name })}
+        placeholder={t('Искать в «{p0}»', { p0: name })}
+        onChange={(event) => onMessageSearch(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          onMessageSearchNext(event.shiftKey ? -1 : 1);
+        }}
+      />
+      {messageSearch ? (
+        <>
+          <span>
+            {messageSearchCount ? `${messageSearchIndex + 1}/${messageSearchCount}` : '0'}
+          </span>
+          <button
+            type="button"
+            data-tooltip={t('Очистить поиск')}
+            aria-label={t('Очистить поиск по сообщениям')}
+            onClick={() => onMessageSearch('')}
+          >
+            <X />
+          </button>
+        </>
+      ) : null}
+    </label>
+  );
   return (
     <header className="active-chat-header">
       {onBack ? (
         <button
           type="button"
           className="mobile-chat-back"
-          aria-label="Назад к чатам"
+          aria-label={t('Назад к чатам')}
           onClick={onBack}
         >
           <ArrowLeft />
@@ -1570,8 +1663,8 @@ function ChatHeader({
       {chat.type === 'group' ? (
         <button
           className="group-avatar-trigger"
-          title={canEditAvatar ? 'Изменить аватар группы' : 'Аватар группы'}
-          aria-label={canEditAvatar ? 'Изменить аватар группы' : 'Аватар группы'}
+          data-tooltip={canEditAvatar ? t('Изменить аватар группы') : t('Аватар группы')}
+          aria-label={canEditAvatar ? t('Изменить аватар группы') : t('Аватар группы')}
           aria-expanded={canEditAvatar ? showAvatarEditor : undefined}
           disabled={!canEditAvatar}
           onClick={onToggleAvatarEditor}
@@ -1589,7 +1682,7 @@ function ChatHeader({
         <button
           type="button"
           className="direct-profile-trigger"
-          aria-label={`Открыть полный профиль ${name}`}
+          aria-label={t('Открыть полный профиль {p0}', { p0: name })}
           onClick={onOpenProfile}
         >
           <ChatAvatar
@@ -1607,40 +1700,31 @@ function ChatHeader({
             ? memberCountLabel(chat.members.length)
             : other
               ? `@${other.username}`
-              : 'Личный чат'}
+              : t('Личный чат')}
         </small>
       </div>
       <div className="active-chat-actions">
         <button
-          title="Начать голосовой звонок"
-          aria-label="Начать голосовой звонок"
+          data-tooltip={t('Начать голосовой звонок')}
+          aria-label={t('Начать голосовой звонок')}
           disabled={actionBusy === 'call'}
           onClick={() => onStartCall()}
         >
           <PhoneCall />
         </button>
         <button
-          title="Начать видеозвонок"
-          aria-label="Начать видеозвонок"
+          data-tooltip={t('Начать видеозвонок')}
+          aria-label={t('Начать видеозвонок')}
           disabled={actionBusy === 'call'}
           onClick={() => onStartCall(true)}
         >
           <Video />
         </button>
-        <button
-          className="chat-pinned-toggle"
-          title={hasPinned ? 'Закреплённые сообщения' : 'Нет закреплённых сообщений'}
-          aria-label="Закреплённые сообщения"
-          aria-pressed={hasPinned && showPinned}
-          disabled={!hasPinned}
-          onClick={onTogglePinned}
-        >
-          <Pin />
-        </button>
+        {!callToolbarTarget && pinnedAction}
         {chat.type === 'group' && (
           <button
-            title="Скопировать приглашение"
-            aria-label="Скопировать приглашение"
+            data-tooltip={t('Скопировать приглашение')}
+            aria-label={t('Скопировать приглашение')}
             disabled={actionBusy === 'create-invite'}
             onClick={onCreateInvite}
           >
@@ -1648,8 +1732,8 @@ function ChatHeader({
           </button>
         )}
         <button
-          title="Добавить участника"
-          aria-label="Добавить участника"
+          data-tooltip={t('Добавить участника')}
+          aria-label={t('Добавить участника')}
           aria-expanded={showMember}
           onClick={onToggleMember}
         >
@@ -1657,51 +1741,25 @@ function ChatHeader({
         </button>
         <button
           data-chat-menu-trigger
-          title="Действия с чатом"
-          aria-label="Действия с чатом"
+          data-tooltip={t('Действия с чатом')}
+          aria-label={t('Действия с чатом')}
           aria-expanded={showMenu}
           onClick={onToggleMenu}
         >
           <MoreHorizontal />
         </button>
-        <button
-          title={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
-          aria-label={profileVisible ? 'Скрыть профиль' : 'Показать профиль'}
-          aria-pressed={profileVisible}
-          onClick={onToggleProfile}
-        >
-          {profileVisible ? <PanelRightClose /> : <PanelRightOpen />}
-        </button>
-        <label className="active-chat-search">
-          <Search />
-          <input
-            value={messageSearch}
-            aria-label={`Искать в ${name}`}
-            placeholder={`Искать в «${name}»`}
-            onChange={(event) => onMessageSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              event.preventDefault();
-              onMessageSearchNext(event.shiftKey ? -1 : 1);
-            }}
-          />
-          {messageSearch ? (
-            <>
-              <span>
-                {messageSearchCount ? `${messageSearchIndex + 1}/${messageSearchCount}` : '0'}
-              </span>
-              <button
-                type="button"
-                title="Очистить поиск"
-                aria-label="Очистить поиск по сообщениям"
-                onClick={() => onMessageSearch('')}
-              >
-                <X />
-              </button>
-            </>
-          ) : null}
-        </label>
+        {!callToolbarTarget && profileAction}
+        {!callToolbarTarget && searchAction}
       </div>
+      {callToolbarTarget &&
+        createPortal(
+          <>
+            {pinnedAction}
+            {profileAction}
+            {searchAction}
+          </>,
+          callToolbarTarget,
+        )}
       {showAvatarEditor && canEditAvatar && (
         <GroupAvatarEditor
           key={`${chat.id}-${chat.avatarUrl ?? 'empty'}`}
@@ -1806,17 +1864,17 @@ function GroupAvatarEditor({
         ref={editorRef}
         className={`group-avatar-editor${closing ? ' closing' : ''}`}
         role="dialog"
-        aria-label="Редактировать группу"
+        aria-label={t('Редактировать группу')}
         aria-modal="true"
       >
         <div className="group-avatar-editor-heading">
           <div>
-            <strong>Редактировать группу</strong>
-            <small>Настройте название и фотографию</small>
+            <strong>{t('Редактировать группу')}</strong>
+            <small>{t('Настройте название и фотографию')}</small>
           </div>
           <button
             type="button"
-            aria-label="Закрыть"
+            aria-label={t('Закрыть')}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={closeSmoothly}
           >
@@ -1844,7 +1902,7 @@ function GroupAvatarEditor({
           {cachedPreviewUrl ? (
             <img
               src={cachedPreviewUrl}
-              alt="Предпросмотр аватара группы"
+              alt={t('Предпросмотр аватара группы')}
               draggable={false}
               style={avatarImageStyle(position.x, position.y, scale)}
             />
@@ -1854,7 +1912,7 @@ function GroupAvatarEditor({
           <button
             className="group-avatar-pencil"
             type="button"
-            aria-label="Выбрать изображение"
+            aria-label={t('Выбрать изображение')}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -1872,12 +1930,12 @@ function GroupAvatarEditor({
           onChange={(event) => void chooseFile(event.target.files?.[0])}
         />
         <label className="group-title-field">
-          <span>Название группы</span>
+          <span>{t('Название группы')}</span>
           <input
             value={title}
             maxLength={80}
-            placeholder="Название группы"
-            aria-label="Название группы"
+            placeholder={t('Название группы')}
+            aria-label={t('Название группы')}
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
@@ -1888,14 +1946,14 @@ function GroupAvatarEditor({
         )}
         {previewUrl && (
           <label className="group-avatar-scale">
-            <span>Размер</span>
+            <span>{t('Размер')}</span>
             <input
               type="range"
               min="100"
               max="250"
               step="5"
               value={scale}
-              aria-label="Размер аватара"
+              aria-label={t('Размер аватара')}
               onChange={(event) => setScale(Number(event.target.value))}
             />
             <output>{scale}%</output>
@@ -1903,7 +1961,7 @@ function GroupAvatarEditor({
         )}
         <div className="group-avatar-editor-actions">
           <button type="button" className="secondary" disabled={busy} onClick={closeSmoothly}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button
             type="button"
@@ -1914,7 +1972,8 @@ function GroupAvatarEditor({
               })
             }
           >
-            <Save /> {busy ? 'Сохранение…' : 'Сохранить'}
+            <Save />
+            {busy ? t('Сохранение…') : t('Сохранить')}
           </button>
         </div>
       </div>
@@ -1947,9 +2006,9 @@ function ProfilePanel({
   const cachedCoverUrl = useCachedMediaUrl(profile?.coverUrl);
   if (groupTitle)
     return (
-      <aside className="chat-profile-panel group-members-panel" aria-label="Участники группы">
+      <aside className="chat-profile-panel group-members-panel" aria-label={t('Участники группы')}>
         <section className="group-members-heading">
-          <p>Участники — {members.length}</p>
+          <p>{t('Участники — {count}', { count: members.length })}</p>
         </section>
         <div className="group-members-list">
           {[...members]
@@ -1961,7 +2020,7 @@ function ProfilePanel({
                 <button
                   type="button"
                   className="group-member-profile"
-                  aria-label={`Открыть профиль ${member.displayName}`}
+                  aria-label={t('Открыть профиль {p0}', { p0: member.displayName })}
                   onClick={() => onMemberProfile(member)}
                 >
                   <ChatAvatar
@@ -1976,18 +2035,19 @@ function ProfilePanel({
                   <strong>{member.displayName}</strong>
                   <small>{presenceLabel(member.presence)}</small>
                 </span>
-                {member.role === 'owner' && <Crown aria-label="Владелец группы" />}
+                {member.role === 'owner' && <Crown aria-label={t('Владелец группы')} />}
               </div>
             ))}
         </div>
         <button className="group-members-invite" onClick={onInvite}>
-          <UserPlus /> Пригласить в группу
+          <UserPlus />
+          {t('Пригласить в группу')}
         </button>
       </aside>
     );
   if (loading)
     return (
-      <aside className="chat-profile-panel" aria-label="Профиль собеседника" aria-busy="true">
+      <aside className="chat-profile-panel" aria-label={t('Профиль собеседника')} aria-busy="true">
         <div className="chat-profile-island">
           <div className="profile-panel-skeleton" />
         </div>
@@ -1996,7 +2056,7 @@ function ProfilePanel({
   const name = profile?.displayName ?? fallback?.displayName ?? groupTitle ?? 'Профиль';
   const presence = profile?.presence ?? fallback?.presence ?? 'offline';
   return (
-    <aside className="chat-profile-panel" aria-label="Профиль собеседника">
+    <aside className="chat-profile-panel" aria-label={t('Профиль собеседника')}>
       <div className="chat-profile-island">
         <div
           className="chat-profile-cover"
@@ -2005,7 +2065,10 @@ function ProfilePanel({
         <button
           type="button"
           className="chat-profile-avatar"
-          aria-label={`Открыть полный профиль ${name}. ${presenceLabel(presence)}`}
+          aria-label={t('Открыть полный профиль {p0}. {p1}', {
+            p0: name,
+            p1: presenceLabel(presence),
+          })}
           onClick={onFullProfile}
         >
           {cachedAvatarUrl ? <img src={cachedAvatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}
@@ -2016,14 +2079,14 @@ function ProfilePanel({
           <p>@{profile?.username ?? fallback?.username ?? 'trlka'}</p>
         </section>
         <section className="chat-profile-block">
-          <h3>О СЕБЕ</h3>
+          <h3>{t('О СЕБЕ')}</h3>
           <p>{profile?.bio || 'Пользователь пока ничего о себе не рассказал.'}</p>
         </section>
         <section className="chat-profile-block mutual-friends-block">
-          <h3>ОБЩИЕ ДРУЗЬЯ</h3>
+          <h3>{t('ОБЩИЕ ДРУЗЬЯ')}</h3>
           <div className="mutual-friend-avatars">
             {(profile?.mutualFriends ?? []).map((friend) => (
-              <span title={friend.displayName} key={friend.id}>
+              <span data-tooltip={friend.displayName} key={friend.id}>
                 {friend.avatarUrl ? (
                   <CachedMediaImage src={friend.avatarUrl} alt="" />
                 ) : (
@@ -2032,19 +2095,13 @@ function ProfilePanel({
               </span>
             ))}
           </div>
-          <p>{profile?.mutualFriendsCount ?? 0} общих друзей</p>
+          <p>
+            {profile?.mutualFriendsCount ?? 0} {t('общих друзей')}
+          </p>
         </section>
-        {profile?.registeredAt && (
-          <footer>
-            В Trlka с{' '}
-            {new Date(profile.registeredAt).toLocaleDateString('ru-RU', {
-              month: 'long',
-              year: 'numeric',
-            })}
-          </footer>
-        )}
+        {profile?.registeredAt && <footer>{formatProfileMemberSince(profile.registeredAt)}</footer>}
         <button type="button" className="chat-profile-full-button" onClick={onFullProfile}>
-          Полный профиль
+          {t('Полный профиль')}
         </button>
       </div>
     </aside>
@@ -2225,6 +2282,36 @@ function MessageRichText({ text }: { text: string }) {
   );
 }
 
+function isPhotoMessage(message: MessageItem) {
+  return (
+    message.kind === 'image' &&
+    !message.metadata?.gif &&
+    !message.deleted_at &&
+    !message.metadata?.deleted
+  );
+}
+
+async function clipboardPng(blob: Blob): Promise<Blob> {
+  if (blob.type === 'image/png') return blob;
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Image conversion is unavailable');
+    context.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (png) => (png ? resolve(png) : reject(new Error('PNG conversion failed'))),
+        'image/png',
+      ),
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
 export function MessageList({
   chatId,
   userId,
@@ -2271,7 +2358,7 @@ export function MessageList({
   canModerateMessages?: boolean;
   canPinMessages?: boolean;
   onReply?(message: MessageItem): void;
-  onReact?(messageId: string, emoji: string | null): Promise<boolean>;
+  onReact?(messageId: string, emoji: string, remove?: boolean): Promise<boolean>;
   onPin?(messageId: string, pinned: boolean): Promise<boolean>;
   onEdit?(messageId: string, body: string): Promise<boolean>;
   onDelete?(messageId: string): Promise<boolean>;
@@ -2297,6 +2384,20 @@ export function MessageList({
   const [recentReactions, setRecentReactions] = useState(storedRecentMessageReactions);
   const [olderBusy, setOlderBusy] = useState(false);
   const [contextMenu, setContextMenu] = useState<MessageContextState>();
+  const [photoCopyStatus, setPhotoCopyStatus] = useState<{ ok: boolean }>();
+  const [closingPhotoNotice, setClosingPhotoNotice] = useState<typeof photoCopyStatus>();
+  useEffect(() => {
+    if (!photoCopyStatus) return;
+    const fade = window.setTimeout(() => setClosingPhotoNotice(photoCopyStatus), 3100);
+    const dismiss = window.setTimeout(() => {
+      setPhotoCopyStatus(undefined);
+      setClosingPhotoNotice(undefined);
+    }, 3500);
+    return () => {
+      window.clearTimeout(fade);
+      window.clearTimeout(dismiss);
+    };
+  }, [photoCopyStatus]);
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem>();
   const [deletingMessage, setDeletingMessage] = useState<MessageItem>();
   const [editingMessage, setEditingMessage] = useState<MessageItem>();
@@ -2456,6 +2557,29 @@ export function MessageList({
     fallback.remove();
   };
 
+  const copyPhoto = async (message: MessageItem) => {
+    try {
+      if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+        throw new Error('Image clipboard is unavailable');
+      }
+      // Start the clipboard write during the click, while the full image loads.
+      const image = loadChatImage({
+        accountId: userId,
+        messageId: message.id,
+        variant: 'full',
+        expiresAt: message.expires_at,
+        fetcher: () => accountClient.chatImageBlob(message.id, 'full'),
+      }).then(clipboardPng);
+      await Promise.all([
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': image })]),
+        image,
+      ]);
+      setPhotoCopyStatus({ ok: true });
+    } catch {
+      setPhotoCopyStatus({ ok: false });
+    }
+  };
+
   const revealMessage = async (messageId: string) => {
     if (scrollToReferencedMessage(messageId)) return;
     if (!(await onReveal(messageId))) return;
@@ -2536,14 +2660,22 @@ export function MessageList({
     return (
       <div className="message-load-error" role="alert">
         <RefreshCw />
-        <strong>Не удалось загрузить сообщения</strong>
+        <strong>{t('Не удалось загрузить сообщения')}</strong>
         <p>{error}</p>
-        <button onClick={onRetry}>Повторить</button>
+        <button onClick={onRetry}>{t('Повторить')}</button>
       </div>
     );
 
   return (
     <div className="message-scroll-shell">
+      {photoCopyStatus && (
+        <div
+          className={`home-transient-notice photo-copy-notice ${photoCopyStatus.ok ? 'success' : 'error'}${closingPhotoNotice === photoCopyStatus ? ' closing' : ''}`}
+          role={photoCopyStatus.ok ? 'status' : 'alert'}
+        >
+          {photoCopyStatus.ok ? t('Фото скопировано') : t('Не удалось скопировать фото')}
+        </div>
+      )}
       {showPinned && pinnedMessage ? (
         <div className="message-pinned-banner">
           <button
@@ -2553,7 +2685,7 @@ export function MessageList({
           >
             <Pin />
             <span>
-              <strong>Закреплённое сообщение</strong>
+              <strong>{t('Закреплённое сообщение')}</strong>
               <small>{pinnedMessage.body || mediaKindLabel(pinnedMessage.kind)}</small>
             </span>
           </button>
@@ -2561,7 +2693,7 @@ export function MessageList({
             <button
               type="button"
               className="message-pinned-remove"
-              aria-label="Открепить сообщение"
+              aria-label={t('Открепить сообщение')}
               onClick={() => void onPin(pinnedMessage.id, false)}
             >
               <X />
@@ -2573,7 +2705,7 @@ export function MessageList({
         className="message-scroll-container"
         ref={scrollRef}
         tabIndex={0}
-        aria-label="История сообщений"
+        aria-label={t('История сообщений')}
         onScroll={onScroll}
         onDragStart={(event) => event.preventDefault()}
         onPointerDown={(event) => {
@@ -2661,13 +2793,13 @@ export function MessageList({
       >
         <div className={`message-stream${selectionMode ? ' selection-mode' : ''}`} ref={contentRef}>
           {olderBusy && (
-            <div className="older-messages-loading">Загружаем предыдущие сообщения…</div>
+            <div className="older-messages-loading">{t('Загружаем предыдущие сообщения…')}</div>
           )}
           {visibleMessages.length === 0 ? (
             <div className="message-history-empty">
               <MessageCircle />
-              <strong>Начните разговор</strong>
-              <p>Напишите первое сообщение в этом чате.</p>
+              <strong>{t('Начните разговор')}</strong>
+              <p>{t('Напишите первое сообщение в этом чате.')}</p>
             </div>
           ) : (
             visibleMessages.map((message, index) => {
@@ -2717,9 +2849,10 @@ export function MessageList({
                         onJoinInvite={onJoinInvite}
                         onContextMenu={openMessageContext}
                         quickReactions={recentReactions}
-                        onToggleReaction={(emoji) => {
-                          if (emoji) rememberReaction(emoji);
-                          void onReact(message.id, emoji);
+                        onToggleReaction={(emoji, remove) => {
+                          if (!remove) rememberReaction(emoji);
+                          if (remove) void onReact(message.id, emoji, true);
+                          else void onReact(message.id, emoji);
                         }}
                         onEdit={() => setEditingMessage(message)}
                         onForward={() => setForwardingMessage(message)}
@@ -2731,7 +2864,7 @@ export function MessageList({
                         type="button"
                         className="message-selection-check"
                         role="checkbox"
-                        aria-label="Выделение сообщения"
+                        aria-label={t('Выделение сообщения')}
                         aria-checked={selectedIds.has(message.id)}
                         onClick={() => toggleSelected(message.id)}
                       >
@@ -2746,11 +2879,12 @@ export function MessageList({
           <div className="message-bottom-anchor" ref={bottomAnchorRef} aria-hidden="true" />
         </div>
       </div>
+      <MessageScrollRail scrollRef={scrollRef} contentRef={contentRef} />
       {viewingOlderMessages ? (
         <div className="message-history-position" role="status">
-          <span>Вы просматриваете старые сообщения</span>
+          <span>{t('Вы просматриваете старые сообщения')}</span>
           <button type="button" onClick={() => scrollToBottom(true)}>
-            Вернуться к последним сообщениям
+            {t('Вернуться к последним сообщениям')}
             {newMessageCount > 0 ? <b>{newMessageCount}</b> : null}
             <ArrowDown />
           </button>
@@ -2775,7 +2909,8 @@ export function MessageList({
                   (reaction) => reaction.emoji === emoji && reactionMine(reaction, userId),
                 );
                 if (!active) rememberReaction(emoji);
-                void onReact(contextMenu.message.id, active ? null : emoji);
+                if (active) void onReact(contextMenu.message.id, emoji, true);
+                else void onReact(contextMenu.message.id, emoji);
                 setContextMenu(undefined);
               }}
               onReply={() => {
@@ -2791,7 +2926,8 @@ export function MessageList({
                 setContextMenu(undefined);
               }}
               onCopy={() => {
-                void copyMessages([contextMenu.message]);
+                if (isPhotoMessage(contextMenu.message)) void copyPhoto(contextMenu.message);
+                else void copyMessages([contextMenu.message]);
                 setContextMenu(undefined);
               }}
               onForward={() => {
@@ -2811,13 +2947,13 @@ export function MessageList({
           )
         : null}
       {selectedIds.size > 0 ? (
-        <div className="message-selection-bar" role="toolbar" aria-label="Выбранные сообщения">
+        <div className="message-selection-bar" role="toolbar" aria-label={t('Выбранные сообщения')}>
           <strong>{selectedIds.size}</strong>
-          <span>выбрано</span>
+          <span>{t('выбрано')}</span>
           <button
             type="button"
-            title="Копировать"
-            aria-label="Копировать выбранные сообщения"
+            data-tooltip={t('Копировать')}
+            aria-label={t('Копировать выбранные сообщения')}
             onClick={() =>
               void copyMessages(messages.filter((message) => selectedIds.has(message.id)))
             }
@@ -2827,8 +2963,8 @@ export function MessageList({
           {selectedIds.size === 1 ? (
             <button
               type="button"
-              title="Переслать"
-              aria-label="Переслать выбранное сообщение"
+              data-tooltip={t('Переслать')}
+              aria-label={t('Переслать выбранное сообщение')}
               onClick={() =>
                 setForwardingMessage(messages.find((message) => selectedIds.has(message.id)))
               }
@@ -2838,8 +2974,8 @@ export function MessageList({
           ) : null}
           <button
             type="button"
-            title="Снять выделение"
-            aria-label="Снять выделение"
+            data-tooltip={t('Снять выделение')}
+            aria-label={t('Снять выделение')}
             onClick={() => setSelectedIds(new Set())}
           >
             <X />
@@ -2882,8 +3018,8 @@ export function MessageList({
       ) : null}
       {deletingMessage ? (
         <ChatActionConfirmDialog
-          title="Удалить сообщение?"
-          description="Сообщение исчезнет у всех участников этого чата."
+          title={t('Удалить сообщение?')}
+          description={t('Сообщение исчезнет у всех участников этого чата.')}
           confirmLabel="Удалить"
           busy={actionPending}
           error=""
@@ -2905,6 +3041,85 @@ export function MessageList({
           }}
         />
       ) : null}
+    </div>
+  );
+}
+function MessageScrollRail({
+  scrollRef,
+  contentRef,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+  contentRef: RefObject<HTMLDivElement | null>;
+}) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const dragOffset = useRef(0);
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    const rail = railRef.current;
+    const thumb = thumbRef.current;
+    if (!scroll || !rail || !thumb) return;
+    const sync = () => {
+      const range = scroll.scrollHeight - scroll.clientHeight;
+      rail.hidden = range <= 0;
+      if (rail.hidden) return;
+      const height = rail.clientHeight;
+      const thumbHeight = Math.min(
+        height,
+        Math.max(36, (scroll.clientHeight / scroll.scrollHeight) * height),
+      );
+      thumb.style.height = `${thumbHeight}px`;
+      thumb.style.transform = `translateY(${(Math.max(0, scroll.scrollTop) / range) * (height - thumbHeight)}px)`;
+    };
+    sync();
+    scroll.addEventListener('scroll', sync, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(sync);
+    observer?.observe(scroll);
+    if (contentRef.current) observer?.observe(contentRef.current);
+    return () => {
+      scroll.removeEventListener('scroll', sync);
+      observer?.disconnect();
+    };
+  }, [contentRef, scrollRef]);
+  const scrollToPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const scroll = scrollRef.current;
+    const thumb = thumbRef.current;
+    if (!scroll || !thumb) return;
+    const rail = event.currentTarget.getBoundingClientRect();
+    const travel = rail.height - thumb.offsetHeight;
+    if (travel <= 0) return;
+    const progress = Math.min(
+      1,
+      Math.max(0, (event.clientY - rail.top - dragOffset.current) / travel),
+    );
+    scroll.scrollTop = progress * (scroll.scrollHeight - scroll.clientHeight);
+  };
+  return (
+    <div
+      className="message-scroll-rail"
+      ref={railRef}
+      hidden
+      aria-hidden="true"
+      onPointerDown={(event) => {
+        const thumb = thumbRef.current;
+        if (event.button !== 0 || !thumb) return;
+        event.preventDefault();
+        dragOffset.current =
+          event.target === thumb
+            ? event.clientY - thumb.getBoundingClientRect().top
+            : thumb.offsetHeight / 2;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.currentTarget.dataset.dragging = '';
+        scrollToPointer(event);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) scrollToPointer(event);
+      }}
+      onLostPointerCapture={(event) => {
+        delete event.currentTarget.dataset.dragging;
+      }}
+    >
+      <div className="message-scroll-thumb" ref={thumbRef} />
     </div>
   );
 }
@@ -2940,7 +3155,7 @@ function MessageBubble({
     options?: { expanded?: boolean; pickerOnly?: boolean },
   ): void;
   quickReactions: string[];
-  onToggleReaction(emoji: string | null): void;
+  onToggleReaction(emoji: string, remove?: boolean): void;
   onEdit(): void;
   onForward(): void;
   onRevealMessage(messageId: string): void;
@@ -2956,11 +3171,11 @@ function MessageBubble({
   const forwardedName = forwardedFrom?.display_name ?? forwardedFrom?.displayName;
   const gif = message.metadata?.gif;
   const deleted = Boolean(message.deleted_at || message.metadata?.deleted);
-  const isPhoto = message.kind === 'image' && !gif && !deleted;
+  const isPhoto = isPhotoMessage(message);
   const messageMeta = (
     <span className="message-meta">
-      {message.edited_at ? <small>изменено</small> : null}
-      {message.pinned_at ? <Pin aria-label="Закреплено" /> : null}
+      {message.edited_at ? <small>{t('изменено')}</small> : null}
+      {message.pinned_at ? <Pin aria-label={t('Закреплено')} /> : null}
       <time>{formatMessageTime(message.created_at)}</time>
     </span>
   );
@@ -3026,17 +3241,17 @@ function MessageBubble({
       )}
       <div className="message-bubble-stack">
         {!deleted ? (
-          <div className="message-hover-actions" role="toolbar" aria-label="Быстрые действия">
+          <div className="message-hover-actions" role="toolbar" aria-label={t('Быстрые действия')}>
             {quickReactions.map((emoji) => (
               <button
                 type="button"
                 className="message-hover-reaction"
-                aria-label={`Поставить реакцию ${emoji}`}
+                aria-label={t('Поставить реакцию {p0}', { p0: emoji })}
                 onClick={() => {
                   const active = message.reactions?.some(
                     (reaction) => reaction.emoji === emoji && reactionMine(reaction, accountId),
                   );
-                  onToggleReaction(active ? null : emoji);
+                  onToggleReaction(emoji, active);
                 }}
                 key={emoji}
               >
@@ -3045,7 +3260,7 @@ function MessageBubble({
             ))}
             <button
               type="button"
-              aria-label="Выбрать другую реакцию"
+              aria-label={t('Выбрать другую реакцию')}
               onClick={(event) => {
                 const rect = event.currentTarget.getBoundingClientRect();
                 onContextMenu(message, rect.right - 286, rect.bottom + 6, {
@@ -3057,16 +3272,16 @@ function MessageBubble({
               <Smile />
             </button>
             {canEdit ? (
-              <button type="button" aria-label="Изменить сообщение" onClick={onEdit}>
+              <button type="button" aria-label={t('Изменить сообщение')} onClick={onEdit}>
                 <Pencil />
               </button>
             ) : null}
-            <button type="button" aria-label="Переслать сообщение" onClick={onForward}>
+            <button type="button" aria-label={t('Переслать сообщение')} onClick={onForward}>
               <Forward />
             </button>
             <button
               type="button"
-              aria-label="Другие действия"
+              aria-label={t('Другие действия')}
               onClick={(event) => {
                 const rect = event.currentTarget.getBoundingClientRect();
                 onContextMenu(message, rect.right - 286, rect.bottom + 6);
@@ -3090,7 +3305,7 @@ function MessageBubble({
           ) : null}
           {forwardedName && !deleted ? (
             <span className="message-forwarded-label">
-              <Forward /> Переслано от {forwardedName}
+              <Forward /> {t('Переслано от')} {forwardedName}
             </span>
           ) : null}
           {replyTo && !deleted ? (
@@ -3102,13 +3317,13 @@ function MessageBubble({
               <strong>{replyTo.display_name || replyTo.username || 'Сообщение'}</strong>
               <span>
                 {replyTo.deleted
-                  ? 'Сообщение удалено'
+                  ? t('Сообщение удалено')
                   : replyTo.body || mediaKindLabel(replyTo.kind)}
               </span>
             </button>
           ) : null}
           {deleted ? (
-            <p className="deleted-message-copy">Сообщение удалено</p>
+            <p className="deleted-message-copy">{t('Сообщение удалено')}</p>
           ) : gif ? (
             <GifMessage gif={gif} messageId={message.id} accountId={accountId} />
           ) : message.kind === 'image' ? (
@@ -3125,16 +3340,14 @@ function MessageBubble({
           {!isPhoto && messageMeta}
         </div>
         {!deleted && message.reactions?.length ? (
-          <div className="message-reactions" aria-label="Реакции на сообщение">
+          <div className="message-reactions" aria-label={t('Реакции на сообщение')}>
             {message.reactions.map((reaction) => (
               <button
                 type="button"
                 className={reactionMine(reaction, accountId) ? 'mine' : ''}
                 aria-label={`${reaction.emoji}: ${reaction.count}`}
                 aria-pressed={reactionMine(reaction, accountId)}
-                onClick={() =>
-                  onToggleReaction(reactionMine(reaction, accountId) ? null : reaction.emoji)
-                }
+                onClick={() => onToggleReaction(reaction.emoji, reactionMine(reaction, accountId))}
                 key={reaction.emoji}
               >
                 <span>{reaction.emoji}</span>
@@ -3201,7 +3414,7 @@ function GifMessage({
       style={{ aspectRatio: gif.width && gif.height ? `${gif.width} / ${gif.height}` : undefined }}
     >
       {failed ? (
-        <span className="chat-gif-load-error">GIF не удалось загрузить</span>
+        <span className="chat-gif-load-error">{t('GIF не удалось загрузить')}</span>
       ) : (
         <GifImage gif={gif} onError={() => setFailed(true)} />
       )}
@@ -3211,7 +3424,7 @@ function GifMessage({
           <button
             className={`gif-favorite-action${favorite ? ' saved' : ''}`}
             disabled={busy}
-            aria-label={favorite ? 'Убрать GIF из избранного' : 'Добавить GIF в избранное'}
+            aria-label={favorite ? t('Убрать GIF из избранного') : t('Добавить GIF в избранное')}
             onClick={(event) => {
               event.stopPropagation();
               setBusy(true);
@@ -3221,7 +3434,8 @@ function GifMessage({
                 .finally(() => setBusy(false));
             }}
           >
-            <Save /> {favorite ? 'Сохранено' : 'Сохранить'}
+            <Save />
+            {favorite ? t('Сохранено') : t('Сохранить')}
           </button>
         ) : null}
         {gif.attribution.provider !== 'TRLKA' ? (
@@ -3229,7 +3443,7 @@ function GifMessage({
             href={gif.attribution.pageUrl}
             target="_blank"
             rel="noreferrer"
-            title={gif.attribution.license || 'Источник GIF'}
+            data-tooltip={gif.attribution.license || 'Источник GIF'}
           >
             {gif.attribution.provider}
           </a>
@@ -3294,7 +3508,7 @@ function MessageContextMenu({
       className={`message-context-menu${state.expanded ? ' expanded' : ''}`}
       style={{ left: state.x, top: state.y }}
       role="menu"
-      aria-label="Действия с сообщением"
+      aria-label={t('Действия с сообщением')}
       onKeyDown={(event) => {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         const controls = [
@@ -3315,11 +3529,11 @@ function MessageContextMenu({
       }}
     >
       {reactionsAllowed && !state.pickerOnly ? (
-        <div className="message-quick-reactions" aria-label="Быстрые реакции">
+        <div className="message-quick-reactions" aria-label={t('Быстрые реакции')}>
           {QUICK_MESSAGE_REACTIONS.map((emoji) => (
             <button
               type="button"
-              aria-label={`Поставить реакцию ${emoji}`}
+              aria-label={t('Поставить реакцию {p0}', { p0: emoji })}
               aria-pressed={reactionIsActive(emoji)}
               onClick={() => onReact(emoji)}
               key={emoji}
@@ -3330,7 +3544,7 @@ function MessageContextMenu({
           <button
             type="button"
             className="reaction-expand-button"
-            aria-label="Все реакции"
+            aria-label={t('Все реакции')}
             aria-expanded={state.expanded}
             onClick={onExpand}
           >
@@ -3339,12 +3553,12 @@ function MessageContextMenu({
         </div>
       ) : null}
       {reactionsAllowed && (state.expanded || state.pickerOnly) ? (
-        <div className="message-reaction-picker" aria-label="Выбор реакции">
+        <div className="message-reaction-picker" aria-label={t('Выбор реакции')}>
           <div className="message-reaction-palette">
             {MESSAGE_REACTION_PALETTE.map((emoji) => (
               <button
                 type="button"
-                aria-label={`Поставить реакцию ${emoji}`}
+                aria-label={t('Поставить реакцию {p0}', { p0: emoji })}
                 aria-pressed={reactionIsActive(emoji)}
                 onClick={() => onReact(emoji)}
                 key={emoji}
@@ -3353,13 +3567,12 @@ function MessageContextMenu({
               </button>
             ))}
           </div>
-          <label className="message-custom-reaction">
-            <span className="sr-only">Любой эмодзи</span>
+          <div className="message-custom-reaction">
             <input
               value={customReaction}
               maxLength={16}
-              placeholder="Вставьте любой эмодзи"
-              aria-label="Любой эмодзи"
+              placeholder={t('Вставьте любой эмодзи')}
+              aria-label={t('Любой эмодзи')}
               onChange={(event) => setCustomReaction(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return;
@@ -3370,43 +3583,48 @@ function MessageContextMenu({
             <button
               type="button"
               disabled={!customReactionValid}
-              aria-label="Поставить введённую реакцию"
+              aria-label={t('Поставить введённую реакцию')}
               onClick={submitCustomReaction}
             >
               <Send />
             </button>
-          </label>
+          </div>
         </div>
       ) : null}
       {!state.pickerOnly ? (
         <div className="message-context-actions">
           <button type="button" role="menuitem" onClick={onReply}>
-            <Reply /> Ответить
+            <Reply />
+            {t('Ответить')}
           </button>
           {own && state.message.kind === 'text' && !state.message.metadata?.gif ? (
             <button type="button" role="menuitem" onClick={onEdit}>
-              <Pencil /> Изменить
+              <Pencil />
+              {t('Изменить')}
             </button>
           ) : null}
           {canPin ? (
             <button type="button" role="menuitem" onClick={onPin}>
               {state.message.pinned_at ? <PinOff /> : <Pin />}
-              {state.message.pinned_at ? 'Открепить' : 'Закрепить'}
+              {state.message.pinned_at ? t('Открепить') : t('Закрепить')}
             </button>
           ) : null}
           <button type="button" role="menuitem" onClick={onCopy}>
-            <Copy /> Копировать текст
+            <Copy /> {isPhotoMessage(state.message) ? t('Копировать фото') : t('Копировать текст')}
           </button>
           <button type="button" role="menuitem" onClick={onForward}>
-            <Forward /> Переслать
+            <Forward />
+            {t('Переслать')}
           </button>
           {canDelete ? (
             <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
-              <Trash2 /> Удалить{own ? '' : ' как администратор'}
+              <Trash2 />
+              {t('Удалить')}
+              {own ? '' : t(' как администратор')}
             </button>
           ) : null}
           <button type="button" role="menuitem" onClick={onSelect}>
-            <CheckCircle2 /> Выделить
+            <CheckCircle2 /> {t('Выделить')}
           </button>
         </div>
       ) : null}
@@ -3438,19 +3656,19 @@ function EditMessageDialog({
         className="edit-message-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Изменить сообщение"
+        aria-label={t('Изменить сообщение')}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header>
-          <strong>Изменить сообщение</strong>
-          <button type="button" aria-label="Закрыть" disabled={busy} onClick={onClose}>
+          <strong>{t('Изменить сообщение')}</strong>
+          <button type="button" aria-label={t('Закрыть')} disabled={busy} onClick={onClose}>
             <X />
           </button>
         </header>
         <textarea
           autoFocus
           value={body}
-          aria-label="Текст сообщения"
+          aria-label={t('Текст сообщения')}
           onChange={(event) => setBody(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') onClose();
@@ -3462,11 +3680,12 @@ function EditMessageDialog({
         <footer>
           <small>
             {trimmed.length > CHAT_MESSAGE_MAX_LENGTH
-              ? `Лимит: ${CHAT_MESSAGE_MAX_LENGTH} символов`
-              : 'Enter — сохранить, Shift + Enter — новая строка'}
+              ? t('Лимит: {p0} символов', { p0: CHAT_MESSAGE_MAX_LENGTH })
+              : t('Enter — сохранить, Shift + Enter — новая строка')}
           </small>
           <button type="button" disabled={!canSave} onClick={() => onSave(trimmed)}>
-            <Save /> {busy ? 'Сохраняем…' : 'Сохранить'}
+            <Save />
+            {busy ? t('Сохраняем…') : t('Сохранить')}
           </button>
         </footer>
       </section>
@@ -3505,15 +3724,15 @@ function ForwardMessageDialog({
         className="forward-message-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Переслать сообщение"
+        aria-label={t('Переслать сообщение')}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header>
           <div>
-            <strong>Переслать сообщение</strong>
+            <strong>{t('Переслать сообщение')}</strong>
             <small>{message.body || mediaKindLabel(message.kind)}</small>
           </div>
-          <button type="button" aria-label="Закрыть" disabled={busy} onClick={onClose}>
+          <button type="button" aria-label={t('Закрыть')} disabled={busy} onClick={onClose}>
             <X />
           </button>
         </header>
@@ -3522,8 +3741,8 @@ function ForwardMessageDialog({
           <input
             value={search}
             autoFocus
-            placeholder="Найти чат"
-            aria-label="Найти чат для пересылки"
+            placeholder={t('Найти чат')}
+            aria-label={t('Найти чат для пересылки')}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
@@ -3548,13 +3767,13 @@ function ForwardMessageDialog({
                 />
                 <span>
                   <strong>{chatName(chat, userId)}</strong>
-                  <small>{chat.type === 'group' ? 'Группа' : 'Личный чат'}</small>
+                  <small>{chat.type === 'group' ? t('Группа') : t('Личный чат')}</small>
                 </span>
                 <Forward />
               </button>
             ))
           ) : (
-            <p>Подходящих чатов нет</p>
+            <p>{t('Подходящих чатов нет')}</p>
           )}
         </div>
       </section>
@@ -3612,8 +3831,8 @@ function RoomInviteMessageCard({
           <Phone />
         </span>
         <span>
-          <strong>Не удалось проверить ссылку</strong>
-          <small>Проверьте подключение и откройте чат снова</small>
+          <strong>{t('Не удалось проверить ссылку')}</strong>
+          <small>{t('Проверьте подключение и откройте чат снова')}</small>
         </span>
       </div>
     );
@@ -3625,8 +3844,8 @@ function RoomInviteMessageCard({
           <Phone />
         </span>
         <span>
-          <strong>Ссылка истекла</strong>
-          <small>Этот звонок уже завершён</small>
+          <strong>{t('Ссылка истекла')}</strong>
+          <small>{t('Этот звонок уже завершён')}</small>
         </span>
       </div>
     );
@@ -3637,17 +3856,17 @@ function RoomInviteMessageCard({
         <Phone />
       </span>
       <span className="chat-invite-copy">
-        <small>Приглашение в звонок</small>
-        <strong>{preview ? 'Голосовая комната' : 'Проверяем ссылку…'}</strong>
+        <small>{t('Приглашение в звонок')}</small>
+        <strong>{preview ? t('Голосовая комната') : t('Проверяем ссылку…')}</strong>
         <span>
           {preview
             ? `${preview.participantCount} ${participantWord(preview.participantCount)}`
-            : 'Получаем информацию'}
+            : t('Получаем информацию')}
         </span>
       </span>
       {preview && (
         <button type="button" onClick={() => onJoin(roomId)}>
-          Присоединиться
+          {t('Присоединиться')}
         </button>
       )}
     </div>
@@ -3708,8 +3927,8 @@ function InviteMessageCard({
           <Users />
         </span>
         <span>
-          <strong>Приглашение недоступно</strong>
-          <small>Ссылка устарела или была отозвана</small>
+          <strong>{t('Приглашение недоступно')}</strong>
+          <small>{t('Ссылка устарела или была отозвана')}</small>
         </span>
       </div>
     );
@@ -3732,9 +3951,11 @@ function InviteMessageCard({
         )}
       </span>
       <span className="chat-invite-copy">
-        <small>Приглашение в группу</small>
+        <small>{t('Приглашение в группу')}</small>
         <strong>{preview?.title || 'Загрузка группы…'}</strong>
-        <span>{preview ? `${preview.memberCount} участников` : 'Получаем информацию'}</span>
+        <span>
+          {preview ? t('{p0} участников', { p0: preview.memberCount }) : t('Получаем информацию')}
+        </span>
       </span>
       {preview && (
         <button
@@ -3745,7 +3966,7 @@ function InviteMessageCard({
             void onJoin(token).finally(() => setJoining(false));
           }}
         >
-          {joining ? 'Открываем…' : preview.isMember ? 'Открыть' : 'Вступить'}
+          {joining ? t('Открываем…') : preview.isMember ? t('Открыть') : t('Вступить')}
         </button>
       )}
     </div>
@@ -3788,7 +4009,9 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
         </span>
         <span className="chat-file-copy">
           <strong>{filename}</strong>
-          <small>{failed ? 'Не удалось скачать — попробуйте ещё раз' : formatFileSize(size)}</small>
+          <small>
+            {failed ? t('Не удалось скачать — попробуйте ещё раз') : formatFileSize(size)}
+          </small>
         </span>
         <Download className="chat-file-download" aria-hidden="true" />
       </button>
@@ -3906,7 +4129,7 @@ function ChatImageMessage({
             <button
               type="button"
               className="chat-image-open"
-              aria-label="Открыть фотографию на весь экран"
+              aria-label={t('Открыть фотографию на весь экран')}
               onClick={() => {
                 setViewerClosing(false);
                 setViewerOpen(true);
@@ -3915,12 +4138,12 @@ function ChatImageMessage({
               <img src={thumbnailSource} alt={alt} />
             </button>
           ) : failed ? (
-            <span className="chat-image-error">Не удалось загрузить фотографию</span>
+            <span className="chat-image-error">{t('Не удалось загрузить фотографию')}</span>
           ) : (
             <span
               className="chat-image-loading"
               role="status"
-              aria-label="Загружаем фотографию"
+              aria-label={t('Загружаем фотографию')}
               style={
                 message.metadata?.width && message.metadata?.height
                   ? { aspectRatio: `${message.metadata.width} / ${message.metadata.height}` }
@@ -3950,7 +4173,7 @@ function ChatImageMessage({
               <button
                 type="button"
                 className="chat-image-viewer-close"
-                aria-label="Закрыть фотографию"
+                aria-label={t('Закрыть фотографию')}
                 onClick={() => setViewerClosing(true)}
               >
                 <X />
@@ -4036,17 +4259,17 @@ function MessageEventRow({
       <div
         className="message-hover-actions event-message-actions"
         role="toolbar"
-        aria-label="Быстрые действия"
+        aria-label={t('Быстрые действия')}
       >
-        <button type="button" aria-label="Ответить на сообщение" onClick={onReply}>
+        <button type="button" aria-label={t('Ответить на сообщение')} onClick={onReply}>
           <Reply />
         </button>
-        <button type="button" aria-label="Переслать сообщение" onClick={onForward}>
+        <button type="button" aria-label={t('Переслать сообщение')} onClick={onForward}>
           <Forward />
         </button>
         <button
           type="button"
-          aria-label="Другие действия"
+          aria-label={t('Другие действия')}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             openContext(rect.right - 286, rect.bottom + 6);
@@ -4106,19 +4329,21 @@ function SystemCallMessage({
         <Phone />
       </span>
       <div className="system-call-content">
-        <strong>{message.body}</strong>
+        <strong>{formatChatCallLabel(message.kind, message.body)}</strong>
         {participants.length > 0 || duration ? (
           <div className="system-call-summary">
             {participants.length > 0 ? (
               <span
                 className="system-call-participants"
-                aria-label={`Участники: ${participants.map(({ displayName }) => displayName).join(', ')}`}
+                aria-label={t('Участники: {p0}', {
+                  p0: participants.map(({ displayName }) => displayName).join(', '),
+                })}
               >
                 {participants.slice(0, 4).map((participant, index) => (
                   <span
                     className="system-call-participant"
                     key={participant.userId ?? `${participant.displayName}-${index}`}
-                    title={participant.displayName}
+                    data-tooltip={participant.displayName}
                   >
                     {participant.avatarUrl ? (
                       <CachedMediaImage src={participant.avatarUrl} alt="" />
@@ -4133,7 +4358,10 @@ function SystemCallMessage({
               </span>
             ) : null}
             {duration ? (
-              <span className="system-call-duration" aria-label={`Время разговора ${duration}`}>
+              <span
+                className="system-call-duration"
+                aria-label={t('Время разговора {p0}', { p0: duration })}
+              >
                 <Clock3 />
                 {duration}
               </span>
@@ -4144,7 +4372,7 @@ function SystemCallMessage({
         )}
       </div>
       {ended ? (
-        <span className="system-call-ended">Звонок завершён</span>
+        <span className="system-call-ended">{t('Звонок завершён')}</span>
       ) : message.metadata?.roomId ? (
         <button
           type="button"
@@ -4154,7 +4382,7 @@ function SystemCallMessage({
             onJoin(message.metadata!.roomId!);
           }}
         >
-          Присоединиться
+          {t('Присоединиться')}
         </button>
       ) : null}
     </div>
@@ -4410,22 +4638,22 @@ function MessageComposer({
           <Reply />
           <span>
             <strong>
-              Ответ для {replyTarget.display_name || replyTarget.username || 'пользователя'}
+              {t('Ответ для')} {replyTarget.display_name || replyTarget.username || 'пользователя'}
             </strong>
             <small>{replyTarget.body || mediaKindLabel(replyTarget.kind)}</small>
           </span>
-          <button type="button" aria-label="Отменить ответ" onClick={onCancelReply}>
+          <button type="button" aria-label={t('Отменить ответ')} onClick={onCancelReply}>
             <X />
           </button>
         </div>
       ) : null}
       {imageDataUrl && (
         <div className="composer-image-preview">
-          <img src={imageDataUrl} alt="Предпросмотр отправляемой фотографии" />
-          <span>Фотография готова к отправке</span>
+          <img src={imageDataUrl} alt={t('Предпросмотр отправляемой фотографии')} />
+          <span>{t('Фотография готова к отправке')}</span>
           <button
             type="button"
-            aria-label="Убрать фотографию"
+            aria-label={t('Убрать фотографию')}
             onClick={() => {
               setImageDataUrl('');
               setThumbnailDataUrl('');
@@ -4441,7 +4669,7 @@ function MessageComposer({
             <img
               className="composer-gif-preview"
               src={gifFilePreview}
-              alt="Предпросмотр своего GIF"
+              alt={t('Предпросмотр своего GIF')}
             />
           ) : (
             <FileText aria-hidden="true" />
@@ -4452,7 +4680,7 @@ function MessageComposer({
           </span>
           <button
             type="button"
-            aria-label="Убрать файл"
+            aria-label={t('Убрать файл')}
             onClick={() => setAttachmentFile(undefined)}
           >
             <X />
@@ -4475,8 +4703,8 @@ function MessageComposer({
       <button
         type="button"
         className="composer-add-button"
-        title="Отправить файл или фотографию (до 30 МБ)"
-        aria-label="Добавить файл или фотографию"
+        data-tooltip={t('Отправить файл или фотографию (до 30 МБ)')}
+        aria-label={t('Добавить файл или фотографию')}
         disabled={disabled || sending || processingImage}
         onClick={() => imageInputRef.current?.click()}
       >
@@ -4490,8 +4718,8 @@ function MessageComposer({
           disabled={disabled}
           spellCheck={spellCheckEnabled}
           lang={composerLanguage === 'auto' ? undefined : composerLanguage}
-          placeholder="Написать сообщение…"
-          aria-label="Сообщение"
+          placeholder={t('Написать сообщение…')}
+          aria-label={t('Сообщение')}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={onKeyDown}
           onContextMenu={(event) => {
@@ -4514,8 +4742,8 @@ function MessageComposer({
           <button
             type="button"
             className={`composer-gif-button${showGifPicker ? ' active' : ''}`}
-            title="Найти GIF"
-            aria-label="Открыть поиск GIF"
+            data-tooltip={t('Найти GIF')}
+            aria-label={t('Открыть поиск GIF')}
             aria-expanded={showGifPicker}
             disabled={disabled || sending || processingImage}
             onPointerDown={(event) => event.stopPropagation()}
@@ -4526,7 +4754,7 @@ function MessageComposer({
           <button
             type="button"
             className="composer-expression-button"
-            aria-label="Стикеры"
+            aria-label={t('Стикеры')}
             aria-expanded={picker === 'stickers'}
             disabled={disabled || sending || processingImage}
             onClick={() => setPicker(picker === 'stickers' ? undefined : 'stickers')}
@@ -4536,7 +4764,7 @@ function MessageComposer({
           <button
             type="button"
             className="composer-expression-button"
-            aria-label="Эмодзи"
+            aria-label={t('Эмодзи')}
             aria-expanded={picker === 'emoji'}
             disabled={disabled || sending}
             onClick={() => setPicker(picker === 'emoji' ? undefined : 'emoji')}
@@ -4547,7 +4775,7 @@ function MessageComposer({
             <div
               className="composer-expression-picker"
               role="group"
-              aria-label={picker === 'stickers' ? 'Выбор стикера' : 'Выбор эмодзи'}
+              aria-label={picker === 'stickers' ? t('Выбор стикера') : t('Выбор эмодзи')}
             >
               {(picker === 'stickers'
                 ? ['😎', '😂', '🔥', '❤️', '🎉', '👋']
@@ -4591,8 +4819,8 @@ function MessageComposer({
       {showSendButton ? (
         <button
           className="send-message-button"
-          title="Отправить"
-          aria-label="Отправить сообщение"
+          data-tooltip={t('Отправить')}
+          aria-label={t('Отправить сообщение')}
           disabled={
             disabled ||
             sending ||
@@ -4607,7 +4835,9 @@ function MessageComposer({
       ) : null}
       {remaining < 100 && (
         <output className={`composer-character-count${remaining < 0 ? ' over-limit' : ''}`}>
-          {remaining < 0 ? `${remaining} · лимит ${messageLimit} символов` : remaining}
+          {remaining < 0
+            ? t('{p0} · лимит {p1} символов', { p0: remaining, p1: messageLimit })
+            : remaining}
         </output>
       )}
       {showGifPicker ? (
@@ -4698,15 +4928,15 @@ function ComposerContextMenu({
       className="composer-context-menu"
       style={{ left: x, top: y }}
       role="menu"
-      aria-label="Действия с полем сообщения"
+      aria-label={t('Действия с полем сообщения')}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button type="button" role="menuitem" onClick={() => onSection('suggestions')}>
-        <span>Предложения</span>
+        <span>{t('Предложения')}</span>
         <ChevronRight />
       </button>
       {section === 'suggestions' ? (
-        <p className="composer-context-note">Подсказки появятся для слов с ошибками</p>
+        <p className="composer-context-note">{t('Подсказки появятся для слов с ошибками')}</p>
       ) : null}
       <button
         type="button"
@@ -4714,7 +4944,7 @@ function ComposerContextMenu({
         aria-checked={showSendButton}
         onClick={onToggleSendButton}
       >
-        <span>Кнопка отправки сообщений</span>
+        <span>{t('Кнопка отправки сообщений')}</span>
         <i>{showSendButton ? <Check /> : null}</i>
       </button>
       <hr />
@@ -4724,15 +4954,15 @@ function ComposerContextMenu({
         aria-checked={spellCheckEnabled}
         onClick={onToggleSpellCheck}
       >
-        <span>Проверка правописания</span>
+        <span>{t('Проверка правописания')}</span>
         <i>{spellCheckEnabled ? <Check /> : null}</i>
       </button>
       <button type="button" role="menuitem" onClick={() => onSection('languages')}>
-        <span>Языки</span>
+        <span>{t('Языки')}</span>
         <ChevronRight />
       </button>
       {section === 'languages' ? (
-        <div className="composer-language-options" role="group" aria-label="Язык проверки">
+        <div className="composer-language-options" role="group" aria-label={t('Язык проверки')}>
           {(
             [
               ['ru', 'Русский'],
@@ -4749,7 +4979,7 @@ function ComposerContextMenu({
       ) : null}
       <hr />
       <button type="button" role="menuitem" onClick={onPaste}>
-        <span>Вставить</span>
+        <span>{t('Вставить')}</span>
         <kbd>Ctrl+V</kbd>
       </button>
     </div>
@@ -4766,15 +4996,15 @@ function ChatEmptyState() {
       <span>
         <MessageCircle />
       </span>
-      <strong>Выберите чат</strong>
-      <p>Откройте диалог или начните новый.</p>
+      <strong>{t('Выберите чат')}</strong>
+      <p>{t('Откройте диалог или начните новый.')}</p>
     </div>
   );
 }
 
 function ChatListSkeleton() {
   return (
-    <div className="chat-list-skeleton" aria-label="Загрузка чатов" aria-busy="true">
+    <div className="chat-list-skeleton" aria-label={t('Загрузка чатов')} aria-busy="true">
       {[0, 1, 2, 3].map((item) => (
         <div key={item}>
           <i />
@@ -4790,7 +5020,7 @@ function ChatListSkeleton() {
 
 function MessageSkeleton() {
   return (
-    <div className="message-skeleton" aria-label="Загрузка сообщений" aria-busy="true">
+    <div className="message-skeleton" aria-label={t('Загрузка сообщений')} aria-busy="true">
       {[45, 62, 38, 55, 70].map((width, index) => (
         <i
           className={index % 2 ? 'own' : ''}
@@ -4846,7 +5076,7 @@ function ChatAvatar({
         name.slice(0, 1).toUpperCase()
       )}
       {group && activeCall && (
-        <span className="group-active-call-badge" title="Идёт звонок">
+        <span className="group-active-call-badge" data-tooltip={t('Идёт звонок')}>
           <Volume2 />
         </span>
       )}
@@ -4891,7 +5121,22 @@ function isSameDay(first: string, second: string) {
 }
 
 function formatMessageTime(value: string) {
-  return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return new Date(value).toLocaleTimeString(appLanguage(), { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatProfileMemberSince(value: string) {
+  const date = new Date(value);
+  const language = appLanguage();
+  const monthYear = new Intl.DateTimeFormat(language, { month: 'long', year: 'numeric' });
+  if (language !== 'ru') return t('В Trlka с {date}', { date: monthYear.format(date) });
+  const month = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' })
+    .formatToParts(date)
+    .find((part) => part.type === 'month')?.value;
+  const since = monthYear
+    .formatToParts(date)
+    .map((part) => (part.type === 'month' ? (month ?? part.value) : part.value))
+    .join('');
+  return `В TRLKA с ${since}`;
 }
 
 function formatMessageDate(value: string) {
@@ -4901,12 +5146,12 @@ function formatMessageDate(value: string) {
   yesterday.setDate(today.getDate() - 1);
   if (isSameDay(date.toISOString(), today.toISOString())) return 'Сегодня';
   if (isSameDay(date.toISOString(), yesterday.toISOString())) return 'Вчера';
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return date.toLocaleDateString(appLanguage(), { day: 'numeric', month: 'long' });
 }
 
 function formatConversationTime(value: string) {
   const date = new Date(value);
   return isSameDay(date.toISOString(), new Date().toISOString())
     ? formatMessageTime(value)
-    : date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    : date.toLocaleDateString(appLanguage(), { day: '2-digit', month: '2-digit' });
 }

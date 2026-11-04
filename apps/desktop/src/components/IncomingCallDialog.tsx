@@ -1,3 +1,4 @@
+import { t } from '../lib/app-language';
 import { Phone, PhoneOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { CachedMediaImage } from './CachedMedia';
@@ -39,28 +40,30 @@ export function IncomingCallDialog({
           <i />
         </span>
         <strong id="incoming-call-name">{invitation.inviter.displayName}</strong>
-        <span>Входящий звонок…</span>
-        <small>Ответьте в течение {secondsLeft} сек.</small>
+        <span>{t('Входящий звонок…')}</span>
+        <small>
+          {t('Ответьте в течение')} {secondsLeft} {t('сек.')}
+        </small>
         <div className="incoming-call-actions">
           <button
             type="button"
             className="decline"
             disabled={busy}
-            aria-label="Отклонить звонок"
+            aria-label={t('Отклонить звонок')}
             onClick={onDecline}
           >
             <PhoneOff />
-            <span>Отклонить</span>
+            <span>{t('Отклонить')}</span>
           </button>
           <button
             type="button"
             className="accept"
             disabled={busy}
-            aria-label="Принять звонок"
+            aria-label={t('Принять звонок')}
             onClick={onAccept}
           >
             <Phone />
-            <span>Принять</span>
+            <span>{t('Принять')}</span>
           </button>
         </div>
       </section>
