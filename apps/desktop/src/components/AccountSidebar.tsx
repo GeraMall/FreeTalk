@@ -15,7 +15,6 @@ import {
   Moon,
   PhoneCall,
   Plus,
-  Pizza,
   Search,
   Settings,
   Store,
@@ -54,7 +53,7 @@ import { playNotificationSound } from '../lib/notification-sounds';
 import { loadSettings } from '../lib/settings';
 import { CallDock, ProfileAudioControls, type CallDockState } from './CallDock';
 
-export type AccountPage = 'home' | 'friends' | 'chats' | 'store' | 'food' | 'history';
+export type AccountPage = 'home' | 'friends' | 'chats' | 'store' | 'history';
 export type AccountDestination = AccountPage | 'room';
 
 export function AccountSidebar({
@@ -360,13 +359,6 @@ export function AccountSidebar({
           label={t('Магазин')}
           clickMotion
           onClick={() => onNavigate('store')}
-        />
-        <Nav
-          active={activePage === 'food'}
-          icon={<Pizza />}
-          label={t('Еда')}
-          clickMotion
-          onClick={() => onNavigate('food')}
         />
         <Nav
           active={activePage === 'history'}

@@ -20,14 +20,13 @@ export function MobileNavigation({
   storeUnlocked?: boolean;
   onNavigate(page: AccountPage): void;
 }) {
-  const currentTab = activePage === 'food' ? 'store' : activePage;
   const navigation = (
     <nav className="mobile-bottom-navigation" aria-label={t('Основная навигация')}>
       {ITEMS.map(({ page, label, icon: Icon }) => (
         <button
           type="button"
-          className={currentTab === page ? 'active' : ''}
-          aria-current={currentTab === page ? 'page' : undefined}
+          className={activePage === page ? 'active' : ''}
+          aria-current={activePage === page ? 'page' : undefined}
           key={page}
           onClick={() => onNavigate(page)}
         >

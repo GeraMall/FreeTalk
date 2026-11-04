@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Gamepad2, LockKeyhole, Palette, Pizza, Search } from 'lucide-react';
+import { Gamepad2, LockKeyhole, Palette, Search } from 'lucide-react';
 import { t } from '../lib/app-language';
 import './store-page.css';
 
@@ -15,16 +15,11 @@ const styles = [
   { name: 'Полночь', detail: 'Тема интерфейса', art: 'theme' },
 ];
 
-export function StoreLocked({ onOpenFood }: { onOpenFood?(): void }) {
+export function StoreLocked() {
   return (
     <section className="store-page">
       <header className="store-heading">
         <h1>{t('Магазин')}</h1>
-        {onOpenFood && (
-          <button type="button" className="store-food-link" onClick={onOpenFood}>
-            <Pizza size={17} aria-hidden="true" /> {t('Еда')}
-          </button>
-        )}
       </header>
       <p className="store-locked">
         <LockKeyhole size={18} aria-hidden="true" /> {t('Магазин пока закрыт')}
@@ -33,7 +28,7 @@ export function StoreLocked({ onOpenFood }: { onOpenFood?(): void }) {
   );
 }
 
-export function StorePage({ onOpenFood }: { onOpenFood?(): void }) {
+export function StorePage() {
   const [section, setSection] = useState<'games' | 'appearance'>('games');
   const [query, setQuery] = useState('');
   const isGames = section === 'games';
@@ -47,11 +42,6 @@ export function StorePage({ onOpenFood }: { onOpenFood?(): void }) {
     <section className="store-page" aria-labelledby="store-title">
       <header className="store-heading">
         <h1 id="store-title">{t('Магазин')}</h1>
-        {onOpenFood && (
-          <button type="button" className="store-food-link" onClick={onOpenFood}>
-            <Pizza size={17} aria-hidden="true" /> {t('Еда')}
-          </button>
-        )}
         <div className="store-section-switch" role="group" aria-label={t('Разделы магазина')}>
           <button
             type="button"

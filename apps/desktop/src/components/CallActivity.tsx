@@ -7,9 +7,21 @@ import type {
   RoomActivity,
   RoomActivityAction,
 } from '@freetalk/protocol';
+import glovoLogo from '../assets/food/glovo.png';
+import samokatLogo from '../assets/food/samokat.png';
+import woltLogo from '../assets/food/wolt.png';
+import yandexLogo from '../assets/food/yandex.png';
 import { t } from '../lib/app-language';
 import vendors from '../lib/food-vendors.json';
+import { canEmbedPrivateFood, PrivateFoodBrowser } from './PrivateFoodBrowser';
 import './call-activity.css';
+
+const vendorLogos: Partial<Record<string, string>> = {
+  glovo: glovoLogo,
+  samokat: samokatLogo,
+  wolt: woltLogo,
+  yandex: yandexLogo,
+};
 
 const games = { chess: 'Шахматы', mines: 'Сапёр', fleet: 'Морской бой' } as const;
 const regions = { RU: 'Россия', KZ: 'Казахстан', GB: 'Великобритания' } as const;
@@ -107,6 +119,7 @@ export function CallActivity({
 }) {
   const [flagging, setFlagging] = useState(false);
   const [deliveryError, setDeliveryError] = useState(false);
+  const [privateVendor, setPrivateVendor] = useState<(typeof vendors)[number]>();
   const catalog = vendors.filter((entry) => entry.region === activity.region);
   const selected = catalog.find((entry) => entry.id === activity.service);
   const game = activity.game;
@@ -114,6 +127,11 @@ export function CallActivity({
     setFlagging(false);
     onAction?.({ kind: 'game', game: next });
   };
+
+  if (privateVendor)
+    return (
+      <PrivateFoodBrowser vendor={privateVendor} onClose={() => setPrivateVendor(undefined)} />
+    );
 
   return (
     <section className="call-activity" aria-label={t('Общий планшет')}>
@@ -159,7 +177,11 @@ export function CallActivity({
               }}
             >
               <span className={`food-vendor-mark food-vendor-${service.tone}`} aria-hidden="true">
-                {service.mark}
+                {vendorLogos[service.id] ? (
+                  <img src={vendorLogos[service.id]} alt="" />
+                ) : (
+                  service.mark
+                )}
               </span>
               {service.name}
             </button>
@@ -173,6 +195,10 @@ export function CallActivity({
                 type="button"
                 onClick={() => {
                   setDeliveryError(false);
+                  if (canEmbedPrivateFood()) {
+                    setPrivateVendor(selected);
+                    return;
+                  }
                   void invoke('food_vendor_open_browser', { vendor: selected.id }).catch(() =>
                     setDeliveryError(true),
                   );
