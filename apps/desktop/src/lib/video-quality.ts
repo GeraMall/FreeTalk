@@ -53,6 +53,17 @@ const BALANCED_FPS_BY_LEVEL = [1, 0.9, 0.75, 0.6] as const;
 const VIDEO_SCALE_BY_LEVEL = [1, 1.5, 2, 3] as const;
 const VIDEO_FPS_BY_LEVEL = [1, 1, 0.75, 0.5] as const;
 
+export function screenSenderPreferences(preferences: VideoPreferences): VideoPreferences {
+  const macApp =
+    typeof window !== 'undefined' &&
+    '__TAURI_INTERNALS__' in window &&
+    /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  // WebKit can otherwise downscale static content aggressively at call startup.
+  return macApp && preferences.screenContentMode === 'balanced'
+    ? { ...preferences, screenContentMode: 'text' }
+    : preferences;
+}
+
 export function screenCaptureConstraints(preferences: VideoPreferences): MediaTrackConstraints {
   const resolution = RESOLUTIONS[preferences.screenResolution];
   return {

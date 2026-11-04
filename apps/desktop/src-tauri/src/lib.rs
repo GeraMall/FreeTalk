@@ -519,6 +519,15 @@ pub fn run() {
                 window = window.decorations(false);
             }
 
+            #[cfg(target_os = "macos")]
+            {
+                // These are logical points. Leave room for the menu bar and Dock.
+                window = window
+                    .inner_size(1120.0, 690.0)
+                    .min_inner_size(780.0, 520.0)
+                    .maximized(false);
+            }
+
             if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {
                 window = window.data_directory(std::path::PathBuf::from(directory));
             }

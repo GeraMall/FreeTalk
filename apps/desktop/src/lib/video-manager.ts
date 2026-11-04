@@ -3,6 +3,7 @@ import {
   DEFAULT_VIDEO_PREFERENCES,
   normalizeVideoPreferences,
   screenCaptureConstraints,
+  screenSenderPreferences,
   type VideoPreferences,
 } from './video-quality';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
@@ -314,12 +315,8 @@ export class VideoManager {
     stream.onremovetrack = () => {
       if (this.screenStream === stream) this.emitState();
     };
-    track.contentHint =
-      this.preferences.screenContentMode === 'text'
-        ? 'detail'
-        : this.preferences.screenContentMode === 'video'
-          ? 'motion'
-          : '';
+    const screenMode = screenSenderPreferences(this.preferences).screenContentMode;
+    track.contentHint = screenMode === 'text' ? 'detail' : screenMode === 'video' ? 'motion' : '';
     let audioTrack = stream.getAudioTracks()[0];
     if (includeAudio && macOS && !audioTrack) {
       try {

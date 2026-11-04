@@ -594,11 +594,11 @@ export function HomeView({
       setMessagesError('');
     }
     try {
-      const result = await accountClient.request<{
+      const result = await accountClient.chatHistory<{
         messages: MessageItem[];
         hasMore?: boolean;
         pinnedMessage?: MessageItem | null;
-      }>(`/v1/chats/${chatId}/messages`);
+      }>(chatId);
       if (requestId !== messagesRequestIdRef.current || activeChatRef.current !== chatId)
         return false;
       setMessages(result.messages);
@@ -636,11 +636,10 @@ export function HomeView({
   );
 
   useEffect(() => {
-    if (initialChatId) {
-      void loadPage('chats');
+    if (initialChatId && initialChatId !== activeChatRef.current) {
       void openChat(initialChatId);
     }
-  }, [initialChatId, openChat, loadPage]);
+  }, [initialChatId, openChat]);
 
   const loadOlderMessages = async () => {
     if (!activeChat || !hasMoreMessages) return;

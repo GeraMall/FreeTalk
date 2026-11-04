@@ -80,6 +80,7 @@ const allowedOrigins = env.ALLOWED_ORIGIN.split(',').map((value) => value.trim()
 await app.register(cors, {
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  exposedHeaders: ['Retry-After'],
 });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {

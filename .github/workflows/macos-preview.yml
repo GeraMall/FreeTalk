@@ -1,0 +1,51 @@
+name: macOS preview
+
+on:
+  push:
+    branches: [preview/macos-polish-190]
+
+permissions:
+  contents: read
+
+env:
+  VITE_SIGNALING_URL: ${{ vars.FREETALK_BETA_SIGNALING_URL }}
+  VITE_API_URL: ${{ vars.FREETALK_BETA_API_URL }}
+  VITE_INVITE_BASE_URL: https://freetalk.191-44-38-60.sslip.io
+  VITE_TURNSTILE_SITE_KEY: ${{ vars.FREETALK_TURNSTILE_SITE_KEY }}
+
+jobs:
+  apple-silicon:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @freetalk/desktop typecheck
+      - run: pnpm --filter @freetalk/desktop test src/lib/video-quality.test.ts src/lib/video-manager.test.ts src/lib/peer-manager.video.test.ts
+      - run: pnpm --filter @freetalk/desktop tauri build --target aarch64-apple-darwin --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Verify and launch the Mac bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Trlka.app"
+          binary="$app/Contents/MacOS/freetalk"
+          /usr/bin/plutil -lint "$app/Contents/Info.plist"
+          /usr/bin/codesign --verify --deep --strict "$app"
+          test "$(lipo -archs "$binary")" = arm64
+          otool -l "$binary" > /tmp/trlka-macos-load-commands
+          grep -A3 LC_RPATH /tmp/trlka-macos-load-commands | grep -q 'path /usr/lib/swift'
+          if launchctl print "gui/$(id -u)" >/dev/null 2>&1; then
+            TRLKA_MAC_BUNDLE="$app" ./script/build_and_run.sh --verify
+            pkill -x freetalk
+          else
+            echo "::notice::The runner has no graphical session. Launch was skipped."
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-macos-preview-arm64
+          if-no-files-found: error
+          path: apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg

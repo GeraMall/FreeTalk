@@ -1,6 +1,6 @@
 [package]
 name = "freetalk"
-version = "0.4.0-beta.189"
+version = "0.4.0-beta.190"
 description = "Trlka desktop voice chat"
 authors = ["Trlka contributors"]
 license = "MIT"
