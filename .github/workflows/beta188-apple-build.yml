@@ -1,0 +1,65 @@
+name: Beta 188 Apple Silicon build
+on:
+  push:
+    branches: [release/beta-188-apple-silicon]
+
+permissions:
+  contents: read
+
+env:
+  VITE_SIGNALING_URL: ${{ vars.FREETALK_BETA_SIGNALING_URL }}
+  VITE_API_URL: ${{ vars.FREETALK_BETA_API_URL }}
+  VITE_INVITE_BASE_URL: https://freetalk.191-44-38-60.sslip.io
+  VITE_TURNSTILE_SITE_KEY: ${{ vars.FREETALK_TURNSTILE_SITE_KEY }}
+
+jobs:
+  macos:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, runner: macos-26-intel }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - run: pnpm install --frozen-lockfile
+      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
+      - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
+      - name: Verify macOS runtime paths
+        run: |
+          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
+          executable="$app_path/Contents/MacOS/freetalk"
+          test -x "$executable"
+          test "$(lipo -archs "$executable")" = "arm64"
+          otool -L "$executable"
+          if ! otool -l "$executable" | grep -A3 LC_RPATH | grep -q "path /usr/lib/swift"; then
+            echo "Missing /usr/lib/swift LC_RPATH; packaged app would crash before launch" >&2
+            exit 1
+          fi
+      - name: Package macOS app
+        run: |
+          mkdir -p beta-assets
+          version=$(node -p "require('./package.json').version")
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) release_arch=aarch64 ;;
+            x86_64-apple-darwin) release_arch=x64 ;;
+          esac
+          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "beta-assets/Trlka-${{ matrix.target }}.app.zip"
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg beta-assets/
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz"
+          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz.sig"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beta-macos-${{ matrix.target }}
+          if-no-files-found: error
+          path: beta-assets/*
+
