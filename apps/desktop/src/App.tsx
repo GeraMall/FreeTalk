@@ -2101,8 +2101,9 @@ export function App() {
       roomStartedAt={roomStartedAt}
       reactions={reactions}
       roomChatMessages={roomChatMessages}
-      activity={roomActivity}
-      onActivity={roomActivity && accountUser ? sendActivity : undefined}
+      activity={accountUser?.canAccessStore ? roomActivity : undefined}
+      activityUnlocked={accountUser?.canAccessStore === true}
+      onActivity={sendActivity}
       screenFocusMode={screenFocusMode}
       settings={settings}
       signalingState={signalState}

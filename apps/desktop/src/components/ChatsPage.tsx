@@ -1,5 +1,6 @@
 import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   useCallback,
   useEffect,
@@ -8,6 +9,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -2229,6 +2231,15 @@ function loadMessageLinkPreview(url: string) {
   return request;
 }
 
+function openChatLink(event: ReactMouseEvent<HTMLAnchorElement>) {
+  if (event.defaultPrevented || !isTauri() || (event.type === 'auxclick' && event.button !== 1))
+    return;
+  event.preventDefault();
+  void invoke('open_chat_link', { url: event.currentTarget.href }).catch((error: unknown) =>
+    console.error('Could not open chat link', error),
+  );
+}
+
 function MessageLinkPreviewCard({ url }: { url: string }) {
   const [preview, setPreview] = useState<MessageLinkPreview | null>();
   useEffect(() => {
@@ -2245,6 +2256,8 @@ function MessageLinkPreviewCard({ url }: { url: string }) {
     <a
       className="message-link-preview"
       href={preview.url}
+      onClick={openChatLink}
+      onAuxClick={openChatLink}
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -2269,7 +2282,14 @@ function MessageRichText({ text }: { text: string }) {
     if (start < 0) continue;
     if (start > offset) parts.push(text.slice(offset, start));
     parts.push(
-      <a href={link} target="_blank" rel="noopener noreferrer" key={`${start}-${link}`}>
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        key={`${start}-${link}`}
+        onClick={openChatLink}
+        onAuxClick={openChatLink}
+      >
         {link}
       </a>,
     );
@@ -3444,6 +3464,8 @@ function GifMessage({
         {gif.attribution.provider !== 'TRLKA' ? (
           <a
             href={gif.attribution.pageUrl}
+            onClick={openChatLink}
+            onAuxClick={openChatLink}
             target="_blank"
             rel="noreferrer"
             data-tooltip={gif.attribution.license || 'Источник GIF'}

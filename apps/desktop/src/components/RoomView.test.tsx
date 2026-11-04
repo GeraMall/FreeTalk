@@ -732,6 +732,7 @@ describe('RoomView media layouts', () => {
     expect(labels).toEqual([
       'Микрофон',
       'Камера',
+      'Активность',
       'Ещё',
       'Экран',
       'Запись',
@@ -751,6 +752,14 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.voice-dock')?.classList.contains('mobile-actions-open')).toBe(
       false,
     );
+  });
+
+  it('shows Activity on entry and only shows a hint for locked accounts', () => {
+    const { container, getByText } = render(view());
+    const dock = container.querySelector('.voice-dock')!;
+    expect(dock.closest('.room-shell')?.classList.contains('call-controls-visible')).toBe(true);
+    fireEvent.click(dock.querySelector('.activity-control-desktop')!);
+    expect(getByText('Скоро').getAttribute('role')).toBe('status');
   });
 
   it('opens the ephemeral room chat and sends a message', () => {

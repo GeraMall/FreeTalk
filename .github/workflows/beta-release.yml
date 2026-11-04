@@ -179,7 +179,7 @@ jobs:
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          draft: ${{ github.ref_name == 'v0.4.0-beta.188' }}
+          draft: ${{ github.ref_name == 'v0.4.0-beta.188' || github.ref_name == 'v0.4.0-beta.189' }}
           prerelease: false
           make_latest: true
           generate_release_notes: true

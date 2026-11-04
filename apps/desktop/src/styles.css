@@ -19958,7 +19958,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     width: auto;
     max-width: none;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr) 52px 58px;
+    grid-template-columns: minmax(0, 1fr) 48px 52px 58px;
     gap: 7px;
     padding: 7px;
     transform: none;
@@ -21215,16 +21215,16 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     right: auto !important;
     bottom: calc(12px + env(safe-area-inset-bottom)) !important;
     left: 50% !important;
-    width: 240px !important;
+    width: 294px !important;
     max-width: calc(100vw - 24px) !important;
     height: 54px !important;
     min-height: 54px !important;
     display: grid !important;
-    grid-template-columns: repeat(4, 54px) !important;
+    grid-template-columns: repeat(5, 54px) !important;
     grid-template-rows: 54px !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px !important;
+    gap: 6px !important;
     padding: 0 !important;
     overflow: visible !important;
     border: 0 !important;
@@ -21263,6 +21263,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
   .mobile-direct-call-workspace .voice-dock .dock-control.mic-control,
   .mobile-direct-call-workspace .voice-dock .dock-control.video-control:not(.screen-control),
+  .mobile-direct-call-workspace .voice-dock .activity-control-mobile,
   .mobile-direct-call-workspace .voice-dock .mobile-call-more-toggle,
   .mobile-direct-call-workspace .voice-dock .leave-button {
     width: 54px !important;
@@ -21280,12 +21281,12 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   }
 
   .mobile-direct-call-workspace .voice-dock .mobile-call-more-toggle {
-    grid-column: 3 !important;
+    grid-column: 4 !important;
     grid-row: 1 !important;
   }
 
   .mobile-direct-call-workspace .voice-dock .leave-button {
-    grid-column: 4 !important;
+    grid-column: 5 !important;
     grid-row: 1 !important;
   }
 
@@ -21471,16 +21472,16 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     right: auto !important;
     bottom: calc(12px + env(safe-area-inset-bottom)) !important;
     left: 50% !important;
-    width: 240px !important;
+    width: 294px !important;
     max-width: calc(100vw - 24px) !important;
     height: 54px !important;
     min-height: 54px !important;
     display: grid !important;
-    grid-template-columns: repeat(4, 54px) !important;
+    grid-template-columns: repeat(5, 54px) !important;
     grid-template-rows: 54px !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px !important;
+    gap: 6px !important;
     padding: 0 !important;
     overflow: visible !important;
     border: 0 !important;
@@ -21524,6 +21525,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 
   .mobile-conversation-call-workspace .voice-dock .dock-control.mic-control,
   .mobile-conversation-call-workspace .voice-dock .dock-control.video-control:not(.screen-control),
+  .mobile-conversation-call-workspace .voice-dock .activity-control-mobile,
   .mobile-conversation-call-workspace .voice-dock .mobile-call-more-toggle,
   .mobile-conversation-call-workspace .voice-dock .leave-button {
     width: 54px !important;
@@ -21545,12 +21547,12 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   }
 
   .mobile-conversation-call-workspace .voice-dock .mobile-call-more-toggle {
-    grid-column: 3 !important;
+    grid-column: 4 !important;
     grid-row: 1 !important;
   }
 
   .mobile-conversation-call-workspace .voice-dock .leave-button {
-    grid-column: 4 !important;
+    grid-column: 5 !important;
     grid-row: 1 !important;
   }
 

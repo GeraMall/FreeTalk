@@ -105,6 +105,7 @@ interface SocketAttachment {
   profileChanges?: number[];
   lastReactionAt?: number;
   lastActivityAt?: number;
+  canUseActivity?: boolean;
   clientConnectionId: string;
   serverConnectionId: string;
   edgeColo: string;
@@ -302,6 +303,7 @@ export class VoiceRoom implements DurableObject {
         return;
       }
       if (message.type === 'activity-action') {
+        if (!attachment.canUseActivity) return;
         if (now - (attachment.lastActivityAt ?? 0) < 125) return;
         attachment.lastActivityAt = now;
         socket.serializeAttachment(attachment);
@@ -312,7 +314,12 @@ export class VoiceRoom implements DurableObject {
           await txn.put('activity', next);
           return next.view;
         });
-        if (activity) this.broadcast({ type: 'activity-state', activity });
+        if (activity) {
+          for (const participant of this.active()) {
+            const peer = participant.deserializeAttachment() as SocketAttachment;
+            if (peer.canUseActivity) this.send(participant, { type: 'activity-state', activity });
+          }
+        }
         return;
       }
       if (message.type === 'reaction') {
@@ -489,6 +496,33 @@ export class VoiceRoom implements DurableObject {
     }
   }
 
+  private async authorizeActivity(
+    message: Extract<ReturnType<typeof parseClientMessage>, { type: 'create-room' | 'join-room' }>,
+  ) {
+    const { ACCOUNT_API_URL, INTERNAL_SIGNALING_SECRET } = this.env;
+    if (!ACCOUNT_API_URL || !INTERNAL_SIGNALING_SECRET || !message.authToken) return false;
+    try {
+      const response = await fetch(new URL('/v1/internal/room-authorize', ACCOUNT_API_URL), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-freetalk-internal-secret': INTERNAL_SIGNALING_SECRET,
+        },
+        body: JSON.stringify({
+          action: message.type === 'create-room' ? 'create' : 'join',
+          roomId: message.roomId,
+          token: message.authToken,
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return false;
+      const result = await response.json<{ allowed?: boolean; canAccessStore?: boolean }>();
+      return result.allowed === true && result.canAccessStore === true;
+    } catch {
+      return false;
+    }
+  }
+
   private async join(
     socket: WebSocket,
     message: Extract<ReturnType<typeof parseClientMessage>, { type: 'create-room' | 'join-room' }>,
@@ -503,7 +537,10 @@ export class VoiceRoom implements DurableObject {
       });
       return;
     }
-    const iceConfig = await this.iceConfig();
+    const [iceConfig, canUseActivity] = await Promise.all([
+      this.iceConfig(),
+      this.authorizeActivity(message),
+    ]);
     const active = this.active();
     const grace = await this.state.storage.get<{ sessionId: string; expiresAt: number }>('grace');
     if (
@@ -579,6 +616,7 @@ export class VoiceRoom implements DurableObject {
       profileChanges: sameAttachment?.profileChanges ?? [],
       lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
       lastActivityAt: sameAttachment?.lastActivityAt ?? 0,
+      canUseActivity,
       isOwner:
         sameAttachment?.isOwner ??
         (message.type === 'create-room' && active.filter((entry) => entry !== same).length === 0),
@@ -608,7 +646,7 @@ export class VoiceRoom implements DurableObject {
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
       roomChatMessages,
-      activity: activity.view,
+      activity: canUseActivity ? activity.view : undefined,
     });
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });

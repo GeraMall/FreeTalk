@@ -120,6 +120,7 @@ interface RoomViewProps {
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   roomChatMessages: RoomChatMessage[];
   activity?: RoomActivity;
+  activityUnlocked?: boolean;
   onActivity?(action: RoomActivityAction): void;
   screenFocusMode: boolean;
   signalingState: SignalingState;
@@ -182,6 +183,7 @@ export function RoomView({
   reactions,
   roomChatMessages,
   activity,
+  activityUnlocked = false,
   onActivity,
   screenFocusMode,
   signalingState,
@@ -219,6 +221,12 @@ export function RoomView({
   const [menuFor, setMenuFor] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [activityHint, setActivityHint] = useState(0);
+  useEffect(() => {
+    if (!activityHint) return;
+    const timer = window.setTimeout(() => setActivityHint(0), 2400);
+    return () => window.clearTimeout(timer);
+  }, [activityHint]);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatClosing, setChatClosing] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -232,7 +240,7 @@ export function RoomView({
   const callFullscreenBusy = useRef(false);
   const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
-  const [callControlsVisible, setCallControlsVisible] = useState(false);
+  const [callControlsVisible, setCallControlsVisible] = useState(true);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
@@ -251,6 +259,27 @@ export function RoomView({
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
   const self = participants.find((participant) => participant.id === selfId);
+  const activityButton = (layoutClass: string) => (
+    <button
+      type="button"
+      className={`dock-control activity-control ${layoutClass} ${activity?.open ? 'active' : ''}`}
+      aria-label={t('Активность')}
+      aria-pressed={activityUnlocked ? (activity?.open ?? false) : undefined}
+      data-tooltip={t('Активность')}
+      disabled={activityUnlocked && (!activity || signalingState !== 'connected')}
+      onClick={() => {
+        if (activityUnlocked) onActivity?.({ kind: activity?.open ? 'close' : 'open' });
+        else setActivityHint((current) => current + 1);
+      }}
+    >
+      <span className="dock-icon">
+        <Shapes aria-hidden="true" />
+      </span>
+      {layoutClass === 'activity-control-mobile' && (
+        <span className="dock-mobile-label">{t('Активность')}</span>
+      )}
+    </button>
+  );
   const openSlots = Math.max(0, ROOM_MAX_PARTICIPANTS - participants.length);
   const visibleWaitingParticipants = waitingCardsVisible ? waitingParticipants : [];
   const participantMedia = (participant: Participant) =>
@@ -282,12 +311,13 @@ export function RoomView({
     if (conversation && (conversationHidden || callFullscreen)) setFriendsInviteOpen(false);
   }, [callFullscreen, conversation, conversationHidden]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    setCallControlsVisible(true);
+    callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 3500);
+    return () => {
       if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
-    },
-    [],
-  );
+    };
+  }, [roomId]);
 
   useEffect(() => {
     if (!conversation || !roomStartedAt || waitingParticipants.length === 0) {
@@ -732,7 +762,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -1184,6 +1214,12 @@ export function RoomView({
             )}
           </div>
         </div>
+        {activityButton('activity-control-mobile')}
+        {activityHint > 0 && (
+          <span className="call-activity-hint" key={activityHint} role="status">
+            {t('Скоро')}
+          </span>
+        )}
         <button
           className={`mobile-call-more-toggle ${mobileActionsOpen ? 'active' : ''}`}
           aria-label={mobileActionsOpen ? t('Скрыть дополнительные действия') : t('Показать ещё')}
@@ -1194,22 +1230,7 @@ export function RoomView({
           <span className="dock-mobile-label">{t('Ещё')}</span>
         </button>
         <div className="dock-island dock-secondary-actions">
-          {onActivity && (
-            <button
-              type="button"
-              className={`dock-control activity-control ${activity?.open ? 'active' : ''}`}
-              aria-label={t('Активность')}
-              aria-pressed={activity?.open ?? false}
-              data-tooltip={t('Активность')}
-              disabled={signalingState !== 'connected'}
-              onClick={() => onActivity({ kind: activity?.open ? 'close' : 'open' })}
-            >
-              <span className="dock-icon">
-                <Shapes aria-hidden="true" />
-              </span>
-              <span className="dock-mobile-label">{t('Активность')}</span>
-            </button>
-          )}
+          {activityButton('activity-control-desktop')}
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
             aria-busy={videoBusy}

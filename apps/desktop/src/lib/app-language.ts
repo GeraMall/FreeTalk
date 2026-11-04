@@ -60,6 +60,7 @@ export function formatChatCallLabel(kind: string | null | undefined, text: strin
 
 const translations: Record<string, readonly [string, string]> = {
   Активность: ['Activity', '活动'],
+  Скоро: ['Soon', '即将推出'],
   'Общий планшет': ['Shared tablet', '共享平板'],
   'Закрыть для всех': ['Close for everyone', '为所有人关闭'],
   'Магазин пока закрыт': ['The store is closed for now', '商店暂未开放'],

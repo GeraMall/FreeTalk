@@ -62,6 +62,20 @@ fn macos_screen_audio_stop(
 
 #[cfg(desktop)]
 #[tauri::command]
+fn open_chat_link(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let url = tauri::Url::parse(&url).map_err(|_| "Invalid link")?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err("Only HTTP and HTTPS links can be opened".into());
+    }
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
 fn open_passkey_browser(app: tauri::AppHandle, challenge: Option<String>) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
@@ -434,6 +448,7 @@ pub fn run() {
         .manage(windows_screen::State::default())
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
+            open_chat_link,
             open_passkey_browser,
             food_webview::food_vendor_open_browser,
             food_webview::food_vendor_view,

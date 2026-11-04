@@ -14,6 +14,7 @@ import type {
 } from '@freetalk/protocol';
 
 export interface PeerConnection {
+  canUseActivity?: boolean;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
 }
@@ -154,7 +155,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
-      activity: room.activity.view,
+      activity: connection.canUseActivity ? room.activity.view : undefined,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -246,14 +247,17 @@ export class RoomManager {
   updateActivity(roomId: string, clientId: string, revision: number, action: RoomActivityAction) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
-    if (!room || !peer) return;
+    if (!room || !peer?.connection.canUseActivity) return;
     const now = Date.now();
     if (now - peer.lastActivityAt < 125) return;
     peer.lastActivityAt = now;
     const next = applyRoomActivity(room.activity, revision, action);
     if (next === room.activity) return;
     room.activity = next;
-    this.broadcast(room, { type: 'activity-state', activity: next.view });
+    for (const participant of room.peers.values()) {
+      if (participant.connection.canUseActivity)
+        participant.connection.send({ type: 'activity-state', activity: next.view });
+    }
   }
 
   react(
