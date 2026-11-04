@@ -3,8 +3,57 @@ import { createPortal } from 'react-dom';
 import { Check, QrCode, X } from 'lucide-react';
 import { accountClient, type AccountUser } from '../lib/api-client';
 import { t } from '../lib/app-language';
+import mascot from '../../src-tauri/icons/app-icon-source.png';
 
 const qrPrefix = 'trlka:qr-login:v1:';
+const qrRefreshMs = 30_000;
+
+async function renderLoginQr(challenge: string) {
+  const { toCanvas } = await import('qrcode');
+  const canvas = document.createElement('canvas');
+  const ink = '#000000';
+  const paper = '#ffffff';
+  await toCanvas(canvas, qrPrefix + challenge, {
+    scale: 5,
+    margin: 4,
+    errorCorrectionLevel: 'H',
+    color: { dark: ink, light: paper },
+  });
+
+  const logo = new Image();
+  logo.src = mascot;
+  await logo.decode();
+  const mark = document.createElement('canvas');
+  mark.width = mark.height = 36;
+  const markContext = mark.getContext('2d');
+  const context = canvas.getContext('2d');
+  if (!context || !markContext) throw new Error('QR canvas unavailable');
+
+  markContext.drawImage(logo, 0, 0, mark.width, mark.height);
+  const image = markContext.getImageData(0, 0, mark.width, mark.height);
+  // Keep the emblem while removing the original icon tile.
+  for (let index = 0; index < image.data.length; index += 4) {
+    const lightness = Math.max(image.data[index], image.data[index + 1], image.data[index + 2]);
+    const alpha = Math.max(0, Math.min(1, (lightness - 124) / 110));
+    image.data[index + 3] *= alpha;
+  }
+  markContext.putImageData(image, 0, 0);
+  markContext.globalCompositeOperation = 'source-in';
+  markContext.fillStyle = paper;
+  markContext.fillRect(0, 0, mark.width, mark.height);
+
+  const center = Math.floor(canvas.width / 2);
+  context.beginPath();
+  context.arc(center, center, 23, 0, 2 * Math.PI);
+  context.fillStyle = paper;
+  context.fill();
+  context.beginPath();
+  context.arc(center, center, 19, 0, 2 * Math.PI);
+  context.fillStyle = ink;
+  context.fill();
+  context.drawImage(mark, center - 18, center - 18);
+  return canvas.toDataURL('image/png');
+}
 
 function QrDialog({
   title,
@@ -65,47 +114,71 @@ export function QrLoginDialog({
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
-    let timer = 0;
+    // Keep recently scanned codes redeemable until their server expiration.
+    const requests: { token: string; expiresAt: number }[] = [];
+    let rotateTimer = 0;
+    let pollTimer = 0;
+    let visibleUntil = 0;
+    let finished = false;
 
-    async function start() {
+    async function rotate() {
+      const startedAt = Date.now();
       try {
         const { challenge, pollToken, expiresIn } = await accountClient.startQrLogin(signal);
-        const { toDataURL } = await import('qrcode');
-        const image = await toDataURL(qrPrefix + challenge, { width: 240, margin: 3 });
-        if (signal.aborted) return;
-        const expires = Date.now() + expiresIn * 1000;
+        const image = await renderLoginQr(challenge);
+        if (signal.aborted || finished) return;
+        visibleUntil = startedAt + expiresIn * 1000;
+        requests.push({ token: pollToken, expiresAt: visibleUntil });
         setQr({ image, code: challenge.slice(0, 5).toUpperCase() });
         setStatus('waiting');
-
-        const poll = async () => {
-          if (signal.aborted) return;
-          try {
-            const result = await accountClient.redeemQrLogin(pollToken, signal);
-            if (signal.aborted) return;
-            if (result.status === 'approved') {
-              await finishLogin.current(result.user);
-            } else if (result.status === 'expired' || Date.now() >= expires) {
-              setStatus('expired');
-            } else {
-              timer = window.setTimeout(poll, 2000);
-            }
-          } catch {
-            if (!signal.aborted) {
-              if (Date.now() >= expires) setStatus('expired');
-              else timer = window.setTimeout(poll, 3000);
-            }
-          }
-        };
-        timer = window.setTimeout(poll, 1000);
+        rotateTimer = window.setTimeout(
+          rotate,
+          Math.max(0, qrRefreshMs - (Date.now() - startedAt)),
+        );
+        if (!pollTimer) pollTimer = window.setTimeout(poll, 1000);
       } catch {
-        if (!signal.aborted) setStatus('failed');
+        if (signal.aborted || finished) return;
+        if (Date.now() >= visibleUntil) {
+          setStatus(visibleUntil ? 'expired' : 'failed');
+        } else {
+          rotateTimer = window.setTimeout(rotate, 5000);
+        }
       }
     }
 
-    void start();
+    async function poll() {
+      if (signal.aborted || finished) return;
+      let request = requests.shift();
+      while (request && request.expiresAt <= Date.now()) request = requests.shift();
+      if (request) {
+        try {
+          const result = await accountClient.redeemQrLogin(request.token, signal);
+          if (signal.aborted) return;
+          if (result.status === 'approved') {
+            finished = true;
+            window.clearTimeout(rotateTimer);
+            await finishLogin.current(result.user);
+            return;
+          }
+          if (result.status === 'pending') requests.push(request);
+        } catch {
+          if (signal.aborted) return;
+          if (finished) {
+            setStatus('failed');
+            return;
+          }
+          requests.push(request);
+        }
+      }
+      if (!requests.length && Date.now() >= visibleUntil) setStatus('expired');
+      pollTimer = window.setTimeout(poll, 1500);
+    }
+
+    void rotate();
     return () => {
       controller.abort();
-      window.clearTimeout(timer);
+      window.clearTimeout(rotateTimer);
+      window.clearTimeout(pollTimer);
     };
   }, [attempt]);
 

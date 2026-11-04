@@ -2045,8 +2045,11 @@ input[type='range']:hover::-webkit-slider-thumb {
     opacity: 0.44;
   }
 }
-.welcome-card.account-card {
+.welcome-card.account-card,
+.qr-auth-dialog {
   background: linear-gradient(150deg, #101826, #0a1320 68%, #0a1421);
+}
+.welcome-card.account-card {
   border-color: #263349;
   box-shadow: none;
 }
@@ -22011,10 +22014,9 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   width: min(420px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
-  border: 1px solid #2b394e;
+  border: 1px solid #263349;
   border-radius: 16px;
   color: #edf3fc;
-  background: #101a28;
   box-shadow: 0 24px 64px #0007;
 }
 
@@ -22060,7 +22062,14 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   min-height: 44px;
 }
 
-.qr-auth-code,
+.qr-auth-code {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+  image-rendering: pixelated;
+}
+
 .qr-auth-camera {
   display: block;
   width: min(100%, 240px);
