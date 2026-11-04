@@ -1839,6 +1839,47 @@ export function App() {
     remoteScreenAudio.current.setMuted(peerId, value);
   };
   const saveConnectionDiagnostics = async () => {
+    if (roomId && document.documentElement.classList.contains('mac-desktop-app')) {
+      connectionDiagnostics.record('call-layout', undefined, {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        participants: participants.length,
+        chatHidden: conversationHidden,
+        screenFocus: screenFocusMode,
+      });
+      for (const selector of [
+        '.account-room-workspace',
+        '.room-view-slot',
+        '.room-shell',
+        '.room-body-layout',
+        '.room-main',
+        '.participant-card',
+        '.screen-stage-shell',
+        '.account-page-slot',
+      ]) {
+        const element = document.querySelector(selector);
+        if (!element) {
+          connectionDiagnostics.record('call-layout:element', undefined, {
+            selector,
+            present: false,
+          });
+          continue;
+        }
+        const { x, y, width, height } = element.getBoundingClientRect();
+        const { display, visibility, opacity } = getComputedStyle(element);
+        connectionDiagnostics.record('call-layout:element', undefined, {
+          selector,
+          x: Math.round(x),
+          y: Math.round(y),
+          width: Math.round(width),
+          height: Math.round(height),
+          scrollTop: Math.round(element.scrollTop),
+          display,
+          visibility,
+          opacity,
+        });
+      }
+    }
     return invoke<string>('save_connection_diagnostics', {
       contents: connectionDiagnostics.toText(),
     });
