@@ -1,5 +1,5 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
@@ -24,7 +24,6 @@ import { publishChatEvent, registerSocialRoutes } from './social-routes.js';
 import { registerAndroidPush, startAndroidPush } from './android-push.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { safeImageDimensions } from './image-dimensions.js';
-import { GUEST_SESSION_SECONDS, guestQuotaAvailable } from './policy.js';
 import { registerAdminRoutes } from './admin-routes.js';
 import { startInfrastructureSampler } from './infrastructure-metrics.js';
 import { registerApiMetrics } from './api-metrics.js';
@@ -32,6 +31,7 @@ import { API_VERSION } from './app-version.js';
 import { presenceAudience } from './presence-audience.js';
 import { startCallReconciliation } from './call-reconciliation.js';
 import { registerMobileBetaRoutes } from './mobile-beta.js';
+import { registerPasskeyRoutes } from './passkeys.js';
 import { registerQrLoginRoutes } from './qr-login.js';
 import { registerWebPush, startWebPush } from './web-push.js';
 import { registerServiceChat, startSupportDelivery } from './service-chat.js';
@@ -47,7 +47,6 @@ import {
   hashIp,
   hashPassword,
   passwordSchema,
-  randomToken,
   randomVerificationCode,
   secureSecretEqual,
   tokenHash,
@@ -287,8 +286,14 @@ app.post(
       .object({
         email: emailSchema,
         username: usernameSchema,
-        displayName: displayNameSchema,
+        displayName: z.preprocess(
+          (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
+          displayNameSchema.optional(),
+        ),
         password: passwordSchema,
+        birthDate: z.iso
+          .date()
+          .refine((date) => date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10)),
         acceptedTerms: z.literal(true),
         acceptedPrivacy: z.literal(true),
         legalVersion: z.literal(REGISTRATION_LEGAL_VERSION).optional(),
@@ -309,9 +314,15 @@ app.post(
     const verificationId = randomUUID();
     const user = await transaction(async (client) => {
       const created = await client.query<UserRow>(
-        `INSERT INTO users(email,username,display_name,password_hash)
-         VALUES($1,$2,$3,$4) RETURNING *`,
-        [input.email, input.username, input.displayName, passwordHash],
+        `INSERT INTO users(email,username,display_name,password_hash,birth_date)
+         VALUES($1,$2,$3,$4,$5) RETURNING *`,
+        [
+          input.email,
+          input.username,
+          input.displayName ?? input.username,
+          passwordHash,
+          input.birthDate,
+        ],
       );
       const row = created.rows[0]!;
       await client.query(
@@ -569,6 +580,7 @@ app.delete('/v1/me', async (request, reply) => {
   if (!(await verifyPassword(user.password_hash, password)))
     return reply.code(403).send({ code: 'INVALID_PASSWORD', message: 'Неверный пароль' });
   await transaction(async (client) => {
+    await client.query('DELETE FROM passkeys WHERE user_id=$1', [user.id]);
     await client.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [user.id]);
     await client.query('DELETE FROM friendships WHERE user_low_id=$1 OR user_high_id=$1', [
       user.id,
@@ -580,7 +592,7 @@ app.delete('/v1/me', async (request, reply) => {
     await client.query(
       `UPDATE users SET email=$1,username=$2,display_name='Удалённый пользователь',avatar_data=NULL,
        avatar_mime=NULL,cover_data=NULL,cover_mime=NULL,bio=NULL,password_hash='deleted',
-       deleted_at=now(),updated_at=now() WHERE id=$3`,
+       birth_date=NULL,deleted_at=now(),updated_at=now() WHERE id=$3`,
       [`deleted-${user.id}@invalid.local`, `deleted-${user.id}`, user.id],
     );
   });
@@ -783,50 +795,7 @@ app.post(
         callScope: registered.call?.chat_type,
         groupOwnerId: registered.call?.group_owner_id ?? undefined,
       };
-    if (input.action === 'create')
-      return reply.code(403).send({ allowed: false, reason: 'REGISTERED_ONLY' });
-    const guest = await transaction(async (client) => {
-      const found = await client.query<{
-        id: string;
-        anonymous_user_id: string;
-        display_name: string;
-        room_id: string;
-        expires_at: Date;
-      }>(
-        `SELECT id,anonymous_user_id,display_name,room_id,expires_at FROM guest_sessions
-       WHERE join_token_hash=$1 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`,
-        [tokenHash(input.token)],
-      );
-      const row = found.rows[0];
-      if (!row || row.room_id !== input.roomId) return null;
-      await client.query(
-        `INSERT INTO guest_usage_daily(anonymous_user_id,usage_day,join_count)
-       VALUES($1,(now() AT TIME ZONE 'UTC')::date,0) ON CONFLICT DO NOTHING`,
-        [row.anonymous_user_id],
-      );
-      const usage = await client.query<{ join_count: number }>(
-        `SELECT join_count FROM guest_usage_daily WHERE anonymous_user_id=$1
-       AND usage_day=(now() AT TIME ZONE 'UTC')::date FOR UPDATE`,
-        [row.anonymous_user_id],
-      );
-      if (!guestQuotaAvailable(usage.rows[0]?.join_count ?? 0)) return { limited: true } as const;
-      await client.query(
-        `UPDATE guest_usage_daily SET join_count=join_count+1 WHERE anonymous_user_id=$1
-       AND usage_day=(now() AT TIME ZONE 'UTC')::date`,
-        [row.anonymous_user_id],
-      );
-      await client.query('UPDATE guest_sessions SET consumed_at=now() WHERE id=$1', [row.id]);
-      return { limited: false, row } as const;
-    });
-    if (!guest) return reply.code(403).send({ allowed: false, reason: 'INVALID_GUEST_TOKEN' });
-    if (guest.limited) return reply.code(429).send({ allowed: false, reason: 'GUEST_DAILY_LIMIT' });
-    return {
-      allowed: true,
-      kind: 'guest',
-      anonymousUserId: guest.row.anonymous_user_id,
-      displayName: guest.row.display_name,
-      disconnectAt: guest.row.expires_at.toISOString(),
-    };
+    return reply.code(403).send({ allowed: false, reason: 'REGISTERED_ONLY' });
   },
 );
 
@@ -1021,38 +990,8 @@ app.get(
   },
 );
 
-app.post(
-  '/v1/guest/join-token',
-  { config: { rateLimit: { max: 8, timeWindow: '1 hour' } } },
-  async (request, reply) => {
-    const input = z
-      .object({
-        anonymousUserId: z.string().uuid(),
-        roomId: z.string().min(8).max(32),
-        captchaToken: z.string().min(1).max(4096),
-      })
-      .parse(request.body);
-    if (!(await verifyCaptcha(input.captchaToken, request.ip)))
-      return reply.code(403).send({ code: 'CAPTCHA_FAILED', message: 'CAPTCHA не пройдена' });
-    const token = randomToken(48);
-    const guestDisplayName = `FreeUser-${randomInt(0, 1_000_000).toString().padStart(6, '0')}`;
-    await db.query(
-      `INSERT INTO guest_sessions(anonymous_user_id,display_name,room_id,join_token_hash,expires_at)
-     VALUES($1,$2,$3,$4,now()+make_interval(secs=>$5))`,
-      [
-        input.anonymousUserId,
-        guestDisplayName,
-        input.roomId,
-        tokenHash(token),
-        GUEST_SESSION_SECONDS,
-      ],
-    );
-    return {
-      guestJoinToken: token,
-      displayName: guestDisplayName,
-      expiresInSeconds: GUEST_SESSION_SECONDS,
-    };
-  },
+app.post('/v1/guest/join-token', async (_request, reply) =>
+  reply.code(410).send({ code: 'GUEST_MODE_DISABLED', message: 'Войдите в аккаунт TRLKA' }),
 );
 
 for (const kind of ['terms', 'privacy'] as const) {
@@ -1069,6 +1008,7 @@ registerServiceChat(app, requireUser);
 startSupportDelivery(app);
 registerMobileBetaRoutes(app);
 registerQrLoginRoutes(app, requireUser);
+registerPasskeyRoutes(app, requireUser);
 registerAndroidPush(app, requireUser);
 startAndroidPush(app);
 registerWebPush(app, requireUser);

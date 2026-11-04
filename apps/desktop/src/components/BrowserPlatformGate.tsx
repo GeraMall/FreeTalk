@@ -1,3 +1,4 @@
+import { BirthDateFields, RequiredMark } from './BirthDateFields';
 import { REGISTRATION_LEGAL_VERSION, registrationLegalDocuments } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import {
@@ -13,7 +14,7 @@ import {
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import brandMark from '../assets/freetalk-mascot.png';
 import { accountClient } from '../lib/api-client';
-import { normalizeUsername } from '../lib/username';
+import { isValidUsername, normalizeUsername } from '../lib/username';
 import { CaptchaBox } from './CaptchaBox';
 
 function isTauri() {
@@ -41,6 +42,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
@@ -95,6 +97,11 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
 
   const submitLogin = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
+    if (!login.trim() || !password) {
+      setError(t('Проверьте введённые данные.'));
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -107,9 +114,22 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
     }
   };
 
-  const submitRegistration = async (event: FormEvent) => {
+  const submitRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!acceptedTerms || !acknowledgedPrivacy) return;
+    if (busy) return;
+    if (
+      !birthDate ||
+      !isValidUsername(username) ||
+      !acceptedTerms ||
+      !acknowledgedPrivacy ||
+      !email.trim() ||
+      !password ||
+      !key.trim() ||
+      !event.currentTarget.checkValidity()
+    ) {
+      setError(t('Проверьте введённые данные.'));
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -118,12 +138,14 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
         email: normalizedEmail,
         username: normalizeUsername(username),
         displayName: displayName.trim(),
+        birthDate,
         password,
         acceptedTerms: true,
         acceptedPrivacy: true,
         legalVersion: REGISTRATION_LEGAL_VERSION,
         captchaToken: captchaToken || undefined,
       });
+      setBirthDate('');
       setVerificationEmail(normalizedEmail);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось создать аккаунт');
@@ -134,6 +156,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
 
   const verifyRegistration = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy || verificationCode.length !== 6) return;
     setBusy(true);
     setError('');
     try {
@@ -160,8 +183,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
     }
   };
 
-  const submitPasswordReset = async (event: FormEvent) => {
+  const submitPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (busy || !resetSent || resetCode.length !== 6 || !resetPassword) return;
+    if (!login.includes('@') || !event.currentTarget.checkValidity()) {
+      setError(t('Проверьте введённые данные.'));
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -230,10 +258,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
               </button>
             </div>
             {mode === 'login' && !resetMode ? (
-              <form className="browser-platform-form" onSubmit={submitLogin}>
+              <form className="browser-platform-form" noValidate onSubmit={submitLogin}>
                 <label>
-                  {t('Почта или @username')}
+                  <span>
+                    {t('Почта или @username')} <RequiredMark />
+                  </span>
                   <input
+                    aria-required="true"
                     autoFocus
                     value={login}
                     autoComplete="username"
@@ -242,10 +273,13 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <div className="browser-platform-password-field">
-                  <label htmlFor="mobile-beta-password">{t('Пароль')}</label>
+                  <label htmlFor="mobile-beta-password">
+                    {t('Пароль')} <RequiredMark />
+                  </label>
                   <div className="browser-platform-password">
                     <input
                       id="mobile-beta-password"
+                      aria-required="true"
                       type={passwordVisible ? 'text' : 'password'}
                       value={password}
                       autoComplete="current-password"
@@ -278,7 +312,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     />
                   </div>
                 </label>
-                <button type="submit" disabled={busy || !login || !password}>
+                <button type="submit" disabled={busy || !login.trim() || !password}>
                   <LogIn size={18} />
                   {busy ? t('Проверяем…') : t('Войти')}
                 </button>
@@ -294,7 +328,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 </button>
               </form>
             ) : mode === 'login' ? (
-              <form className="browser-platform-form" onSubmit={submitPasswordReset}>
+              <form className="browser-platform-form" noValidate onSubmit={submitPasswordReset}>
                 <label>
                   {t('Почта аккаунта')}
                   <input
@@ -359,7 +393,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 </button>
               </form>
             ) : verificationEmail ? (
-              <form className="browser-platform-form" onSubmit={verifyRegistration}>
+              <form className="browser-platform-form" noValidate onSubmit={verifyRegistration}>
                 <p className="browser-platform-verification-copy">
                   {t('Мы отправили шестизначный код на')} <strong>{verificationEmail}</strong>
                 </p>
@@ -383,10 +417,19 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 </button>
               </form>
             ) : (
-              <form className="browser-platform-form" onSubmit={submitRegistration}>
+              <form
+                className="browser-platform-form"
+                data-tooltip-below=""
+                data-tooltip-suspended={error ? '' : undefined}
+                noValidate
+                onSubmit={submitRegistration}
+              >
                 <label>
-                  {t('Почта')}
+                  <span>
+                    {t('Почта')} <RequiredMark />
+                  </span>
                   <input
+                    aria-required="true"
                     type="email"
                     value={email}
                     autoComplete="email"
@@ -394,35 +437,49 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <label>
-                  {t('Уникальный @username')}
+                  <span>
+                    {t('Уникальный @username')} <RequiredMark />
+                  </span>
                   <input
+                    aria-required="true"
                     value={username}
                     autoComplete="username"
                     placeholder="username"
+                    data-tooltip={t('От 5 до 24 символов: латинские буквы, цифры и подчёркивание.')}
                     onChange={(event) => setUsername(normalizeUsername(event.target.value))}
                   />
                 </label>
                 <label>
                   {t('Отображаемое имя')}
                   <input
+                    autoComplete="off"
+                    maxLength={48}
+                    data-tooltip={t('Если оставить поле пустым, будет использован @username.')}
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                   />
                 </label>
                 <label>
-                  {t('Пароль')}
+                  <span>
+                    {t('Пароль')} <RequiredMark />
+                  </span>
                   <input
+                    aria-required="true"
                     type="password"
                     value={password}
                     autoComplete="new-password"
+                    data-tooltip={t('От 10 символов, хотя бы одна буква и цифра.')}
                     onChange={(event) => setPassword(event.target.value)}
                   />
                 </label>
                 <label>
-                  {t('Ключ мобильной беты')}
+                  <span>
+                    {t('Ключ мобильной беты')} <RequiredMark />
+                  </span>
                   <div className="browser-platform-key-input">
                     <KeyRound size={18} aria-hidden="true" />
                     <input
+                      aria-required="true"
                       value={key}
                       autoCapitalize="characters"
                       autoComplete="off"
@@ -432,10 +489,12 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                     />
                   </div>
                 </label>
+                <BirthDateFields onChange={setBirthDate} />
                 <CaptchaBox onToken={setCaptchaToken} />
                 <label className="browser-platform-consent">
                   <input
                     type="checkbox"
+                    aria-required="true"
                     checked={acceptedTerms}
                     onChange={(event) => setAcceptedTerms(event.target.checked)}
                   />
@@ -444,6 +503,7 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                 <label className="browser-platform-consent">
                   <input
                     type="checkbox"
+                    aria-required="true"
                     checked={acknowledgedPrivacy}
                     onChange={(event) => setAcknowledgedPrivacy(event.target.checked)}
                   />
@@ -464,8 +524,8 @@ export function BrowserPlatformGate({ children }: { children: ReactNode }) {
                   disabled={
                     busy ||
                     !email.includes('@') ||
-                    username.length < 5 ||
-                    !displayName.trim() ||
+                    !isValidUsername(username) ||
+                    !birthDate ||
                     !password ||
                     !key.trim() ||
                     !acceptedTerms ||

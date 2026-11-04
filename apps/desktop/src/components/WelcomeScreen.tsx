@@ -1,4 +1,5 @@
-import { QrLoginDialog } from './QrLoginDialog';
+import { BirthDateFields, RequiredMark } from './BirthDateFields';
+import { QrLoginSection } from './QrLoginDialog';
 import type { AccountUser } from '../lib/api-client';
 import { LanguagePicker } from './LanguagePicker';
 import {
@@ -16,11 +17,9 @@ import {
   FileText,
   LogIn,
   MailCheck,
-  QrCode,
   RefreshCw,
   Settings,
   ShieldCheck,
-  UserRound,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -39,6 +38,7 @@ interface RegistrationInput {
   email: string;
   username: string;
   displayName: string;
+  birthDate: string;
   password: string;
   acceptedTerms: true;
   acceptedPrivacy: true;
@@ -51,14 +51,11 @@ interface WelcomeScreenProps {
   busy: boolean;
   captchaRequired: boolean;
   updateStatus: UpdateStatus;
-  savedDisplayName: string;
-  initialRoomCode?: string;
   onQrLogin?(user: AccountUser): Promise<void>;
   onLogin(login: string, password: string, captchaToken?: string): void;
   onRegister(input: RegistrationInput): Promise<boolean>;
   onResendVerification(email: string): Promise<boolean>;
   onVerifyEmail(email: string, code: string): Promise<boolean>;
-  onGuestJoin(roomInput: string, captchaToken: string): void;
   onForgotPassword(email: string): void;
   onResetPassword(token: string, password: string, email: string): void;
   onSettings(): void;
@@ -71,6 +68,7 @@ function PasswordField({
   autoComplete,
   disabled = false,
   invalid = false,
+  hint,
   onChange,
   onKeyDown,
 }: {
@@ -80,18 +78,23 @@ function PasswordField({
   autoComplete: 'current-password' | 'new-password';
   disabled?: boolean;
   invalid?: boolean;
+  hint?: string;
   onChange(value: string): void;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 }) {
   const [visible, setVisible] = useState(false);
-  const action = visible ? 'Скрыть пароль' : 'Показать пароль';
+  const action = t(visible ? 'Скрыть пароль' : 'Показать пароль');
   return (
     <div className="field-label">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>
+        {label} <RequiredMark />
+      </label>
       <div className="password-field">
         <input
           id={id}
+          aria-required="true"
           className="password-entry"
+          data-tooltip={hint}
           type={visible ? 'text' : 'password'}
           value={value}
           disabled={disabled}
@@ -119,32 +122,28 @@ export function WelcomeScreen({
   busy,
   captchaRequired,
   updateStatus,
-  savedDisplayName,
-  initialRoomCode,
   onLogin,
   onQrLogin,
   onRegister,
   onResendVerification,
   onVerifyEmail,
-  onGuestJoin,
   onForgotPassword,
   onResetPassword,
   onSettings,
 }: WelcomeScreenProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [login, setLogin] = useState('');
-  const [qrOpen, setQrOpen] = useState(false);
+  const [showLoginError, setShowLoginError] = useState(false);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
-  const [displayName, setDisplayName] = useState(savedDisplayName);
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [terms, setTerms] = useState(false);
   const [privacy, setPrivacy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
-  const [guestRoom, setGuestRoom] = useState('');
-  const [guestCaptcha, setGuestCaptcha] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
   const [verificationEmail, setVerificationEmail] = useState<string>();
   const [verificationDeadline, setVerificationDeadline] = useState(0);
@@ -160,15 +159,13 @@ export function WelcomeScreen({
     return () => window.clearInterval(timer);
   }, [verificationEmail]);
 
-  useEffect(() => {
-    if (initialRoomCode) setGuestRoom(initialRoomCode);
-  }, [initialRoomCode]);
-
   const remainingSeconds = Math.max(0, Math.ceil((verificationDeadline - now) / 1_000));
   const verificationTime = `${Math.floor(remainingSeconds / 60)
     .toString()
     .padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
   const usernameValid = isValidUsername(username);
+  const loginFieldsMissing = !login.trim() || !password;
+  const passwordsMismatch = Boolean(password && confirmation && password !== confirmation);
 
   const updateUsername = (rawValue: string) => {
     const candidate = rawValue.replace(/^@/, '').toLowerCase();
@@ -186,12 +183,21 @@ export function WelcomeScreen({
   };
 
   const submit = async () => {
-    if (mode === 'login') return onLogin(login, password, captchaToken || undefined);
-    if (!usernameValid || password !== confirmation || !terms || !privacy) return;
+    if (busy) return;
+    if (mode === 'login') {
+      if (loginFieldsMissing) {
+        setShowLoginError(true);
+        return;
+      }
+      if (captchaRequired && !captchaToken) return;
+      return onLogin(login, password, captchaToken || undefined);
+    }
+    if (!birthDate || !usernameValid || password !== confirmation || !terms || !privacy) return;
     const registered = await onRegister({
       email,
       username,
       displayName,
+      birthDate,
       password,
       acceptedTerms: true,
       acceptedPrivacy: true,
@@ -199,6 +205,7 @@ export function WelcomeScreen({
       captchaToken: captchaToken || undefined,
     });
     if (registered) {
+      setBirthDate('');
       setVerificationEmail(email.trim().toLowerCase());
       setVerificationDeadline(Date.now() + 30 * 60_000);
       setNow(Date.now());
@@ -320,7 +327,10 @@ export function WelcomeScreen({
                 role="tab"
                 aria-selected={mode === 'login'}
                 className={mode === 'login' ? 'active' : ''}
-                onClick={() => setMode('login')}
+                onClick={() => {
+                  setBirthDate('');
+                  setMode('login');
+                }}
               >
                 {t('Войти')}
               </button>
@@ -329,13 +339,25 @@ export function WelcomeScreen({
                 role="tab"
                 aria-selected={mode === 'register'}
                 className={mode === 'register' ? 'active' : ''}
-                onClick={() => setMode('register')}
+                onClick={() => {
+                  setShowLoginError(false);
+                  setMode('register');
+                }}
               >
                 {t('Регистрация')}
               </button>
             </div>
 
-            <div className={`auth-form auth-form-${mode}`} key={mode}>
+            <div
+              className={`auth-form auth-form-${mode}`}
+              key={mode}
+              data-tooltip-below={mode === 'register' ? '' : undefined}
+              data-tooltip-suspended={
+                error || (mode === 'register' && (usernameError || passwordsMismatch))
+                  ? ''
+                  : undefined
+              }
+            >
               {mode === 'login' ? (
                 <>
                   {resetMode ? (
@@ -390,13 +412,17 @@ export function WelcomeScreen({
                   ) : (
                     <>
                       <label className="field-label">
-                        {t('Почта или @username')}
+                        <span>
+                          {t('Почта или @username')} <RequiredMark />
+                        </span>
                         <input
+                          aria-required="true"
                           autoFocus
                           value={login}
                           disabled={busy}
                           autoComplete="username"
                           onChange={(event) => setLogin(event.target.value)}
+                          onKeyDown={(event) => event.key === 'Enter' && submit()}
                         />
                       </label>
                       <PasswordField
@@ -411,35 +437,30 @@ export function WelcomeScreen({
                       {captchaRequired && <CaptchaBox onToken={setCaptchaToken} />}
                       <button
                         className="primary wide"
-                        disabled={busy || !login || !password || (captchaRequired && !captchaToken)}
+                        disabled={busy || loginFieldsMissing || (captchaRequired && !captchaToken)}
                         onClick={submit}
                       >
                         <LogIn size={18} />
                         {busy ? t('Входим…') : t('Войти')}
                       </button>
-                      {onQrLogin && (
+                      {showLoginError && loginFieldsMissing && (
+                        <div className="alert error" role="alert">
+                          {t('Проверьте введённые данные.')}
+                        </div>
+                      )}
+                      <div className="auth-recovery">
+                        {' '}
                         <button
-                          className="qr-login-trigger"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setQrOpen(true)}
+                          className="text-action"
+                          disabled={!login.includes('@')}
+                          onClick={() => onForgotPassword(login)}
                         >
-                          <QrCode size={17} /> {t('Войти по QR-коду')}
+                          {t('Забыли пароль?')}
                         </button>
-                      )}
-                      {qrOpen && onQrLogin && (
-                        <QrLoginDialog onClose={() => setQrOpen(false)} onLogin={onQrLogin} />
-                      )}
-                      <button
-                        className="text-action"
-                        disabled={!login.includes('@')}
-                        onClick={() => onForgotPassword(login)}
-                      >
-                        {t('Забыли пароль?')}
-                      </button>
-                      <button className="text-action" onClick={() => setResetMode(true)}>
-                        {t('У меня есть код сброса')}
-                      </button>
+                        <button className="text-action" onClick={() => setResetMode(true)}>
+                          {t('У меня есть код сброса')}
+                        </button>
+                      </div>
                     </>
                   )}
                 </>
@@ -456,8 +477,11 @@ export function WelcomeScreen({
                   </div>
                   <div className="auth-grid">
                     <label className="field-label">
-                      {t('Почта')}
+                      <span>
+                        {t('Почта')} <RequiredMark />
+                      </span>
                       <input
+                        aria-required="true"
                         value={email}
                         type="email"
                         placeholder="name@example.com"
@@ -466,14 +490,19 @@ export function WelcomeScreen({
                       />
                     </label>
                     <label className="field-label">
-                      {t('Уникальный @username')}
+                      <span>
+                        {t('Уникальный @username')} <RequiredMark />
+                      </span>
                       <input
+                        aria-required="true"
                         value={username}
                         placeholder="username"
                         autoComplete="username"
                         minLength={USERNAME_MIN_LENGTH}
                         maxLength={USERNAME_MAX_LENGTH}
-                        pattern="[a-z0-9_]{5,24}"
+                        data-tooltip={t(
+                          'От 5 до 24 символов: латинские буквы, цифры и подчёркивание.',
+                        )}
                         aria-invalid={Boolean(usernameError)}
                         onChange={(event) => updateUsername(event.target.value)}
                       />
@@ -487,6 +516,8 @@ export function WelcomeScreen({
                   <label className="field-label">
                     {t('Отображаемое имя')}
                     <input
+                      autoComplete="off"
+                      data-tooltip={t('Если оставить поле пустым, будет использован @username.')}
                       value={displayName}
                       placeholder={t('Как вас увидят другие')}
                       maxLength={48}
@@ -496,6 +527,7 @@ export function WelcomeScreen({
                   <div className="auth-grid">
                     <PasswordField
                       id="registration-password"
+                      hint={t('От 10 символов, хотя бы одна буква и цифра.')}
                       label={t('Пароль')}
                       value={password}
                       autoComplete="new-password"
@@ -503,21 +535,24 @@ export function WelcomeScreen({
                     />
                     <PasswordField
                       id="registration-password-confirmation"
+                      hint={t('Введите тот же пароль ещё раз.')}
                       label={t('Повторите пароль')}
                       value={confirmation}
-                      invalid={Boolean(password && confirmation && password !== confirmation)}
+                      invalid={passwordsMismatch}
                       autoComplete="new-password"
                       onChange={setConfirmation}
                     />
                   </div>
-                  {password && confirmation && password !== confirmation && (
+                  {passwordsMismatch && (
                     <small className="validation-error">{t('Пароли не совпадают')}</small>
                   )}
+                  <BirthDateFields onChange={setBirthDate} />
                   <div className="registration-legal">
                     <div className="legal-check-row">
                       <label className="legal-check">
                         <input
                           type="checkbox"
+                          aria-required="true"
                           checked={terms}
                           aria-label={t('Я принимаю Пользовательское соглашение')}
                           onChange={(event) => setTerms(event.target.checked)}
@@ -530,13 +565,14 @@ export function WelcomeScreen({
                         aria-expanded={openLegal === 'terms'}
                         onClick={() => setOpenLegal(openLegal === 'terms' ? undefined : 'terms')}
                       >
-                        {t('Пользовательское соглашение')}
+                        {t('Пользовательское соглашение')} <RequiredMark />
                       </button>
                     </div>
                     <div className="legal-check-row">
                       <label className="legal-check">
                         <input
                           type="checkbox"
+                          aria-required="true"
                           checked={privacy}
                           aria-label={t('Я ознакомился с политикой конфиденциальности')}
                           onChange={(event) => setPrivacy(event.target.checked)}
@@ -551,7 +587,7 @@ export function WelcomeScreen({
                           setOpenLegal(openLegal === 'privacy' ? undefined : 'privacy')
                         }
                       >
-                        {t('политикой конфиденциальности')}
+                        {t('политикой конфиденциальности')} <RequiredMark />
                       </button>
                     </div>
                   </div>
@@ -591,7 +627,7 @@ export function WelcomeScreen({
                       busy ||
                       !email ||
                       !usernameValid ||
-                      !displayName ||
+                      !birthDate ||
                       !password ||
                       password !== confirmation ||
                       !terms ||
@@ -609,31 +645,6 @@ export function WelcomeScreen({
                 </>
               )}
             </div>
-
-            {mode === 'login' && (
-              <>
-                <div className="divider">
-                  <span>{t('или войдите как гость')}</span>
-                </div>
-                <div className="guest-join">
-                  <div className="join-row">
-                    <input
-                      aria-label={t('Код или ссылка комнаты')}
-                      value={guestRoom}
-                      placeholder={t('Код или ссылка комнаты')}
-                      onChange={(event) => setGuestRoom(event.target.value)}
-                    />
-                    <button
-                      disabled={busy || !guestRoom || !guestCaptcha}
-                      onClick={() => onGuestJoin(guestRoom, guestCaptcha)}
-                    >
-                      {t('Войти')}
-                    </button>
-                  </div>
-                  <CaptchaBox onToken={setGuestCaptcha} />
-                </div>
-              </>
-            )}
           </>
         )}
         {error && (
@@ -641,27 +652,8 @@ export function WelcomeScreen({
             {error}
           </div>
         )}
-        {!verificationEmail && mode === 'login' && (
-          <div className="auth-info-stack">
-            <div className="auth-info-row">
-              <UserRound size={18} />
-              <span>
-                <strong>{t('Гостевой режим')}</strong>
-                {t(
-                  'До 2 входов в сутки и до 3 часов за звонок. Камера, экран, друзья и история недоступны.',
-                )}
-              </span>
-            </div>
-            <div className="auth-info-row privacy-note">
-              <ShieldCheck size={18} />
-              <span>
-                <strong>{t('Приватная связь')}</strong>
-                {t(
-                  'Разговоры идут через WebRTC. API не получает аудио, видео или содержимое экрана.',
-                )}
-              </span>
-            </div>
-          </div>
+        {!verificationEmail && mode === 'login' && !resetMode && onQrLogin && (
+          <QrLoginSection onLogin={onQrLogin} />
         )}
       </section>
     </main>

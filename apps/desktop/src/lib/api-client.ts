@@ -1,3 +1,9 @@
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
 import { invoke } from '@tauri-apps/api/core';
 import { dataUrlToBlob } from './profile';
 
@@ -215,6 +221,7 @@ export class AccountClient {
     username: string;
     displayName: string;
     password: string;
+    birthDate: string;
     acceptedTerms: true;
     acceptedPrivacy: true;
     legalVersion?: string;
@@ -222,7 +229,10 @@ export class AccountClient {
   }) {
     return this.publicRequest<{ user: AccountUser; verificationRequired: true }>(
       '/v1/auth/register',
-      { method: 'POST', body: JSON.stringify(input) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...input, displayName: input.displayName.trim() || input.username }),
+      },
     );
   }
 
@@ -281,6 +291,47 @@ export class AccountClient {
       method: 'POST',
       body: JSON.stringify({ challenge }),
     });
+  }
+
+  listPasskeys() {
+    return this.request<{ keys: { id: string; createdAt: string }[] }>('/v1/me/passkeys');
+  }
+
+  deletePasskey(id: string) {
+    return this.request<{ deleted: true }>(`/v1/me/passkeys/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  startPasskeyRegistration(password: string) {
+    return this.request<{ state: string; options: PublicKeyCredentialCreationOptionsJSON }>(
+      '/v1/me/passkeys/start',
+      { method: 'POST', body: JSON.stringify({ password }) },
+    );
+  }
+
+  finishPasskeyRegistration(state: string, response: RegistrationResponseJSON) {
+    return this.request<{ created: true }>('/v1/me/passkeys/finish', {
+      method: 'POST',
+      body: JSON.stringify({ state, response }),
+    });
+  }
+
+  startPasskeyLogin(desktopChallenge?: string) {
+    return this.publicRequest<{ state: string; options: PublicKeyCredentialRequestOptionsJSON }>(
+      '/v1/auth/passkey/start',
+      { method: 'POST', body: JSON.stringify({ desktopChallenge }) },
+    );
+  }
+
+  async finishPasskeyLogin(state: string, response: AuthenticationResponseJSON) {
+    const result = await this.publicRequest<
+      { approved: true } | { user: AccountUser; session: SessionPayload }
+    >('/v1/auth/passkey/finish', { method: 'POST', body: JSON.stringify({ state, response }) });
+    if ('approved' in result) return;
+    await this.acceptSession(result.session);
+    this.user = result.user;
+    return result.user;
   }
 
   async mobileBetaLogin(login: string, password: string, key?: string) {
@@ -481,17 +532,6 @@ export class AccountClient {
     return this.request<{ changed: true }>('/v1/me/change-password', {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
-    });
-  }
-
-  async guestJoinToken(anonymousUserId: string, roomId: string, captchaToken: string) {
-    return this.publicRequest<{
-      guestJoinToken: string;
-      displayName: string;
-      expiresInSeconds: number;
-    }>('/v1/guest/join-token', {
-      method: 'POST',
-      body: JSON.stringify({ anonymousUserId, roomId, captchaToken }),
     });
   }
 

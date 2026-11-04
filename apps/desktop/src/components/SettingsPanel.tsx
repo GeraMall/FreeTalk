@@ -1,3 +1,4 @@
+import { PasskeySettings } from './PasskeySettings';
 import { QrScanDialog } from './QrLoginDialog';
 import { t } from '../lib/app-language';
 import { LanguagePicker } from './LanguagePicker';
@@ -1134,6 +1135,7 @@ function ProfileTab({
                 </button>
               </div>
             </details>
+            <PasskeySettings />
             {securityMessage ? <small className="inline-success">{securityMessage}</small> : null}
           </section>
 

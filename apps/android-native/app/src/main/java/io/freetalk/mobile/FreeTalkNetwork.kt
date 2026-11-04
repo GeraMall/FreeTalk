@@ -113,13 +113,15 @@ class FreeTalkApi(private val sessions: SessionStore) {
     suspend fun login(login: String, password: String): SignedInSession =
         acceptSession(publicJson("/v1/auth/login", JSONObject().put("login", login).put("password", password)))
 
-    suspend fun register(email: String, username: String, displayName: String, password: String) {
+    suspend fun register(email: String, username: String, displayName: String, password: String, birthDate: String) {
+        val normalizedUsername = username.trim().removePrefix("@").lowercase()
         publicJson(
             "/v1/auth/register",
             JSONObject().put("email", email.trim().lowercase())
-                .put("username", username.trim().removePrefix("@").lowercase())
-                .put("displayName", displayName.trim()).put("password", password)
-                .put("acceptedTerms", true).put("acceptedPrivacy", true),
+                .put("username", normalizedUsername)
+                .put("displayName", displayName.trim().ifEmpty { normalizedUsername }).put("password", password)
+                .put("birthDate", birthDate).put("acceptedTerms", true).put("acceptedPrivacy", true)
+                .put("legalVersion", "2026-11-04"),
         )
     }
 

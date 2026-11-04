@@ -246,3 +246,117 @@
   background: #1a2a41;
   transform: translateY(-2px);
 }
+
+/* Match the settings layers to the app chrome and chat canvas. */
+.settings-modal {
+  --settings-canvas: var(--chat-canvas);
+  --settings-card: #0d1725;
+  --settings-selected: #151e2e;
+  --settings-divider: rgba(149, 173, 226, 0.12);
+  border-color: var(--ft-border);
+  background: var(--settings-canvas);
+}
+
+.settings-modal .settings-sidebar {
+  border-color: var(--settings-divider);
+  background: var(--ft-chrome);
+}
+
+.settings-modal :is(.settings-sidebar-brand, .settings-header) {
+  border-color: var(--settings-divider);
+}
+
+.settings-modal :is(.settings-footer, .profile-sticky-actions) {
+  border-color: var(--settings-divider);
+  background: var(--settings-canvas);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.settings-modal .settings-sidebar nav button {
+  color: var(--ft-text-secondary);
+}
+
+.settings-modal .settings-sidebar nav button:hover {
+  background: var(--settings-card);
+}
+
+.settings-modal .settings-sidebar nav button.active {
+  border-color: var(--ft-border-hover);
+  color: var(--ft-text);
+  background: var(--settings-selected);
+  box-shadow: inset 2px 0 var(--ft-accent);
+}
+
+.settings-modal
+  :is(
+    .settings-content > .audio-settings-section,
+    .video-settings-fieldset > .video-settings-section,
+    .recording-settings-page > .settings-section,
+    .chat-settings-group,
+    .chat-cache-card,
+    .profile-zone
+  ) {
+  border-color: var(--ft-border);
+  background: var(--settings-card);
+  box-shadow: none;
+}
+
+.settings-modal
+  :is(
+    .audio-settings-section :is(.setting-row, .slider-setting, .key-setting),
+    .video-settings-fieldset :is(.video-toggle-list, .sound-setting-row),
+    .recording-settings-page .setting-row,
+    .recording-directory-value,
+    .chat-settings-group :is(.chat-text-size-setting, .chat-style-setting, .chat-wallpaper-setting),
+    .chat-settings-preview-card,
+    .profile-account-grid article,
+    .profile-accordion
+  ) {
+  border-color: var(--settings-divider);
+  background: var(--settings-canvas);
+}
+
+.settings-modal
+  :is(
+    .transmission-modes > label,
+    .about-section dl,
+    .about-autostart .setting-row,
+    .update-section
+  ) {
+  border-color: var(--ft-border);
+  background: var(--settings-card);
+}
+
+.settings-modal :is(.transmission-modes > label.active, .chat-style-setting button.active) {
+  border-color: var(--ft-border-hover);
+  background: var(--settings-selected);
+  box-shadow: none;
+}
+
+.settings-modal .field-label :is(input:not([type='range'], [type='checkbox']), select, textarea) {
+  border-color: var(--ft-border);
+  background: var(--ft-bg);
+}
+
+.settings-modal .field-label :is(input, select, textarea):focus-visible {
+  border-color: var(--ft-border-hover);
+}
+
+@media (max-width: 760px) {
+  .settings-modal.mobile-settings-modal .settings-sidebar nav button {
+    border-color: var(--ft-border);
+    background: var(--settings-card);
+    box-shadow: none;
+  }
+
+  .settings-modal.mobile-settings-modal .settings-sidebar nav button:active {
+    border-color: var(--ft-border-hover);
+    background: var(--settings-selected);
+  }
+}
+/* The reset and profile confirmations are siblings of the settings window. */
+.modal-backdrop:has(> .settings-modal) .profile-confirm-dialog {
+  border-color: var(--ft-border);
+  background: var(--chat-canvas);
+}

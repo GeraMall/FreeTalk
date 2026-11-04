@@ -16,12 +16,10 @@ function props() {
     busy: false,
     captchaRequired: false,
     updateStatus: { kind: 'idle' as const },
-    savedDisplayName: 'Гера',
     onLogin: vi.fn(),
     onRegister: vi.fn().mockResolvedValue(true),
     onResendVerification: vi.fn().mockResolvedValue(true),
     onVerifyEmail: vi.fn().mockResolvedValue(true),
-    onGuestJoin: vi.fn(),
     onForgotPassword: vi.fn(),
     onResetPassword: vi.fn(),
     onSettings: vi.fn(),
@@ -40,6 +38,17 @@ describe('account-first welcome screen', () => {
     expect(password.value).toBe('secret-password');
     fireEvent.click(view.getByRole('button', { name: 'Скрыть пароль' }));
     expect(password.type).toBe('password');
+  });
+
+  it('uses the app error for empty login fields on Enter', () => {
+    const handlers = props();
+    const view = render(<WelcomeScreen {...handlers} />);
+    const password = view.getByLabelText('Пароль');
+    expect(password.getAttribute('required')).toBeNull();
+    expect(password.getAttribute('aria-required')).toBe('true');
+    fireEvent.keyDown(password, { key: 'Enter' });
+    expect(view.getByRole('alert').textContent).toBe('Проверьте введённые данные.');
+    expect(handlers.onLogin).not.toHaveBeenCalled();
   });
 
   it('resets with six digits and an explicit email even without requesting in this session', () => {
@@ -105,6 +114,9 @@ describe('account-first welcome screen', () => {
     const handlers = props();
     const view = render(<WelcomeScreen {...handlers} />);
     fireEvent.click(view.getByRole('tab', { name: 'Регистрация' }));
+    const displayName = view.getByLabelText('Отображаемое имя') as HTMLInputElement;
+    expect(displayName.value).toBe('');
+    expect(displayName.required).toBe(false);
     fireEvent.change(view.getByLabelText('Почта'), { target: { value: 'gera@example.com' } });
     fireEvent.change(view.getByRole('textbox', { name: /Уникальный @username/ }), {
       target: { value: 'gera_test' },
@@ -115,9 +127,29 @@ describe('account-first welcome screen', () => {
     });
     fireEvent.click(view.getByLabelText(/Пользовательское соглашение/));
     fireEvent.click(view.getByLabelText(/политикой конфиденциальности/));
+    const submit = view.getByRole('button', { name: 'Создать аккаунт' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    const pick = (field: string, option: string) => {
+      fireEvent.click(view.getByRole('combobox', { name: field }));
+      fireEvent.click(view.getByRole('option', { name: option }));
+    };
+    pick('День', '29');
+    pick('Месяц', 'февраль');
+    pick('Год', '2001');
+    expect(submit.disabled).toBe(true);
+    const year = view.getByRole('combobox', { name: 'Год' });
+    fireEvent.click(year);
+    fireEvent.keyDown(year, { key: 'Escape' });
+    expect(year.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.keyDown(year, { key: 'ArrowDown' });
+    fireEvent.keyDown(year, { key: 'Enter' });
+    expect(submit.disabled).toBe(false);
     fireEvent.click(view.getByRole('button', { name: 'Создать аккаунт' }));
 
     await waitFor(() => expect(view.getByText('Подтвердите почту')).not.toBeNull());
+    expect(handlers.onRegister).toHaveBeenCalledWith(
+      expect.objectContaining({ birthDate: '2000-02-29', displayName: '' }),
+    );
     expect(view.queryByLabelText('Пароль')).toBeNull();
     const code = view.getByLabelText('Код из письма');
     fireEvent.change(code, { target: { value: '12a34567' } });
@@ -126,24 +158,9 @@ describe('account-first welcome screen', () => {
     expect(handlers.onVerifyEmail).toHaveBeenCalledWith('gera@example.com', '123456');
   });
 
-  it('requires local CAPTCHA before sending a FreeUser join', () => {
-    const handlers = props();
-    const view = render(<WelcomeScreen {...handlers} />);
-    fireEvent.change(view.getByLabelText('Код или ссылка комнаты'), {
-      target: { value: 'ABCDEFGH2345' },
-    });
-    const guestJoin = view.getAllByRole('button', { name: 'Войти' }).at(-1)!;
-    expect((guestJoin as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(view.getByRole('button', { name: 'Подтвердить локальную CAPTCHA' }));
-    expect((guestJoin as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(guestJoin);
-    expect(handlers.onGuestJoin).toHaveBeenCalledWith('ABCDEFGH2345', 'local-development');
-  });
-
-  it('prefills a room received from an application link', () => {
-    const view = render(<WelcomeScreen {...props()} initialRoomCode="ABCDEFGH2345" />);
-    expect((view.getByLabelText('Код или ссылка комнаты') as HTMLInputElement).value).toBe(
-      'ABCDEFGH2345',
-    );
+  it('only offers authenticated entry', () => {
+    const view = render(<WelcomeScreen {...props()} />);
+    expect(view.queryByText('Гостевой режим')).toBeNull();
+    expect(view.queryByLabelText('Код или ссылка комнаты')).toBeNull();
   });
 });

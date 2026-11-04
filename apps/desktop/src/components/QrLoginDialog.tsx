@@ -1,3 +1,4 @@
+import { signInWithPasskey, openPasskeyBrowser } from '../lib/passkeys';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, QrCode, X } from 'lucide-react';
@@ -24,7 +25,7 @@ async function renderLoginQr(challenge: string) {
   logo.src = mascot;
   await logo.decode();
   const mark = document.createElement('canvas');
-  mark.width = mark.height = 36;
+  mark.width = mark.height = 43;
   const markContext = mark.getContext('2d');
   const context = canvas.getContext('2d');
   if (!context || !markContext) throw new Error('QR canvas unavailable');
@@ -51,7 +52,8 @@ async function renderLoginQr(challenge: string) {
   context.arc(center, center, 19, 0, 2 * Math.PI);
   context.fillStyle = ink;
   context.fill();
-  context.drawImage(mark, center - 18, center - 18);
+  const markOffset = Math.floor(mark.width / 2);
+  context.drawImage(mark, center - markOffset, center - markOffset);
   return canvas.toDataURL('image/png');
 }
 
@@ -96,16 +98,13 @@ function QrDialog({
   );
 }
 
-export function QrLoginDialog({
-  onClose,
-  onLogin,
-}: {
-  onClose(): void;
-  onLogin(user: AccountUser): Promise<void>;
-}) {
+export function QrLoginSection({ onLogin }: { onLogin(user: AccountUser): Promise<void> }) {
   const [attempt, setAttempt] = useState(0);
-  const [qr, setQr] = useState<{ image: string; code: string }>();
+  const [qr, setQr] = useState<{ image: string; challenge: string; code: string }>();
   const [status, setStatus] = useState<'loading' | 'waiting' | 'expired' | 'failed'>('loading');
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyStatus, setPasskeyStatus] = useState('');
+  const desktop = '__TAURI_INTERNALS__' in window;
   const finishLogin = useRef(onLogin);
   useEffect(() => {
     finishLogin.current = onLogin;
@@ -122,6 +121,10 @@ export function QrLoginDialog({
     let finished = false;
 
     async function rotate() {
+      if (document.hidden) {
+        rotateTimer = window.setTimeout(rotate, 5_000);
+        return;
+      }
       const startedAt = Date.now();
       try {
         const { challenge, pollToken, expiresIn } = await accountClient.startQrLogin(signal);
@@ -129,7 +132,7 @@ export function QrLoginDialog({
         if (signal.aborted || finished) return;
         visibleUntil = startedAt + expiresIn * 1000;
         requests.push({ token: pollToken, expiresAt: visibleUntil });
-        setQr({ image, code: challenge.slice(0, 5).toUpperCase() });
+        setQr({ image, challenge, code: challenge.slice(0, 5).toUpperCase() });
         setStatus('waiting');
         rotateTimer = window.setTimeout(
           rotate,
@@ -182,38 +185,71 @@ export function QrLoginDialog({
     };
   }, [attempt]);
 
+  async function passkeyLogin() {
+    setPasskeyBusy(true);
+    setPasskeyStatus('');
+    try {
+      if (desktop && qr) {
+        await openPasskeyBrowser(qr.challenge);
+        setPasskeyStatus(t('Сверьте код {p0} в браузере и подтвердите вход.', { p0: qr.code }));
+      } else if (!desktop) {
+        const user = await signInWithPasskey();
+        if (user) await onLogin(user);
+      }
+    } catch {
+      setPasskeyStatus(t('Не удалось войти с помощью ключа доступа.'));
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
   return (
-    <QrDialog title={t('Вход по QR-коду')} onClose={onClose}>
-      {status === 'loading' && <p role="status">{t('Создаём QR-код…')}</p>}
-      {status === 'waiting' && qr && (
-        <>
-          <p>{t('Откройте настройки TRLKA на телефоне и нажмите «Сканировать QR для входа».')}</p>
-          <img className="qr-auth-code" src={qr.image} alt={t('QR-код для входа')} />
-          <p>
-            {t('Код сверки')} <strong className="qr-auth-match">{qr.code}</strong>
-          </p>
-        </>
-      )}
-      {(status === 'expired' || status === 'failed') && (
-        <>
-          <p role="alert">
-            {status === 'expired'
-              ? t('Срок действия QR-кода истёк.')
-              : t('Не удалось создать QR-код.')}
-          </p>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => {
-              setStatus('loading');
-              setAttempt((value) => value + 1);
-            }}
-          >
-            {t('Получить новый QR-код')}
-          </button>
-        </>
-      )}
-    </QrDialog>
+    <section className="qr-auth-content qr-login-section" aria-labelledby="qr-login-title">
+      <h2 id="qr-login-title">{t('Войти с помощью QR-кода')}</h2>
+      <p>
+        {t('Сканируйте код с помощью мобильного приложения TRLKA, чтобы сразу войти в систему.')}
+      </p>
+      <div className="qr-login-visual">
+        {' '}
+        {status === 'loading' && <p role="status">{t('Создаём QR-код…')}</p>}
+        {status === 'waiting' && qr && (
+          <>
+            <img className="qr-auth-code" src={qr.image} alt={t('QR-код для входа')} />
+            <p>
+              {t('Код сверки')} <strong className="qr-auth-match">{qr.code}</strong>
+            </p>
+          </>
+        )}
+        {(status === 'expired' || status === 'failed') && (
+          <>
+            <p role="alert">
+              {status === 'expired'
+                ? t('Срок действия QR-кода истёк.')
+                : t('Не удалось создать QR-код.')}
+            </p>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setStatus('loading');
+                setAttempt((value) => value + 1);
+              }}
+            >
+              {t('Получить новый QR-код')}
+            </button>
+          </>
+        )}
+      </div>
+      <button
+        className="text-action passkey-login-link"
+        type="button"
+        disabled={passkeyBusy || (desktop && status !== 'waiting')}
+        onClick={() => void passkeyLogin()}
+      >
+        {t('Или войти с помощью ключа доступа')}
+      </button>
+      {passkeyStatus && <p role="status">{passkeyStatus}</p>}
+    </section>
   );
 }
 

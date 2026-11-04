@@ -163,10 +163,10 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
                                 }
                         }
                     },
-                    onRegister = { email, username, name, password ->
+                    onRegister = { email, username, name, password, birthDate ->
                         status = "Создаём аккаунт…"
                         scope.launch {
-                            runCatching { api.register(email, username, name, password) }
+                            runCatching { api.register(email, username, name, password, birthDate) }
                                 .onSuccess { verificationEmail = email; authPage = AuthPage.Verify; status = "Код отправлен на почту" }
                                 .onFailure { status = it.message ?: "Не удалось зарегистрироваться" }
                         }

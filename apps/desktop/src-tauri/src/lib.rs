@@ -60,6 +60,28 @@ fn macos_screen_audio_stop(
 
 #[cfg(desktop)]
 #[tauri::command]
+fn open_passkey_browser(app: tauri::AppHandle, challenge: Option<String>) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let mut url = String::from("https://trlka.com/app/");
+    if let Some(challenge) = challenge {
+        if challenge.len() != 43
+            || !challenge
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        {
+            return Err("Invalid passkey challenge".into());
+        }
+        url.push_str("#passkey=");
+        url.push_str(&challenge);
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
 fn open_recordings_directory(path: String) -> Result<(), String> {
     let directory = std::path::PathBuf::from(path);
     if !directory.is_dir() {
@@ -410,6 +432,7 @@ pub fn run() {
         .manage(windows_screen::State::default())
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
+            open_passkey_browser,
             diagnostics::save_connection_diagnostics,
             signaling::signaling_connect,
             signaling::signaling_receive,
@@ -438,6 +461,7 @@ pub fn run() {
             call_popout_restore,
             call_popout_set_fullscreen
         ])
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

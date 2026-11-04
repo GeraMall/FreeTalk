@@ -51,7 +51,7 @@ export function registerQrLoginRoutes(app: FastifyInstance, requireUser: Require
       const { challenge } = z.object({ challenge: token }).parse(request.body);
       const result = await db.query(
         `UPDATE qr_logins SET approved_session_id = $2
-       WHERE challenge_hash = $1 AND expires_at > now() AND approved_session_id IS NULL`,
+       WHERE challenge_hash = $1 AND expires_at > now() AND approved_session_id IS NULL AND approved_passkey_id IS NULL`,
         [tokenHash(challenge), user.sessionId],
       );
       if (!result.rowCount) return reply.code(409).send({ code: 'QR_UNAVAILABLE' });
@@ -69,22 +69,32 @@ export function registerQrLoginRoutes(app: FastifyInstance, requireUser: Require
       const { pollToken } = z.object({ pollToken: token }).parse(request.body);
       const pollHash = tokenHash(pollToken);
       const result = await transaction(async (client) => {
-        const login = await client.query<{ approved_session_id: string | null }>(
-          `SELECT approved_session_id FROM qr_logins
+        const login = await client.query<{
+          approved_session_id: string | null;
+          approved_passkey_id: string | null;
+        }>(
+          `SELECT approved_session_id, approved_passkey_id FROM qr_logins
          WHERE poll_hash = $1 AND expires_at > now() FOR UPDATE`,
           [pollHash],
         );
         const row = login.rows[0];
         if (!row) return { status: 'expired' } as const;
-        if (!row.approved_session_id) return { status: 'pending' } as const;
+        if (!row.approved_session_id && !row.approved_passkey_id)
+          return { status: 'pending' } as const;
 
-        const { rows } = await client.query<UserRow>(
-          `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+        const { rows } = row.approved_passkey_id
+          ? await client.query<UserRow>(
+              `SELECT u.* FROM passkeys p JOIN users u ON u.id=p.user_id
+             WHERE p.id=$1 AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL`,
+              [row.approved_passkey_id],
+            )
+          : await client.query<UserRow>(
+              `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.id = $1 AND s.revoked_at IS NULL AND s.refresh_expires_at > now()
            AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL
          FOR SHARE OF s, u`,
-          [row.approved_session_id],
-        );
+              [row.approved_session_id],
+            );
         await client.query('DELETE FROM qr_logins WHERE poll_hash = $1', [pollHash]);
         const user = rows[0];
         if (!user) return { status: 'expired' } as const;

@@ -62,7 +62,7 @@ internal fun BrandedAuthScreen(
     verificationEmail: String,
     onPage: (AuthPage) -> Unit,
     onLogin: (String, String) -> Unit,
-    onRegister: (String, String, String, String) -> Unit,
+    onRegister: (String, String, String, String, String) -> Unit,
     onVerify: (String, String) -> Unit,
     onResend: (String) -> Unit,
 ) {
@@ -70,6 +70,10 @@ internal fun BrandedAuthScreen(
     var email by rememberSaveable(verificationEmail) { mutableStateOf(verificationEmail) }
     var username by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
+    var birthDate by remember { mutableStateOf("") }
+    val parsedBirthDate = runCatching { java.time.LocalDate.parse(birthDate) }.getOrNull()
+    val validBirthDate = parsedBirthDate != null && parsedBirthDate.year >= 1900 &&
+        parsedBirthDate <= java.time.LocalDate.now(java.time.ZoneOffset.UTC)
     // Passwords deliberately remain in memory, outside saved instance state.
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
@@ -148,14 +152,15 @@ internal fun BrandedAuthScreen(
                                     if (repeatedPassword.isNotEmpty() && repeatedPassword != password) {
                                         Text("Пароли не совпадают", color = Color(0xFFFF8096), fontSize = 12.sp)
                                     }
+                                    BrandedField(birthDate, { birthDate = it.take(10) }, "Дата рождения *", "ГГГГ-ММ-ДД")
                                     LegalAcceptance(terms, { terms = it }, "Пользовательское соглашение") { legal = "terms" }
                                     LegalAcceptance(privacy, { privacy = it }, "Политику конфиденциальности") { legal = "privacy" }
                                     Spacer(Modifier.height(14.dp))
                                     AuthAction(
                                         if (busy) "Создаём аккаунт…" else "Создать аккаунт",
                                         !busy && terms && privacy && email.isNotBlank() && username.trim().length >= 3 &&
-                                            name.isNotBlank() && password.length >= 8 && password == repeatedPassword,
-                                    ) { onRegister(email, username, name, password) }
+                                            validBirthDate && password.length >= 8 && password == repeatedPassword,
+                                    ) { onRegister(email, username, name, password, birthDate) }
                                     Text("После регистрации подтвердите почту кодом из письма",
                                         color = authMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
                                 }
@@ -247,4 +252,4 @@ private fun LegalAcceptance(checked: Boolean, onChecked: (Boolean) -> Unit, titl
 
 // Same beta documents shown by the desktop WelcomeScreen, not new legal terms.
 private const val termsText = "Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.\n\nTrlka предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.\n\nСервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером Trlka."
-private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."
+private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, дату рождения, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."

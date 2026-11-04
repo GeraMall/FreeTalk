@@ -1515,29 +1515,6 @@ export function App() {
     }
   };
 
-  const joinAsGuest = async (input: string, captchaToken: string) => {
-    const code = parseRoomCode(input);
-    if (!code) return setError('Введите корректный код или ссылку комнаты.');
-    setAuthBusy(true);
-    setError('');
-    try {
-      const anonymousUserId =
-        localStorage.getItem('freetalk.anonymousUserId') || crypto.randomUUID();
-      localStorage.setItem('freetalk.anonymousUserId', anonymousUserId);
-      const guest = await accountClient.guestJoinToken(anonymousUserId, code, captchaToken);
-      await enterRoom(false, {
-        room: code,
-        authToken: guest.guestJoinToken,
-        displayName: guest.displayName,
-        guest: true,
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось войти как гость');
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
   const logoutAccount = async () => {
     browserResume.current = undefined;
     clearBrowserActiveCall();
@@ -2049,17 +2026,11 @@ export function App() {
             busy={authBusy || joining}
             captchaRequired={captchaRequired}
             updateStatus={updateStatus}
-            savedDisplayName={name}
-            initialRoomCode={pendingInviteRoom}
             onLogin={(login, password, captcha) => void loginAccount(login, password, captcha)}
             onQrLogin={completeAccountLogin}
             onRegister={registerAccount}
             onResendVerification={resendVerificationAccount}
             onVerifyEmail={verifyEmailAccount}
-            onGuestJoin={(code, captcha) => {
-              setPendingInviteRoom(undefined);
-              void joinAsGuest(code, captcha);
-            }}
             onForgotPassword={(email) =>
               void accountClient
                 .forgotPassword(email)

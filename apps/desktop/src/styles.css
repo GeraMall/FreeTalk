@@ -1169,7 +1169,8 @@ body {
   font-weight: 500;
 }
 
-.browser-platform-form input {
+.browser-platform-form input,
+.browser-platform-form .birth-date-trigger {
   width: 100%;
   min-height: 50px;
   padding: 0 14px;
@@ -1181,7 +1182,8 @@ body {
   font: inherit;
 }
 
-.browser-platform-form input:focus {
+.browser-platform-form input:focus,
+.browser-platform-form .birth-date-trigger:focus-visible {
   border-color: #8ea4d3;
 }
 
@@ -8447,21 +8449,23 @@ input[type='range']:hover::-webkit-slider-thumb {
   width: min(600px, calc(100% - 32px));
   margin: 18px auto 28px;
 }
-.account-card input:not([type='checkbox']) {
+.account-card input:not([type='checkbox']),
+.account-card .birth-date-trigger {
   min-height: 48px;
   padding: 0 15px;
   color: var(--ft-text);
-  border-color: #163249;
+  border: 1px solid #163249;
   border-radius: 11px;
   background: var(--ft-bg);
 }
 .account-card input:not([type='checkbox'])::placeholder {
   color: #61758d;
 }
-.account-card input:not([type='checkbox']):hover {
+.account-card :is(input:not([type='checkbox']), .birth-date-trigger):hover {
   border-color: #24506c;
 }
-.account-card input:not([type='checkbox']):focus {
+.account-card input:not([type='checkbox']):focus,
+.account-card .birth-date-trigger:focus-visible {
   border-color: var(--ft-cyan);
 }
 .account-card input[aria-invalid='true'] {
@@ -8475,8 +8479,9 @@ input[type='range']:hover::-webkit-slider-thumb {
   width: 100%;
   padding-right: 52px;
 }
-.account-card .password-field input,
-.browser-platform-password input {
+.account-card :is(input:not([type='checkbox'], .verification-code-input), .birth-date-trigger),
+.browser-platform-form input:not([type='checkbox']),
+.browser-platform-form .birth-date-trigger {
   font-family: var(--font-ui);
   font-size: 16px;
   font-weight: 400;
@@ -22096,4 +22101,216 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   align-items: center;
   gap: 8px;
   color: #a7e6c7;
+}
+
+.auth-required-mark::after {
+  content: '*';
+  color: #ff839a;
+  margin-inline-start: 0.15em;
+}
+
+.birth-date-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.birth-date-fields legend {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.birth-date-selects {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.birth-date-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.birth-date-trigger,
+.birth-date-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  text-align: start;
+}
+
+.birth-date-trigger > span,
+.birth-date-options button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.birth-date-trigger svg,
+.birth-date-options svg {
+  flex: none;
+}
+
+.birth-date-trigger[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
+}
+
+.birth-date-options {
+  border-color: #163249;
+  border-radius: 11px;
+  background: var(--ft-bg);
+  grid-auto-rows: minmax(32px, max-content);
+  gap: 0;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #536583 transparent;
+}
+
+.browser-platform-form .birth-date-options {
+  border-color: rgba(104, 163, 206, 0.34);
+  border-radius: 14px;
+  background: #050e19;
+}
+
+.birth-date-options.above {
+  inset-block: auto calc(100% + 6px);
+  transform-origin: bottom;
+}
+
+.birth-date-options button {
+  min-height: 32px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.birth-date-options button:is(.active, [aria-selected='true']) {
+  background: #1a2c48;
+}
+
+.birth-date-trigger:active:not(:disabled),
+.birth-date-options button:active:not(:disabled) {
+  transform: none;
+}
+
+.qr-login-section {
+  margin-top: 22px;
+  padding: 22px 0 0;
+  border-top: 1px solid #253247;
+  gap: 10px;
+}
+
+.qr-login-section h2,
+.passkey-approval h1 {
+  margin: 0;
+  color: #f2f5fb;
+  font-size: 1.15rem;
+}
+
+.qr-login-section .qr-auth-code {
+  width: min(245px, 100%);
+  margin-block: 4px;
+}
+
+.qr-login-section .passkey-login-link {
+  min-height: 34px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.passkey-approval,
+.passkey-settings > div,
+.passkey-settings form {
+  display: grid;
+  gap: 10px;
+}
+
+.passkey-approval {
+  text-align: center;
+}
+.passkey-settings {
+  margin-top: 10px;
+}
+.passkey-settings > div {
+  padding: 12px;
+}
+.passkey-settings summary {
+  cursor: pointer;
+}
+.passkey-settings summary svg {
+  vertical-align: middle;
+}
+.passkey-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 18px;
+}
+
+.qr-login-visual {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+@media (min-width: 560px) and (max-height: 920px) {
+  .qr-login-section {
+    grid-template-columns: 245px minmax(0, 1fr);
+    grid-template-rows: 1fr auto 1fr;
+    align-items: center;
+    column-gap: 20px;
+  }
+
+  .qr-login-section > h2 {
+    grid-area: 1 / 2;
+    align-self: end;
+  }
+
+  .qr-login-section > p:not([role]) {
+    grid-area: 2 / 2;
+  }
+
+  .qr-login-section > .passkey-login-link {
+    grid-area: 3 / 2;
+    align-self: start;
+  }
+
+  .qr-login-section > .qr-login-visual {
+    grid-area: 1 / 1 / 4;
+  }
+
+  .qr-login-section > [role='status'] {
+    grid-column: 1 / -1;
+  }
+
+  .welcome-card.account-card:has(.qr-login-section) {
+    padding-block: 20px;
+  }
+
+  .account-card:has(.qr-login-section) .brand-logo-full {
+    min-height: 64px;
+  }
+
+  .account-card:has(.qr-login-section) .brand-logo-full .brand-emblem {
+    width: 64px;
+    height: 64px;
+  }
+
+  .account-card:has(.qr-login-section) .auth-form-login {
+    gap: 10px;
+  }
 }

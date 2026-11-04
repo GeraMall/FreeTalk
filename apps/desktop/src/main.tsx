@@ -1,3 +1,4 @@
+import { PasskeyDesktopApproval } from './components/PasskeySettings';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
@@ -41,17 +42,21 @@ const callPlaceholder =
   window.__FREETALK_CALL_PLACEHOLDER__ === true ||
   new URLSearchParams(window.location.search).has('call-placeholder');
 if (notificationOverlay) document.documentElement.classList.add('notification-overlay-document');
-const content = notificationOverlay ? (
-  <NotificationOverlay />
-) : callPlaceholder ? (
-  <CallPopoutPlaceholder />
-) : preview ? (
-  <ChatLayoutPreview />
-) : (
-  <BrowserPlatformGate>
-    <App />
-  </BrowserPlatformGate>
-);
+const passkeyChallenge = new URLSearchParams(location.hash.slice(1)).get('passkey');
+const content =
+  passkeyChallenge && /^[A-Za-z0-9_-]{43}$/.test(passkeyChallenge) ? (
+    <PasskeyDesktopApproval challenge={passkeyChallenge} />
+  ) : notificationOverlay ? (
+    <NotificationOverlay />
+  ) : callPlaceholder ? (
+    <CallPopoutPlaceholder />
+  ) : preview ? (
+    <ChatLayoutPreview />
+  ) : (
+    <BrowserPlatformGate>
+      <App />
+    </BrowserPlatformGate>
+  );
 const customWindowChrome = usesCustomWindowChrome();
 
 createRoot(document.getElementById('root')!).render(

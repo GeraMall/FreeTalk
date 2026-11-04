@@ -1368,6 +1368,66 @@ const translations: Record<string, readonly [string, string]> = {
   'Осталось изменений: {p0} из 5': ['Changes remaining: {p0} of 5', '还可更改 {p0} 次，共 5 次'],
   'Уровень микрофона {p0}%': ['Microphone level {p0}%', '麦克风音量 {p0}%'],
   'Код действует ещё {p0}': ['Code expires in {p0}', '验证码将在 {p0} 后失效'],
+  'Дата рождения': ['Date of birth', '出生日期'],
+  День: ['Day', '日'],
+  Месяц: ['Month', '月'],
+  Год: ['Year', '年'],
+  'Проверьте дату рождения': ['Check your date of birth', '请检查出生日期'],
+  'Войти с помощью QR-кода': ['Sign in with a QR code', '使用二维码登录'],
+  'Сканируйте код с помощью мобильного приложения TRLKA, чтобы сразу войти в систему.': [
+    'Scan the code with the TRLKA mobile app to sign in instantly.',
+    '使用 TRLKA 手机应用扫描二维码，即可登录。',
+  ],
+  'Или войти с помощью ключа доступа': ['Or sign in with a passkey', '或使用通行密钥登录'],
+  'Вход с помощью ключа доступа': ['Sign in with a passkey', '使用通行密钥登录'],
+  'Ключ доступа': ['Passkey', '通行密钥'],
+  'Ключи доступа': ['Passkeys', '通行密钥'],
+  'Добавить ключ доступа': ['Add a passkey', '添加通行密钥'],
+  'Сверьте код {p0} в браузере и подтвердите вход.': [
+    'Check code {p0} in the browser and confirm sign-in.',
+    '请在浏览器中核对代码 {p0} 并确认登录。',
+  ],
+  'Сверьте код с приложением': ['Match the code with the app', '请核对应用中的代码'],
+  'Подтверждайте вход, только если вы сами открыли его в приложении TRLKA.': [
+    'Confirm only if you started this sign-in from the TRLKA app.',
+    '仅在您自己通过 TRLKA 应用发起登录时确认。',
+  ],
+  'Вход подтверждён. Вернитесь в приложение TRLKA.': [
+    'Sign-in confirmed. Return to the TRLKA app.',
+    '登录已确认，请返回 TRLKA 应用。',
+  ],
+  'Не удалось войти с помощью ключа доступа.': [
+    'Could not sign in with a passkey.',
+    '无法使用通行密钥登录。',
+  ],
+  'Чтобы добавить ключ, войдите на trlka.com и откройте настройки профиля.': [
+    'To add a passkey, sign in at trlka.com and open your profile settings.',
+    '要添加通行密钥，请登录 trlka.com 并打开个人资料设置。',
+  ],
+  'Открыть TRLKA в браузере': ['Open TRLKA in your browser', '在浏览器中打开 TRLKA'],
+  'Откройте trlka.com в браузере.': [
+    'Open trlka.com in your browser.',
+    '请在浏览器中打开 trlka.com。',
+  ],
+  'Не удалось загрузить ключи доступа.': ['Could not load passkeys.', '无法加载通行密钥。'],
+  'Ключ доступа добавлен.': ['Passkey added.', '通行密钥已添加。'],
+  'Не удалось добавить ключ доступа.': ['Could not add the passkey.', '无法添加通行密钥。'],
+  'Ключ доступа удалён.': ['Passkey removed.', '通行密钥已删除。'],
+  'Не удалось удалить ключ доступа.': ['Could not remove the passkey.', '无法删除通行密钥。'],
+  'Если оставить поле пустым, будет использован @username.': [
+    'If you leave this blank, your @username will be used.',
+    '如果留空，将使用您的 @username。',
+  ],
+  'От 5 до 24 символов: латинские буквы, цифры и подчёркивание.': [
+    'Use 5 to 24 characters: Latin letters, numbers and underscores.',
+    '使用 5 至 24 个字符，可包含拉丁字母、数字和下划线。',
+  ],
+  'От 10 символов, хотя бы одна буква и цифра.': [
+    'Use at least 10 characters, including a letter and a number.',
+    '至少 10 个字符，并包含至少一个字母和一个数字。',
+  ],
+  'Введите тот же пароль ещё раз.': ['Enter the same password again.', '请再次输入相同的密码。'],
+  'Проверьте введённые данные.': ['Check the information you entered.', '请检查输入的信息。'],
 };
 
 const additionalTranslations: Record<
