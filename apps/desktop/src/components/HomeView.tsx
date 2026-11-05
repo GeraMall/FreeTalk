@@ -1,5 +1,13 @@
 import { appLanguage, t } from '../lib/app-language';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   Check,
   ChevronDown,
@@ -241,7 +249,9 @@ export function HomeView({
     while (cache.size > 8) cache.delete(cache.keys().next().value!);
   }, [activeChat, messages, pinnedMessage, hasMoreMessages, messagesLoading, messagesError]);
 
-  useEffect(() => {
+  // The parent owns the call surface. Synchronize the selected conversation
+  // before paint so returning to its chat never paints a chat-only frame.
+  useLayoutEffect(() => {
     onActiveChatChange?.(activeChat);
     return () => onActiveChatChange?.(undefined);
   }, [activeChat, onActiveChatChange]);
