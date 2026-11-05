@@ -5,6 +5,7 @@ import { accountClient } from './api-client';
 import { AWAY_AFTER_MS, ChatRealtimeClient } from './chat-realtime';
 import { setPresenceMode } from './presence-preference';
 import { markVoiceActivity, setCallActive } from './presence-activity';
+import { SELF_PRESENCE_RECONNECT_GRACE_MS } from './self-presence';
 
 class FakeWebSocket extends EventTarget {
   static OPEN = 1;
@@ -229,6 +230,50 @@ describe('ChatRealtimeClient', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(onPresence).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(2);
+    client.stop();
+  });
+
+  it('recovers on restore without flashing offline or reopening an already healthy connection', async () => {
+    vi.useFakeTimers();
+    const presence = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), presence);
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive({ type: 'ready' });
+    presence.mockClear();
+    first.close();
+    await vi.advanceTimersByTimeAsync(20);
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('pageshow'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    second.receive({ type: 'ready' });
+    await vi.advanceTimersByTimeAsync(SELF_PRESENCE_RECONNECT_GRACE_MS + 100);
+    expect(presence).not.toHaveBeenCalledWith('offline');
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(JSON.parse(second.sent.at(-1)!)).toEqual({ type: 'presence', status: 'online' });
+    client.stop();
+  });
+
+  it('does not send presence changes before the server authenticates a resumed socket', async () => {
+    vi.useFakeTimers();
+    const client = new ChatRealtimeClient(vi.fn());
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    setPresenceMode('dnd');
+    window.dispatchEvent(new Event('focus'));
+    expect(socket.sent.map((item) => JSON.parse(item).type)).toEqual(['authenticate']);
+    socket.receive({ type: 'ready' });
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ type: 'presence', status: 'dnd' });
     client.stop();
   });
 });

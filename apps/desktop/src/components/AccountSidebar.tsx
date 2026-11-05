@@ -30,6 +30,7 @@ import type { UpdateStatus } from '../lib/updater';
 import { compactVersionLabel } from '../lib/version-label';
 import type { PresenceStatus } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
+import { selfPresence } from '../lib/self-presence';
 import {
   appIsInForeground,
   listenForNotificationOpen,
@@ -98,7 +99,7 @@ export function AccountSidebar({
   onLogout(): void;
   callDock?: CallDockState;
 }) {
-  const [presence, setPresence] = useState<PresenceStatus>('offline');
+  const [presence, setPresence] = useState<PresenceStatus>(() => selfPresence.get(user.id));
   const [menuOpen, setMenuOpen] = useState(false);
   const [presenceMode, setLocalPresenceMode] = useState(getPresenceMode);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});

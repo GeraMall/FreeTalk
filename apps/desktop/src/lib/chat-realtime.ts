@@ -4,6 +4,7 @@ import {
   type PresenceStatus,
 } from '@freetalk/protocol';
 import { accountClient, accountRealtimeUrl } from './api-client';
+import { selfPresence } from './self-presence';
 import {
   createAccountSocket,
   type SignalSocket,
@@ -36,6 +37,9 @@ export class ChatRealtimeClient {
   private awayTimer?: number;
   private currentPresence: PresenceStatus = 'offline';
   private presenceMode: PresenceMode = getPresenceMode();
+  private authenticated = false;
+  private connecting = false;
+  private selfPresenceSubscription?: ReturnType<typeof selfPresence.subscribe>;
 
   constructor(
     private readonly onEvent: (event: ChatRealtimeServerMessage) => void,
@@ -46,17 +50,26 @@ export class ChatRealtimeClient {
   start() {
     if (!this.stopped) return;
     this.stopped = false;
+    this.selfPresenceSubscription = selfPresence.subscribe(
+      accountClient.user?.id ?? 'local-account',
+      this.onSelfPresence,
+    );
     this.attachActivityListeners();
     window.addEventListener(PRESENCE_MODE_EVENT, this.handlePresenceModeChange);
     window.addEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     window.addEventListener(VOICE_ACTIVITY_EVENT, this.markActive);
     window.addEventListener('online', this.handleNetworkOnline);
+    window.addEventListener('focus', this.handleResume);
+    window.addEventListener('pageshow', this.handleResume);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
     this.scheduleAway();
     void this.connect();
   }
 
   stop() {
     this.stopped = true;
+    this.authenticated = false;
+    this.connecting = false;
     this.generation += 1;
     if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
@@ -68,13 +81,19 @@ export class ChatRealtimeClient {
     window.removeEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     window.removeEventListener(VOICE_ACTIVITY_EVENT, this.markActive);
     window.removeEventListener('online', this.handleNetworkOnline);
+    window.removeEventListener('focus', this.handleResume);
+    window.removeEventListener('pageshow', this.handleResume);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     if (this.awayTimer !== undefined) window.clearTimeout(this.awayTimer);
     this.awayTimer = undefined;
-    this.updateSelfPresence('offline');
+    this.selfPresenceSubscription?.stop();
+    this.selfPresenceSubscription = undefined;
+    this.currentPresence = 'offline';
   }
 
   private async connect() {
-    if (this.stopped) return;
+    if (this.stopped || this.connecting) return;
+    this.connecting = true;
     const generation = ++this.generation;
     try {
       const token = await accountClient.realtimeAccessToken();
@@ -93,6 +112,7 @@ export class ChatRealtimeClient {
           const message = parseChatRealtimeServerMessage(String((event as MessageEvent).data));
           if (message.type === 'ready') {
             this.attempt = 0;
+            this.authenticated = true;
             window.clearTimeout(connectTimeout);
             this.sendPresence(this.resolvedPresence());
             this.onReady?.();
@@ -109,7 +129,8 @@ export class ChatRealtimeClient {
         window.clearTimeout(connectTimeout);
         if (this.stopped || this.socket !== socket) return;
         this.socket = undefined;
-        this.updateSelfPresence('offline');
+        this.authenticated = false;
+        this.selfPresenceSubscription?.disconnected();
         const details =
           event instanceof MessageEvent
             ? (event.data as SignalCloseDetails)
@@ -123,15 +144,28 @@ export class ChatRealtimeClient {
       });
     } catch {
       if (!this.stopped && generation === this.generation) this.scheduleReconnect();
+    } finally {
+      if (generation === this.generation) this.connecting = false;
     }
   }
 
   private readonly handleNetworkOnline = () => {
-    if (this.stopped || this.socket) return;
+    if (this.stopped || this.socket || this.connecting) return;
     if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
     this.attempt = 0;
     void this.connect();
+  };
+
+  private readonly handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') this.handleResume();
+  };
+
+  private readonly handleResume = () => {
+    if (this.stopped) return;
+    this.markActive();
+    if (!this.socket) this.handleNetworkOnline();
+    else if (this.authenticated) this.sendPresence(this.resolvedPresence());
   };
 
   private readonly markActive = () => {
@@ -182,21 +216,11 @@ export class ChatRealtimeClient {
   };
 
   private sendPresence(status: PresenceStatus) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN)
+    if (this.authenticated && this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type: 'presence', status }));
-    this.updateSelfPresence(status);
-  }
-
-  private updateSelfPresence(status: PresenceStatus) {
-    if (this.currentPresence === status) return;
+      this.selfPresenceSubscription?.ready(status);
+    }
     this.currentPresence = status;
-    if (accountClient.user?.id)
-      window.dispatchEvent(
-        new CustomEvent(ACCOUNT_PRESENCE_EVENT, {
-          detail: { userId: accountClient.user.id, status },
-        }),
-      );
-    this.onSelfPresence?.(status);
   }
 
   private scheduleReconnect() {
