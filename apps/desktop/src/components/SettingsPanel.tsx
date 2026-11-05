@@ -619,6 +619,7 @@ export function SettingsPanel({
                   onReset();
                 }}
               >
+                <RotateCcw size={17} aria-hidden="true" />
                 {t('Сбросить')}
               </button>
               <button className="secondary" onClick={() => setConfirmReset(false)}>
@@ -2078,7 +2079,16 @@ function AboutTab({
             <Download size={16} /> {t('Обновить до')} {updateStatus.version}
           </button>
         ) : updateStatus.kind === 'downloading' ? (
-          <progress max="100" value={updateStatus.progress} />
+          <div
+            className="update-download-progress"
+            role="progressbar"
+            aria-label={t('Обновления')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={updateStatus.progress}
+          >
+            <span style={{ transform: `scaleX(${updateStatus.progress / 100})` }} />
+          </div>
         ) : (
           <button
             className="secondary compact settings-action-button"

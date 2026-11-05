@@ -2,6 +2,8 @@
 
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import type { ChatRealtimeServerMessage } from '@freetalk/protocol';
 import type { AccountUser } from '../lib/api-client';
 import {
   activeCallRoomId,
@@ -9,10 +11,12 @@ import {
   uniqueCallParticipants,
 } from '../lib/call-history';
 import { HomeView, RecentRooms, TransientNotice } from './HomeView';
+import { SERVICE_CHAT_UPDATED } from '../lib/service-chat';
 
 const homeViewHarness = vi.hoisted(() => ({
   request: vi.fn(),
   ready: undefined as (() => void) | undefined,
+  event: undefined as ((event: ChatRealtimeServerMessage) => void) | undefined,
 }));
 
 vi.mock('../lib/api-client', () => ({
@@ -24,7 +28,12 @@ vi.mock('../lib/api-client', () => ({
 
 vi.mock('../lib/chat-realtime', () => ({
   ChatRealtimeClient: class {
-    constructor(_event: unknown, _presence: unknown, ready?: () => void) {
+    constructor(
+      event: (event: ChatRealtimeServerMessage) => void,
+      _presence: unknown,
+      ready?: () => void,
+    ) {
+      homeViewHarness.event = event;
       homeViewHarness.ready = ready;
     }
     start() {}
@@ -37,6 +46,7 @@ afterEach(() => {
   vi.useRealTimers();
   homeViewHarness.request.mockReset();
   homeViewHarness.ready = undefined;
+  homeViewHarness.event = undefined;
   localStorage.clear();
 });
 
@@ -52,6 +62,174 @@ function mobileMatchMedia() {
     dispatchEvent: vi.fn(),
   } as unknown as MediaQueryList;
 }
+
+describe('retained account navigation', () => {
+  const user: AccountUser = {
+    id: 'self',
+    email: 'qa@example.invalid',
+    username: 'qa_self',
+    displayName: 'QA',
+    emailVerified: true,
+    avatarUrl: null,
+    registeredAt: '2026-08-26T00:00:00.000Z',
+  };
+  const chats = ['А', 'Б'].map((name, index) => ({
+    id: `chat-${index}`,
+    type: 'group',
+    title: `Чат ${name}`,
+    members: [{ id: 'self', username: 'qa_self', displayName: 'QA', role: 'owner' }],
+    currentUserRole: 'owner',
+  }));
+  const friendResult = {
+    friends: [
+      { id: 'friend', username: 'friend', displayName: 'Тестовый друг', presence: 'online' },
+    ],
+    pending: [],
+    blocked: [],
+  };
+  const message = {
+    id: 'm-1',
+    sender_id: 'self',
+    username: 'qa_self',
+    display_name: 'QA',
+    kind: 'text',
+    body: 'Сохранённая переписка',
+    created_at: '2026-08-26T12:00:00.000Z',
+    expires_at: null,
+  };
+  const renderHome = () =>
+    render(
+      <StrictMode>
+        <HomeView
+          user={user}
+          busy={false}
+          error=""
+          onCreateRoom={vi.fn()}
+          onJoinRoom={vi.fn()}
+          onSettings={vi.fn()}
+          onLogout={vi.fn()}
+        />
+      </StrictMode>,
+    );
+  const requestCount = (path: string) =>
+    homeViewHarness.request.mock.calls.filter(([url]) => url === path).length;
+  const baseResponse = (path: string) => {
+    if (path === '/v1/chats') return { chats };
+    if (path === '/v1/friends') return friendResult;
+    if (path === '/v1/history') return { calls: [] };
+    if (path.endsWith('/messages')) return { messages: [message], hasMore: false };
+    throw Error(`Unexpected request ${path}`);
+  };
+
+  it('refreshes a retained bot snapshot if a notification arrives while another chat is open', async () => {
+    let serviceBody = 'Первое уведомление';
+    homeViewHarness.request.mockImplementation(async (path: string) =>
+      path === '/v1/service-chat/messages'
+        ? {
+            messages: [
+              {
+                id: serviceBody,
+                author: 'bot',
+                kind: 'help',
+                body: serviceBody,
+                created_at: new Date().toISOString(),
+              },
+            ],
+          }
+        : baseResponse(path),
+    );
+    const page = renderHome();
+    await waitFor(() => expect(page.getByRole('button', { name: 'Чат А' })).toBeTruthy());
+    fireEvent.click(page.getByRole('button', { name: 'TRLKA' }));
+    await page.findByText('Первое уведомление');
+    const loaded = requestCount('/v1/service-chat/messages');
+    fireEvent.click(page.getByRole('button', { name: 'Чат А' }));
+    await page.findByText('Сохранённая переписка');
+    serviceBody = 'Новое уведомление';
+    act(() => window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED)));
+    fireEvent.click(page.getByRole('button', { name: 'TRLKA' }));
+    await page.findByText('Новое уведомление');
+    expect(requestCount('/v1/service-chat/messages')).toBeGreaterThan(loaded);
+  });
+
+  it('finishes a cold Friends load despite repeated clicks, then switches sections without refetching or skeletons', async () => {
+    let finish!: (value: typeof friendResult) => void;
+    homeViewHarness.request.mockImplementation((path: string) =>
+      path === '/v1/friends'
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(baseResponse(path)),
+    );
+    const view = renderHome();
+    await waitFor(() => expect(requestCount('/v1/friends')).toBe(1));
+    fireEvent.click(view.getByRole('button', { name: 'Друзья' }));
+    fireEvent.click(view.getByRole('button', { name: 'Друзья' }));
+    expect(view.getByLabelText('Загрузка списка друзей')).toBeTruthy();
+    await act(async () => finish(friendResult));
+    expect(await view.findByText('Тестовый друг')).toBeTruthy();
+    for (let i = 0; i < 5; i++) {
+      fireEvent.click(view.getByRole('button', { name: 'История' }));
+      fireEvent.click(view.getByRole('button', { name: 'Главная' }));
+      fireEvent.click(view.getByRole('button', { name: 'Друзья' }));
+      expect(view.queryByLabelText('Загрузка списка друзей')).toBeNull();
+      expect(view.getByText('Тестовый друг')).toBeTruthy();
+    }
+    await act(async () => undefined);
+    expect(requestCount('/v1/chats')).toBe(1);
+    expect(requestCount('/v1/friends')).toBe(1);
+    expect(requestCount('/v1/history')).toBe(1);
+  });
+
+  it('restores a recent chat instantly and ignores a late response from another chat', async () => {
+    let finishB!: (value: unknown) => void;
+    homeViewHarness.request.mockImplementation((path: string) =>
+      path === '/v1/chats/chat-1/messages'
+        ? new Promise((resolve) => {
+            finishB = resolve;
+          })
+        : Promise.resolve(baseResponse(path)),
+    );
+    const view = renderHome();
+    fireEvent.click(await view.findByRole('button', { name: 'Чат А' }));
+    expect(await view.findByText(message.body)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Чат А' }));
+    fireEvent.click(view.getByRole('button', { name: 'Чат Б' }));
+    fireEvent.click(view.getByRole('button', { name: 'Чат А' }));
+    expect(view.getByText(message.body)).toBeTruthy();
+    await act(async () =>
+      finishB({ messages: [{ ...message, id: 'm-b', body: 'Другая переписка' }] }),
+    );
+    expect(view.queryByText('Другая переписка')).toBeNull();
+    expect(requestCount('/v1/chats/chat-0/messages')).toBe(1);
+    expect(requestCount('/v1/chats/chat-1/messages')).toBe(1);
+  });
+
+  it('invalidates a cached chat when a message is deleted while another chat is open', async () => {
+    let deleted = false;
+    homeViewHarness.request.mockImplementation(async (path: string) =>
+      path === '/v1/chats/chat-0/messages' && deleted
+        ? { messages: [], hasMore: false }
+        : baseResponse(path),
+    );
+    const view = renderHome();
+    fireEvent.click(await view.findByRole('button', { name: 'Чат А' }));
+    expect(await view.findByText(message.body)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'Чат Б' }));
+    await waitFor(() => expect(requestCount('/v1/chats/chat-1/messages')).toBe(1));
+    deleted = true;
+    act(() =>
+      homeViewHarness.event?.({
+        type: 'message-deleted',
+        chatId: 'chat-0',
+        messageId: 'm-1',
+      } as ChatRealtimeServerMessage),
+    );
+    fireEvent.click(view.getByRole('button', { name: 'Чат А' }));
+    await waitFor(() => expect(requestCount('/v1/chats/chat-0/messages')).toBe(2));
+    expect(view.queryByText(message.body)).toBeNull();
+  });
+});
 
 it('filters call history by month and totals the visible durations', async () => {
   const participants = [{ displayName: 'QA' }, { displayName: 'Макс' }];

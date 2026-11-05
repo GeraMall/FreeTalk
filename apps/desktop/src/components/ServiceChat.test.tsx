@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const request = vi.hoisted(() => vi.fn());
 vi.mock('../lib/api-client', () => ({ accountClient: { request } }));
 import { ServiceChat } from './ServiceChat';
+import { SERVICE_CHAT_UPDATED } from '../lib/service-chat';
 const user = { displayName: 'Алекс', username: 'alex', avatarUrl: null };
 const welcome = {
   id: 'welcome',
@@ -19,9 +20,60 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 describe('service chat', () => {
+  it('does not flash an intro or loading label and restores a recent bot snapshot immediately', async () => {
+    let finish!: (result: unknown) => void;
+    request.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const cache = {};
+    const first = render(<ServiceChat user={user} cache={cache} onBack={() => {}} />);
+    expect(screen.queryByText('На связи — TRLKA')).toBeNull();
+    expect(screen.queryByText('Загружаем сообщения…')).toBeNull();
+    expect(screen.getByRole('log').getAttribute('aria-busy')).toBe('true');
+    await act(async () => finish({ messages: [welcome] }));
+    await screen.findByText('Служебный чат TRLKA');
+    first.unmount();
+    request.mockClear();
+    render(<ServiceChat user={user} cache={cache} onBack={() => {}} />);
+    expect(screen.getByText('Служебный чат TRLKA')).toBeTruthy();
+    expect(screen.getByRole('log').getAttribute('aria-busy')).toBe('false');
+    expect(request).not.toHaveBeenCalled();
+    await act(async () => window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED)));
+    expect(request).toHaveBeenCalledOnce();
+  });
+  it('positions the first snapshot instantly and follows only new messages while at the bottom', async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    render(<ServiceChat user={user} onBack={() => {}} />);
+    await screen.findByText('Служебный чат TRLKA');
+    expect(scrollTo.mock.calls).toEqual([[{ top: 0, behavior: 'instant' }]]);
+    await act(async () => window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED)));
+    expect(scrollTo).toHaveBeenCalledOnce();
+    request.mockResolvedValue({
+      messages: [welcome, { ...welcome, id: 'next', body: 'Новое уведомление' }],
+    });
+    await act(async () => window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED)));
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' });
+    const list = screen.getByRole('log');
+    Object.defineProperties(list, { scrollHeight: { value: 1200 }, clientHeight: { value: 400 } });
+    fireEvent.scroll(list, { target: { scrollTop: 0 } });
+    scrollTo.mockClear();
+    request.mockResolvedValue({
+      messages: [welcome, { ...welcome, id: 'last', body: 'Ещё одно' }],
+    });
+    await act(async () => window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED)));
+    expect(scrollTo).not.toHaveBeenCalled();
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+  });
   it('opens the official bot profile without requesting a user profile', async () => {
     render(<ServiceChat user={user} onBack={() => {}} />);
     await screen.findByText('Служебный чат TRLKA');

@@ -1,4 +1,6 @@
 import { formatChatCallLabel, t } from '../lib/app-language';
+import { SERVICE_CHAT_ID } from '@freetalk/config';
+import { ServiceBotAvatar } from './ServiceBotAvatar';
 import {
   ChevronLeft,
   ChevronRight,
@@ -402,6 +404,7 @@ export function AccountSidebar({
                       }}
                     >
                       <SidebarAvatar
+                        service={chat.id === SERVICE_CHAT_ID}
                         name={name}
                         avatarUrl={chat.type === 'group' ? chat.avatarUrl : other?.avatarUrl}
                         group={chat.type === 'group'}
@@ -638,6 +641,7 @@ function sidebarChatName(chat: ChatItem, userId: string) {
 }
 
 function SidebarAvatar({
+  service = false,
   name,
   avatarUrl,
   group = false,
@@ -647,6 +651,7 @@ function SidebarAvatar({
   positionY,
   scale,
 }: {
+  service?: boolean;
   name: string;
   avatarUrl?: string | null;
   group?: boolean;
@@ -656,6 +661,7 @@ function SidebarAvatar({
   positionY?: number;
   scale?: number;
 }) {
+  if (service) return <ServiceBotAvatar className="account-sidebar-chat-avatar" />;
   return (
     <span className={`account-sidebar-chat-avatar${group ? ' group' : ''}`} aria-hidden="true">
       {avatarUrl ? (

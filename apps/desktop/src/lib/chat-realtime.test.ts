@@ -184,4 +184,51 @@ describe('ChatRealtimeClient', () => {
     expect(onPresence).toHaveBeenLastCalledWith('offline');
     client.stop();
   });
+
+  it('keeps a hidden window online, becomes away on idle, and goes offline only on stop', async () => {
+    vi.useFakeTimers();
+    const onPresence = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), onPresence);
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeWebSocket.instances[0]!;
+    const close = vi.spyOn(socket, 'close');
+    socket.open();
+    socket.receive({ type: 'ready' });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('blur'));
+    await vi.advanceTimersByTimeAsync(AWAY_AFTER_MS - 1);
+    expect(onPresence).toHaveBeenLastCalledWith('online');
+    expect(close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onPresence).toHaveBeenLastCalledWith('away');
+    expect(close).not.toHaveBeenCalled();
+    client.stop();
+    expect(onPresence).toHaveBeenLastCalledWith('offline');
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a late close from a retired socket after reconnect', async () => {
+    vi.useFakeTimers();
+    const onPresence = vi.fn();
+    const client = new ChatRealtimeClient(vi.fn(), onPresence);
+    client.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive({ type: 'ready' });
+    first.close();
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    second.receive({ type: 'ready' });
+    onPresence.mockClear();
+    first.close();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(onPresence).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    client.stop();
+  });
 });

@@ -5,6 +5,11 @@ import {
 } from '@freetalk/protocol';
 import { accountClient, accountRealtimeUrl } from './api-client';
 import {
+  createAccountSocket,
+  type SignalSocket,
+  type SignalCloseDetails,
+} from './signaling-transport';
+import {
   ACCOUNT_PRESENCE_EVENT,
   CALL_ACTIVITY_EVENT,
   VOICE_ACTIVITY_EVENT,
@@ -21,7 +26,8 @@ const CONNECT_TIMEOUT_MS = 10_000;
 export const AWAY_AFTER_MS = 5 * 60 * 1_000;
 
 export class ChatRealtimeClient {
-  private socket?: WebSocket;
+  private socket?: SignalSocket;
+  private generation = 0;
   private retryTimer?: number;
   private stopped = true;
   private attempt = 0;
@@ -44,20 +50,24 @@ export class ChatRealtimeClient {
     window.addEventListener(PRESENCE_MODE_EVENT, this.handlePresenceModeChange);
     window.addEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     window.addEventListener(VOICE_ACTIVITY_EVENT, this.markActive);
+    window.addEventListener('online', this.handleNetworkOnline);
     this.scheduleAway();
     void this.connect();
   }
 
   stop() {
     this.stopped = true;
+    this.generation += 1;
     if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
-    this.socket?.close(1000, 'Client stopped');
+    const socket = this.socket;
     this.socket = undefined;
+    socket?.close(1000, 'Client stopped');
     this.detachActivityListeners();
     window.removeEventListener(PRESENCE_MODE_EVENT, this.handlePresenceModeChange);
     window.removeEventListener(CALL_ACTIVITY_EVENT, this.handleCallActivityChange);
     window.removeEventListener(VOICE_ACTIVITY_EVENT, this.markActive);
+    window.removeEventListener('online', this.handleNetworkOnline);
     if (this.awayTimer !== undefined) window.clearTimeout(this.awayTimer);
     this.awayTimer = undefined;
     this.updateSelfPresence('offline');
@@ -65,20 +75,22 @@ export class ChatRealtimeClient {
 
   private async connect() {
     if (this.stopped) return;
+    const generation = ++this.generation;
     try {
       const token = await accountClient.realtimeAccessToken();
-      if (this.stopped) return;
-      const socket = new WebSocket(accountRealtimeUrl());
+      if (this.stopped || generation !== this.generation) return;
+      const socket = createAccountSocket(accountRealtimeUrl());
       this.socket = socket;
       const connectTimeout = window.setTimeout(() => socket.close(), CONNECT_TIMEOUT_MS);
 
       socket.addEventListener('open', () => {
+        if (this.stopped || this.socket !== socket) return;
         socket.send(JSON.stringify({ type: 'authenticate', token }));
       });
       socket.addEventListener('message', (event) => {
         if (this.stopped || this.socket !== socket) return;
         try {
-          const message = parseChatRealtimeServerMessage(String(event.data));
+          const message = parseChatRealtimeServerMessage(String((event as MessageEvent).data));
           if (message.type === 'ready') {
             this.attempt = 0;
             window.clearTimeout(connectTimeout);
@@ -95,9 +107,14 @@ export class ChatRealtimeClient {
       });
       socket.addEventListener('close', (event) => {
         window.clearTimeout(connectTimeout);
-        if (this.socket === socket) this.socket = undefined;
+        if (this.stopped || this.socket !== socket) return;
+        this.socket = undefined;
         this.updateSelfPresence('offline');
-        if (!this.stopped && event.code === 4401 && event.reason === 'Session ended') {
+        const details =
+          event instanceof MessageEvent
+            ? (event.data as SignalCloseDetails)
+            : (event as CloseEvent);
+        if (details.code === 4401 && details.reason === 'Session ended') {
           this.stop();
           window.location.reload();
           return;
@@ -105,9 +122,17 @@ export class ChatRealtimeClient {
         this.scheduleReconnect();
       });
     } catch {
-      this.scheduleReconnect();
+      if (!this.stopped && generation === this.generation) this.scheduleReconnect();
     }
   }
+
+  private readonly handleNetworkOnline = () => {
+    if (this.stopped || this.socket) return;
+    if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    this.attempt = 0;
+    void this.connect();
+  };
 
   private readonly markActive = () => {
     const now = Date.now();

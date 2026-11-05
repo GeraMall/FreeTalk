@@ -1736,6 +1736,7 @@ export function App() {
   };
 
   const runUpdateCheck = async () => {
+    if (updateStatus.kind === 'checking' || updateStatus.kind === 'downloading') return;
     setUpdateStatus({ kind: 'checking' });
     setUpdateStatus(await checkForUpdate());
   };
@@ -2094,6 +2095,7 @@ export function App() {
           </main>
         ) : accountUser ? (
           <HomeView
+            key={accountUser.id}
             callDock={callDock}
             initialChatId={callChatId}
             user={accountUser}
@@ -2372,6 +2374,7 @@ export function App() {
               className={`account-page-slot ${roomDestination === 'room' || (mobileFocusedCall && !mobileCallMinimized) ? 'is-hidden' : ''}`}
             >
               <HomeView
+                key={accountUser.id}
                 initialChatId={callChatId}
                 joinedChatId={callChatId}
                 callToolbarTarget={

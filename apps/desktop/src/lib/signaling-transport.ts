@@ -168,3 +168,12 @@ export function createSignalSocket(url: string): SignalSocket {
   Object.defineProperty(socket, 'correlationId', { value: correlationId });
   return socket;
 }
+
+/** Account presence must keep answering server pings even when the window is hidden. */
+export function createAccountSocket(url: string): SignalSocket {
+  const correlationId = crypto.randomUUID();
+  if (isTauri()) return new NativeSignalSocket(url, correlationId);
+  const socket = new WebSocket(url) as WebSocket & { correlationId: string };
+  Object.defineProperty(socket, 'correlationId', { value: correlationId });
+  return socket;
+}

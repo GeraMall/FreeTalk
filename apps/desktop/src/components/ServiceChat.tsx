@@ -1,8 +1,7 @@
 import { appLanguage, t } from '../lib/app-language';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Bot,
   Bug,
   Lightbulb,
   Send,
@@ -20,7 +19,7 @@ import {
   localizedServiceBody,
   type ServiceMessage,
 } from '../lib/service-chat';
-import mascot from '../assets/freetalk-mascot.png';
+import { ServiceBotAvatar } from './ServiceBotAvatar';
 import { ChatAvatar } from './ChatsPage';
 import './service-chat.css';
 
@@ -30,40 +29,63 @@ const actions = [
   { command: '/subscription', label: 'Подписка', Icon: Sparkles },
   { command: '/cancel', label: 'Отмена', Icon: X },
 ];
+export interface ServiceChatCache {
+  snapshot?: { messages: ServiceMessage[]; fetchedAt: number };
+}
 export function ServiceChat({
   user,
   onBack,
+  cache,
 }: {
   user: Pick<AccountUser, 'displayName' | 'username' | 'avatarUrl'>;
   onBack(): void;
+  cache?: ServiceChatCache;
 }) {
-  const [messages, setMessages] = useState<ServiceMessage[]>([]);
+  const [messages, setMessages] = useState<ServiceMessage[]>(() => cache?.snapshot?.messages ?? []);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cache?.snapshot);
   const [profileOpen, setProfileOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const list = useRef<HTMLDivElement>(null);
+  const initialPositioned = useRef(false);
+  const followLatest = useRef(true);
+  const lastVisibleMessage = useRef<string | undefined>(undefined);
+  const snapshotSearch = useRef(search);
   const requestVersion = useRef(0);
   const lastRequest = useRef<{ id: string; body: string } | undefined>(undefined);
-  const refresh = useCallback(async () => {
-    const version = ++requestVersion.current;
-    try {
-      const result = await accountClient.request<{ messages: ServiceMessage[] }>(
-        `/v1/service-chat/messages${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-      );
-      if (version !== requestVersion.current) return;
-      setMessages(result.messages);
-      setError('');
-    } catch {
-      if (version === requestVersion.current)
-        setError('Не удалось загрузить служебный чат. Попробуйте ещё раз.');
-    } finally {
-      if (version === requestVersion.current) setLoading(false);
-    }
-  }, [search]);
+  const refresh = useCallback(
+    async (force = false) => {
+      const version = ++requestVersion.current;
+      try {
+        const retained = !search && !force ? cache?.snapshot : undefined;
+        const result =
+          retained && Date.now() - retained.fetchedAt < 30_000
+            ? retained
+            : await accountClient.request<{ messages: ServiceMessage[] }>(
+                `/v1/service-chat/messages${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+              );
+        if (version !== requestVersion.current) return;
+        if (cache && !search)
+          cache.snapshot = {
+            messages: result.messages,
+            fetchedAt: retained === result ? retained.fetchedAt : Date.now(),
+          };
+        if (snapshotSearch.current !== search) initialPositioned.current = false;
+        snapshotSearch.current = search;
+        setMessages(result.messages);
+        setError('');
+      } catch {
+        if (version === requestVersion.current)
+          setError('Не удалось загрузить служебный чат. Попробуйте ещё раз.');
+      } finally {
+        if (version === requestVersion.current) setLoading(false);
+      }
+    },
+    [cache, search],
+  );
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query.trim()), 200);
     return () => clearTimeout(timer);
@@ -72,17 +94,33 @@ export function ServiceChat({
     let alive = true;
     void refresh();
     const update = () => {
-      if (alive) void refresh();
+      if (alive) void refresh(true);
     };
     window.addEventListener(SERVICE_CHAT_UPDATED, update);
     return () => {
       alive = false;
+      requestVersion.current += 1;
       window.removeEventListener(SERVICE_CHAT_UPDATED, update);
     };
   }, [refresh]);
-  useEffect(() => {
-    list.current?.scrollTo?.({ top: list.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!element || loading) return;
+    const lastId = messages.at(-1)?.id;
+    if (!initialPositioned.current) {
+      element.scrollTo?.({ top: element.scrollHeight, behavior: 'instant' });
+      initialPositioned.current = true;
+      followLatest.current = true;
+    } else if (followLatest.current && lastVisibleMessage.current !== lastId) {
+      element.scrollTo?.({
+        top: element.scrollHeight,
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+      });
+    }
+    lastVisibleMessage.current = lastId;
+  }, [loading, messages]);
   const send = async (body: string) => {
     body = body.trim();
     if (!body || busy) return;
@@ -100,7 +138,7 @@ export function ServiceChat({
       });
       lastRequest.current = undefined;
       setText((current) => (current.trim() === body ? '' : current));
-      await refresh();
+      await refresh(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось отправить сообщение');
     } finally {
@@ -121,7 +159,7 @@ export function ServiceChat({
           aria-label={t('Открыть профиль TRLKA')}
           onClick={() => setProfileOpen(true)}
         >
-          <img src={mascot} alt="" />
+          <ServiceBotAvatar />
           <span>
             <strong>
               TRLKA <span>{t('БОТ')}</span>
@@ -157,17 +195,16 @@ export function ServiceChat({
       <div
         className="service-chat-history"
         ref={list}
+        onScroll={() => {
+          const element = list.current;
+          if (element)
+            followLatest.current =
+              element.scrollHeight - element.clientHeight - element.scrollTop < 80;
+        }}
         role="log"
         aria-live="polite"
         aria-busy={loading}
       >
-        {!search && (
-          <div className="service-chat-intro">
-            <Bot size={26} />
-            <h2>{t('На связи — TRLKA')}</h2>
-            <p>{t('Здесь уведомления о звонках, сообщения об ошибках и ваши предложения.')}</p>
-          </div>
-        )}
         {search && !loading && (
           <p className="service-chat-search-result">
             {messages.length
@@ -175,50 +212,46 @@ export function ServiceChat({
               : t('Сообщения не найдены')}
           </p>
         )}
-        {loading ? (
-          <p>{t('Загружаем сообщения…')}</p>
-        ) : (
-          messages.map((message) => (
-            <article
-              key={message.id}
-              className={`service-chat-message ${message.author} kind-${message.kind}`}
-            >
-              {message.author === 'bot' ? (
-                <img src={mascot} alt="TRLKA" />
-              ) : (
-                <ChatAvatar
-                  name={user.displayName || user.username}
-                  avatarUrl={user.avatarUrl}
-                  group={false}
-                  compact
-                />
+        {messages.map((message) => (
+          <article
+            key={message.id}
+            className={`service-chat-message ${message.author} kind-${message.kind}`}
+          >
+            {message.author === 'bot' ? (
+              <ServiceBotAvatar alt="TRLKA" />
+            ) : (
+              <ChatAvatar
+                name={user.displayName || user.username}
+                avatarUrl={user.avatarUrl}
+                group={false}
+                compact
+              />
+            )}
+            <div>
+              {message.kind === 'call-timeout' && (
+                <span className="service-chat-event-label">
+                  <ShieldCheck size={14} />
+                  {t('Ожидание завершено')}
+                </span>
               )}
-              <div>
-                {message.kind === 'call-timeout' && (
-                  <span className="service-chat-event-label">
-                    <ShieldCheck size={14} />
-                    {t('Ожидание завершено')}
-                  </span>
-                )}
-                {message.kind === 'accepted' && (
-                  <span className="service-chat-event-label">
-                    <ShieldCheck size={14} />
-                    {t('Обращение принято')}
-                  </span>
-                )}
-                <p>{localizedServiceBody(message)}</p>
-                <time dateTime={message.created_at}>
-                  {new Date(message.created_at).toLocaleString(appLanguage(), {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </time>
-              </div>
-            </article>
-          ))
-        )}
+              {message.kind === 'accepted' && (
+                <span className="service-chat-event-label">
+                  <ShieldCheck size={14} />
+                  {t('Обращение принято')}
+                </span>
+              )}
+              <p>{localizedServiceBody(message)}</p>
+              <time dateTime={message.created_at}>
+                {new Date(message.created_at).toLocaleString(appLanguage(), {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </time>
+            </div>
+          </article>
+        ))}
       </div>
       <footer className="service-chat-footer">
         {error && (
@@ -280,7 +313,7 @@ export function ServiceChat({
           <div className="chat-profile-island">
             <div className="chat-profile-cover" />
             <div className="chat-profile-avatar">
-              <img src={mascot} alt={t('Логотип TRLKA')} />
+              <ServiceBotAvatar alt={t('Логотип TRLKA')} />
             </div>
             <section className="chat-profile-identity">
               <h2>

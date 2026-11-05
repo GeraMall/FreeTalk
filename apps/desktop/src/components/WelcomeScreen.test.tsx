@@ -3,11 +3,14 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WelcomeScreen } from './WelcomeScreen';
+import { accountClient } from '../lib/api-client';
 
 beforeEach(() => vi.stubEnv('VITE_TURNSTILE_SITE_KEY', ''));
 afterEach(() => {
   cleanup();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function props() {
@@ -27,6 +30,26 @@ function props() {
 }
 
 describe('account-first welcome screen', () => {
+  it('does not create or display a login QR on a phone', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) Mobile/15E148 Safari/604.1',
+    );
+    const startQr = vi.spyOn(accountClient, 'startQrLogin');
+    const view = render(<WelcomeScreen {...props()} onQrLogin={async () => {}} />);
+    expect(view.queryByRole('region', { name: 'Войти с помощью QR-кода' })).toBeNull();
+    expect(startQr).not.toHaveBeenCalled();
+  });
+
+  it('keeps QR login available in a narrow desktop window', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    );
+    vi.stubGlobal('innerWidth', 390);
+    const startQr = vi.spyOn(accountClient, 'startQrLogin').mockReturnValue(new Promise(() => {}));
+    const view = render(<WelcomeScreen {...props()} onQrLogin={async () => {}} />);
+    expect(view.getByRole('region', { name: 'Войти с помощью QR-кода' })).toBeTruthy();
+    expect(startQr).toHaveBeenCalledOnce();
+  });
   it('shows and hides the entered login password', () => {
     const view = render(<WelcomeScreen {...props()} />);
     const password = view.getByLabelText('Пароль') as HTMLInputElement;

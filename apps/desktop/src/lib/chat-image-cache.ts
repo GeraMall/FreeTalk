@@ -17,12 +17,30 @@ interface LoadChatImageOptions {
   fetcher(): Promise<Blob>;
 }
 
+export interface ChatImageDisplay {
+  src: string;
+  width?: number;
+  height?: number;
+}
+type ImageIdentity = Pick<
+  LoadChatImageOptions,
+  'accountId' | 'messageId' | 'variant' | 'expiresAt'
+>;
+
 const DATABASE_NAME = 'freetalk-chat-images-v1';
 const STORE_NAME = 'images';
 const MAX_CACHE_BYTES = 384 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 800;
 const memoryCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<Blob>>();
+// Keep the same browser image resource across chat navigation, bounded separately
+// from persistent blobs. Object URLs never enter IndexedDB.
+const displayCache = new Map<
+  string,
+  { display: ChatImageDisplay; size: number; accountId: string }
+>();
+const MAX_DISPLAY_ENTRIES = 64;
+const MAX_DISPLAY_BYTES = 32 * 1024 * 1024;
 let databasePromise: Promise<IDBDatabase | undefined> | undefined;
 
 function cacheKey(accountId: string, messageId: string, variant: ChatImageVariant) {
@@ -117,6 +135,63 @@ function isFresh(entry: CacheEntry) {
   return entry.expiresAt === null || entry.expiresAt > Date.now();
 }
 
+function removeDisplay(key: string) {
+  const entry = displayCache.get(key);
+  if (!entry) return;
+  URL.revokeObjectURL(entry.display.src);
+  displayCache.delete(key);
+}
+
+export function peekChatImageDisplay(identity: ImageIdentity): ChatImageDisplay | undefined {
+  const key = cacheKey(identity.accountId, identity.messageId, identity.variant);
+  const entry = memoryCache.get(key);
+  const expiresAt = expiryTime(identity.expiresAt);
+  if (!entry || !isFresh(entry) || (expiresAt !== null && expiresAt <= Date.now())) {
+    removeDisplay(key);
+    return undefined;
+  }
+  entry.accessedAt = Date.now();
+  let retained = displayCache.get(key);
+  if (!retained) {
+    retained = {
+      display: { src: URL.createObjectURL(entry.blob) },
+      size: entry.size,
+      accountId: identity.accountId,
+    };
+  }
+  displayCache.delete(key);
+  displayCache.set(key, retained);
+  let bytes = 0;
+  for (const value of displayCache.values()) bytes += value.size;
+  for (const [oldKey, value] of displayCache) {
+    if (displayCache.size <= MAX_DISPLAY_ENTRIES && bytes <= MAX_DISPLAY_BYTES) break;
+    // A single oversized image remains usable but is replaced on the next load.
+    if (oldKey === key) break;
+    bytes -= value.size;
+    removeDisplay(oldKey);
+  }
+  return retained.display;
+}
+
+export async function loadChatImageDisplay(options: LoadChatImageOptions) {
+  await loadChatImage(options);
+  const display = peekChatImageDisplay(options);
+  if (!display) throw new Error('Image expired or cache cleared');
+  return display;
+}
+
+export function rememberChatImageDimensions(
+  identity: ImageIdentity,
+  width: number,
+  height: number,
+) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+  const entry = displayCache.get(
+    cacheKey(identity.accountId, identity.messageId, identity.variant),
+  );
+  if (entry) Object.assign(entry.display, { width, height });
+}
+
 export async function loadChatImage({
   accountId,
   messageId,
@@ -170,6 +245,7 @@ export function seedChatImageCache(
   expiresAt?: string | null,
 ) {
   const key = cacheKey(accountId, messageId, variant);
+  removeDisplay(key);
   const entry: CacheEntry = {
     key,
     accountId,
@@ -183,6 +259,7 @@ export function seedChatImageCache(
 }
 
 export async function clearChatImageCache(accountId: string) {
+  for (const [key, entry] of displayCache) if (entry.accountId === accountId) removeDisplay(key);
   for (const [key, entry] of memoryCache) {
     if (entry.accountId === accountId) memoryCache.delete(key);
   }

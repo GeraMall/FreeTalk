@@ -12,6 +12,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
 
 const MAX_SIGNAL_BYTES: usize = 32 * 1024;
+const MAX_ACCOUNT_EVENT_BYTES: usize = 1024 * 1024;
 const PRODUCTION_SIGNALING_HOST: &str = "freetalk.191-44-38-60.sslip.io";
 
 #[derive(Default)]
@@ -90,7 +91,8 @@ fn validate_url(raw: &str) -> Result<(), String> {
     if !production && !local {
         return Err("Нативный сигналинг разрешён только для сервера Trlka".to_string());
     }
-    if url.path() != "/ws" {
+    let account_path = if production { "/api/v1/chats/realtime" } else { "/v1/chats/realtime" };
+    if url.path() != "/ws" && url.path() != account_path {
         return Err("Некорректный путь сигналинга".to_string());
     }
     Ok(())
@@ -219,6 +221,11 @@ async fn run_connection(
     mut commands: mpsc::UnboundedReceiver<NativeCommand>,
     events: mpsc::UnboundedSender<NativeSignalEvent>,
 ) {
+    let max_event_bytes = if Url::parse(&url).is_ok_and(|url| url.path() == "/ws") {
+        MAX_SIGNAL_BYTES
+    } else {
+        MAX_ACCOUNT_EVENT_BYTES
+    };
     match connect_async(&url).await {
         Ok((socket, response)) => {
             let header = |name: &str| {
@@ -262,7 +269,7 @@ async fn run_connection(
                         }
                     },
                     incoming = reader.next() => match incoming {
-                        Some(Ok(Message::Text(value))) if value.len() <= MAX_SIGNAL_BYTES => {
+                        Some(Ok(Message::Text(value))) if value.len() <= max_event_bytes => {
                             debug_message("in", &value);
                             let _ = events.send(NativeSignalEvent::Message { data: value.to_string() });
                         }
@@ -329,6 +336,10 @@ mod tests {
         assert!(validate_url("ws://127.0.0.1:8787/ws?room=ABCDEFGH2345").is_ok());
         assert!(validate_url("wss://example.com/ws").is_err());
         assert!(validate_url("https://freetalk.191-44-38-60.sslip.io/ws").is_err());
+        assert!(validate_url("wss://freetalk.191-44-38-60.sslip.io/api/v1/chats/realtime").is_ok());
+        assert!(validate_url("ws://127.0.0.1:8790/v1/chats/realtime").is_ok());
+        assert!(validate_url("wss://example.com/api/v1/chats/realtime").is_err());
+        assert!(validate_url("wss://freetalk.191-44-38-60.sslip.io/api/v1/auth/login").is_err());
     }
 
     #[test]

@@ -110,7 +110,7 @@ function PasswordField({
           data-tooltip={action}
           onClick={() => setVisible((current) => !current)}
         >
-          {visible ? <EyeOff size={19} /> : <Eye size={19} />}
+          {visible ? <EyeOff size={20} /> : <Eye size={20} />}
         </button>
       </div>
     </div>
@@ -131,6 +131,11 @@ export function WelcomeScreen({
   onResetPassword,
   onSettings,
 }: WelcomeScreenProps) {
+  const [phone] = useState(() =>
+    /iPhone|iPod|Windows Phone|Android.*Mobile|Mobile.*Android|Opera Mini/i.test(
+      navigator.userAgent,
+    ),
+  );
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [login, setLogin] = useState('');
   const [showLoginError, setShowLoginError] = useState(false);
@@ -652,7 +657,7 @@ export function WelcomeScreen({
             {error}
           </div>
         )}
-        {!verificationEmail && mode === 'login' && !resetMode && onQrLogin && (
+        {!phone && !verificationEmail && mode === 'login' && !resetMode && onQrLogin && (
           <QrLoginSection onLogin={onQrLogin} />
         )}
       </section>

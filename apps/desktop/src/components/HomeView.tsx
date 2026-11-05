@@ -14,6 +14,7 @@ import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import { ChatSendPacer } from '@freetalk/protocol';
 import { ChatRealtimeClient } from '../lib/chat-realtime';
+import { RetainedRequest } from '../lib/retained-request';
 import { uploadPrivateGif } from '../lib/gif-library';
 import { clearChatImageCache, seedChatImageCache } from '../lib/chat-image-cache';
 import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
@@ -46,7 +47,7 @@ import { MobileNavigation } from './MobileNavigation';
 import { CachedMediaImage } from './CachedMedia';
 import { useMobileLayout } from '../lib/mobile-layout';
 import { serviceChat, SERVICE_CHAT_ID, SERVICE_CHAT_UPDATED } from '../lib/service-chat';
-import { ServiceChat } from './ServiceChat';
+import { ServiceChat, type ServiceChatCache } from './ServiceChat';
 import type { PresenceStatus } from '@freetalk/protocol';
 
 const ACCOUNT_PAGES: AccountPage[] = ['home', 'friends', 'chats', 'store', 'history'];
@@ -178,6 +179,29 @@ export function HomeView({
   const messagesRequestIdRef = useRef(0);
   const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({});
   const navigationInitialized = useRef(false);
+  const sidebarData = useRef(new RetainedRequest());
+  const historyData = useRef(new RetainedRequest());
+  const messageSnapshots = useRef(
+    new Map<
+      string,
+      {
+        messages: MessageItem[];
+        pinned?: MessageItem;
+        hasMore: boolean;
+        pageStart?: string;
+        fetchedAt: number;
+      }
+    >(),
+  );
+  const messagesFetchedAt = useRef(0);
+  const serviceChatCache = useRef<ServiceChatCache>({});
+  useEffect(() => {
+    const invalidate = () => {
+      if (serviceChatCache.current.snapshot) serviceChatCache.current.snapshot.fetchedAt = 0;
+    };
+    window.addEventListener(SERVICE_CHAT_UPDATED, invalidate);
+    return () => window.removeEventListener(SERVICE_CHAT_UPDATED, invalidate);
+  }, []);
   const chatFriendOptions = useMemo(
     () =>
       friends.map((friend) => ({
@@ -192,6 +216,29 @@ export function HomeView({
   useEffect(() => {
     activeChatRef.current = activeChat;
   }, [activeChat]);
+
+  useEffect(() => {
+    if (
+      !activeChat ||
+      activeChat === SERVICE_CHAT_ID ||
+      messagesLoading ||
+      messagesError ||
+      !messagesFetchedAt.current
+    )
+      return;
+    const retained = messages.slice(-200);
+    const trimmed = retained.length !== messages.length;
+    const cache = messageSnapshots.current;
+    cache.delete(activeChat);
+    cache.set(activeChat, {
+      messages: retained,
+      pinned: pinnedMessage,
+      hasMore: trimmed || hasMoreMessages,
+      pageStart: trimmed ? retained[0]?.created_at : messagesPageStartRef.current.createdAt,
+      fetchedAt: messagesFetchedAt.current,
+    });
+    while (cache.size > 8) cache.delete(cache.keys().next().value!);
+  }, [activeChat, messages, pinnedMessage, hasMoreMessages, messagesLoading, messagesError]);
 
   useEffect(() => {
     onActiveChatChange?.(activeChat);
@@ -214,8 +261,6 @@ export function HomeView({
       // already active chat page as loading leaves its list in a permanent
       // skeleton because the page itself did not change and will not reload.
       if (next === page) return;
-      if (next === 'friends') setFriendsLoading(true);
-      if (next === 'chats') setChatsLoading(true);
       setInternalPage(next);
       onPageChange?.(next);
     };
@@ -247,6 +292,15 @@ export function HomeView({
     };
     const realtime = new ChatRealtimeClient(
       (event) => {
+        if (
+          'chatId' in event &&
+          (event.type.startsWith('message-') ||
+            event.type === 'history-cleared' ||
+            event.type === 'chat-removed' ||
+            event.type === 'retention-changed')
+        ) {
+          messageSnapshots.current.delete(event.chatId);
+        }
         if (event.type === 'message-created' && event.chatId === SERVICE_CHAT_ID) {
           setServiceSummary((current) => ({
             ...current,
@@ -481,6 +535,9 @@ export function HomeView({
       },
       undefined,
       () => {
+        // Reconnect may have missed edits/deletions in a previously open chat.
+        messageSnapshots.current.clear();
+        if (serviceChatCache.current.snapshot) serviceChatCache.current.snapshot.fetchedAt = 0;
         refreshGroupCallStatus();
         // The end event can arrive while leaving the call remounts this view.
         // Repair visible call cards after subscription is authenticated, without
@@ -513,73 +570,69 @@ export function HomeView({
   }, [user.id]);
 
   const navigatePage = (next: AccountPage) => {
-    if (next !== page) {
-      window.history.pushState({ ...window.history.state, [NAVIGATION_STATE_KEY]: next }, '');
-    }
-    if (next === 'friends') setFriendsLoading(true);
-    if (next === 'chats') setChatsLoading(true);
+    if (next === page) return;
+    window.history.pushState({ ...window.history.state, [NAVIGATION_STATE_KEY]: next }, '');
     setInternalPage(next);
     onPageChange?.(next);
   };
 
-  const loadPage = useCallback(async (next: AccountPage) => {
-    setLocalError('');
-    setChatsLoading(true);
-    if (next === 'friends') {
-      setFriendsLoading(true);
-      setFriendsLoadError('');
-    }
-    if (next === 'home' || next === 'history') setHistoryLoading(true);
+  const loadPage = useCallback(async (next: AccountPage, force = true) => {
+    const sidebar = sidebarData.current;
+    const historyResource = historyData.current;
+    const sidebarRequest = sidebar
+      .run(async () => {
+        if (!sidebar.loaded) {
+          setChatsLoading(true);
+          setFriendsLoading(true);
+        }
+        setFriendsLoadError('');
+        try {
+          const [chatResult, friendResult] = await Promise.all([
+            accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
+            accountClient.request<{
+              friends: FriendItem[];
+              pending: PendingItem[];
+              blocked: BlockedItem[];
+            }>('/v1/friends'),
+          ]);
+          setChats(chatResult.chats);
+          setFriends(friendResult.friends);
+          setPending(friendResult.pending);
+          setBlocked(friendResult.blocked);
+        } finally {
+          setChatsLoading(false);
+          setFriendsLoading(false);
+        }
+      }, force)
+      .catch((caught: unknown) => {
+        const message = caught instanceof Error ? caught.message : 'Не удалось загрузить чаты';
+        if (!sidebar.loaded) setFriendsLoadError(message);
+        if (sidebar.loaded || next !== 'friends') setLocalError(message);
+      });
 
-    const sidebarRequest = Promise.all([
-      accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
-      accountClient.request<{
-        friends: FriendItem[];
-        pending: PendingItem[];
-        blocked: BlockedItem[];
-      }>('/v1/friends'),
-    ]);
     const historyRequest =
       next === 'home' || next === 'history'
-        ? accountClient.request<{ calls: CallItem[] }>('/v1/history')
+        ? historyResource
+            .run(async () => {
+              if (!historyResource.loaded) setHistoryLoading(true);
+              try {
+                const result = await accountClient.request<{ calls: CallItem[] }>('/v1/history');
+                setHistory(
+                  result.calls.filter((call) => hasConversationParticipants(call.participants)),
+                );
+              } finally {
+                setHistoryLoading(false);
+              }
+            }, force)
+            .catch((caught: unknown) => {
+              setLocalError(caught instanceof Error ? caught.message : 'Ошибка загрузки');
+            })
         : undefined;
-    const historyOutcome = historyRequest?.then(
-      (result) => ({ result }) as const,
-      (error: unknown) => ({ error }) as const,
-    );
-
-    try {
-      const [chatResult, friendResult] = await sidebarRequest;
-      setChats(chatResult.chats);
-      setFriends(friendResult.friends);
-      if (next === 'friends') {
-        setPending(friendResult.pending);
-        setBlocked(friendResult.blocked);
-      }
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Не удалось загрузить чаты';
-      if (next === 'friends') setFriendsLoadError(message);
-      else setLocalError(message);
-    } finally {
-      setChatsLoading(false);
-    }
-
-    if (historyOutcome) {
-      const outcome = await historyOutcome;
-      if ('result' in outcome) {
-        setHistory(
-          outcome.result.calls.filter((call) => hasConversationParticipants(call.participants)),
-        );
-      } else {
-        setLocalError(outcome.error instanceof Error ? outcome.error.message : 'Ошибка загрузки');
-      }
-    }
-    if (next === 'friends') setFriendsLoading(false);
-    if (next === 'home' || next === 'history') setHistoryLoading(false);
+    await Promise.all([sidebarRequest, historyRequest]);
   }, []);
 
   useEffect(() => {
-    void loadPage(page);
+    void loadPage(page, false);
   }, [loadPage, page]);
 
   const loadChatMessages = useCallback(async (chatId: string, silent = false) => {
@@ -601,6 +654,7 @@ export function HomeView({
       }>(chatId);
       if (requestId !== messagesRequestIdRef.current || activeChatRef.current !== chatId)
         return false;
+      messagesFetchedAt.current = Date.now();
       setMessages(result.messages);
       setPinnedMessage(result.pinnedMessage ?? undefined);
       setHasMoreMessages(Boolean(result.hasMore));
@@ -620,6 +674,8 @@ export function HomeView({
 
   const openChat = useCallback(
     async (chatId: string) => {
+      if (activeChatRef.current === chatId) return;
+      messagesRequestIdRef.current += 1;
       activeChatRef.current = chatId;
       messagesPageStartRef.current = { chatId };
       setActiveChat(chatId);
@@ -628,8 +684,25 @@ export function HomeView({
       setChats((current) =>
         current.map((chat) => (chat.id === chatId ? { ...chat, unreadCount: 0 } : chat)),
       );
+      const snapshot = messageSnapshots.current.get(chatId);
+      messagesFetchedAt.current = snapshot?.fetchedAt ?? 0;
+      setMessagesError('');
+      if (snapshot) {
+        setMessages(
+          snapshot.messages.filter(
+            (message) => !message.expires_at || Date.parse(message.expires_at) > Date.now(),
+          ),
+        );
+        setPinnedMessage(snapshot.pinned);
+        setHasMoreMessages(snapshot.hasMore);
+        setMessagesLoading(false);
+        messagesPageStartRef.current = { chatId, createdAt: snapshot.pageStart };
+        if (Date.now() - snapshot.fetchedAt >= 30_000) await loadChatMessages(chatId, true);
+        return;
+      }
       setMessages([]);
       setPinnedMessage(undefined);
+      setHasMoreMessages(false);
       await loadChatMessages(chatId);
     },
     [loadChatMessages],
@@ -1254,6 +1327,7 @@ export function HomeView({
   };
 
   const removeChatLocally = (chatId: string) => {
+    messageSnapshots.current.delete(chatId);
     setChats((current) => current.filter((chat) => chat.id !== chatId));
     if (activeChatRef.current !== chatId) return;
     activeChatRef.current = undefined;
@@ -1359,7 +1433,15 @@ export function HomeView({
         </header>
       ) : null}
       <section
-        className={`account-content page-enter ${page === 'chats' ? 'account-content-chat' : ''}`}
+        className={`account-content ${
+          (
+            page === 'home' || page === 'history'
+              ? historyData.current.loaded
+              : sidebarData.current.loaded
+          )
+            ? 'navigation-retained'
+            : 'page-enter'
+        } ${page === 'chats' ? 'account-content-chat' : ''}`}
       >
         <TransientNotice
           message={error || localError}
@@ -1517,6 +1599,7 @@ export function HomeView({
         )}
         {page === 'chats' && activeChat === SERVICE_CHAT_ID && (
           <ServiceChat
+            cache={serviceChatCache.current}
             user={user}
             onBack={() => {
               activeChatRef.current = undefined;

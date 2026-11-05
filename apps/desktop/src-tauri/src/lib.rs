@@ -13,6 +13,27 @@ mod windows_screen;
 #[derive(Default)]
 struct CallPopoutTransitionState(std::sync::atomic::AtomicBool);
 
+/// Internal windows share one WebView2 profile. Its environment options must
+/// match, otherwise creating the next window fails with ERROR_INVALID_STATE.
+#[cfg(desktop)]
+fn internal_webview<'a, M: tauri::Manager<tauri::Wry>>(
+    manager: &'a M,
+    label: &str,
+    url: tauri::WebviewUrl,
+) -> tauri::WebviewWindowBuilder<'a, tauri::Wry, M> {
+    let builder = tauri::WebviewWindowBuilder::new(manager, label, url);
+    #[cfg(target_os = "windows")]
+    let builder = builder.additional_browser_args(
+        // Preserve Wry's UI/autoplay defaults alongside the background policy.
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
+    );
+    if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {
+        builder.data_directory(std::path::PathBuf::from(directory))
+    } else {
+        builder
+    }
+}
+
 #[cfg(desktop)]
 fn log_call_popout(app: &tauri::AppHandle, event: &str) {
     use std::io::Write;
@@ -500,7 +521,7 @@ pub fn run() {
                 .app_config_dir()?
                 .join("window-state-initialized");
             let first_launch = !first_launch_marker.exists();
-            let mut window = tauri::WebviewWindowBuilder::new(
+            let mut window = internal_webview(
                 app,
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
@@ -526,15 +547,13 @@ pub fn run() {
                 window = window
                     .inner_size(1120.0, 690.0)
                     .min_inner_size(780.0, 520.0)
-                    .maximized(false);
+                    .maximized(false)
+                    .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled);
             }
 
-            if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {
-                window = window.data_directory(std::path::PathBuf::from(directory));
-            }
             let main_window = window.build()?;
 
-            let _notification_window = tauri::WebviewWindowBuilder::new(
+            let _notification_window = internal_webview(
                 app,
                 "notifications",
                 tauri::WebviewUrl::App("index.html?notification-overlay=1".into()),
@@ -555,7 +574,7 @@ pub fn run() {
             .visible(false)
             .build()?;
 
-            let mut placeholder_window = tauri::WebviewWindowBuilder::new(
+            let mut placeholder_window = internal_webview(
                 app,
                 "call-placeholder-window",
                 tauri::WebviewUrl::App("index.html?call-placeholder=1".into()),

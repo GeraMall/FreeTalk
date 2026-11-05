@@ -1,5 +1,6 @@
 import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
+import { ServiceBotAvatar, SERVICE_BOT_AVATAR_URL } from './ServiceBotAvatar';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   useCallback,
@@ -61,7 +62,12 @@ import {
 import { createPortal } from 'react-dom';
 import { isNearBottom } from '../lib/chat-scroll';
 import { accountClient } from '../lib/api-client';
-import { loadChatImage } from '../lib/chat-image-cache';
+import {
+  loadChatImage,
+  loadChatImageDisplay,
+  peekChatImageDisplay,
+  rememberChatImageDimensions,
+} from '../lib/chat-image-cache';
 import { parseRoomDeepLink } from '../lib/deep-link';
 import { prepareChatImageUpload, prepareGroupAvatar } from '../lib/profile';
 import { collectAccountMediaUrls, warmAccountMediaCache } from '../lib/account-media-cache';
@@ -2913,9 +2919,17 @@ export function MessageList({
       <MessageScrollRail scrollRef={scrollRef} contentRef={contentRef} />
       {viewingOlderMessages ? (
         <div className="message-history-position" role="status">
-          <span>{t('Вы просматриваете старые сообщения')}</span>
-          <button type="button" onClick={() => scrollToBottom(true)}>
-            {t('Вернуться к последним сообщениям')}
+          <span>
+            <span className="history-label-full">{t('Вы просматриваете старые сообщения')}</span>
+            <span className="history-label-compact">{t('Старые сообщения')}</span>
+          </span>
+          <button
+            type="button"
+            aria-label={t('Вернуться к последним сообщениям')}
+            onClick={() => scrollToBottom(true)}
+          >
+            <span className="history-button-full">{t('Вернуться к последним сообщениям')}</span>
+            <span className="history-button-compact">{t('К последним')}</span>
             {newMessageCount > 0 ? <b>{newMessageCount}</b> : null}
             <ArrowDown />
           </button>
@@ -3761,6 +3775,9 @@ function ForwardMessageDialog({
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header>
+          <span className="forward-title-icon" aria-hidden="true">
+            <Forward />
+          </span>
           <div>
             <strong>{t('Переслать сообщение')}</strong>
             <small>{message.body || mediaKindLabel(message.kind)}</small>
@@ -4063,8 +4080,20 @@ function ChatImageMessage({
   meta: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
-  const [thumbnailSource, setThumbnailSource] = useState('');
+  const imageIdentity = useMemo(
+    () => ({
+      accountId,
+      messageId: message.id,
+      variant: 'thumbnail' as const,
+      expiresAt: message.expires_at,
+    }),
+    [accountId, message.id, message.expires_at],
+  );
+  const [thumbnail, setThumbnail] = useState(() => peekChatImageDisplay(imageIdentity));
+  const [shouldLoad, setShouldLoad] = useState(
+    () => Boolean(thumbnail) || typeof IntersectionObserver === 'undefined',
+  );
+  const thumbnailSource = thumbnail?.src ?? '';
   const [viewerSource, setViewerSource] = useState('');
   const [failed, setFailed] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -4088,30 +4117,28 @@ function ChatImageMessage({
 
   useEffect(() => {
     if (!shouldLoad) return;
+    const cached = peekChatImageDisplay(imageIdentity);
+    if (cached) {
+      setThumbnail(cached);
+      return;
+    }
     let active = true;
-    let objectUrl = '';
-    setThumbnailSource('');
     setFailed(false);
-    void loadChatImage({
-      accountId,
-      messageId: message.id,
-      variant: 'thumbnail',
-      expiresAt: message.expires_at,
+    void loadChatImageDisplay({
+      ...imageIdentity,
       fetcher: () => accountClient.chatImageBlob(message.id, 'thumbnail'),
     })
-      .then((blob) => {
+      .then((display) => {
         if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setThumbnailSource(objectUrl);
+        setThumbnail(display);
       })
       .catch(() => {
         if (active) setFailed(true);
       });
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [accountId, message.expires_at, message.id, shouldLoad]);
+  }, [imageIdentity, message.id, shouldLoad]);
 
   useEffect(() => {
     if (!viewerOpen) return;
@@ -4153,11 +4180,29 @@ function ChatImageMessage({
   }, [viewerClosing]);
 
   const alt = `Фотография от ${message.display_name || message.username || 'участника'}`;
+  const width = Number(message.metadata?.width) || thumbnail?.width || 0;
+  const height = Number(message.metadata?.height) || thumbnail?.height || 0;
+  const hasDimensions =
+    Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+  const ratio = hasDimensions ? width / height : 1;
 
   return (
     <>
-      <div className="chat-image-message" ref={containerRef}>
-        <div className="chat-image-frame">
+      <div
+        className={`chat-image-message${hasDimensions ? ' has-image-size' : ''}`}
+        ref={containerRef}
+        style={
+          hasDimensions
+            ? {
+                width: `min(${width}px, var(--chat-photo-max-width, min(430px, 60vw)), ${540 * ratio}px, ${62 * ratio}vh)`,
+              }
+            : undefined
+        }
+      >
+        <div
+          className="chat-image-frame"
+          style={hasDimensions ? { aspectRatio: `${width} / ${height}` } : undefined}
+        >
           {thumbnailSource ? (
             <button
               type="button"
@@ -4168,7 +4213,26 @@ function ChatImageMessage({
                 setViewerOpen(true);
               }}
             >
-              <img src={thumbnailSource} alt={alt} />
+              <img
+                src={thumbnailSource}
+                alt={alt}
+                width={hasDimensions ? width : undefined}
+                height={hasDimensions ? height : undefined}
+                onLoad={(event) => {
+                  const image = event.currentTarget;
+                  rememberChatImageDimensions(
+                    imageIdentity,
+                    image.naturalWidth,
+                    image.naturalHeight,
+                  );
+                  if (!hasDimensions && image.naturalWidth && image.naturalHeight)
+                    setThumbnail((current) =>
+                      current
+                        ? { ...current, width: image.naturalWidth, height: image.naturalHeight }
+                        : current,
+                    );
+                }}
+              />
             </button>
           ) : failed ? (
             <span className="chat-image-error">{t('Не удалось загрузить фотографию')}</span>
@@ -5125,6 +5189,8 @@ export function ChatAvatar({
   const cachedAvatarUrl = useCachedMediaUrl(avatarUrl);
   useEffect(() => setImageFailed(false), [avatarUrl]);
   const showImage = Boolean(cachedAvatarUrl && !imageFailed);
+  if (avatarUrl === SERVICE_BOT_AVATAR_URL)
+    return <ServiceBotAvatar className={`chat-avatar${compact ? ' compact' : ''}`} />;
   return (
     <span
       className={`chat-avatar${group ? ' group' : ''}${compact ? ' compact' : ''}${showImage ? ' has-image' : ''}`}

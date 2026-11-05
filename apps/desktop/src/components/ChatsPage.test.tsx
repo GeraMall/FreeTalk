@@ -536,6 +536,7 @@ describe('MessageList rendering', () => {
     const imageMessage: MessageItem = {
       ...message('6', 'friend', 'Смотри'),
       kind: 'image',
+      expires_at: null,
       metadata: { width: 1600, height: 900 },
     };
     const { findByAltText, getByRole, queryByRole } = render(view('chat-a', [imageMessage]));
@@ -553,6 +554,35 @@ describe('MessageList rendering', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.animationEnd(viewer);
     expect(queryByRole('dialog', { name: 'Фотография от Алексей' })).toBeNull();
+  });
+
+  it('restores a photo synchronously after switching chats, without another placeholder or URL', async () => {
+    const create = vi.fn(() => 'blob:stable-photo');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const fetchPhoto = vi
+      .spyOn(accountClient, 'chatImageBlob')
+      .mockResolvedValue(new Blob(['photo'], { type: 'image/webp' }));
+    const photo: MessageItem = {
+      ...message('19', 'friend', ''),
+      kind: 'image',
+      expires_at: null,
+      metadata: { width: 900, height: 1600 },
+    };
+    const page = render(view('photos-a', [photo]));
+    const image = await page.findByAltText('Фотография от Алексей');
+    expect(image.getAttribute('width')).toBe('900');
+    expect(image.getAttribute('height')).toBe('1600');
+    for (let index = 0; index < 4; index++) {
+      page.rerender(view('photos-b', [message('1', 'self')]));
+      page.rerender(view('photos-a', [photo]));
+      expect(page.getByAltText('Фотография от Алексей').getAttribute('src')).toBe(
+        'blob:stable-photo',
+      );
+      expect(page.queryByRole('status', { name: 'Загружаем фотографию' })).toBeNull();
+    }
+    expect(fetchPhoto).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledOnce();
   });
 
   it('copies the full photo to the clipboard as an image from the message menu', async () => {

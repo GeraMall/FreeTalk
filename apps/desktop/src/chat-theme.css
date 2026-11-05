@@ -192,10 +192,12 @@ html[data-chat-message-style='compact'] .message-bubble-row {
   color: #ff8096;
 }
 @media (max-width: 760px) {
-  .modern-message-composer:has(> .composer-editor) {
+  .modern-message-composer:has(> .composer-editor),
+  .mobile-messenger .modern-message-composer:has(> .composer-editor) {
     grid-template-columns: 38px minmax(0, 1fr) 44px;
   }
-  .modern-message-composer.send-button-hidden:has(> .composer-editor) {
+  .modern-message-composer.send-button-hidden:has(> .composer-editor),
+  .mobile-messenger .modern-message-composer.send-button-hidden:has(> .composer-editor) {
     grid-template-columns: 38px minmax(0, 1fr);
   }
   .modern-message-composer .composer-expression-tools button {
@@ -436,6 +438,17 @@ html[data-chat-message-style='compact'] .room-chat-message .room-chat-bubble {
 }
 
 /* Photos keep only the image surface, including in compact and focused rows. */
+.chat-image-message.has-image-size > .chat-image-frame {
+  width: 100%;
+}
+.chat-image-message.has-image-size .chat-image-open,
+.chat-image-message.has-image-size .chat-image-open > img,
+.chat-image-message.has-image-size .chat-image-loading {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
 :is(.message-bubble-row, html[data-chat-message-style='compact'] .message-bubble-row.own)
   .message-bubble.image-message-bubble {
   max-width: 100%;
