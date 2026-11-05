@@ -194,6 +194,7 @@ export function HomeView({
     >(),
   );
   const messagesFetchedAt = useRef(0);
+  const startingCall = useRef(false);
   const serviceChatCache = useRef<ServiceChatCache>({});
   useEffect(() => {
     const invalidate = () => {
@@ -1071,11 +1072,13 @@ export function HomeView({
   };
 
   const startDirectCall = async (friendId: string) => {
+    if (busy || startingCall.current) return;
     if (joinedRoomId) {
       onJoinRoom('');
       return;
     }
     let directChatId: string | undefined;
+    startingCall.current = true;
     try {
       const result = await accountClient.request<{ chat: { id: string } }>('/v1/chats', {
         method: 'POST',
@@ -1110,6 +1113,8 @@ export function HomeView({
         }
       }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
+    } finally {
+      startingCall.current = false;
     }
   };
 
@@ -1219,7 +1224,8 @@ export function HomeView({
   };
 
   const startChatCall = async (camera?: boolean) => {
-    if (!activeChat) return;
+    if (!activeChat || busy || startingCall.current) return;
+    startingCall.current = true;
     const chatId = activeChat;
     const roomId = generateRoomCode();
     try {
@@ -1252,6 +1258,8 @@ export function HomeView({
         // Keep the original call error when recovery is unavailable.
       }
       setLocalError(caught instanceof Error ? caught.message : 'Не удалось начать звонок');
+    } finally {
+      startingCall.current = false;
     }
   };
 

@@ -50,7 +50,9 @@ export class RemoteAudio {
     this.applyVolume(peerId, audio);
     audio.muted = muted;
     await this.setSink(audio, outputDeviceId);
+    if (this.elements.get(peerId) !== audio || audio.srcObject !== stream) return;
     await audio.play().catch(() => this.scheduleRecovery(peerId, audio!));
+    if (this.elements.get(peerId) !== audio || audio.srcObject !== stream) return;
     if (this.onSpeaking) {
       this.monitors.get(peerId)?.();
       this.monitors.set(

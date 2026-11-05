@@ -280,6 +280,7 @@ export function App() {
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
   const listeningDiagnostics = useRef(new Set<string>());
   const pendingRoomId = useRef<string | undefined>(undefined);
+  const callGeneration = useRef(0);
   const enterRoomRef = useRef<(create: boolean, options?: EnterRoomOptions) => Promise<void>>(
     async () => undefined,
   );
@@ -477,6 +478,7 @@ export function App() {
   }, [incomingCall]);
 
   const cleanup = useCallback(() => {
+    callGeneration.current++;
     audioActionVersion.current++;
     if (callExitTimer.current) window.clearTimeout(callExitTimer.current);
     callExitTimer.current = undefined;
@@ -571,6 +573,7 @@ export function App() {
 
   useEffect(() => {
     const leave = () => {
+      callGeneration.current++;
       signaling.current?.close();
       peers.current?.closeAll();
       video.current?.dispose();
@@ -718,7 +721,8 @@ export function App() {
   }, [peerState]);
 
   const handleServerMessage = useCallback(
-    async (message: ServerMessage) => {
+    async (message: ServerMessage, isCurrent: () => boolean) => {
+      if (!isCurrent()) return;
       if (message.type === 'error') {
         if (
           message.code === 'INVALID_MESSAGE' &&
@@ -792,7 +796,10 @@ export function App() {
         participantNotifications.current.reset(
           message.participants.map((participant) => participant.id),
         );
-        peers.current?.closeAll();
+        const previousPeers = peers.current;
+        peers.current = undefined;
+        previousPeers?.closeAll();
+        setPeerState({});
         remoteAudio.current.closeAll();
         remoteScreenAudio.current.closeAll();
         remoteVideoStreams.current.clear();
@@ -801,17 +808,19 @@ export function App() {
         // An empty stream still lets signaling, chat and receive-only WebRTC start;
         // the microphone track is attached later when the user unmutes.
         const localStream = audio.current?.getStream() ?? new MediaStream();
-        const peerManager = new PeerManager(
+        const peerManager: PeerManager = new PeerManager(
           selfId.current,
           currentIceServers.current,
           localStream,
           (signal) => {
+            if (!isCurrent() || peers.current !== peerManager) return;
             const { from: _from, ...clientSignal } = signal;
             void _from;
             signaling.current?.send(clientSignal as ClientMessage);
           },
           {
             onTrack: (peerId, stream) => {
+              if (!isCurrent() || peers.current !== peerManager) return;
               setPeerState((old) => ({
                 ...old,
                 [peerId]: {
@@ -833,6 +842,7 @@ export function App() {
                 .catch(() => connectionDiagnostics.record('remote-audio-attach:error', peerId));
             },
             onScreenAudioTrack: (peerId, stream) => {
+              if (!isCurrent() || peers.current !== peerManager) return;
               connectionDiagnostics.record('remote-screen-audio-attach:start', peerId);
               void remoteScreenAudio.current
                 .attach(
@@ -848,6 +858,7 @@ export function App() {
                 );
             },
             onVideoTrack: (peerId, source, stream) => {
+              if (!isCurrent() || peers.current !== peerManager) return;
               const streams = remoteVideoStreams.current.get(peerId) ?? {};
               streams[source] = stream;
               remoteVideoStreams.current.set(peerId, streams);
@@ -860,6 +871,7 @@ export function App() {
               }));
             },
             onVideoState: (peerId, source, active) => {
+              if (!isCurrent() || peers.current !== peerManager) return;
               if (source === 'screen' && !active) remoteScreenAudio.current.remove(peerId);
               setRemoteVideos((old) => ({
                 ...old,
@@ -869,7 +881,8 @@ export function App() {
                 },
               }));
             },
-            onState: (peerId, connection) =>
+            onState: (peerId, connection) => {
+              if (!isCurrent() || peers.current !== peerManager) return;
               setPeerState((old) => ({
                 ...old,
                 [peerId]: {
@@ -877,7 +890,8 @@ export function App() {
                   speaking: old[peerId]?.speaking ?? false,
                   hasAudio: old[peerId]?.hasAudio ?? false,
                 },
-              })),
+              }));
+            },
           },
           videoPreferences(settings),
         );
@@ -890,8 +904,9 @@ export function App() {
           if (participant.id !== selfId.current) peerManager.ensure(participant.id);
         if (telemetryTimer.current) window.clearInterval(telemetryTimer.current);
         const reportTelemetry = async () => {
-          const connections = await peers.current?.collectTelemetry();
-          if (!connections || !joinedRoom.current) return;
+          if (!isCurrent() || peers.current !== peerManager) return;
+          const connections = await peerManager.collectTelemetry();
+          if (!isCurrent() || peers.current !== peerManager || !joinedRoom.current) return;
           setSignalStrength(calculateSignalStrength(connections));
           signaling.current?.send({
             type: 'telemetry-report',
@@ -1035,7 +1050,10 @@ export function App() {
         try {
           await peers.current?.handle(message);
         } catch {
-          setError('Не удалось согласовать прямое медиасоединение. Возможно, сети требуется TURN.');
+          if (isCurrent())
+            setError(
+              'Не удалось согласовать прямое медиасоединение. Возможно, сети требуется TURN.',
+            );
         }
       }
       if (message.type === 'room-closed' || message.type === 'participant-disconnected') {
@@ -1049,21 +1067,6 @@ export function App() {
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
-    if (options.resume && options.room) {
-      browserResume.current = {
-        roomId: options.room,
-        chatId: options.chatId,
-        recreateAttempted: Boolean(options.resumeRecreateAttempted),
-      };
-    }
-    conversationPeerJoined.current = !create;
-    joinedRoom.current = false;
-    pendingChatRing.current = create && Boolean(options.chatId);
-    callChatRef.current = options.chatId;
-    setCallChatId(options.chatId);
-    setConversationHidden(false);
-    setError('');
-    setNotice('');
     const cleanName = (options.displayName ?? accountUser?.displayName ?? name).trim();
     if (
       !cleanName ||
@@ -1080,6 +1083,33 @@ export function App() {
       setError('Введите корректный 12-символьный код или ссылку-приглашение.');
       return;
     }
+    // This ref is set before the first await. Two clicks or a late response from
+    // an unmounted chat cannot create competing microphones/sockets for one call.
+    if (pendingRoomId.current) {
+      if (pendingRoomId.current === code) {
+        setConversationHidden(false);
+        setRoomDestination(callChatRef.current ? 'chats' : 'room');
+        if (callChatRef.current) void roomSidebarState?.openChat(callChatRef.current);
+      } else setNotice('Сначала завершите текущий звонок');
+      return;
+    }
+    const generation = ++callGeneration.current;
+    const isCurrent = () => callGeneration.current === generation;
+    if (options.resume) {
+      browserResume.current = {
+        roomId: code,
+        chatId: options.chatId,
+        recreateAttempted: Boolean(options.resumeRecreateAttempted),
+      };
+    }
+    conversationPeerJoined.current = !create;
+    joinedRoom.current = false;
+    pendingChatRing.current = create && Boolean(options.chatId);
+    callChatRef.current = options.chatId;
+    setCallChatId(options.chatId);
+    setConversationHidden(false);
+    setError('');
+    setNotice('');
     const bufferStartedAt = Date.now();
     const destinationConversation = options.chatId
       ? roomSidebarState?.chats.find((chat) => chat.id === options.chatId)
@@ -1118,16 +1148,25 @@ export function App() {
     setJoining(true);
     try {
       const manager = new AudioManager(
-        setLocalSpeaking,
-        setInputLevel,
+        (speaking) => {
+          if (isCurrent()) setLocalSpeaking(speaking);
+        },
+        (level) => {
+          if (isCurrent()) setInputLevel(level);
+        },
         processingSettings(settings),
       );
       try {
         await manager.start(settings.inputDeviceId);
+        if (!isCurrent()) {
+          manager.stop();
+          return;
+        }
         manager.setMuted(muted);
         audio.current = manager;
       } catch (microphoneError) {
         manager.stop();
+        if (!isCurrent()) return;
         const canResumeWithoutMicrophone = options.resume && telemetryPlatform() === 'ios';
         if (telemetryPlatform() !== 'android' && !canResumeWithoutMicrophone) throw microphoneError;
         audio.current = undefined;
@@ -1140,11 +1179,18 @@ export function App() {
       }
       video.current = new VideoManager(
         async (track, source, stream) => {
+          if (!isCurrent()) return;
           await peers.current?.setVideoTrack(track, source, stream);
         },
-        setLocalVideo,
-        setError,
-        setNotice,
+        (state) => {
+          if (isCurrent()) setLocalVideo(state);
+        },
+        (message) => {
+          if (isCurrent()) setError(message);
+        },
+        (message) => {
+          if (isCurrent()) setNotice(message);
+        },
         videoPreferences(settings),
         {
           mode: settings.cameraBackgroundMode,
@@ -1152,15 +1198,19 @@ export function App() {
         },
       );
       await refreshDevices();
+      if (!isCurrent()) return;
       updateSettings({ displayName: cleanName });
       setName(cleanName);
       joinedRoom.current = false;
       const roomAuthToken =
         options.authToken ?? (accountUser ? await accountClient.realtimeAccessToken() : undefined);
-      const client = new SignalingClient(
+      if (!isCurrent()) return;
+      const client: SignalingClient = new SignalingClient(
         signalingUrl,
-        handleServerMessage,
+        (message) =>
+          handleServerMessage(message, () => isCurrent() && signaling.current === client),
         (state, attempt) => {
+          if (!isCurrent() || signaling.current !== client) return;
           if (state === 'reconnecting') awaitingRejoin.current = true;
           setSignalState(state);
           if (state === 'offline' || state === 'reconnecting') setSignalStrength(0);
@@ -1175,7 +1225,9 @@ export function App() {
           }
         },
         options.authToken || !accountUser ? undefined : () => accountClient.realtimeAccessToken(),
-        setSignalPing,
+        (ping) => {
+          if (isCurrent() && signaling.current === client) setSignalPing(ping);
+        },
       );
       signaling.current = client;
       client.connect({
@@ -1205,6 +1257,7 @@ export function App() {
         );
       }
       joinTimer.current = window.setTimeout(() => {
+        if (!isCurrent() || signaling.current !== client) return;
         if (joinedRoom.current) return;
         if (options.resume) {
           browserResume.current = undefined;
@@ -1214,6 +1267,7 @@ export function App() {
         setError('Сервер голосовых комнат недоступен. Проверьте интернет или адрес сигналинга.');
       }, 20_000);
     } catch (caught) {
+      if (!isCurrent()) return;
       setJoining(false);
       setError(caught instanceof Error ? caught.message : 'Не удалось войти в комнату');
       if (options.resume) {
@@ -1975,7 +2029,7 @@ export function App() {
     />
   ) : null;
   const browserNotificationPrompt = accountUser ? (
-    <BrowserNotificationPrompt key={accountUser.id} />
+    <BrowserNotificationPrompt key={`notifications:${accountUser.id}`} />
   ) : null;
 
   const callConversation = roomSidebarState?.chats.find((chat) => chat.id === callChatId);
@@ -2095,7 +2149,7 @@ export function App() {
           </main>
         ) : accountUser ? (
           <HomeView
-            key={accountUser.id}
+            key={`home:${accountUser.id}`}
             callDock={callDock}
             initialChatId={callChatId}
             user={accountUser}
@@ -2374,7 +2428,7 @@ export function App() {
               className={`account-page-slot ${roomDestination === 'room' || (mobileFocusedCall && !mobileCallMinimized) ? 'is-hidden' : ''}`}
             >
               <HomeView
-                key={accountUser.id}
+                key={`call-home:${accountUser.id}`}
                 initialChatId={callChatId}
                 joinedChatId={callChatId}
                 callToolbarTarget={

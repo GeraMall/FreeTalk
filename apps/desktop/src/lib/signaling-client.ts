@@ -14,11 +14,15 @@ import { connectionDiagnostics } from './connection-diagnostics';
 export type SignalingState = 'offline' | 'connecting' | 'connected' | 'reconnecting';
 
 const SERVER_ACTIVITY_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 3;
+const ROOM_JOIN_TIMEOUT_MS = 20_000;
+const STABLE_CONNECTION_MS = 30_000;
 
 export class SignalingClient {
   private socket?: SignalSocket;
   private heartbeat?: number;
   private retryTimer?: number;
+  private joinTimer?: number;
+  private stableTimer?: number;
   private closedByUser = false;
   private lastServerActivity = 0;
   private lastPingQueuedAt?: number;
@@ -31,6 +35,8 @@ export class SignalingClient {
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
   private roomJoined = false;
+  private socketJoined = false;
+  private readonly blockedBeforeJoin = new Set<ClientMessage['type']>();
   private readonly schedule = new ReconnectSchedule();
 
   constructor(
@@ -51,6 +57,15 @@ export class SignalingClient {
 
   send(message: ClientMessage) {
     if (this.socket?.readyState !== SIGNAL_SOCKET_OPEN) return false;
+    if (!this.socketJoined && !['create-room', 'join-room', 'ping'].includes(message.type)) {
+      if (!this.blockedBeforeJoin.has(message.type)) {
+        this.blockedBeforeJoin.add(message.type);
+        connectionDiagnostics.record('signaling-send:awaiting-room', undefined, {
+          messageType: message.type,
+        });
+      }
+      return false;
+    }
     connectionDiagnostics.record(`signal-sent:${message.type}`, undefined, {
       socketId: this.socket.correlationId,
     });
@@ -66,6 +81,7 @@ export class SignalingClient {
     if (this.socket) this.clientClosing.add(this.socket);
     this.socket?.close(1000, 'Выход');
     this.socket = undefined;
+    this.socketJoined = false;
     this.onState('offline');
   }
 
@@ -123,6 +139,10 @@ export class SignalingClient {
       return;
     }
     this.reconnectPending = reconnecting;
+    this.socketJoined = false;
+    this.blockedBeforeJoin.clear();
+    // A retired asynchronous SDP handler must not hold up a replacement socket.
+    this.messageQueue = Promise.resolve();
     this.lastPingQueuedAt = undefined;
     this.lastPingNativeSentAt = undefined;
     this.lastPongReceivedAt = undefined;
@@ -158,12 +178,14 @@ export class SignalingClient {
         edgeColo: handshake?.edgeColo ?? null,
         cfRay: handshake?.cfRay ?? null,
       });
-      this.onState('connected');
       const message =
         reconnecting && this.roomJoined
           ? { ...this.joined!, type: 'join-room' as const }
           : this.joined!;
       this.send(message);
+      this.joinTimer = window.setTimeout(() => {
+        if (this.socket === socket && !this.socketJoined) socket.close(4000, 'Room join timeout');
+      }, ROOM_JOIN_TIMEOUT_MS);
       this.lastServerActivity = Date.now();
       this.startHeartbeat(socket);
     });
@@ -172,7 +194,19 @@ export class SignalingClient {
       if (this.socket !== socket || typeof data !== 'string') return;
       try {
         const message = parseServerMessage(data);
-        if (message.type === 'joined-room') this.roomJoined = true;
+        if (message.type === 'joined-room') {
+          this.roomJoined = true;
+          this.socketJoined = true;
+          if (this.joinTimer) window.clearTimeout(this.joinTimer);
+          this.joinTimer = undefined;
+          this.onState('connected');
+          if (this.stableTimer) window.clearTimeout(this.stableTimer);
+          // Pongs during authorization and short-lived rejoins cannot restart an
+          // unlimited retry cycle. Reset only after a genuinely stable join.
+          this.stableTimer = window.setTimeout(() => {
+            if (this.socket === socket && this.socketJoined) this.schedule.reset();
+          }, STABLE_CONNECTION_MS);
+        }
         connectionDiagnostics.record(`signal-received:${message.type}`, undefined, {
           socketId: socket.correlationId,
         });
@@ -189,22 +223,24 @@ export class SignalingClient {
           connectionDiagnostics.record('signaling-reconnect:success');
         }
         this.lastServerActivity = Date.now();
-        this.schedule.reset();
         // SDP state transitions are order-sensitive. EventTarget does not wait
         // for async listeners, so process every server message in wire order.
         this.messageQueue = this.messageQueue
-          .then(() => this.onMessage(message))
+          .then(() => {
+            if (!this.closedByUser && this.socket === socket) return this.onMessage(message);
+          })
           .then(() => undefined)
           .catch(() => undefined);
       } catch {
         this.messageQueue = this.messageQueue
-          .then(() =>
-            this.onMessage({
-              type: 'error',
-              code: 'INVALID_MESSAGE',
-              message: 'Сервер прислал некорректный ответ',
-            }),
-          )
+          .then(() => {
+            if (!this.closedByUser && this.socket === socket)
+              return this.onMessage({
+                type: 'error',
+                code: 'INVALID_MESSAGE',
+                message: 'Сервер прислал некорректный ответ',
+              });
+          })
           .then(() => undefined)
           .catch(() => undefined);
       }
@@ -238,6 +274,7 @@ export class SignalingClient {
     socket.addEventListener('close', (event) => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      this.socketJoined = false;
       const native = (event as MessageEvent<SignalCloseDetails>).data;
       const closeCode = native?.code ?? (event as CloseEvent).code ?? 1006;
       const closeReason = native?.reason ?? (event as CloseEvent).reason ?? '';
@@ -254,8 +291,7 @@ export class SignalingClient {
         lastPingNativeSentAt: this.toTimestamp(this.lastPingNativeSentAt),
         lastPongReceivedAt: this.toTimestamp(this.lastPongReceivedAt),
       });
-      if (this.heartbeat) window.clearInterval(this.heartbeat);
-      this.heartbeat = undefined;
+      this.clearTimers();
       if (!this.closedByUser) this.scheduleRetry();
     });
     socket.addEventListener('error', () => {
@@ -290,12 +326,16 @@ export class SignalingClient {
   private clearTimers() {
     if (this.retryTimer) window.clearTimeout(this.retryTimer);
     if (this.heartbeat) window.clearInterval(this.heartbeat);
+    if (this.joinTimer) window.clearTimeout(this.joinTimer);
+    if (this.stableTimer) window.clearTimeout(this.stableTimer);
     this.retryTimer = undefined;
     this.heartbeat = undefined;
+    this.joinTimer = undefined;
+    this.stableTimer = undefined;
   }
 
   private scheduleRetry() {
-    if (this.closedByUser) return;
+    if (this.closedByUser || this.retryTimer !== undefined) return;
     if (!this.schedule.canRetry) {
       this.onState('offline', this.schedule.attempts);
       return;
@@ -306,7 +346,10 @@ export class SignalingClient {
       delayMs: delay,
     });
     this.onState('reconnecting', this.schedule.attempts);
-    this.retryTimer = window.setTimeout(() => this.open(true), delay);
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = undefined;
+      this.open(true);
+    }, delay);
   }
 
   private toTimestamp(value?: number) {

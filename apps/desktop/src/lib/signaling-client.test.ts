@@ -72,6 +72,14 @@ const join = {
   name: 'Test',
 };
 
+const joined = {
+  type: 'joined-room',
+  roomId: join.roomId,
+  selfId: join.clientId,
+  roomStartedAt: 1_000_000,
+  participants: [],
+};
+
 describe('SignalingClient', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -96,6 +104,7 @@ describe('SignalingClient', () => {
     const socket = FakeWebSocket.instances[0]!;
     socket.open();
 
+    socket.receive(joined);
     vi.advanceTimersByTime(45_000);
 
     expect(socket.closeCode).toBe(4000);
@@ -110,6 +119,7 @@ describe('SignalingClient', () => {
     client.connect(join);
     const socket = FakeWebSocket.instances[0]!;
     socket.open();
+    socket.receive(joined);
 
     for (let cycle = 0; cycle < 5; cycle += 1) {
       vi.advanceTimersByTime(15_000);
@@ -338,6 +348,95 @@ describe('SignalingClient', () => {
     const next = FakeWebSocket.instances[1]!;
     next.open();
     expect(JSON.parse(next.sent[0]!)).toMatchObject({ type: 'join-room', roomId: join.roomId });
+    client.close();
+  });
+
+  it('blocks old media commands until the replacement socket has joined its room', () => {
+    const state = vi.fn();
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), state);
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    expect(state).not.toHaveBeenCalledWith('connected');
+    first.receive(joined);
+    expect(state).toHaveBeenCalledWith('connected');
+    client.reconnectNow();
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    const ice = {
+      type: 'ice-candidate' as const,
+      to: join.clientId,
+      candidate: { candidate: 'old-ice' },
+    };
+    for (let i = 0; i < 150; i++) expect(client.send(ice)).toBe(false);
+    expect(client.send({ type: 'mute-changed', muted: true })).toBe(false);
+    expect(second.sent.map((value) => JSON.parse(value).type)).toEqual(['join-room', 'ping']);
+    second.receive(joined);
+    expect(client.send(ice)).toBe(true);
+    client.close();
+  });
+
+  it('bounds retries despite pongs and short-lived successful joins', () => {
+    const state = vi.fn();
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), state);
+    client.connect(join);
+    const delays = [500, 1000, 2000, 4000, 8000, 15000, 30000, 30000];
+    for (let index = 0; index <= delays.length; index++) {
+      const socket = FakeWebSocket.instances.at(-1)!;
+      socket.open();
+      socket.receive({ type: 'pong', timestamp: Date.now() });
+      if (index % 2) socket.receive(joined);
+      socket.close();
+      if (index < delays.length) vi.advanceTimersByTime(delays[index]!);
+    }
+    expect(state).toHaveBeenLastCalledWith('offline', 8);
+    vi.advanceTimersByTime(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(9);
+    client.close();
+  });
+
+  it('times out an unacknowledged room join even if transport pongs keep arriving', () => {
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), vi.fn());
+    client.connect(join);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.open();
+    for (let i = 0; i < 4; i++) {
+      socket.receive({ type: 'pong', timestamp: Date.now() });
+      vi.advanceTimersByTime(5000);
+    }
+    expect(socket.closeReason).toBe('Room join timeout');
+    client.close();
+  });
+
+  it('discards queued errors from a retired socket without blocking the new join', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handled: string[] = [];
+    const client = new SignalingClient(
+      'wss://example.test/ws',
+      async (message) => {
+        if (message.type === 'pong') await pending;
+        handled.push(message.type);
+      },
+      vi.fn(),
+    );
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive({ type: 'pong', timestamp: 1 });
+    await Promise.resolve();
+    first.receive({ type: 'error', code: 'ROOM_NOT_FOUND', message: 'Old failure', fatal: true });
+    client.reconnectNow();
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    second.receive(joined);
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(handled).toContain('joined-room');
+    release();
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(handled).not.toContain('error');
     client.close();
   });
 });

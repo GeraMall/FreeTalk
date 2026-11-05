@@ -121,6 +121,47 @@ describe('retained account navigation', () => {
     throw Error(`Unexpected request ${path}`);
   };
 
+  it('coalesces repeated call clicks while keeping other chats navigable', async () => {
+    let finish!: (value: { call: null }) => void;
+    const checking = new Promise<{ call: null }>((resolve) => {
+      finish = resolve;
+    });
+    const created = vi.fn();
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path.endsWith('/active-call')) return checking;
+      if (path.endsWith('/calls')) return {};
+      return baseResponse(path);
+    });
+    const page = render(
+      <HomeView
+        user={user}
+        busy={false}
+        error=""
+        initialChatId="chat-0"
+        onCreateRoom={created}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    await page.findByText('Сохранённая переписка');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const call = page.getByRole('button', { name: 'Начать голосовой звонок' });
+    const initialLookups = requestCount('/v1/chats/chat-0/active-call');
+    fireEvent.click(call);
+    fireEvent.click(call);
+    expect(requestCount('/v1/chats/chat-0/active-call')).toBe(initialLookups + 1);
+    fireEvent.click(page.getByRole('button', { name: 'Чат Б' }));
+    await waitFor(() =>
+      expect(page.getByRole('button', { name: 'Чат Б' }).getAttribute('aria-current')).toBe('true'),
+    );
+    await act(async () => finish({ call: null }));
+    expect(created).toHaveBeenCalledOnce();
+    expect(requestCount('/v1/chats/chat-0/calls')).toBe(1);
+  });
+
   it('refreshes a retained bot snapshot if a notification arrives while another chat is open', async () => {
     let serviceBody = 'Первое уведомление';
     homeViewHarness.request.mockImplementation(async (path: string) =>
