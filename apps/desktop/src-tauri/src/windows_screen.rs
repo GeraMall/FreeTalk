@@ -64,16 +64,17 @@ pub async fn windows_screen_thumbnail(source_id: String, kind: String) -> Result
 #[tauri::command]
 pub async fn windows_screen_start(
     app: tauri::AppHandle,
+    webview: tauri::WebviewWindow,
     state: tauri::State<'_, State>,
     options: CaptureOptions,
 ) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        return native::start(app, &state, options).await;
+        return native::start(app, webview, &state, options).await;
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (app, state, options);
+        let _ = (app, webview, state, options);
         Err("Native Windows capture is unavailable".into())
     }
 }
@@ -208,6 +209,69 @@ mod native {
         time::{Duration, Instant},
     };
     use tauri::Emitter;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum AudioScope {
+        Window(u32),
+        OtherApplications(u32),
+    }
+    impl AudioScope {
+        fn loopback_target(self) -> (u32, bool) {
+            match self {
+                Self::Window(pid) => (pid, true),
+                Self::OtherApplications(pid) => (pid, false),
+            }
+        }
+    }
+
+    async fn audio_scope(
+        webview: &tauri::WebviewWindow,
+        options: &CaptureOptions,
+    ) -> Result<Option<AudioScope>, String> {
+        if !options.audio {
+            return Ok(None);
+        }
+        if options.kind == "window" {
+            let hwnd = options.source_id.parse::<usize>().map_err(error)?;
+            let mut pid = 0;
+            unsafe {
+                windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                    windows::Win32::Foundation::HWND(hwnd as *mut _),
+                    Some(&mut pid),
+                );
+            }
+            return if pid > 0 {
+                Ok(Some(AudioScope::Window(pid)))
+            } else {
+                Err("Выбранное окно уже закрыто".into())
+            };
+        }
+        // Audio is rendered by WebView2's process group, not the Rust host.
+        // A shared WebView2 environment can outlive/be started by another host,
+        // so excluding std::process::id() is not a reliable privacy boundary.
+        let (send, receive) = tokio::sync::oneshot::channel();
+        webview
+            .with_webview(move |platform| {
+                let result = (|| -> Result<u32, String> {
+                    let mut pid = 0;
+                    unsafe {
+                        let core = platform.controller().CoreWebView2().map_err(error)?;
+                        core.BrowserProcessId(&mut pid).map_err(error)?;
+                    }
+                    if pid == 0 {
+                        return Err("WebView2 did not provide its audio process group".into());
+                    }
+                    Ok(pid)
+                })();
+                let _ = send.send(result);
+            })
+            .map_err(error)?;
+        let pid = tokio::time::timeout(Duration::from_secs(3), receive)
+            .await
+            .map_err(|_| "Не удалось исключить звук звонка: WebView2 не ответил".to_string())?
+            .map_err(error)??;
+        Ok(Some(AudioScope::OtherApplications(pid)))
+    }
 
     #[derive(Default)]
     pub struct State {
@@ -370,6 +434,7 @@ mod native {
     }
     pub async fn start(
         app: tauri::AppHandle,
+        webview: tauri::WebviewWindow,
         state: &State,
         options: CaptureOptions,
     ) -> Result<String, String> {
@@ -393,6 +458,9 @@ mod native {
         if state.current.lock().unwrap().is_some() {
             return Err("Демонстрация уже запущена".into());
         }
+        // Resolve before starting any capture. Never fall back to an unfiltered
+        // system mix if the call's real audio process cannot be identified.
+        let audio_scope = audio_scope(&webview, &options).await?;
         let id = format!(
             "screen-{}",
             std::time::SystemTime::now()
@@ -498,26 +566,13 @@ mod native {
             let audio_app = app.clone();
             let audio_id = id.clone();
             let runtime = tokio::runtime::Handle::current();
-            let window_pid = if options.kind == "window" {
-                let mut pid = 0;
-                if let Ok(hwnd) = options.source_id.parse::<usize>() {
-                    unsafe {
-                        windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
-                            windows::Win32::Foundation::HWND(hwnd as *mut _),
-                            Some(&mut pid),
-                        );
-                    }
-                }
-                Some(pid)
-            } else {
-                None
-            };
+            let scope = audio_scope.ok_or("Не определён источник звука демонстрации")?;
             std::thread::Builder::new()
                 .name("trlka-screen-audio".into())
                 .spawn(move || {
                     let mut failures = 0;
                     while !audio_stop.load(Ordering::Acquire) {
-                        if let Err(e) = audio_loop(&audio, &audio_stop, window_pid, &runtime) {
+                        if let Err(e) = audio_loop(&audio, &audio_stop, scope, &runtime) {
                             failures += 1;
                             if failures >= 3 {
                                 let _ = audio_app.emit(
@@ -538,7 +593,7 @@ mod native {
     fn audio_loop(
         source: &NativeAudioSource,
         stop: &AtomicBool,
-        window_pid: Option<u32>,
+        scope: AudioScope,
         runtime: &tokio::runtime::Handle,
     ) -> Result<(), String> {
         use wasapi::*;
@@ -550,13 +605,9 @@ mod native {
             }
         }
         let _apartment = Apartment;
-        // For a window include its process tree; for a monitor exclude Trlka to
-        // prevent sending the other participants' voices back to them.
-        let mut client = AudioClient::new_application_loopback_client(
-            window_pid.unwrap_or(std::process::id()),
-            window_pid.is_some(),
-        )
-        .map_err(error)?;
+        let (pid, include_tree) = scope.loopback_target();
+        let mut client =
+            AudioClient::new_application_loopback_client(pid, include_tree).map_err(error)?;
         let format = WaveFormat::new(16, 16, &SampleType::Int, 48_000, 2, None);
         client
             .initialize_client(
@@ -816,7 +867,7 @@ mod native {
                 let capture_stop = stop.clone();
                 let runtime = tokio::runtime::Handle::current();
                 let capture = std::thread::spawn(move || {
-                    audio_loop(&source, &capture_stop, Some(std::process::id()), &runtime)
+                    audio_loop(&source, &capture_stop, AudioScope::Window(std::process::id()), &runtime)
                 });
                 let render_stop = stop.clone();
                 let render = std::thread::spawn(move || -> Result<(), String> {
