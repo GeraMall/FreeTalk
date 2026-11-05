@@ -1,3 +1,4 @@
+import { t } from './app-language';
 import type { PresenceStatus } from '@freetalk/protocol';
 
 export type PresenceMode = 'auto' | 'away' | 'dnd' | 'invisible';
@@ -23,8 +24,8 @@ export function resolvePresence(mode: PresenceMode, inactive: boolean): Presence
 }
 
 export function presenceModeLabel(mode: PresenceMode) {
-  if (mode === 'away') return 'Нет на месте';
-  if (mode === 'dnd') return 'Не беспокоить';
-  if (mode === 'invisible') return 'Невидимый';
-  return 'В сети';
+  if (mode === 'away') return t('Нет на месте');
+  if (mode === 'dnd') return t('Не беспокоить');
+  if (mode === 'invisible') return t('Невидимый');
+  return t('В сети');
 }

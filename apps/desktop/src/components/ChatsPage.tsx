@@ -1,5 +1,6 @@
 import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   useCallback,
   useEffect,
@@ -8,6 +9,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -959,6 +961,7 @@ export function ChatsPage({
             )}
             <MessageList
               chatId={activeChat.id}
+              joinedRoomId={joinedRoomId}
               userId={userId}
               groupChat={activeChat.type === 'group'}
               messages={messages}
@@ -1608,6 +1611,7 @@ function ChatHeader({
       data-tooltip={profileVisible ? t('Скрыть профиль') : t('Показать профиль')}
       aria-label={profileVisible ? t('Скрыть профиль') : t('Показать профиль')}
       aria-pressed={profileVisible}
+      disabled={Boolean(callToolbarTarget) && chat.type === 'direct'}
       onClick={() => {
         if (callToolbarTarget) onRevealCallChat?.();
         onToggleProfile();
@@ -1705,6 +1709,7 @@ function ChatHeader({
       </div>
       <div className="active-chat-actions">
         <button
+          className="chat-voice-action"
           data-tooltip={t('Начать голосовой звонок')}
           aria-label={t('Начать голосовой звонок')}
           disabled={actionBusy === 'call'}
@@ -1713,6 +1718,7 @@ function ChatHeader({
           <PhoneCall />
         </button>
         <button
+          className="chat-video-action"
           data-tooltip={t('Начать видеозвонок')}
           aria-label={t('Начать видеозвонок')}
           disabled={actionBusy === 'call'}
@@ -1732,6 +1738,7 @@ function ChatHeader({
           </button>
         )}
         <button
+          className="chat-invite-action"
           data-tooltip={t('Добавить участника')}
           aria-label={t('Добавить участника')}
           aria-expanded={showMember}
@@ -2109,10 +2116,10 @@ function ProfilePanel({
 }
 
 function presenceLabel(status: PresenceStatus = 'offline') {
-  if (status === 'online') return 'В сети';
-  if (status === 'away') return 'Нет на месте';
-  if (status === 'dnd') return 'Не беспокоить';
-  return 'Не в сети';
+  if (status === 'online') return t('В сети');
+  if (status === 'away') return t('Нет на месте');
+  if (status === 'dnd') return t('Не беспокоить');
+  return t('Не в сети');
 }
 
 function memberCountLabel(count: number) {
@@ -2226,6 +2233,15 @@ function loadMessageLinkPreview(url: string) {
   return request;
 }
 
+function openChatLink(event: ReactMouseEvent<HTMLAnchorElement>) {
+  if (event.defaultPrevented || !isTauri() || (event.type === 'auxclick' && event.button !== 1))
+    return;
+  event.preventDefault();
+  void invoke('open_chat_link', { url: event.currentTarget.href }).catch((error: unknown) =>
+    console.error('Could not open chat link', error),
+  );
+}
+
 function MessageLinkPreviewCard({ url }: { url: string }) {
   const [preview, setPreview] = useState<MessageLinkPreview | null>();
   useEffect(() => {
@@ -2242,6 +2258,8 @@ function MessageLinkPreviewCard({ url }: { url: string }) {
     <a
       className="message-link-preview"
       href={preview.url}
+      onClick={openChatLink}
+      onAuxClick={openChatLink}
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -2266,7 +2284,14 @@ function MessageRichText({ text }: { text: string }) {
     if (start < 0) continue;
     if (start > offset) parts.push(text.slice(offset, start));
     parts.push(
-      <a href={link} target="_blank" rel="noopener noreferrer" key={`${start}-${link}`}>
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        key={`${start}-${link}`}
+        onClick={openChatLink}
+        onAuxClick={openChatLink}
+      >
         {link}
       </a>,
     );
@@ -2314,6 +2339,7 @@ async function clipboardPng(blob: Blob): Promise<Blob> {
 
 export function MessageList({
   chatId,
+  joinedRoomId,
   userId,
   groupChat,
   messages,
@@ -2341,6 +2367,7 @@ export function MessageList({
   focusedMessageId,
 }: {
   chatId: string;
+  joinedRoomId?: string;
   userId: string;
   groupChat: boolean;
   messages: MessageItem[];
@@ -2829,7 +2856,11 @@ export function MessageList({
                         onForward={() => setForwardingMessage(message)}
                       >
                         {message.kind === 'call' ? (
-                          <SystemCallMessage message={message} onJoin={onJoinCall} />
+                          <SystemCallMessage
+                            message={message}
+                            joinedRoomId={joinedRoomId}
+                            onJoin={onJoinCall}
+                          />
                         ) : (
                           <div className="system-message">
                             <span>{message.body}</span>
@@ -3441,6 +3472,8 @@ function GifMessage({
         {gif.attribution.provider !== 'TRLKA' ? (
           <a
             href={gif.attribution.pageUrl}
+            onClick={openChatLink}
+            onAuxClick={openChatLink}
             target="_blank"
             rel="noreferrer"
             data-tooltip={gif.attribution.license || 'Источник GIF'}
@@ -4285,9 +4318,11 @@ function MessageEventRow({
 
 function SystemCallMessage({
   message,
+  joinedRoomId,
   onJoin,
 }: {
   message: MessageItem;
+  joinedRoomId?: string;
   onJoin(roomId: string): void;
 }) {
   const serverEnded = message.metadata?.ended === true;
@@ -4312,6 +4347,7 @@ function SystemCallMessage({
     return () => window.clearInterval(timer);
   }, [abandoned, serverEnded, startedAt]);
   const ended = serverEnded || abandoned;
+  const joined = !ended && Boolean(joinedRoomId) && message.metadata?.roomId === joinedRoomId;
   const durationEnd = endedAt
     ? Date.parse(endedAt)
     : abandoned && startedAt
@@ -4324,7 +4360,7 @@ function SystemCallMessage({
       ? formatCallDuration(Math.max(0, Math.floor((durationEnd - Date.parse(startedAt)) / 1_000)))
       : null;
   return (
-    <div className={`system-call-message${ended ? ' ended' : ''}`}>
+    <div className={`system-call-message${ended ? ' ended' : joined ? ' joined' : ''}`}>
       <span className="system-call-icon">
         <Phone />
       </span>
@@ -4373,6 +4409,8 @@ function SystemCallMessage({
       </div>
       {ended ? (
         <span className="system-call-ended">{t('Звонок завершён')}</span>
+      ) : joined ? (
+        <span className="system-call-joined">{t('Вы в звонке')}</span>
       ) : message.metadata?.roomId ? (
         <button
           type="button"
@@ -4405,6 +4443,21 @@ function DateSeparator({ date }: { date: string }) {
     </div>
   );
 }
+
+const sendFlightKeyframes = [
+  { offset: 0, transform: 'translate(0, 0) scale(1)', opacity: 1 },
+  { offset: 0.4, transform: 'translate(24px, -24px) scale(.72)', opacity: 0 },
+  { offset: 0.46, transform: 'translate(-19px, 19px) scale(.8)', opacity: 0 },
+  { offset: 1, transform: 'translate(0, 0) scale(1)', opacity: 1 },
+];
+const longSendFlightKeyframes = [
+  sendFlightKeyframes[0]!,
+  { offset: 0.09, transform: 'translate(3px, -3px) rotate(-8deg)' },
+  { offset: 0.17, transform: 'translate(-2px, 2px) rotate(5deg)' },
+  { offset: 0.25, transform: 'translate(3px, -3px) rotate(-6deg)' },
+  { offset: 0.32, transform: 'translate(-1px, 1px)' },
+  ...sendFlightKeyframes.map((frame) => ({ ...frame, offset: 0.36 + frame.offset * 0.64 })),
+];
 
 function MessageComposer({
   disabled,
@@ -4448,6 +4501,8 @@ function MessageComposer({
   const [showSendButton, setShowSendButton] = useState(true);
   const [composerLanguage, setComposerLanguage] = useState<'ru' | 'en' | 'auto'>('ru');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const sendIconRef = useRef<SVGSVGElement>(null);
+  const sendAnimationRef = useRef<Animation>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerMenuRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -4596,6 +4651,18 @@ function MessageComposer({
     )
       return;
     setSending(true);
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      const longMessage = body.length >= 200;
+      sendAnimationRef.current?.cancel();
+      sendAnimationRef.current =
+        sendIconRef.current?.animate?.(
+          longMessage ? longSendFlightKeyframes : sendFlightKeyframes,
+          {
+            duration: longMessage ? 560 : 360,
+            easing: longMessage ? 'linear' : 'cubic-bezier(.22,.61,.36,1)',
+          },
+        ) ?? null;
+    }
     try {
       const sent =
         attachmentFile &&
@@ -4749,11 +4816,11 @@ function MessageComposer({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setPicker(showGifPicker ? undefined : 'gif')}
           >
-            GIF
+            <span>GIF</span>
           </button>
           <button
             type="button"
-            className="composer-expression-button"
+            className="composer-expression-button composer-sticker-button"
             aria-label={t('Стикеры')}
             aria-expanded={picker === 'stickers'}
             disabled={disabled || sending || processingImage}
@@ -4763,7 +4830,7 @@ function MessageComposer({
           </button>
           <button
             type="button"
-            className="composer-expression-button"
+            className="composer-expression-button composer-emoji-button"
             aria-label={t('Эмодзи')}
             aria-expanded={picker === 'emoji'}
             disabled={disabled || sending}
@@ -4818,6 +4885,7 @@ function MessageComposer({
       </div>
       {showSendButton ? (
         <button
+          type="button"
           className="send-message-button"
           data-tooltip={t('Отправить')}
           aria-label={t('Отправить сообщение')}
@@ -4830,7 +4898,7 @@ function MessageComposer({
           }
           onClick={() => void send()}
         >
-          <Send />
+          <Send ref={sendIconRef} aria-hidden="true" />
         </button>
       ) : null}
       {remaining < 100 && (
@@ -5032,7 +5100,7 @@ function MessageSkeleton() {
   );
 }
 
-function ChatAvatar({
+export function ChatAvatar({
   name,
   group,
   avatarUrl,
@@ -5144,8 +5212,8 @@ function formatMessageDate(value: string) {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (isSameDay(date.toISOString(), today.toISOString())) return 'Сегодня';
-  if (isSameDay(date.toISOString(), yesterday.toISOString())) return 'Вчера';
+  if (isSameDay(date.toISOString(), today.toISOString())) return t('Сегодня');
+  if (isSameDay(date.toISOString(), yesterday.toISOString())) return t('Вчера');
   return date.toLocaleDateString(appLanguage(), { day: 'numeric', month: 'long' });
 }
 

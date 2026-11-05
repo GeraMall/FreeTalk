@@ -10,6 +10,7 @@ export type RoomAuthorization =
       disconnectAt?: string;
       callScope?: 'direct' | 'group';
       groupOwnerId?: string;
+      canAccessStore?: boolean;
     }
   | { allowed: false; reason?: string };
 

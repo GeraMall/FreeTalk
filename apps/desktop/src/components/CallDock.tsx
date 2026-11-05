@@ -1,5 +1,5 @@
 import { t } from '../lib/app-language';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   AudioLines,
   Camera,
@@ -7,13 +7,12 @@ import {
   Check,
   ChevronDown,
   Headphones,
-  HeadphoneOff,
   Mic,
-  MicOff,
   MonitorUp,
   PhoneOff,
   SmilePlus,
   Wifi,
+  type LucideIcon,
 } from 'lucide-react';
 import type { Reaction } from '@freetalk/protocol';
 
@@ -129,6 +128,31 @@ export function CallDock({ state }: { state: CallDockState }) {
   );
 }
 
+export function DeviceControlIcon({ icon: Icon, off }: { icon: LucideIcon; off: boolean }) {
+  const maskId = useId();
+  const slash = 'M2 2l20 20';
+  return (
+    <span className="device-control-icon" data-off={off} aria-hidden="true">
+      <Icon mask={`url(#${maskId})`} />
+      <svg viewBox="0 0 24 24" fill="none">
+        <defs>
+          <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+            <rect width="24" height="24" fill="white" />
+            <path
+              className="profile-audio-cut"
+              d={slash}
+              pathLength="1"
+              stroke="black"
+              strokeWidth="4.5"
+            />
+          </mask>
+        </defs>
+        <path className="profile-audio-cut profile-audio-slash" d={slash} pathLength="1" />
+      </svg>
+    </span>
+  );
+}
+
 export function ProfileAudioControls({ state }: { state: CallDockState }) {
   const [deviceMenu, setDeviceMenu] = useState<'input' | 'output'>();
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -172,7 +196,7 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
           aria-pressed={state.muted}
           onClick={state.onMute}
         >
-          {state.muted ? <MicOff /> : <Mic />}
+          <DeviceControlIcon icon={Mic} off={state.muted} />
         </button>
         <button
           className="audio-device-chevron"
@@ -197,7 +221,7 @@ export function ProfileAudioControls({ state }: { state: CallDockState }) {
           aria-pressed={state.deafened}
           onClick={state.onDeafen}
         >
-          {state.deafened ? <HeadphoneOff /> : <Headphones />}
+          <DeviceControlIcon icon={Headphones} off={state.deafened} />
         </button>
         <button
           className="audio-device-chevron"

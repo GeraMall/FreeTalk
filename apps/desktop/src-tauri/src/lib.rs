@@ -1,6 +1,8 @@
 #[cfg(desktop)]
 mod diagnostics;
 #[cfg(desktop)]
+mod food_webview;
+#[cfg(desktop)]
 mod macos_screen_audio;
 mod secure_session;
 mod signaling;
@@ -56,6 +58,20 @@ fn macos_screen_audio_stop(
     state: tauri::State<'_, macos_screen_audio::MacosScreenAudioState>,
 ) -> Result<(), String> {
     macos_screen_audio::stop(&state)
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn open_chat_link(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let url = tauri::Url::parse(&url).map_err(|_| "Invalid link")?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err("Only HTTP and HTTPS links can be opened".into());
+    }
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(desktop)]
@@ -432,7 +448,11 @@ pub fn run() {
         .manage(windows_screen::State::default())
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
+            open_chat_link,
             open_passkey_browser,
+            food_webview::food_vendor_open_browser,
+            food_webview::food_vendor_view,
+            food_webview::food_vendor_browser_action,
             diagnostics::save_connection_diagnostics,
             signaling::signaling_connect,
             signaling::signaling_receive,
@@ -444,6 +464,7 @@ pub fn run() {
             macos_screen_audio_start,
             macos_screen_audio_stop,
             windows_screen::windows_screen_sources,
+            windows_screen::windows_screen_thumbnail,
             windows_screen::windows_screen_start,
             windows_screen::windows_screen_stop,
             windows_screen::windows_screen_offer,
@@ -497,6 +518,15 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 window = window.decorations(false);
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                // These are logical points. Leave room for the menu bar and Dock.
+                window = window
+                    .inner_size(1120.0, 690.0)
+                    .min_inner_size(780.0, 520.0)
+                    .maximized(false);
             }
 
             if let Some(directory) = std::env::var_os("FREETALK_WEBVIEW_DATA_DIR") {

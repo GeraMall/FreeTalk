@@ -93,6 +93,11 @@
   border-radius: 9px;
   flex: none;
 }
+.service-chat-message > .chat-avatar.compact {
+  width: 30px;
+  height: 30px;
+  box-shadow: none;
+}
 .service-chat-message > div {
   max-width: min(100%, 640px);
   min-width: 0;
@@ -254,9 +259,13 @@
   .service-chat-message > div {
     padding: 10px 12px;
   }
-  .service-chat-message > img {
+  .service-chat-message > img,
+  .service-chat-message > .chat-avatar.compact {
     width: 26px;
     height: 26px;
+  }
+  .service-chat-message.user > .chat-avatar {
+    order: 1;
   }
   .service-chat-footer {
     padding: 10px 12px max(12px, env(safe-area-inset-bottom));

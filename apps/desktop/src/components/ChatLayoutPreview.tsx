@@ -10,6 +10,7 @@ import { FriendsPage } from './FriendsPage';
 import { CallInviteFriendsDialog } from './CallInviteFriendsDialog';
 import { IncomingCallDialog } from './IncomingCallDialog';
 import { RoomView } from './RoomView';
+import { SettingsPanel, type SettingsTab } from './SettingsPanel';
 import { defaultSettings } from '../lib/settings';
 
 const self = {
@@ -121,6 +122,9 @@ export function ChatLayoutPreview() {
   const previewGroupChat = previewParams.has('group-chat');
   const previewEventMessages = previewParams.has('event-messages');
   const mobile = useMobileLayout();
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(
+    previewParams.has('settings') ? 'profile' : undefined,
+  );
   const [activeChatId, setActiveChatId] = useState<string | undefined>(
     previewParams.has('list') ? undefined : chats[previewGroupChat ? 1 : 0]!.id,
   );
@@ -129,6 +133,40 @@ export function ChatLayoutPreview() {
     <main
       className={`account-shell account-shell-with-chat-sidebar${previewHomeSidebar ? ' account-home-shell' : ''}${mobile ? ' mobile-account-shell mobile-chat-open' : ''}`}
     >
+      {settingsTab && (
+        <SettingsPanel
+          initialTab={settingsTab}
+          settings={{ ...defaultSettings(), displayName: self.displayName }}
+          accountUser={{
+            ...self,
+            bio: 'Общаемся, делимся идеями и остаёмся на связи.',
+            coverUrl: null,
+          }}
+          guestMode={false}
+          devices={{ inputs: [], outputs: [], cameras: [] }}
+          inputLevel={0}
+          appVersion="0.4.0-beta.189"
+          updateStatus={{ kind: 'idle' }}
+          turnAvailable
+          outputSupported
+          onClose={() => setSettingsTab(undefined)}
+          onInput={() => {}}
+          onOutput={() => {}}
+          onCamera={() => {}}
+          onSetting={() => {}}
+          onVideoSetting={() => {}}
+          onKey={() => {}}
+          onReset={() => {}}
+          onCheckUpdate={() => {}}
+          onInstallUpdate={() => {}}
+          onSaveDiagnostics={async () => ''}
+          onSaveProfile={async () => {}}
+          onAccountLogout={() => {}}
+          onDeleteAccount={async () => {}}
+          onChangePassword={async () => {}}
+          onClearChatCache={async () => {}}
+        />
+      )}
       {showNotice && <TransientNotice message="Комната не найдена" onDismiss={() => {}} />}
       {!mobile ? (
         <AccountSidebar
@@ -143,7 +181,7 @@ export function ChatLayoutPreview() {
           onCreateGroup={async () => true}
           onLeaveGroup={async () => {}}
           onInstallUpdate={() => {}}
-          onSettings={() => {}}
+          onSettings={(tab) => setSettingsTab(tab ?? 'audio')}
           onLogout={() => {}}
         />
       ) : null}
@@ -335,6 +373,7 @@ export function ChatLayoutPreview() {
 }
 
 function RoomLayoutPreview() {
+  const deafened = new URLSearchParams(window.location.search).has('deafened');
   return (
     <RoomView
       roomId="BANCMQ4FJ7YX"
@@ -346,7 +385,8 @@ function RoomLayoutPreview() {
           accountId: self.id,
           name: 'O_GERYCH',
           avatar: mascot,
-          muted: false,
+          muted: deafened,
+          deafened,
           isOwner: true,
           connectedAt: Date.now(),
         },
@@ -361,7 +401,8 @@ function RoomLayoutPreview() {
       }}
       remoteVideos={{}}
       videoBusy={false}
-      muted={false}
+      muted={deafened}
+      deafened={deafened}
       roomStartedAt={Date.now() - 189_000}
       reactions={[]}
       roomChatMessages={[]}

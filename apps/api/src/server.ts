@@ -80,6 +80,7 @@ const allowedOrigins = env.ALLOWED_ORIGIN.split(',').map((value) => value.trim()
 await app.register(cors, {
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  exposedHeaders: ['Retry-After'],
 });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, {
@@ -744,8 +745,9 @@ app.post(
         user_id: string;
         display_name: string;
         has_avatar: boolean;
+        can_access_store: boolean;
       }>(
-        `SELECT s.user_id,u.display_name,u.avatar_data IS NOT NULL AS has_avatar
+        `SELECT s.user_id,u.display_name,u.can_access_store,u.avatar_data IS NOT NULL AS has_avatar
          FROM sessions s JOIN users u ON u.id=s.user_id
          WHERE s.access_token_hash=$1 AND s.revoked_at IS NULL
          AND s.access_expires_at>now() AND u.deleted_at IS NULL`,
@@ -791,6 +793,7 @@ app.post(
         kind: 'registered',
         userId: registered.user.user_id,
         displayName: registered.user.display_name,
+        canAccessStore: registered.user.can_access_store,
         avatar: publicAvatarUrl(registered.user.user_id, registered.user.has_avatar),
         callScope: registered.call?.chat_type,
         groupOwnerId: registered.call?.group_owner_id ?? undefined,

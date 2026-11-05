@@ -1,3 +1,4 @@
+import { mergeParticipantAudioState } from '@freetalk/protocol';
 import {
   CLIENT_STALE_AFTER_MS,
   MAX_SIGNAL_BYTES,
@@ -10,6 +11,9 @@ import {
 } from '@freetalk/config';
 import {
   parseClientMessage,
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
   type Participant,
   type ParticipantCardDecoration,
   type ParticipantCardStyle,
@@ -95,12 +99,15 @@ interface SocketAttachment {
   cardStyle?: ParticipantCardStyle;
   cardDecoration?: ParticipantCardDecoration;
   muted?: boolean;
+  deafened?: boolean;
   isOwner?: boolean;
   connectedAt?: number;
   lastSeen: number;
   timestamps: number[];
   profileChanges?: number[];
   lastReactionAt?: number;
+  lastActivityAt?: number;
+  canUseActivity?: boolean;
   clientConnectionId: string;
   serverConnectionId: string;
   edgeColo: string;
@@ -253,12 +260,16 @@ export class VoiceRoom implements DurableObject {
         return;
       }
       if (message.type === 'mute-changed') {
-        attachment.muted = message.muted;
+        const audioState = mergeParticipantAudioState(
+          { muted: attachment.muted ?? false, deafened: attachment.deafened },
+          message,
+        );
+        Object.assign(attachment, audioState);
         socket.serializeAttachment(attachment);
         this.broadcast({
           type: 'mute-changed',
           participantId: attachment.clientId,
-          muted: message.muted,
+          ...audioState,
         });
         return;
       }
@@ -295,6 +306,26 @@ export class VoiceRoom implements DurableObject {
           type: 'participant-updated',
           participant: this.participant(attachment),
         });
+        return;
+      }
+      if (message.type === 'activity-action') {
+        if (!attachment.canUseActivity) return;
+        if (now - (attachment.lastActivityAt ?? 0) < 125) return;
+        attachment.lastActivityAt = now;
+        socket.serializeAttachment(attachment);
+        const activity = await this.state.storage.transaction(async (txn) => {
+          const current = (await txn.get<RoomActivitySession>('activity')) ?? emptyRoomActivity();
+          const next = applyRoomActivity(current, message.revision, message.action);
+          if (next === current) return undefined;
+          await txn.put('activity', next);
+          return next.view;
+        });
+        if (activity) {
+          for (const participant of this.active()) {
+            const peer = participant.deserializeAttachment() as SocketAttachment;
+            if (peer.canUseActivity) this.send(participant, { type: 'activity-state', activity });
+          }
+        }
         return;
       }
       if (message.type === 'reaction') {
@@ -466,8 +497,35 @@ export class VoiceRoom implements DurableObject {
       const grace = await this.state.storage.get<{ expiresAt: number }>('grace');
       if (!grace || grace.expiresAt <= now) {
         await this.clearRoomChat();
-        await this.state.storage.delete(['grace', 'roomStartedAt']);
+        await this.state.storage.delete(['grace', 'roomStartedAt', 'activity']);
       } else await this.state.storage.setAlarm(grace.expiresAt);
+    }
+  }
+
+  private async authorizeActivity(
+    message: Extract<ReturnType<typeof parseClientMessage>, { type: 'create-room' | 'join-room' }>,
+  ) {
+    const { ACCOUNT_API_URL, INTERNAL_SIGNALING_SECRET } = this.env;
+    if (!ACCOUNT_API_URL || !INTERNAL_SIGNALING_SECRET || !message.authToken) return false;
+    try {
+      const response = await fetch(new URL('/v1/internal/room-authorize', ACCOUNT_API_URL), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-freetalk-internal-secret': INTERNAL_SIGNALING_SECRET,
+        },
+        body: JSON.stringify({
+          action: message.type === 'create-room' ? 'create' : 'join',
+          roomId: message.roomId,
+          token: message.authToken,
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return false;
+      const result = await response.json<{ allowed?: boolean; canAccessStore?: boolean }>();
+      return result.allowed === true && result.canAccessStore === true;
+    } catch {
+      return false;
     }
   }
 
@@ -485,16 +543,20 @@ export class VoiceRoom implements DurableObject {
       });
       return;
     }
-    const iceConfig = await this.iceConfig();
+    const [iceConfig, canUseActivity] = await Promise.all([
+      this.iceConfig(),
+      this.authorizeActivity(message),
+    ]);
     const active = this.active();
     const grace = await this.state.storage.get<{ sessionId: string; expiresAt: number }>('grace');
     if (
       message.type === 'create-room' &&
       active.length === 0 &&
       (!grace || grace.expiresAt < Date.now())
-    )
+    ) {
       await this.clearRoomChat();
-    await this.state.storage.delete('roomStartedAt');
+      await this.state.storage.delete(['roomStartedAt', 'activity']);
+    }
     if (message.type === 'create-room' && active.length > 0) {
       this.send(socket, {
         type: 'error',
@@ -557,8 +619,11 @@ export class VoiceRoom implements DurableObject {
       cardStyle: message.cardStyle ?? 'avatar-glass',
       cardDecoration: 'none',
       muted: sameAttachment?.muted ?? false,
+      deafened: sameAttachment?.deafened ?? false,
       profileChanges: sameAttachment?.profileChanges ?? [],
       lastReactionAt: sameAttachment?.lastReactionAt ?? 0,
+      lastActivityAt: sameAttachment?.lastActivityAt ?? 0,
+      canUseActivity,
       isOwner:
         sameAttachment?.isOwner ??
         (message.type === 'create-room' && active.filter((entry) => entry !== same).length === 0),
@@ -575,6 +640,8 @@ export class VoiceRoom implements DurableObject {
     const storedRoomStartedAt = await this.state.storage.get<number>('roomStartedAt');
     const roomStartedAt = storedRoomStartedAt ?? Date.now();
     const roomChatMessages = await this.roomChatHistory();
+    const activity =
+      (await this.state.storage.get<RoomActivitySession>('activity')) ?? emptyRoomActivity();
     if (!storedRoomStartedAt) await this.state.storage.put('roomStartedAt', roomStartedAt);
     this.send(socket, iceConfig);
     this.send(socket, {
@@ -586,6 +653,7 @@ export class VoiceRoom implements DurableObject {
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
       roomChatMessages,
+      activity: canUseActivity ? activity.view : undefined,
     });
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });
@@ -649,6 +717,7 @@ export class VoiceRoom implements DurableObject {
       cardStyle: value.cardStyle ?? 'avatar-glass',
       cardDecoration: 'none',
       muted: value.muted ?? false,
+      deafened: value.deafened ?? false,
       isOwner: value.isOwner ?? false,
       connectedAt: value.connectedAt!,
     };

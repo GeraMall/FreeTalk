@@ -152,7 +152,7 @@ describe('AccountSidebar in an active room', () => {
     expect(onLogout).toHaveBeenCalledOnce();
   });
 
-  it('persists invisible mode from the profile status menu', () => {
+  it('persists invisible mode from the profile status carousel', () => {
     const { getByRole, getByText } = render(
       <AccountSidebar
         user={user}
@@ -164,16 +164,15 @@ describe('AccountSidebar in an active room', () => {
     );
 
     fireEvent.click(getByRole('button', { name: 'Открыть свой профиль' }));
-    fireEvent.click(getByRole('button', { name: /В сети/ }));
-    fireEvent.click(getByRole('menuitemradio', { name: /Невидимый/ }));
+    fireEvent.click(getByRole('button', { name: 'Предыдущий статус' }));
 
     expect(localStorage.getItem('freetalk.presence-mode')).toBe('invisible');
     expect(getByRole('dialog', { name: 'Профиль и статус' })).toBeTruthy();
-    expect(getByRole('menu', { name: 'Выбор статуса' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Следующий статус' })).toBeTruthy();
     expect(getByText('Короткое описание профиля.')).toBeTruthy();
   });
 
-  it('toggles the profile and the whole status control independently', () => {
+  it('cycles status in both directions without opening another menu', () => {
     const { getByRole, queryByRole } = render(
       <AccountSidebar
         user={user}
@@ -183,20 +182,13 @@ describe('AccountSidebar in an active room', () => {
         onLogout={vi.fn()}
       />,
     );
-
     fireEvent.click(getByRole('button', { name: 'Открыть свой профиль' }));
-    expect(getByRole('dialog', { name: 'Профиль и статус' })).toBeTruthy();
-
-    const statusControl = getByRole('button', { name: /В сети/ });
-    fireEvent.click(statusControl);
-    expect(getByRole('menu', { name: 'Выбор статуса' })).toBeTruthy();
-
-    const chevron = statusControl.querySelector('svg:last-child');
-    expect(chevron).toBeTruthy();
-    fireEvent.click(chevron!);
+    fireEvent.click(getByRole('button', { name: 'Следующий статус' }));
+    expect(localStorage.getItem('freetalk.presence-mode')).toBe('away');
+    fireEvent.click(getByRole('button', { name: 'Предыдущий статус' }));
+    expect(localStorage.getItem('freetalk.presence-mode')).toBe('auto');
     expect(queryByRole('menu', { name: 'Выбор статуса' })).toBeNull();
     expect(getByRole('dialog', { name: 'Профиль и статус' })).toBeTruthy();
-
     fireEvent.click(getByRole('button', { name: 'Закрыть свой профиль' }));
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();
   });
@@ -227,7 +219,7 @@ describe('AccountSidebar in an active room', () => {
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();
   });
 
-  it('closes only the appropriate layer for panel clicks, outside clicks and Escape', () => {
+  it('keeps the carousel open for inside clicks and closes on Escape or outside click', () => {
     const { getByRole, getByText, queryByRole } = render(
       <AccountSidebar
         user={user}
@@ -237,21 +229,12 @@ describe('AccountSidebar in an active room', () => {
         onLogout={vi.fn()}
       />,
     );
-
     fireEvent.click(getByRole('button', { name: 'Открыть свой профиль' }));
-    fireEvent.click(getByRole('button', { name: /В сети/ }));
+    fireEvent.click(getByRole('button', { name: 'Следующий статус' }));
     fireEvent.pointerDown(getByText('Короткое описание профиля.'));
-    expect(queryByRole('menu', { name: 'Выбор статуса' })).toBeNull();
     expect(getByRole('dialog', { name: 'Профиль и статус' })).toBeTruthy();
-
-    fireEvent.click(getByRole('button', { name: /В сети/ }));
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(queryByRole('menu', { name: 'Выбор статуса' })).toBeNull();
-    expect(getByRole('dialog', { name: 'Профиль и статус' })).toBeTruthy();
-
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();
-
     fireEvent.click(getByRole('button', { name: 'Открыть свой профиль' }));
     fireEvent.pointerDown(document.body);
     expect(queryByRole('dialog', { name: 'Профиль и статус' })).toBeNull();

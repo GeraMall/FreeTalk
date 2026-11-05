@@ -64,7 +64,7 @@ export const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.5' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.8' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -228,6 +228,8 @@ sockets.on('connection', (socket, request) => {
           // a dead connection to a room after its close handler has already run.
           if (socket.readyState !== socket.OPEN) return;
           send(socket, iceConfig);
+          connection.canUseActivity =
+            authorization.kind === 'registered' && authorization.canAccessStore === true;
           if (message.type === 'create-room')
             manager.create(
               message.roomId,
@@ -312,7 +314,7 @@ sockets.on('connection', (socket, request) => {
           socket.close(1000, 'Выход');
           break;
         case 'mute-changed':
-          manager.setMuted(meta.roomId, meta.clientId, message.muted);
+          manager.setMuted(meta.roomId, meta.clientId, message.muted, message.deafened);
           break;
         case 'update-profile': {
           if (meta.authorization?.kind === 'guest') {
@@ -349,6 +351,9 @@ sockets.on('connection', (socket, request) => {
             message.cardStyle,
             message.cardDecoration,
           );
+          break;
+        case 'activity-action':
+          manager.updateActivity(meta.roomId, meta.clientId, message.revision, message.action);
           break;
         case 'reaction':
           manager.react(meta.roomId, meta.clientId, message.id, message.reaction);

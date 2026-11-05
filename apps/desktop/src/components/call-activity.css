@@ -1,0 +1,259 @@
+.call-activity {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  width: min(760px, 100%);
+  max-height: 100%;
+  margin-inline: auto;
+  border: 1px solid #344660;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #101928;
+  color: #e4edff;
+}
+
+.activity-heading,
+.activity-heading > div,
+.activity-game-status,
+.activity-delivery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.activity-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 9px 13px;
+  border-bottom: 1px solid #26364e;
+}
+.activity-heading h2,
+.activity-content h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.activity-heading select,
+.activity-promotion select,
+.activity-heading button,
+.activity-content button,
+.activity-delivery a {
+  color: inherit;
+  background: #152035;
+  border: 1px solid #30415c;
+  border-radius: 7px;
+}
+.activity-heading select,
+.activity-heading button,
+.activity-content button,
+.activity-delivery a {
+  min-height: 33px;
+  padding: 4px 8px;
+}
+.activity-heading button,
+.activity-games button,
+.activity-game-status button,
+.activity-delivery a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.activity-heading select,
+.activity-promotion select {
+  color-scheme: dark;
+}
+.activity-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  overscroll-behavior: contain;
+  background: radial-gradient(ellipse at 100% 0, #27254a, transparent 70%), #0a1222;
+}
+.activity-content h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.activity-services,
+.activity-games {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.activity-services button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: start;
+  font-size: 12px;
+}
+.activity-services .food-vendor-mark {
+  width: 23px;
+  height: 23px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.activity-services .food-vendor-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+}
+.activity-games button[aria-pressed='true'],
+.activity-services button[aria-pressed='true'],
+.activity-game-status button[aria-pressed='true'] {
+  border-color: #91a9d3;
+  background: #233653;
+}
+.activity-delivery {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #b3c3dc;
+}
+.activity-delivery a {
+  text-decoration: none;
+}
+.activity-game {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.activity-game-status {
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 12px;
+}
+.activity-board {
+  display: grid;
+  width: min(100%, 320px);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 1px solid #5c739a;
+  overflow: hidden;
+  border-radius: 7px;
+}
+.activity-board > button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  border: 1px solid #283f5c;
+  background: #9fb0c9;
+  color: #111d30;
+  font-size: clamp(16px, 3vw, 27px);
+  line-height: 1;
+}
+.activity-board > button.dark {
+  background: #546e90;
+}
+.activity-board > button.selected {
+  background: #d0ae73;
+}
+.activity-board-mines > button,
+.activity-board-fleet > button {
+  background: #1c344f;
+  color: #e4edff;
+  font-size: 15px;
+}
+.activity-board-mines > button.revealed,
+.activity-board-fleet > button.revealed {
+  background: #0d1d30;
+}
+.activity-board > button:disabled {
+  opacity: 1;
+}
+.activity-board > button:focus-visible {
+  outline-offset: -3px;
+}
+.activity-promotion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.activity-control .dock-icon svg {
+  transform-origin: center;
+}
+.store-locked {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #aabbd2;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .activity-control:hover .dock-icon svg {
+    animation: activity-shapes 0.4s ease-out;
+  }
+}
+@keyframes activity-shapes {
+  35% {
+    transform: rotate(-14deg) scale(1.16);
+  }
+  70% {
+    transform: rotate(5deg);
+  }
+}
+
+.voice-dock .activity-control-mobile {
+  display: none;
+}
+
+.call-activity-hint {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border: 1px solid rgba(149, 173, 226, 0.3);
+  border-radius: 10px;
+  background: #101c2d;
+  color: #e5edff;
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+  animation: call-activity-hint 2400ms both;
+}
+
+@keyframes call-activity-hint {
+  0%,
+  100% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  8%,
+  86% {
+    opacity: 1;
+    translate: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .call-activity-hint {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .voice-dock .dock-secondary-actions > .activity-control-desktop {
+    display: none !important;
+  }
+
+  .voice-dock > .activity-control-mobile {
+    display: flex;
+    align-self: stretch;
+    justify-content: center;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 14px;
+  }
+}

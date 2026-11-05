@@ -16,7 +16,10 @@ const homeViewHarness = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/api-client', () => ({
-  accountClient: { request: homeViewHarness.request },
+  accountClient: {
+    request: homeViewHarness.request,
+    chatHistory: (chatId: string) => homeViewHarness.request(`/v1/chats/${chatId}/messages`),
+  },
 }));
 
 vi.mock('../lib/chat-realtime', () => ({

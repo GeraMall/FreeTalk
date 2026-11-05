@@ -1,5 +1,5 @@
 //! Native screen media. Only SDP, ICE and lifecycle events cross Tauri IPC.
-//! Pixels and PCM remain in the native capture/WebRTC pipeline.
+//! Live pixels and PCM remain native; the picker receives only small still thumbnails.
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
@@ -46,6 +46,19 @@ pub async fn windows_screen_sources() -> Result<Vec<Source>, String> {
     }
     #[cfg(not(target_os = "windows"))]
     Err("Native Windows capture is unavailable".into())
+}
+
+#[tauri::command]
+pub async fn windows_screen_thumbnail(source_id: String, kind: String) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        static PREVIEW_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+        let _permit = PREVIEW_SLOTS.acquire().await.map_err(|e| e.to_string())?;
+        return tauri::async_runtime::spawn_blocking(move || native::thumbnail(&source_id, &kind))
+            .await.map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    { let _ = (source_id, kind); Err("Native Windows capture is unavailable".into()) }
 }
 
 #[tauri::command]
@@ -286,6 +299,53 @@ mod native {
             }
         }
         Ok(result)
+    }
+    // Capture once on demand. Never retain full-size frames or upload picker images.
+    pub fn thumbnail(id: &str, kind: &str) -> Result<String, String> {
+        use base64::Engine;
+        let mut capture = capturer(kind)?;
+        let source = capture.get_source_list().into_iter()
+            .find(|source| source.id().to_string() == id)
+            .ok_or("Capture source is no longer available")?;
+        let result = Arc::new(Mutex::new(None));
+        let output = result.clone();
+        capture.start_capture(Some(source), move |frame| {
+            let Ok(frame) = frame else { return; };
+            let (width, height, stride) = (frame.width(), frame.height(), frame.stride());
+            if width <= 0 || height <= 0 || stride <= 0 { return; }
+            let scale = (320.0 / width as f64).min(180.0 / height as f64).min(1.0);
+            let w = ((width as f64 * scale) as usize).max(1);
+            let h = ((height as f64 * scale) as usize).max(1);
+            let data = frame.data();
+            let mut pixels = Vec::with_capacity(w * h * 3);
+            for y in 0..h {
+                for x in 0..w {
+                    let at = (y * height as usize / h) * stride as usize
+                        + (x * width as usize / w) * 4;
+                    if at + 2 >= data.len() { return; }
+                    pixels.extend_from_slice(&[data[at + 2], data[at + 1], data[at]]);
+                }
+            }
+            let encode = || -> Result<String, String> {
+                let mut bytes = Vec::new();
+                {
+                    let mut encoder = png::Encoder::new(&mut bytes, w as u32, h as u32);
+                    encoder.set_color(png::ColorType::Rgb);
+                    encoder.set_depth(png::BitDepth::Eight);
+                    encoder.write_header().map_err(error)?
+                        .write_image_data(&pixels).map_err(error)?;
+                }
+                Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+            };
+            *output.lock().unwrap() = Some(encode());
+        });
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(300) {
+            capture.capture_frame();
+            if let Some(value) = result.lock().map_err(error)?.take() { return value; }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        Err("Preview is unavailable for this source".into())
     }
     pub fn session(state: &State, id: &str) -> Result<Arc<Session>, String> {
         state
@@ -715,6 +775,19 @@ mod native {
             media_stream_track::MediaStreamTrack, peer_connection::AnswerOptions,
             video_stream::native::NativeVideoStream,
         };
+
+        #[test]
+        #[ignore = "Requires an unlocked local Windows desktop"]
+        fn thumbnail_preview_is_a_bounded_png() {
+            use base64::Engine;
+            let source = sources().unwrap().into_iter().find(|source| source.kind == "screen").unwrap();
+            let image = thumbnail(&source.id, &source.kind).unwrap();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(image.strip_prefix("data:image/png;base64,").unwrap()).unwrap();
+            let reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap();
+            assert!(reader.info().width > 0 && reader.info().width <= 320);
+            assert!(reader.info().height > 0 && reader.info().height <= 180);
+        }
 
         #[test]
         fn malformed_screen_sdp_returns_error_without_aborting() {

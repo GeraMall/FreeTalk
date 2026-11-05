@@ -13,6 +13,7 @@ import {
   nextAdaptiveQualityLevel,
   normalizeVideoPreferences,
   screenEncodingProfile,
+  screenSenderPreferences,
   type NetworkQualitySample,
   type VideoPreferences,
 } from './video-quality';
@@ -111,6 +112,7 @@ interface OutboundVideoStats extends RTCStats {
   frameWidth?: number;
   frameHeight?: number;
   framesPerSecond?: number;
+  framesEncoded?: number;
 }
 
 export class PeerManager {
@@ -554,16 +556,16 @@ export class PeerManager {
               trackId: audioTrack?.id ?? 'none',
             });
           }
-          for (const activeSource of ['camera', 'screen'] as const) {
-            const sender = context.videoSenders[activeSource];
-            if (sender?.sender.track) this.configureVideoSender(peerId, sender, activeSource);
-          }
           if (source === 'screen') {
             context.adaptiveQualityLevel = 0;
             context.adaptiveGoodSamples = 0;
             context.screenStatsSnapshot = undefined;
             if (track) this.startQualityTimer(peerId, context);
             else this.clearQualityTimer(context);
+          }
+          for (const activeSource of ['camera', 'screen'] as const) {
+            const sender = context.videoSenders[activeSource];
+            if (sender?.sender.track) this.configureVideoSender(peerId, sender, activeSource);
           }
           this.sendVideoState(peerId, context);
           this.startDiagnosticTimer(peerId, context);
@@ -1003,9 +1005,10 @@ export class PeerManager {
     const parameters = videoSender.sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
     const screenActive = Boolean(this.localVideoTracks.screen);
+    const screenPreferences = screenSenderPreferences(this.videoPreferences);
     const screenProfile = screenEncodingProfile(
-      this.videoPreferences,
-      this.videoPreferences.screenAdaptiveQuality
+      screenPreferences,
+      screenPreferences.screenAdaptiveQuality
         ? (this.peers.get(peerId)?.adaptiveQualityLevel ?? 0)
         : 0,
     );
@@ -1018,9 +1021,9 @@ export class PeerManager {
     parameters.encodings[0]!.priority = source === 'screen' ? 'high' : 'medium';
     parameters.degradationPreference =
       source === 'screen'
-        ? this.videoPreferences.screenContentMode === 'text'
+        ? screenPreferences.screenContentMode === 'text'
           ? 'maintain-resolution'
-          : this.videoPreferences.screenContentMode === 'video'
+          : screenPreferences.screenContentMode === 'video'
             ? 'maintain-framerate'
             : 'balanced'
         : 'maintain-framerate';
@@ -1115,13 +1118,17 @@ export class PeerManager {
         qualityLimitationReason: qualityLimitationReason ?? 'none',
         codec: String(codec?.mimeType ?? 'unknown'),
       });
-      if (!this.videoPreferences.screenAdaptiveQuality) return;
-      const currentProfile = screenEncodingProfile(
-        this.videoPreferences,
-        context.adaptiveQualityLevel,
-      );
+      const screenPreferences = screenSenderPreferences(this.videoPreferences);
+      if (!screenPreferences.screenAdaptiveQuality) return;
+      if (
+        screenPreferences !== this.videoPreferences &&
+        !previous &&
+        !outboundReport?.framesEncoded
+      )
+        return;
+      const currentProfile = screenEncodingProfile(screenPreferences, context.adaptiveQualityLevel);
       const upgradeProfile = screenEncodingProfile(
-        this.videoPreferences,
+        screenPreferences,
         Math.max(0, context.adaptiveQualityLevel - 1),
       );
       const next = nextAdaptiveQualityLevel(

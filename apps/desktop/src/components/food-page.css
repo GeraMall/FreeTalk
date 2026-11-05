@@ -1,0 +1,121 @@
+.private-food-browser {
+  position: relative;
+  height: 100%;
+  min-height: min(320px, 46vh);
+}
+
+.food-tablet-bar,
+.food-window-actions,
+.food-browser-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.food-tablet-bar {
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #24334a;
+  color: #b4c4dc;
+  font-size: 13px;
+}
+.food-browser-address {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #26364e;
+  border-radius: 7px;
+  background: #0c1523;
+}
+.food-browser-address strong,
+.food-browser-address span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-browser-address strong {
+  color: #e4edff;
+}
+.food-window-actions button {
+  display: inline-grid;
+  place-items: center;
+  min-height: 32px;
+  padding-inline: 7px;
+  color: #d5e2f9;
+  background: #19273a;
+  border: 1px solid #30415c;
+  border-radius: 7px;
+}
+.food-window-actions button:hover {
+  background: #22334b;
+}
+.food-native-stage {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  color: #b1bfd6;
+}
+.food-native-stage p {
+  padding-inline: 12px;
+  text-align: center;
+}
+.food-browser-error {
+  position: absolute;
+  z-index: 1;
+  inset: auto 8px 8px;
+  margin: 0;
+  padding: 8px 10px;
+  background: #181f2c;
+  color: #ffd0d8;
+  border-radius: 7px;
+}
+.food-vendor-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-weight: 800;
+}
+.food-vendor-yandex {
+  background: #ffe052;
+  color: #1b1712;
+}
+.food-vendor-kuper {
+  background: #c7ef71;
+  color: #16251b;
+}
+.food-vendor-samokat {
+  background: #ff7ca6;
+  color: #391427;
+}
+.food-vendor-wolt {
+  background: #5cdbff;
+  color: #10263b;
+}
+.food-vendor-glovo {
+  background: #ffce60;
+  color: #133c31;
+}
+.food-vendor-dodo {
+  background: #ff8d4a;
+  color: #211208;
+}
+.food-vendor-papa-johns {
+  background: #a8e4c5;
+  color: #153d2e;
+}
+.food-vendor-deliveroo {
+  background: #6de5dc;
+  color: #0a3135;
+}
+.food-vendor-just-eat {
+  background: #ffad70;
+  color: #441d11;
+}
+.food-vendor-uber-eats {
+  background: #b6ed85;
+  color: #192716;
+}
+.food-vendor-dominos {
+  background: #9dd4f2;
+  color: #113650;
+}

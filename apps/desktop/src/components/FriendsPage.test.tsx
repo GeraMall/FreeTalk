@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FriendsPage, type FriendItem, type PendingItem } from './FriendsPage';
+import { t } from '../lib/app-language';
 
 const friend: FriendItem = {
   id: 'friend-1',
@@ -33,9 +34,56 @@ function callbacks() {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.removeItem('trlka.ui-language');
+});
 
 describe('FriendsPage', () => {
+  it.each(['en', 'zh-CN', 'kk', 'be', 'ka', 'es'])(
+    'translates all presence states and counts in %s without translating names',
+    (language) => {
+      localStorage.setItem('trlka.ui-language', language);
+      const names = ['В сети', 'Алексей', 'Марина', 'Россия'];
+      const statuses = ['online', 'away', 'dnd', 'offline'] as const;
+      const labels = ['В сети', 'Нет на месте', 'Не беспокоить', 'Не в сети'];
+      const view = render(
+        <FriendsPage
+          userId="self"
+          friends={statuses.map((presence, index) => ({
+            ...friend,
+            id: `friend-${index}`,
+            username: `user_${index}`,
+            display_name: names[index]!,
+            presence,
+          }))}
+          pending={[]}
+          blocked={[]}
+          loading={false}
+          loadError=""
+          {...callbacks()}
+        />,
+      );
+      const displayed = [...view.container.querySelectorAll('.friend-status')].map((element) =>
+        element.textContent?.trim(),
+      );
+      expect(displayed).toEqual(labels.map((label) => t(label)));
+      for (let index = 0; index < labels.length; index++)
+        expect(displayed[index]).not.toBe(labels[index]);
+      expect(
+        [...view.container.querySelectorAll('.friend-identity strong')].map(
+          (element) => element.textContent,
+        ),
+      ).toEqual(names);
+      expect(view.container.querySelector('.friends-header')?.textContent).toContain(
+        t('{count} друга', { count: 4 }),
+      );
+      expect(view.container.querySelector('.friends-header')?.textContent).toContain(
+        t('{count} запросов', { count: 0 }),
+      );
+    },
+  );
+
   it('lets the sender cancel an outgoing request and disables it while pending', async () => {
     const handlers = callbacks();
     let finish!: () => void;

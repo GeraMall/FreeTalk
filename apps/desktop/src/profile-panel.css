@@ -31,7 +31,6 @@
     width: 68px;
     height: 68px;
     border-color: #07111d;
-    box-shadow: 0 0 0 1px rgba(132, 177, 204, 0.2);
   }
 
   .account-profile-popover .profile-popover-identity {
@@ -280,8 +279,6 @@
   .account-profile-mini.with-audio-controls .account-profile-settings-button svg {
     width: 20px;
     height: 20px;
-    transform: none;
-    animation: none;
   }
 
   .account-profile-mini.with-audio-controls .account-profile-settings-button:hover,

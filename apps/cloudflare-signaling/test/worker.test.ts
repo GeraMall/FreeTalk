@@ -16,6 +16,7 @@ interface TestAttachment {
   cardStyle?: ParticipantCardStyle;
   cardDecoration?: ParticipantCardDecoration;
   muted?: boolean;
+  deafened?: boolean;
   isOwner?: boolean;
   connectedAt?: number;
   lastSeen: number;
@@ -83,6 +84,49 @@ function roomWith(sockets: FakeSocket[]) {
 }
 
 describe('Cloudflare voice room reconnects', () => {
+  it('synchronizes headphone state and preserves it through a hibernated participant snapshot', async () => {
+    const first = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+        sessionId: 'session-123456789',
+        name: 'One',
+        connectedAt: 1,
+      }),
+    );
+    const second = new FakeSocket(
+      attachment({
+        joined: true,
+        clientId: '386d39ef-61af-4aca-84b8-47f78b0f554a',
+        sessionId: 'session-223456789',
+        name: 'Two',
+        connectedAt: 2,
+      }),
+    );
+    const room = roomWith([first, second]);
+    await room.webSocketMessage(
+      first as unknown as WebSocket,
+      JSON.stringify({ type: 'mute-changed', muted: false, deafened: true }),
+    );
+    expect(first.attachment).toMatchObject({ muted: true, deafened: true });
+    expect(second.sent.at(-1)).toMatchObject({ type: 'mute-changed', muted: true, deafened: true });
+    const participant = Reflect.get(room, 'participant') as (value: TestAttachment) => {
+      muted: boolean;
+      deafened: boolean;
+    };
+    expect(participant.call(room, first.attachment)).toMatchObject({ muted: true, deafened: true });
+    await room.webSocketMessage(
+      first as unknown as WebSocket,
+      JSON.stringify({ type: 'mute-changed', muted: false }),
+    );
+    expect(first.attachment).toMatchObject({ muted: false, deafened: false });
+    expect(second.sent.at(-1)).toMatchObject({
+      type: 'mute-changed',
+      muted: false,
+      deafened: false,
+    });
+  });
+
   it('ignores retired card decorations from old clients', async () => {
     const decorated = new FakeSocket(
       attachment({

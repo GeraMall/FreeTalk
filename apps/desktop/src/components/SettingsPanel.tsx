@@ -14,6 +14,7 @@ import {
   ChevronRight,
   CircleDot,
   Download,
+  Edit3,
   FolderOpen,
   Info,
   ImagePlus,
@@ -680,6 +681,7 @@ function ProfileTab({
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
   onDone(): void;
 }) {
+  const [identityEditing, setIdentityEditing] = useState(false);
   const cachedDraftAvatar = useCachedMediaUrl(draft.avatar);
   const cachedDraftCover = useCachedMediaUrl(draft.cover);
   const [deletePassword, setDeletePassword] = useState('');
@@ -884,18 +886,65 @@ function ProfileTab({
                 <small>{t('ПРОФИЛЬ')}</small>
                 <h3>{t('Внешний вид и имя')}</h3>
               </span>
+              <button
+                type="button"
+                className="secondary compact profile-identity-edit"
+                aria-label={t('Редактировать профиль')}
+                aria-expanded={identityEditing}
+                aria-controls="profile-identity-fields"
+                onClick={() => setIdentityEditing((current) => !current)}
+              >
+                <Edit3 size={17} />
+              </button>
             </header>
             <div className="profile-media-editor">
-              <div
-                className="profile-media-cover"
-                style={
-                  cachedDraftCover ? { backgroundImage: `url(${cachedDraftCover})` } : undefined
-                }
-              >
-                <div className="profile-media-cover-actions">
-                  <label className="secondary compact profile-file-button">
+              <div className="profile-media-identity">
+                <div
+                  className="profile-media-cover"
+                  style={
+                    cachedDraftCover ? { backgroundImage: `url(${cachedDraftCover})` } : undefined
+                  }
+                >
+                  <div className="profile-media-cover-actions">
+                    <label className="secondary compact profile-file-button">
+                      <ImagePlus />
+                      {draft.cover ? t('Заменить обложку') : t('Добавить обложку')}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.currentTarget.value = '';
+                          if (!file) return;
+                          onDraftError('');
+                          void prepareCover(file)
+                            .then((cover) => onDraft({ cover }))
+                            .catch((caught) =>
+                              onDraftError(
+                                caught instanceof Error
+                                  ? caught.message
+                                  : 'Не удалось обработать обложку.',
+                              ),
+                            );
+                        }}
+                      />
+                    </label>
+                    {draft.cover ? (
+                      <button className="secondary compact" onClick={() => onDraft({ cover: '' })}>
+                        <Trash2 />
+                        {t('Удалить')}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="profile-media-avatar">
+                  {cachedDraftAvatar ? (
+                    <img src={cachedDraftAvatar} alt={t('Предпросмотр аватара')} />
+                  ) : (
+                    <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
+                  )}
+                  <label className="profile-avatar-overlay" aria-label={t('Изменить аватар')}>
                     <ImagePlus />
-                    {draft.cover ? t('Заменить обложку') : t('Добавить обложку')}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -904,119 +953,96 @@ function ProfileTab({
                         event.currentTarget.value = '';
                         if (!file) return;
                         onDraftError('');
-                        void prepareCover(file)
-                          .then((cover) => onDraft({ cover }))
+                        void prepareAvatar(file)
+                          .then((avatar) => onDraft({ avatar }))
                           .catch((caught) =>
                             onDraftError(
                               caught instanceof Error
                                 ? caught.message
-                                : 'Не удалось обработать обложку.',
+                                : 'Не удалось обработать фото.',
                             ),
                           );
                       }}
                     />
                   </label>
-                  {draft.cover ? (
-                    <button className="secondary compact" onClick={() => onDraft({ cover: '' })}>
-                      <Trash2 />
-                      {t('Удалить')}
+                </div>
+                <div className="profile-media-caption">
+                  <strong>{draft.displayName.trim() || t('Ваше имя')}</strong>
+                  <small>{draft.username ? `@${draft.username}` : t('Добавьте username')}</small>
+                  {draft.avatar ? (
+                    <button
+                      type="button"
+                      className="profile-remove-avatar"
+                      onClick={() => onDraft({ avatar: '' })}
+                    >
+                      <Trash2 size={15} aria-hidden="true" /> {t('Удалить аватар')}
                     </button>
                   ) : null}
                 </div>
               </div>
-              <div className="profile-media-avatar">
-                {cachedDraftAvatar ? (
-                  <img src={cachedDraftAvatar} alt={t('Предпросмотр аватара')} />
-                ) : (
-                  <span>{draft.displayName.trim().charAt(0).toUpperCase() || '?'}</span>
-                )}
-                <label className="profile-avatar-overlay" aria-label={t('Изменить аватар')}>
-                  <ImagePlus />
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.currentTarget.value = '';
-                      if (!file) return;
-                      onDraftError('');
-                      void prepareAvatar(file)
-                        .then((avatar) => onDraft({ avatar }))
-                        .catch((caught) =>
-                          onDraftError(
-                            caught instanceof Error
-                              ? caught.message
-                              : 'Не удалось обработать фото.',
-                          ),
-                        );
-                    }}
-                  />
-                </label>
+              <section className="profile-identity-bio">
+                <h4>{t('О себе')}</h4>
+                <p>{draft.bio || t('Описание не добавлено.')}</p>
+              </section>
+            </div>
+            {identityEditing && (
+              <div id="profile-identity-fields" className="profile-identity-fields">
+                <p className="profile-media-help">
+                  {t(
+                    'Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, Trlka подготовит изображение 1800×700.',
+                  )}
+                </p>
+                <div className="profile-fields-grid">
+                  <label className="field-label">
+                    {t('Отображаемое имя')}
+                    <input
+                      maxLength={32}
+                      value={draft.displayName}
+                      placeholder={t('Ваше имя')}
+                      onChange={(event) => onDraft({ displayName: event.target.value })}
+                    />
+                    <small>{draft.displayName.length}/32</small>
+                  </label>
+                  <label className="field-label">
+                    {t('Уникальный @username')}
+                    <input
+                      minLength={USERNAME_MIN_LENGTH}
+                      maxLength={USERNAME_MAX_LENGTH}
+                      pattern="[a-z0-9_]{5,24}"
+                      aria-invalid={!usernameValid}
+                      value={draft.username}
+                      onChange={(event) =>
+                        onDraft({ username: normalizeUsername(event.target.value) })
+                      }
+                    />
+                    <small>
+                      {t('5–24 символа: латиница, цифры и _. Изменение раз в 30 дней.')}
+                    </small>
+                  </label>
+                  <label className="field-label profile-bio-field">
+                    {t('О себе')}
+                    <textarea
+                      value={draft.bio}
+                      maxLength={200}
+                      rows={4}
+                      placeholder={t('Несколько слов о себе')}
+                      onChange={(event) => onDraft({ bio: event.target.value })}
+                    />
+                    <small>{draft.bio.length}/200</small>
+                  </label>
+                </div>
+                <div className="profile-limit">
+                  <span>
+                    {remaining > 0
+                      ? t('Осталось изменений: {p0} из 5', { p0: remaining })
+                      : t('Лимит изменений исчерпан')}
+                  </span>
+                  <small>
+                    {t('Имя и аватар вместе можно сохранять не более пяти раз за пять часов.')}
+                  </small>
+                </div>
               </div>
-              <div className="profile-media-caption">
-                <strong>{draft.displayName.trim() || 'Ваше имя'}</strong>
-                <small>{draft.username ? `@${draft.username}` : t('Добавьте username')}</small>
-                {draft.avatar ? (
-                  <button
-                    type="button"
-                    className="profile-remove-avatar"
-                    onClick={() => onDraft({ avatar: '' })}
-                  >
-                    <Trash2 size={15} aria-hidden="true" /> {t('Удалить аватар')}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <p className="profile-media-help">
-              {t(
-                'Аватар: JPEG, PNG или WebP до 25 МБ, до 768×768. Обложка: до 25 МБ, Trlka подготовит изображение 1800×700.',
-              )}
-            </p>
-            <div className="profile-fields-grid">
-              <label className="field-label">
-                {t('Отображаемое имя')}
-                <input
-                  maxLength={32}
-                  value={draft.displayName}
-                  placeholder={t('Ваше имя')}
-                  onChange={(event) => onDraft({ displayName: event.target.value })}
-                />
-                <small>{draft.displayName.length}/32</small>
-              </label>
-              <label className="field-label">
-                {t('Уникальный @username')}
-                <input
-                  minLength={USERNAME_MIN_LENGTH}
-                  maxLength={USERNAME_MAX_LENGTH}
-                  pattern="[a-z0-9_]{5,24}"
-                  aria-invalid={!usernameValid}
-                  value={draft.username}
-                  onChange={(event) => onDraft({ username: normalizeUsername(event.target.value) })}
-                />
-                <small>{t('5–24 символа: латиница, цифры и _. Изменение раз в 30 дней.')}</small>
-              </label>
-              <label className="field-label profile-bio-field">
-                {t('О себе')}
-                <textarea
-                  value={draft.bio}
-                  maxLength={200}
-                  rows={4}
-                  placeholder={t('Несколько слов о себе')}
-                  onChange={(event) => onDraft({ bio: event.target.value })}
-                />
-                <small>{draft.bio.length}/200</small>
-              </label>
-            </div>
-            <div className="profile-limit">
-              <span>
-                {remaining > 0
-                  ? t('Осталось изменений: {p0} из 5', { p0: remaining })
-                  : t('Лимит изменений исчерпан')}
-              </span>
-              <small>
-                {t('Имя и аватар вместе можно сохранять не более пяти раз за пять часов.')}
-              </small>
-            </div>
+            )}
           </section>
 
           <CallCardDesigner
@@ -2287,7 +2313,7 @@ function ChatsSettingsTab({
           <div className="message-bubble-stack">
             <div className="message-bubble text-message-bubble">
               <strong className="message-author compact-message-author">{name}</strong>
-              <p>{text}</p>
+              <p>{t(text)}</p>
               <span className="message-meta">
                 <time dateTime={time}>{time}</time>
               </span>

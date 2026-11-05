@@ -89,6 +89,7 @@ describe('VideoManager', () => {
     vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
     const stopped = vi.fn(async () => undefined);
     vi.mocked(startNativeWindowsScreen).mockImplementation(async () => ({
+      includeAudio: true,
       stream: new FakeStream([new FakeTrack(), new FakeTrack('audio')]) as unknown as MediaStream,
       stop: stopped,
     }));
@@ -104,6 +105,35 @@ describe('VideoManager', () => {
     }
     expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
   });
+
+  it.each([false, true])(
+    'uses the actual picker audio choice (%s), even when it differs from the saved preference',
+    async (includeAudio) => {
+      vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
+      const audioTrack = new FakeTrack('audio');
+      const stream = new FakeStream([new FakeTrack(), audioTrack]) as unknown as MediaStream;
+      vi.mocked(startNativeWindowsScreen).mockResolvedValue({
+        includeAudio,
+        stream,
+        stop: vi.fn(async () => undefined),
+      });
+      const notice = vi.fn();
+      const onState = vi.fn();
+      const manager = new VideoManager(
+        vi.fn(async () => undefined),
+        onState,
+        vi.fn(),
+        notice,
+      );
+      await manager.toggleScreen(!includeAudio);
+      expect(onState).toHaveBeenLastCalledWith(
+        expect.objectContaining({ screenAudioEnabled: includeAudio }),
+      );
+      expect(audioTrack.stop).toHaveBeenCalledTimes(includeAudio ? 0 : 1);
+      expect(notice).not.toHaveBeenCalled();
+      manager.dispose();
+    },
+  );
 
   it('stops native Windows capture when the call closes during startup', async () => {
     vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
@@ -122,7 +152,11 @@ describe('VideoManager', () => {
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
     manager.dispose();
     const stop = vi.fn(async () => undefined);
-    finish({ stream: new FakeStream([new FakeTrack()]) as unknown as MediaStream, stop });
+    finish({
+      includeAudio: true,
+      stream: new FakeStream([new FakeTrack()]) as unknown as MediaStream,
+      stop,
+    });
     await starting;
     expect(stop).toHaveBeenCalledOnce();
     expect(manager.getCurrent().source).toBe('none');

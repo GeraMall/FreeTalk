@@ -1,0 +1,119 @@
+[
+  {
+    "id": "yandex",
+    "region": "RU",
+    "name": "Яндекс Еда",
+    "url": "https://eda.yandex.ru/",
+    "mark": "Я",
+    "tone": "yandex",
+    "hosts": ["eda.yandex.ru", "eda.yandex", "passport.yandex.ru", "id.yandex.ru"]
+  },
+  {
+    "id": "kuper",
+    "region": "RU",
+    "name": "Купер",
+    "url": "https://kuper.ru/",
+    "mark": "К",
+    "tone": "kuper",
+    "hosts": ["kuper.ru", "www.kuper.ru"]
+  },
+  {
+    "id": "samokat",
+    "region": "RU",
+    "name": "Самокат",
+    "url": "https://samokat.ru/",
+    "mark": "С",
+    "tone": "samokat",
+    "hosts": ["samokat.ru", "www.samokat.ru"]
+  },
+  {
+    "id": "dodo-ru",
+    "region": "RU",
+    "name": "Додо Пицца",
+    "url": "https://dodopizza.ru/",
+    "mark": "Д",
+    "tone": "dodo",
+    "hosts": ["dodopizza.ru", "www.dodopizza.ru", "auth.dodopizza.ru", "personal.dodopizza.ru"]
+  },
+  {
+    "id": "papa-johns-ru",
+    "region": "RU",
+    "name": "Папа Джонс",
+    "url": "https://papajohns.ru/",
+    "mark": "PJ",
+    "tone": "papa-johns",
+    "hosts": ["papajohns.ru", "www.papajohns.ru"]
+  },
+  {
+    "id": "wolt",
+    "region": "KZ",
+    "name": "Wolt",
+    "url": "https://wolt.com/ru/kaz",
+    "mark": "W",
+    "tone": "wolt",
+    "hosts": ["wolt.com", "www.wolt.com"]
+  },
+  {
+    "id": "glovo",
+    "region": "KZ",
+    "name": "Glovo",
+    "url": "https://glovoapp.com/ru/kz",
+    "mark": "G",
+    "tone": "glovo",
+    "hosts": ["glovoapp.com", "www.glovoapp.com"]
+  },
+  {
+    "id": "dodo-kz",
+    "region": "KZ",
+    "name": "Додо Пицца",
+    "url": "https://dodopizza.kz/",
+    "mark": "Д",
+    "tone": "dodo",
+    "hosts": ["dodopizza.kz", "www.dodopizza.kz", "auth.dodopizza.kz", "personal.dodopizza.kz"]
+  },
+  {
+    "id": "papa-johns-kz",
+    "region": "KZ",
+    "name": "Papa Johns",
+    "url": "https://www.papajohns.kz/ru/home",
+    "mark": "PJ",
+    "tone": "papa-johns",
+    "hosts": ["papajohns.kz", "www.papajohns.kz", "order.papajohns.kz"]
+  },
+  {
+    "id": "deliveroo-gb",
+    "region": "GB",
+    "name": "Deliveroo",
+    "url": "https://deliveroo.co.uk/",
+    "mark": "D",
+    "tone": "deliveroo",
+    "hosts": ["deliveroo.co.uk", "www.deliveroo.co.uk"]
+  },
+  {
+    "id": "just-eat-gb",
+    "region": "GB",
+    "name": "Just Eat",
+    "url": "https://www.just-eat.co.uk/",
+    "mark": "JE",
+    "tone": "just-eat",
+    "hosts": ["just-eat.co.uk", "www.just-eat.co.uk"]
+  },
+  {
+    "id": "uber-eats-gb",
+    "region": "GB",
+    "name": "Uber Eats",
+    "url": "https://www.ubereats.com/gb",
+    "mark": "UE",
+    "tone": "uber-eats",
+    "hosts": ["ubereats.com", "www.ubereats.com", "auth.uber.com"]
+  },
+  {
+    "id": "dominos-gb",
+    "region": "GB",
+    "name": "Domino’s",
+    "url": "https://www.dominos.co.uk/",
+    "mark": "D",
+    "tone": "dominos",
+    "hosts": ["dominos.co.uk", "www.dominos.co.uk"]
+  }
+]

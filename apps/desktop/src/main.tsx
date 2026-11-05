@@ -12,14 +12,16 @@ import { CustomTitleBar } from './components/CustomTitleBar';
 import { NotificationOverlay } from './components/NotificationOverlay';
 import { installInteractionGuards } from './lib/interaction-guards';
 import { installMobileViewport } from './lib/mobile-viewport';
-import { usesCustomWindowChrome } from './lib/window-chrome';
+import { usesCustomWindowChrome, usesMacDesktop } from './lib/window-chrome';
 import './styles.css';
 import './profile-panel.css';
 import './gif-library.css';
 import './theme-steel.css';
 import './chat-theme.css';
+import './control-motion.css';
 
 document.documentElement.lang = appLanguage();
+document.documentElement.classList.toggle('mac-desktop-app', usesMacDesktop());
 installInteractionGuards();
 installMobileViewport();
 
@@ -43,6 +45,7 @@ const callPlaceholder =
   new URLSearchParams(window.location.search).has('call-placeholder');
 if (notificationOverlay) document.documentElement.classList.add('notification-overlay-document');
 const passkeyChallenge = new URLSearchParams(location.hash.slice(1)).get('passkey');
+const customWindowChrome = usesCustomWindowChrome();
 const content =
   passkeyChallenge && /^[A-Za-z0-9_-]{43}$/.test(passkeyChallenge) ? (
     <PasskeyDesktopApproval challenge={passkeyChallenge} />
@@ -57,8 +60,6 @@ const content =
       <App />
     </BrowserPlatformGate>
   );
-const customWindowChrome = usesCustomWindowChrome();
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NativeScreenSourcePicker />

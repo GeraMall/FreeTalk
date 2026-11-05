@@ -17,6 +17,36 @@ const room = 'ABCDEFGH2345';
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 
 describe('RoomManager', () => {
+  it('broadcasts headphone state and keeps it in late-join and reconnect snapshots', () => {
+    const manager = new RoomManager();
+    const first = new FakeConnection();
+    const second = new FakeConnection();
+    manager.create(room, id(1), 'session-123456789', 'One', first);
+    manager.join(room, id(2), 'session-223456789', 'Two', second);
+    manager.setMuted(room, id(1), false, true);
+    expect(second.messages.at(-1)).toEqual({
+      type: 'mute-changed',
+      participantId: id(1),
+      muted: true,
+      deafened: true,
+    });
+    const late = new FakeConnection();
+    manager.join(room, id(3), 'session-323456789', 'Three', late);
+    const joined = late.messages.find((message) => message.type === 'joined-room');
+    if (joined?.type !== 'joined-room') throw new Error('Missing snapshot');
+    expect(joined.participants.find((peer) => peer.id === id(1))).toMatchObject({
+      muted: true,
+      deafened: true,
+    });
+    const replacement = new FakeConnection();
+    expect(manager.join(room, id(1), 'session-123456789', 'One', replacement)).toMatchObject({
+      muted: true,
+      deafened: true,
+    });
+    manager.setMuted(room, id(1), false, false);
+    expect(second.messages.at(-1)).toMatchObject({ muted: false, deafened: false });
+  });
+
   it('does not replace an authenticated participant with a different account', () => {
     const manager = new RoomManager();
     const original = new FakeConnection();

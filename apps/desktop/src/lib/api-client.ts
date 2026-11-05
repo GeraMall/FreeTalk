@@ -44,6 +44,7 @@ export interface AccountUser {
   username: string;
   displayName: string;
   emailVerified: boolean;
+  canAccessStore?: boolean;
   avatarUrl: string | null;
   coverUrl?: string | null;
   bio?: string | null;
@@ -150,6 +151,7 @@ async function decode<T>(response: Response): Promise<T> {
 export class AccountClient {
   private accessToken?: string;
   private accessExpiresAt = 0;
+  private readonly chatHistoryRequests = new Map<string, Promise<unknown>>();
   user?: AccountUser;
 
   get authenticated() {
@@ -497,6 +499,29 @@ export class AccountClient {
     const response = await this.authenticatedFetch(`/v1/messages/${messageId}/file`);
     if (!response.ok) return decode<never>(response);
     return response.blob();
+  }
+
+  async chatHistory<T>(chatId: string): Promise<T> {
+    const path = `/v1/chats/${chatId}/messages`;
+    const userId = this.user?.id;
+    if (!userId) return this.request<T>(path);
+    const key = `${userId}:${chatId}`;
+    const pending = this.chatHistoryRequests.get(key);
+    if (pending) return pending as Promise<T>;
+    const request = (async () => {
+      let response = await this.authenticatedFetch(path);
+      if (response.status === 429) {
+        const retryAfter = Number(response.headers.get('retry-after')) || 10;
+        const delay = Math.min(60, Math.max(1, retryAfter)) * 1000;
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+        if (this.user?.id === userId) response = await this.authenticatedFetch(path);
+      }
+      return decode<T>(response);
+    })().finally(() => {
+      if (this.chatHistoryRequests.get(key) === request) this.chatHistoryRequests.delete(key);
+    });
+    this.chatHistoryRequests.set(key, request);
+    return request;
   }
 
   async gifBlob(assetId: string, variant: 'full' | 'thumbnail' = 'full') {

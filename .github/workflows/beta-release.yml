@@ -65,13 +65,12 @@ jobs:
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
   macos:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_macos == true }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.193' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - { target: aarch64-apple-darwin, runner: macos-26 }
-          - { target: x86_64-apple-darwin, runner: macos-26-intel }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -149,26 +148,18 @@ jobs:
 
           arm_file=$(find release-assets -name "Trlka_${version}_aarch64.app.tar.gz" -print -quit)
           intel_file=$(find release-assets -name "Trlka_${version}_x64.app.tar.gz" -print -quit)
-          if [[ -n "$arm_file" || -n "$intel_file" ]]; then
-            test -f "$arm_file"
+          if [[ -n "$arm_file" ]]; then
             test -f "$arm_file.sig"
-            test -f "$intel_file"
-            test -f "$intel_file.sig"
             platforms=$(jq -n \
               --argjson platforms "$platforms" \
               --arg arm_signature "$(cat "$arm_file.sig")" \
               --arg arm_url "$base_url/$(basename "$arm_file")" \
-              --arg intel_signature "$(cat "$intel_file.sig")" \
-              --arg intel_url "$base_url/$(basename "$intel_file")" \
-              '$platforms + {
-                "darwin-aarch64": { signature: $arm_signature, url: $arm_url },
-                "darwin-x86_64": { signature: $intel_signature, url: $intel_url }
-              }')
+              '$platforms + {"darwin-aarch64": {signature: $arm_signature, url: $arm_url}}')
           fi
 
           jq -n \
             --arg version "$version" \
-            --arg notes "TRLKA ${version}: вход по QR и ключу доступа, обновлённая регистрация и единая палитра настроек." \
+            --arg notes "TRLKA ${version}: call audio controls, screen sharing, translations and interface fixes." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{
@@ -179,6 +170,7 @@ jobs:
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
+          draft: ${{ github.ref_name == 'v0.4.0-beta.193' || github.ref_name == 'v0.4.0-beta.189' }}
           prerelease: false
           make_latest: true
           generate_release_notes: true

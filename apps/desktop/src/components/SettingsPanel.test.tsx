@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
+import { t } from '../lib/app-language';
 import { NotificationSounds } from '../lib/notification-sounds';
 import recordingStartSound from '../assets/recording-start.mp3';
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem('trlka.ui-language');
   vi.restoreAllMocks();
 });
 
@@ -99,6 +101,26 @@ function renderProfile(
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('shows the profile summary before revealing editable fields with the pencil', () => {
+    const { getByRole, queryByRole, container } = renderProfile();
+    expect(queryByRole('textbox', { name: /О себе/ })).toBeNull();
+    const pencil = getByRole('button', { name: 'Редактировать профиль' });
+    expect(pencil.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(pencil);
+    expect(getByRole('textbox', { name: /О себе/ })).toBeTruthy();
+    fireEvent.change(getByRole('textbox', { name: /О себе/ }), { target: { value: 'Мой текст' } });
+    fireEvent.click(pencil);
+    expect(
+      container.querySelector('.profile-media-editor .profile-identity-bio p')?.textContent,
+    ).toBe('Мой текст');
+    expect(container.querySelector('.profile-identity-bio h4')?.textContent).toBe('О себе');
+    expect(queryByRole('textbox', { name: /О себе/ })).toBeNull();
+    fireEvent.click(pencil);
+    expect((getByRole('textbox', { name: /О себе/ }) as HTMLTextAreaElement).value).toBe(
+      'Мой текст',
+    );
+  });
+
   it('previews actual event sounds and exposes microphone and ringtone settings', async () => {
     const joined = vi.spyOn(NotificationSounds.prototype, 'playJoined').mockResolvedValue();
     const disconnected = vi
@@ -150,12 +172,13 @@ describe('SettingsPanel profile actions', () => {
       renderProfile();
     const actionBar = container.querySelector('.profile-sticky-actions');
     expect(actionBar).toBeTruthy();
-    expect(getByText('Осталось изменений: 5 из 5')).toBeTruthy();
+    expect(container.querySelector('.profile-identity-fields')).toBeNull();
     expect(getByText('Не привязан')).toBeTruthy();
     expect(getByText('ge•••@example.com')).toBeTruthy();
     expect(container.querySelector('.profile-full-preview-frame')).toBeNull();
     expect(getAllByRole('button', { name: 'Готово' })).toHaveLength(1);
 
+    fireEvent.click(getByRole('button', { name: 'Редактировать профиль' }));
     fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
       target: { value: 'Новая информация' },
     });
@@ -173,6 +196,7 @@ describe('SettingsPanel profile actions', () => {
 
   it('asks what to do when closing with an unsaved profile draft', () => {
     const { getAllByRole, getByRole, onClose } = renderProfile();
+    fireEvent.click(getByRole('button', { name: 'Редактировать профиль' }));
     fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
       target: { value: 'Черновик' },
     });
@@ -188,6 +212,7 @@ describe('SettingsPanel profile actions', () => {
   it('keeps settings open and explains a failed profile save', async () => {
     const { getByRole, getByText, onClose, onSaveProfile } = renderProfile();
     onSaveProfile.mockRejectedValueOnce(new Error('Сервер временно недоступен'));
+    fireEvent.click(getByRole('button', { name: 'Редактировать профиль' }));
     fireEvent.change(getByRole('textbox', { name: /О себе/ }), {
       target: { value: 'Новая информация' },
     });
@@ -196,6 +221,30 @@ describe('SettingsPanel profile actions', () => {
     expect(await waitFor(() => getByText('Сервер временно недоступен'))).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it.each(['en', 'zh-CN', 'kk', 'be', 'ka', 'es'])(
+    'translates both chat previews in %s while keeping sample names unchanged',
+    (language) => {
+      localStorage.setItem('trlka.ui-language', language);
+      const { container, getByRole, getAllByText } = renderProfile();
+      fireEvent.click(getByRole('button', { name: t('Чаты') }));
+      expect(container.querySelectorAll('.chat-settings-preview')).toHaveLength(2);
+      const incoming = 'Привет! Как тебе оформление?';
+      const outgoing = 'Отлично, так намного удобнее.';
+      expect(t(incoming)).not.toBe(incoming);
+      expect(t(outgoing)).not.toBe(outgoing);
+      expect(getAllByText(t(incoming))).toHaveLength(2);
+      expect(getAllByText(t(outgoing))).toHaveLength(2);
+      expect(container.querySelector('.preview-composer')?.textContent).toBe(
+        t('Написать сообщение…'),
+      );
+      expect(
+        [...container.querySelectorAll('.compact-message-author')].map(
+          (element) => element.textContent,
+        ),
+      ).toEqual(['Макс', 'Алекс', 'Макс', 'Алекс']);
+    },
+  );
 
   it('provides local chat appearance controls with a live preview', () => {
     const { container, getByRole, getByText, onSetting } = renderProfile();

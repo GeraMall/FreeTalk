@@ -594,14 +594,14 @@ export function WelcomeScreen({
                   {openLegal && (
                     <section
                       className="legal-document-panel"
-                      aria-label={LEGAL_DOCUMENTS[openLegal].title}
+                      aria-label={t(LEGAL_DOCUMENTS[openLegal].title)}
                     >
                       <header>
                         <span>
                           <FileText size={17} />
                         </span>
                         <div>
-                          <strong>{LEGAL_DOCUMENTS[openLegal].title}</strong>
+                          <strong>{t(LEGAL_DOCUMENTS[openLegal].title)}</strong>
                           <small>{REGISTRATION_LEGAL_VERSION}</small>
                         </div>
                         <button
@@ -615,7 +615,7 @@ export function WelcomeScreen({
                       </header>
                       <div>
                         {LEGAL_DOCUMENTS[openLegal].paragraphs.map((paragraph) => (
-                          <p key={paragraph}>{paragraph}</p>
+                          <p key={t(paragraph)}>{t(paragraph)}</p>
                         ))}
                       </div>
                     </section>

@@ -70,6 +70,8 @@ function view(
   onScreenVolume = vi.fn(),
   handlers: {
     onMute?: () => void;
+    muted?: boolean;
+    deafened?: boolean;
     onCamera?: () => void;
     onInputDevice?: (deviceId: string) => void;
     onOutputDevice?: (deviceId: string) => void;
@@ -93,6 +95,7 @@ function view(
     onRecordingBannerClose?: () => void;
     viewerId?: string;
     participants?: Participant[];
+    reactions?: Array<{ id: string; participantId: string; reaction: '😂' }>;
     participantCardStyle?: 'classic' | 'avatar-glass';
     conversation?: boolean;
     conversationType?: 'direct' | 'group';
@@ -133,9 +136,10 @@ function view(
       }}
       remoteVideos={remoteVideos}
       videoBusy={false}
-      muted={false}
+      muted={handlers.muted ?? false}
+      deafened={handlers.deafened ?? false}
       roomStartedAt={handlers.roomStartedAt ?? Date.now() - 65_000}
-      reactions={[]}
+      reactions={handlers.reactions ?? []}
       roomChatMessages={handlers.roomChatMessages ?? []}
       screenFocusMode={handlers.screenFocusMode ?? false}
       signalingState={handlers.signalingState ?? 'connected'}
@@ -175,6 +179,51 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it('renders call reactions outside the clipped conversation pane and removes them on exit', () => {
+    const result = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        conversation: true,
+        reactions: [{ id: 'burst-1', participantId: peerId, reaction: '😂' }],
+      }),
+    );
+    const layer = document.body.querySelector('.reaction-burst-layer')!;
+    expect(layer.parentElement).toBe(document.body);
+    expect(result.container.contains(layer)).toBe(false);
+    expect(layer.textContent).toContain('😂Друг');
+    result.unmount();
+    expect(document.body.querySelector('.reaction-burst-layer')).toBeNull();
+  });
+
+  it('shows headphone and mic status to other participants and clears both after unmuting', () => {
+    const people = [{ ...participants[1]!, muted: true, deafened: true }];
+    const result = render(
+      view('none', {}, true, vi.fn(), vi.fn(), vi.fn(), { participants: people }),
+    );
+    expect(result.getByText('Микрофон выключен')).toBeTruthy();
+    expect(result.getByText('Наушники выключены')).toBeTruthy();
+    expect(result.queryByText('Говорит')).toBeNull();
+    result.rerender(
+      view('none', {}, true, vi.fn(), vi.fn(), vi.fn(), {
+        participants: [{ ...people[0]!, muted: false, deafened: false }],
+      }),
+    );
+    expect(result.queryByText('Микрофон выключен')).toBeNull();
+    expect(result.queryByText('Наушники выключены')).toBeNull();
+    expect(result.getByText('Говорит')).toBeTruthy();
+  });
+
+  it('reflects own headphone controls immediately before the server echoes them', () => {
+    const result = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        participants: [participants[0]!],
+        muted: true,
+        deafened: true,
+      }),
+    );
+    expect(result.getByText('Наушники выключены')).toBeTruthy();
+    expect(result.getByText('Микрофон выключен')).toBeTruthy();
+  });
+
   it('does not subscribe to native window events in a browser', () => {
     render(view());
     expect(listenMock).not.toHaveBeenCalled();
@@ -474,11 +523,13 @@ describe('RoomView media layouts', () => {
     }
   });
 
-  it('starts with call controls hidden and reveals them on pointer movement', () => {
+  it('shows call controls on entry and reveals them again on pointer movement', () => {
     vi.useFakeTimers();
     try {
       const { container } = render(view());
       const room = container.querySelector<HTMLElement>('.room-shell');
+      expect(room?.classList.contains('call-controls-visible')).toBe(true);
+      act(() => vi.advanceTimersByTime(3500));
       expect(room?.classList.contains('call-controls-visible')).toBe(false);
 
       fireEvent.pointerMove(room!);
@@ -701,6 +752,40 @@ describe('RoomView media layouts', () => {
     expect(getByLabelText(/Длительность звонка 20:0[01]/)).not.toBeNull();
   });
 
+  it('portals camera preview over the complete workspace while keeping the sidebar outside', async () => {
+    const rect = { left: 260, top: 30, width: 900, height: 700 } as DOMRect;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const result = render(
+      <main>
+        <aside>Navigation</aside>
+        <section className="account-room-workspace">
+          {view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+            embedded: true,
+            conversation: true,
+            conversationHidden: true,
+          })}
+        </section>
+      </main>,
+    );
+    const workspace = result.container.querySelector('.account-room-workspace')!;
+    vi.spyOn(workspace, 'getBoundingClientRect').mockReturnValue(rect);
+    fireEvent.click(result.getByRole('button', { name: 'Включить камеру' }));
+    const dialog = result.getByRole('dialog', { name: 'Готовы к видеочату?' });
+    expect(result.container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+    expect(dialog.parentElement?.style.left).toBe('260px');
+    expect(dialog.parentElement?.style.width).toBe('900px');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(result.queryByRole('dialog', { name: 'Готовы к видеочату?' })).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it('keeps all existing call-control handlers wired through camera preview', async () => {
     const handlers = {
       onMute: vi.fn(),
@@ -732,6 +817,7 @@ describe('RoomView media layouts', () => {
     expect(labels).toEqual([
       'Микрофон',
       'Камера',
+      'Активность',
       'Ещё',
       'Экран',
       'Запись',
@@ -751,6 +837,14 @@ describe('RoomView media layouts', () => {
     expect(container.querySelector('.voice-dock')?.classList.contains('mobile-actions-open')).toBe(
       false,
     );
+  });
+
+  it('shows Activity on entry and only shows a hint for locked accounts', () => {
+    const { container, getByText } = render(view());
+    const dock = container.querySelector('.voice-dock')!;
+    expect(dock.closest('.room-shell')?.classList.contains('call-controls-visible')).toBe(true);
+    fireEvent.click(dock.querySelector('.activity-control-desktop')!);
+    expect(getByText('Скоро').getAttribute('role')).toBe('status');
   });
 
   it('opens the ephemeral room chat and sends a message', () => {
@@ -902,6 +996,30 @@ describe('RoomView media layouts', () => {
     const stageShell = getByLabelText('Экран Друг').closest('.screen-stage-shell');
     expect(stageShell?.classList.contains('media-fullscreen-shell')).toBe(true);
     expect(stageShell?.classList.contains('media-workspace-fullscreen-shell')).toBe(false);
+  });
+
+  it('keeps the share visible before the stage is measured and exposes playback recovery', () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const { container, getByRole } = render(view('screen'));
+      const stage = container.querySelector<HTMLElement>('.screen-stage-shell')!;
+      const video = stage.querySelector('video')!;
+      expect(stage.style.width).toBe('');
+      expect(stage.style.height).toBe('');
+      expect(stage.querySelector('.screen-stage-waiting')).not.toBeNull();
+      fireEvent.error(video);
+      expect(getByRole('button', { name: 'Повторить подключение' })).not.toBeNull();
+      fireEvent.playing(video);
+      expect(stage.querySelector('.screen-stage-waiting')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('shows screen as the stage and keeps the camera in the participant strip', () => {

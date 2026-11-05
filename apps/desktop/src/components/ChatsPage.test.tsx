@@ -280,6 +280,39 @@ describe('MessageList scrolling', () => {
 });
 
 describe('MessageList rendering', () => {
+  it('shows a neutral in-call state only for the joined call and restores join on leaving', () => {
+    const call: MessageItem = {
+      ...message('3', 'friend', 'Алексей начал звонок'),
+      kind: 'call',
+      metadata: { roomId: 'ROOM12345678' },
+    };
+    const onJoinCall = vi.fn();
+    const renderList = (joinedRoomId?: string) => (
+      <MessageList
+        chatId="chat-a"
+        userId="self"
+        joinedRoomId={joinedRoomId}
+        groupChat={false}
+        messages={[call]}
+        loading={false}
+        error=""
+        sentMessageVersion={0}
+        onRetry={vi.fn()}
+        onJoinCall={onJoinCall}
+      />
+    );
+    const result = render(renderList('ROOM12345678'));
+    expect(result.getByText('Вы в звонке')).toBeTruthy();
+    expect(result.container.querySelector('.system-call-message.joined')).toBeTruthy();
+    expect(result.queryByRole('button', { name: 'Присоединиться' })).toBeNull();
+    result.rerender(renderList('OTHER-ROOM'));
+    expect(result.queryByText('Вы в звонке')).toBeNull();
+    fireEvent.click(result.getByRole('button', { name: 'Присоединиться' }));
+    expect(onJoinCall).toHaveBeenCalledWith('ROOM12345678');
+    result.rerender(renderList());
+    expect(result.getByRole('button', { name: 'Присоединиться' })).toBeTruthy();
+  });
+
   it('renders message bubbles, date separators and call cards', () => {
     const onJoinCall = vi.fn();
     const call: MessageItem = {
@@ -605,52 +638,59 @@ describe('Chat retention controls', () => {
     currentUserRole: 'owner',
   };
 
-  it('uses the active call toolbar for pins, participant details and message search', () => {
-    const toolbar = document.createElement('div');
-    const revealChat = vi.fn();
-    const pinned = { ...message('1', 'self', 'План встречи'), pinned_at: '2026-08-26T10:00:00Z' };
-    const screen = render(
-      <ChatsPage
-        userId="self"
-        chats={[ownerChat]}
-        friends={[]}
-        activeChatId="chat-a"
-        joinedChatId="chat-a"
-        callToolbarTarget={toolbar}
-        onRevealCallChat={revealChat}
-        messages={[pinned]}
-        chatsLoading={false}
-        messagesLoading={false}
-        messagesError=""
-        sentMessageVersion={0}
-        onOpenChat={vi.fn(async () => undefined)}
-        onRetryMessages={vi.fn()}
-        onSendMessage={vi.fn(async () => true)}
-        onCreateGroup={vi.fn(async () => true)}
-        onJoinInvite={vi.fn(async () => true)}
-        onStartCall={vi.fn(async () => undefined)}
-        onCreateInvite={vi.fn(async () => undefined)}
-        onUpdateRetention={vi.fn(async () => undefined)}
-        onClearHistory={vi.fn(async () => undefined)}
-        onAddMember={vi.fn(async () => true)}
-        onJoinCall={vi.fn()}
-      />,
-    );
-    const actions = within(toolbar);
-    const pin = actions.getByRole('button', { name: 'Закреплённые сообщения' });
-    expect(pin.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(pin);
-    expect(pin.getAttribute('aria-pressed')).toBe('false');
+  it.each(['direct', 'group'] as const)(
+    'uses the active %s call toolbar and enables participant details only for groups',
+    (type) => {
+      const toolbar = document.createElement('div');
+      const revealChat = vi.fn();
+      const pinned = { ...message('1', 'self', 'План встречи'), pinned_at: '2026-08-26T10:00:00Z' };
+      const screen = render(
+        <ChatsPage
+          userId="self"
+          chats={[{ ...ownerChat, type }]}
+          friends={[]}
+          activeChatId="chat-a"
+          joinedChatId="chat-a"
+          callToolbarTarget={toolbar}
+          onRevealCallChat={revealChat}
+          messages={[pinned]}
+          chatsLoading={false}
+          messagesLoading={false}
+          messagesError=""
+          sentMessageVersion={0}
+          onOpenChat={vi.fn(async () => undefined)}
+          onRetryMessages={vi.fn()}
+          onSendMessage={vi.fn(async () => true)}
+          onCreateGroup={vi.fn(async () => true)}
+          onJoinInvite={vi.fn(async () => true)}
+          onStartCall={vi.fn(async () => undefined)}
+          onCreateInvite={vi.fn(async () => undefined)}
+          onUpdateRetention={vi.fn(async () => undefined)}
+          onClearHistory={vi.fn(async () => undefined)}
+          onAddMember={vi.fn(async () => true)}
+          onJoinCall={vi.fn()}
+        />,
+      );
+      const actions = within(toolbar);
+      const pin = actions.getByRole('button', { name: 'Закреплённые сообщения' });
+      expect(pin.getAttribute('aria-pressed')).toBe('true');
+      fireEvent.click(pin);
+      expect(pin.getAttribute('aria-pressed')).toBe('false');
 
-    fireEvent.click(actions.getByRole('button', { name: 'Показать профиль' }));
-    expect(screen.container.querySelector('.group-members-panel')).toBeTruthy();
+      const details = actions.getByRole('button', { name: 'Показать профиль' });
+      expect((details as HTMLButtonElement).disabled).toBe(type === 'direct');
+      fireEvent.click(details);
+      expect(Boolean(screen.container.querySelector('.group-members-panel'))).toBe(
+        type === 'group',
+      );
 
-    const search = actions.getByRole('textbox');
-    fireEvent.focus(search);
-    fireEvent.change(search, { target: { value: 'встречи' } });
-    expect(actions.getByText('1/1')).toBeTruthy();
-    expect(revealChat).toHaveBeenCalledTimes(3);
-  });
+      const search = actions.getByRole('textbox');
+      fireEvent.focus(search);
+      fireEvent.change(search, { target: { value: 'встречи' } });
+      expect(actions.getByText('1/1')).toBeTruthy();
+      expect(revealChat).toHaveBeenCalledTimes(type === 'group' ? 3 : 2);
+    },
+  );
 
   it('lets the owner change retention and requires confirmation before clearing', async () => {
     const onUpdateRetention = vi.fn(async () => undefined);

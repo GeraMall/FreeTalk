@@ -1,0 +1,650 @@
+{
+  "Предыдущий статус": {
+    "en": "Previous status",
+    "zh-CN": "上一个状态",
+    "kk": "Алдыңғы күй",
+    "be": "Папярэдні статус",
+    "ka": "წინა სტატუსი",
+    "es": "Estado anterior"
+  },
+  "Следующий статус": {
+    "en": "Next status",
+    "zh-CN": "下一个状态",
+    "kk": "Келесі күй",
+    "be": "Наступны статус",
+    "ka": "შემდეგი სტატუსი",
+    "es": "Estado siguiente"
+  },
+  "Показывать, что вы отошли": {
+    "en": "Show that you are away",
+    "zh-CN": "显示为离开",
+    "kk": "Кеткеніңізді көрсету",
+    "be": "Паказваць, што вы адышлі",
+    "ka": "აჩვენეთ, რომ გასული ხართ",
+    "es": "Mostrar que estás ausente"
+  },
+  "Показывать статус «Не беспокоить»": {
+    "en": "Show Do Not Disturb status",
+    "zh-CN": "显示为请勿打扰",
+    "kk": "«Мазаламаңыз» күйін көрсету",
+    "be": "Паказваць статус «Не турбаваць»",
+    "ka": "სტატუსი „არ შემაწუხოთ“",
+    "es": "Mostrar No molestar"
+  },
+  "Другие всегда видят вас не в сети": {
+    "en": "Others always see you as offline",
+    "zh-CN": "其他人始终看到您离线",
+    "kk": "Басқалар сізді әрдайым желіден тыс көреді",
+    "be": "Іншыя заўсёды бачаць вас па-за сеткай",
+    "ka": "სხვები ყოველთვის ხაზგარეშე გხედავენ",
+    "es": "Los demás siempre te ven desconectado"
+  },
+  "Автоматически: нет речи и действий 5 минут": {
+    "en": "Automatic: no speech or activity for 5 minutes",
+    "zh-CN": "自动：5 分钟未说话或操作",
+    "kk": "Автоматты: 5 минут сөйлемегенде және әрекет болмағанда",
+    "be": "Аўтаматычна: 5 хвілін без размовы і дзеянняў",
+    "ka": "ავტომატურად: 5 წუთი საუბრისა და მოქმედების გარეშე",
+    "es": "Automático: 5 minutos sin hablar ni actividad"
+  },
+  "БОТ": {
+    "en": "BOT",
+    "zh-CN": "机器人",
+    "kk": "БОТ",
+    "be": "БОТ",
+    "ka": "ბოტი",
+    "es": "BOT"
+  },
+  "Вы в звонке": {
+    "en": "You are in this call",
+    "zh-CN": "您正在此通话中",
+    "kk": "Сіз осы қоңыраудасыз",
+    "be": "Вы ў гэтым званку",
+    "ka": "ამ ზარში ხართ",
+    "es": "Estás en esta llamada"
+  },
+  "Экран {number}": {
+    "en": "Screen {number}",
+    "zh-CN": "屏幕 {number}",
+    "kk": "Экран {number}",
+    "be": "Экран {number}",
+    "ka": "ეკრანი {number}",
+    "es": "Pantalla {number}"
+  },
+  "Это ваш профиль": {
+    "en": "This is your profile",
+    "zh-CN": "这是您的个人资料",
+    "kk": "Бұл сіздің профиліңіз",
+    "be": "Гэта ваш профіль",
+    "ka": "ეს თქვენი პროფილია",
+    "es": "Este es tu perfil"
+  },
+  "У вас в друзьях": {
+    "en": "Your friend",
+    "zh-CN": "您的好友",
+    "kk": "Сіздің досыңыз",
+    "be": "Ваш сябар",
+    "ka": "თქვენი მეგობარი",
+    "es": "Tu amigo"
+  },
+  "Отправил вам запрос в друзья": {
+    "en": "Sent you a friend request",
+    "zh-CN": "已向您发送好友请求",
+    "kk": "Сізге достық сұрауын жіберді",
+    "be": "Даслаў вам запыт у сябры",
+    "ka": "მეგობრობის მოთხოვნა გამოგიგზავნათ",
+    "es": "Te envió una solicitud de amistad"
+  },
+  "Запрос в друзья отправлен": {
+    "en": "Friend request sent",
+    "zh-CN": "好友请求已发送",
+    "kk": "Достық сұрауы жіберілді",
+    "be": "Запыт у сябры дасланы",
+    "ka": "მეგობრობის მოთხოვნა გაგზავნილია",
+    "es": "Solicitud de amistad enviada"
+  },
+  "Вы ещё не друзья": {
+    "en": "You are not friends yet",
+    "zh-CN": "你们还不是好友",
+    "kk": "Сіздер әлі дос емессіздер",
+    "be": "Вы пакуль не сябры",
+    "ka": "ჯერ მეგობრები არ ხართ",
+    "es": "Aún no sois amigos"
+  },
+  "Связь обновляется…": {
+    "en": "Updating relationship…",
+    "zh-CN": "正在更新关系…",
+    "kk": "Байланыс жаңартылуда…",
+    "be": "Сувязь абнаўляецца…",
+    "ka": "კავშირი ახლდება…",
+    "es": "Actualizando relación…"
+  },
+  "Твои": {
+    "en": "Yours",
+    "zh-CN": "您的",
+    "kk": "Сіздікі",
+    "be": "Твае",
+    "ka": "თქვენი",
+    "es": "Tuyos"
+  },
+  "Общие": {
+    "en": "Mutual",
+    "zh-CN": "共同",
+    "kk": "Ортақ",
+    "be": "Агульныя",
+    "ka": "საერთო",
+    "es": "En común"
+  },
+  "Твой чат": {
+    "en": "Your chat",
+    "zh-CN": "您的聊天",
+    "kk": "Сіздің чатыңыз",
+    "be": "Твой чат",
+    "ka": "თქვენი ჩატი",
+    "es": "Tu chat"
+  },
+  "Общий чат": {
+    "en": "Shared chat",
+    "zh-CN": "共同聊天",
+    "kk": "Ортақ чат",
+    "be": "Агульны чат",
+    "ka": "საერთო ჩატი",
+    "es": "Chat compartido"
+  },
+  "Последний звонок с вами": {
+    "en": "Last call with you",
+    "zh-CN": "与您的最近一次通话",
+    "kk": "Сізбен соңғы қоңырау",
+    "be": "Апошні званок з вамі",
+    "ka": "ბოლო ზარი თქვენთან",
+    "es": "Última llamada contigo"
+  },
+  "Текущий статус в Trlka": {
+    "en": "Current status in TRLKA",
+    "zh-CN": "TRLKA 当前状态",
+    "kk": "TRLKA-дағы қазіргі күй",
+    "be": "Бягучы статус у TRLKA",
+    "ka": "მიმდინარე სტატუსი TRLKA-ში",
+    "es": "Estado actual en TRLKA"
+  },
+  "Сегодня, {time}": {
+    "en": "Today, {time}",
+    "zh-CN": "今天，{time}",
+    "kk": "Бүгін, {time}",
+    "be": "Сёння, {time}",
+    "ka": "დღეს, {time}",
+    "es": "Hoy, {time}"
+  },
+  "{hours} ч {minutes} мин": {
+    "en": "{hours} h {minutes} min",
+    "zh-CN": "{hours} 小时 {minutes} 分钟",
+    "kk": "{hours} сағ {minutes} мин",
+    "be": "{hours} г {minutes} хв",
+    "ka": "{hours} სთ {minutes} წთ",
+    "es": "{hours} h {minutes} min"
+  },
+  "Пользователь пока ничего не добавил.": {
+    "en": "This user has not added anything yet.",
+    "zh-CN": "该用户尚未添加内容。",
+    "kk": "Пайдаланушы әлі ештеңе қоспады.",
+    "be": "Карыстальнік пакуль нічога не дадаў.",
+    "ka": "მომხმარებელს ჯერ არაფერი დაუმატებია.",
+    "es": "Este usuario aún no ha añadido nada."
+  },
+  "У тебя пока нет друзей.": {
+    "en": "You have no friends yet.",
+    "zh-CN": "您还没有好友。",
+    "kk": "Сізде әлі достар жоқ.",
+    "be": "У цябе пакуль няма сяброў.",
+    "ka": "ჯერ მეგობრები არ გყავთ.",
+    "es": "Aún no tienes amigos."
+  },
+  "Нет общих друзей.": {
+    "en": "No mutual friends.",
+    "zh-CN": "没有共同好友。",
+    "kk": "Ортақ достар жоқ.",
+    "be": "Няма агульных сяброў.",
+    "ka": "საერთო მეგობრები არ არიან.",
+    "es": "No hay amigos en común."
+  },
+  "У тебя пока нет чатов.": {
+    "en": "You have no chats yet.",
+    "zh-CN": "您还没有聊天。",
+    "kk": "Сізде әлі чаттар жоқ.",
+    "be": "У цябе пакуль няма чатаў.",
+    "ka": "ჯერ ჩატები არ გაქვთ.",
+    "es": "Aún no tienes chats."
+  },
+  "Нет общих чатов.": {
+    "en": "No shared chats.",
+    "zh-CN": "没有共同聊天。",
+    "kk": "Ортақ чаттар жоқ.",
+    "be": "Няма агульных чатаў.",
+    "ka": "საერთო ჩატები არ არის.",
+    "es": "No hay chats en común."
+  },
+  "Информация загружается.": {
+    "en": "Loading information.",
+    "zh-CN": "正在加载信息。",
+    "kk": "Ақпарат жүктелуде.",
+    "be": "Звесткі загружаюцца.",
+    "ka": "ინფორმაცია იტვირთება.",
+    "es": "Cargando información."
+  },
+  "Недавней активности пока нет.": {
+    "en": "No recent activity.",
+    "zh-CN": "暂无最近动态。",
+    "kk": "Жақында белсенділік болған жоқ.",
+    "be": "Пакуль няма нядаўняй актыўнасці.",
+    "ka": "ბოლო აქტივობა არ არის.",
+    "es": "No hay actividad reciente."
+  },
+  "Совместных звонков пока нет.": {
+    "en": "No calls together yet.",
+    "zh-CN": "你们尚未通话。",
+    "kk": "Әзірге бірге қоңыраулар болмады.",
+    "be": "Сумесных званкоў пакуль няма.",
+    "ka": "ერთობლივი ზარები ჯერ არ ყოფილა.",
+    "es": "Aún no habéis tenido llamadas."
+  },
+  "Пользовательское соглашение TRLKA": {
+    "en": "TRLKA Terms of Service",
+    "zh-CN": "TRLKA 用户协议",
+    "kk": "TRLKA пайдаланушы келісімі",
+    "be": "Карыстальніцкае пагадненне TRLKA",
+    "ka": "TRLKA-ს მომხმარებლის შეთანხმება",
+    "es": "Condiciones de uso de TRLKA"
+  },
+  "Политика конфиденциальности TRLKA": {
+    "en": "TRLKA Privacy Policy",
+    "zh-CN": "TRLKA 隐私政策",
+    "kk": "TRLKA құпиялылық саясаты",
+    "be": "Палітыка прыватнасці TRLKA",
+    "ka": "TRLKA-ს კონფიდენციალურობის პოლიტიკა",
+    "es": "Política de privacidad de TRLKA"
+  },
+  "Я служебный бот TRLKA. Здесь появляются уведомления о звонках и обращения в поддержку.": {
+    "en": "I am the TRLKA service bot. Call notifications and support requests appear here.",
+    "zh-CN": "我是 TRLKA 服务机器人。这里显示通话通知和支持请求。",
+    "kk": "Мен TRLKA қызметтік ботымын. Мұнда қоңырау хабарландырулары мен қолдау өтініштері көрсетіледі.",
+    "be": "Я службовы бот TRLKA. Тут з’яўляюцца апавяшчэнні пра званкі і звароты ў падтрымку.",
+    "ka": "მე TRLKA-ს მომსახურების ბოტი ვარ. აქ გამოჩნდება ზარების შეტყობინებები და მხარდაჭერის მოთხოვნები.",
+    "es": "Soy el bot de TRLKA. Aquí aparecen las notificaciones de llamadas y las solicitudes de soporte."
+  },
+  "/bug — сообщить об ошибке": {
+    "en": "/bug — report a bug",
+    "zh-CN": "/bug — 报告问题",
+    "kk": "/bug — қате туралы хабарлау",
+    "be": "/bug — паведаміць пра памылку",
+    "ka": "/bug — შეცდომის შეტყობინება",
+    "es": "/bug — informar de un error"
+  },
+  "/idea — предложить улучшение": {
+    "en": "/idea — suggest an improvement",
+    "zh-CN": "/idea — 提出改进建议",
+    "kk": "/idea — жақсарту ұсыну",
+    "be": "/idea — прапанаваць паляпшэнне",
+    "ka": "/idea — გაუმჯობესების შეთავაზება",
+    "es": "/idea — proponer una mejora"
+  },
+  "/subscription — подписка": {
+    "en": "/subscription — subscription",
+    "zh-CN": "/subscription — 订阅",
+    "kk": "/subscription — жазылым",
+    "be": "/subscription — падпіска",
+    "ka": "/subscription — გამოწერა",
+    "es": "/subscription — suscripción"
+  },
+  "/cancel — отменить ввод обращения": {
+    "en": "/cancel — cancel your request",
+    "zh-CN": "/cancel — 取消输入请求",
+    "kk": "/cancel — өтініш енгізуді тоқтату",
+    "be": "/cancel — скасаваць увод звароту",
+    "ka": "/cancel — მოთხოვნის შეყვანის გაუქმება",
+    "es": "/cancel — cancelar la solicitud"
+  },
+  "/cancel — отменить обращение": {
+    "en": "/cancel — cancel your request",
+    "zh-CN": "/cancel — 取消请求",
+    "kk": "/cancel — өтінішті тоқтату",
+    "be": "/cancel — скасаваць зварот",
+    "ka": "/cancel — მოთხოვნის გაუქმება",
+    "es": "/cancel — cancelar la solicitud"
+  },
+  "/help — помощь": {
+    "en": "/help — help",
+    "zh-CN": "/help — 帮助",
+    "kk": "/help — көмек",
+    "be": "/help — дапамога",
+    "ka": "/help — დახმარება",
+    "es": "/help — ayuda"
+  },
+  "Опишите, что произошло или что вы хотите улучшить. Для ошибки укажите шаги и ожидаемый результат. Не отправляйте пароли, коды входа и личные переписки.": {
+    "en": "Describe what happened or what you would like to improve. For bugs, include the steps and expected result. Do not send passwords, sign-in codes or private conversations.",
+    "zh-CN": "请描述发生的情况或您想改进的内容。如报告问题，请提供操作步骤和预期结果。请勿发送密码、登录验证码或私人聊天记录。",
+    "kk": "Не болғанын немесе нені жақсартқыңыз келетінін сипаттаңыз. Қате үшін қадамдар мен күтілетін нәтижені көрсетіңіз. Құпиясөздерді, кіру кодтарын және жеке хаттарды жібермеңіз.",
+    "be": "Апішыце, што адбылося або што хочаце палепшыць. Для памылкі пазначце крокі і чаканы вынік. Не дасылайце паролі, коды ўваходу і асабістыя перапіскі.",
+    "ka": "აღწერეთ, რა მოხდა ან რისი გაუმჯობესება გსურთ. შეცდომისთვის მიუთითეთ ნაბიჯები და მოსალოდნელი შედეგი. არ გამოგზავნოთ პაროლები, შესვლის კოდები ან პირადი მიმოწერა.",
+    "es": "Describe qué ha ocurrido o qué quieres mejorar. Para errores, incluye los pasos y el resultado esperado. No envíes contraseñas, códigos de acceso ni conversaciones privadas."
+  },
+  "Текст обращения и имя аккаунта будут переданы команде TRLKA по почте. /cancel — отмена.": {
+    "en": "Your request and account name will be emailed to the TRLKA team. /cancel — cancel.",
+    "zh-CN": "请求内容和账户名称将通过电子邮件发送给 TRLKA 团队。/cancel — 取消。",
+    "kk": "Өтініш мәтіні мен аккаунт атауы TRLKA тобына пошта арқылы жіберіледі. /cancel — тоқтату.",
+    "be": "Тэкст звароту і імя акаўнта будуць дасланы камандзе TRLKA па пошце. /cancel — скасаванне.",
+    "ka": "მოთხოვნის ტექსტი და ანგარიშის სახელი TRLKA-ს გუნდს ელფოსტით გაეგზავნება. /cancel — გაუქმება.",
+    "es": "El texto de la solicitud y el nombre de la cuenta se enviarán por correo al equipo de TRLKA. /cancel — cancelar."
+  },
+  "Ввод обращения отменён. /help — список команд.": {
+    "en": "Request cancelled. /help — command list.",
+    "zh-CN": "请求已取消。/help — 命令列表。",
+    "kk": "Өтініш енгізу тоқтатылды. /help — командалар тізімі.",
+    "be": "Увод звароту скасаваны. /help — спіс каманд.",
+    "ka": "მოთხოვნის შეყვანა გაუქმდა. /help — ბრძანებების სია.",
+    "es": "Solicitud cancelada. /help — lista de comandos."
+  },
+  "Добавьте подробности: нужно хотя бы 10 символов. /cancel — отмена.": {
+    "en": "Add more details: at least 10 characters are required. /cancel — cancel.",
+    "zh-CN": "请补充详情：至少需要 10 个字符。/cancel — 取消。",
+    "kk": "Толығырақ жазыңыз: кемінде 10 таңба қажет. /cancel — тоқтату.",
+    "be": "Дадайце падрабязнасці: трэба хаця б 10 сімвалаў. /cancel — скасаванне.",
+    "ka": "დაამატეთ დეტალები: საჭიროა სულ მცირე 10 სიმბოლო. /cancel — გაუქმება.",
+    "es": "Añade detalles: se necesitan al menos 10 caracteres. /cancel — cancelar."
+  },
+  "Подписка TRLKA готовится. Условия и оплата пока недоступны. Здесь появится информация, когда подписка будет запущена.": {
+    "en": "The TRLKA subscription is being prepared. Terms and payments are not available yet. Details will appear here when it launches.",
+    "zh-CN": "TRLKA 订阅正在筹备中，条款和付款暂不可用。订阅上线后将在此显示详情。",
+    "kk": "TRLKA жазылымы дайындалуда. Шарттар мен төлем әзірге қолжетімсіз. Жазылым іске қосылғанда ақпарат осында пайда болады.",
+    "be": "Падпіска TRLKA рыхтуецца. Умовы і аплата пакуль недаступныя. Інфармацыя з’явіцца тут пасля запуску.",
+    "ka": "TRLKA-ს გამოწერა მზადდება. პირობები და გადახდა ჯერ მიუწვდომელია. ინფორმაცია აქ გამოჩნდება გამოწერის ამოქმედების შემდეგ.",
+    "es": "La suscripción de TRLKA está en preparación. Las condiciones y los pagos aún no están disponibles. Aquí aparecerá la información cuando se lance."
+  },
+  "Звонок завершён: за пять минут никто не подключился. Можно позвонить снова, когда собеседник будет готов.": {
+    "en": "Call ended: nobody joined within five minutes. You can call again when the other person is ready.",
+    "zh-CN": "通话已结束：五分钟内无人加入。对方准备好后，您可以再次呼叫。",
+    "kk": "Қоңырау аяқталды: бес минут ішінде ешкім қосылмады. Әңгімелесуші дайын болғанда қайта қоңырау шалуға болады.",
+    "be": "Званок завершаны: за пяць хвілін ніхто не далучыўся. Можна пазваніць зноў, калі суразмоўца будзе гатовы.",
+    "ka": "ზარი დასრულდა: ხუთი წუთის განმავლობაში არავინ შემოუერთდა. შეგიძლიათ ხელახლა დარეკოთ, როცა თანამოსაუბრე მზად იქნება.",
+    "es": "Llamada finalizada: nadie se unió en cinco minutos. Puedes volver a llamar cuando la otra persona esté preparada."
+  },
+  "Обращение №{id} принято и поставлено в очередь отправки команде TRLKA. Спасибо за подробности.": {
+    "en": "Request #{id} has been accepted and queued for delivery to the TRLKA team. Thank you for the details.",
+    "zh-CN": "请求 #{id} 已受理，并已加入发送给 TRLKA 团队的队列。感谢您提供详情。",
+    "kk": "№{id} өтініш қабылданып, TRLKA тобына жіберу кезегіне қойылды. Толық ақпарат үшін рақмет.",
+    "be": "Зварот №{id} прыняты і пастаўлены ў чаргу адпраўкі камандзе TRLKA. Дзякуй за падрабязнасці.",
+    "ka": "მოთხოვნა №{id} მიღებულია და TRLKA-ს გუნდთან გასაგზავნ რიგშია. გმადლობთ დეტალებისთვის.",
+    "es": "La solicitud n.º {id} se ha aceptado y está en cola para enviarse al equipo de TRLKA. Gracias por los detalles."
+  },
+  "Уведомления и помощь": {
+    "en": "Notifications and help",
+    "zh-CN": "通知与帮助",
+    "kk": "Хабарландырулар мен көмек",
+    "be": "Апавяшчэнні і дапамога",
+    "ka": "შეტყობინებები და დახმარება",
+    "es": "Notificaciones y ayuda"
+  },
+  "Сообщить об ошибке": {
+    "en": "Report a bug",
+    "zh-CN": "报告问题",
+    "kk": "Қате туралы хабарлау",
+    "be": "Паведаміць пра памылку",
+    "ka": "შეცდომის შეტყობინება",
+    "es": "Informar de un error"
+  },
+  "Предложить улучшение": {
+    "en": "Suggest an improvement",
+    "zh-CN": "提出改进建议",
+    "kk": "Жақсарту ұсыну",
+    "be": "Прапанаваць паляпшэнне",
+    "ka": "გაუმჯობესების შეთავაზება",
+    "es": "Proponer una mejora"
+  },
+  "Что предоставляет TRLKA. Сервис позволяет создавать аккаунт, общаться в чатах, совершать голосовые и видеозвонки и демонстрировать экран. При регистрации вы принимаете условия использования сервиса.": {
+    "en": "What TRLKA provides. The service lets you create an account, chat, make voice and video calls and share your screen. By registering, you accept the terms of use.",
+    "zh-CN": "TRLKA 提供的服务。本服务支持创建账户、聊天、语音和视频通话以及共享屏幕。注册即表示您接受服务使用条款。",
+    "kk": "TRLKA не ұсынады. Қызмет аккаунт жасауға, чаттарда сөйлесуге, дауыстық және бейнеқоңыраулар шалуға және экранды көрсетуге мүмкіндік береді. Тіркелу арқылы қызметті пайдалану шарттарын қабылдайсыз.",
+    "be": "Што дае TRLKA. Сэрвіс дазваляе ствараць акаўнт, размаўляць у чатах, рабіць галасавыя і відэазванкі і паказваць экран. Пры рэгістрацыі вы прымаеце ўмовы выкарыстання сэрвісу.",
+    "ka": "რას გთავაზობთ TRLKA. სერვისი საშუალებას გაძლევთ შექმნათ ანგარიში, იურთიერთოთ ჩატებში, განახორციელოთ ხმოვანი და ვიდეოზარები და გააზიაროთ ეკრანი. რეგისტრაციით ეთანხმებით სერვისის გამოყენების პირობებს.",
+    "es": "Qué ofrece TRLKA. El servicio permite crear una cuenta, conversar en chats, realizar llamadas de voz y vídeo y compartir la pantalla. Al registrarte, aceptas las condiciones de uso del servicio."
+  },
+  "Правила общения. Запрещены угрозы, травля, мошенничество, выдача себя за другого человека, спам и рассылка вредоносных файлов или ссылок. Запрещено распространять материалы, распространение которых запрещено законодательством РФ, в том числе в соответствии с Федеральным законом № 149-ФЗ от 27 июля 2006 года.": {
+    "en": "Communication rules. Threats, bullying, fraud, impersonation, spam and distribution of malicious files or links are prohibited. Distribution of material prohibited by Russian law is forbidden, including under Federal Law No. 149-FZ of 27 July 2006.",
+    "zh-CN": "交流规则。禁止威胁、骚扰、欺诈、冒充他人、发送垃圾信息以及传播恶意文件或链接。禁止传播俄罗斯联邦法律禁止传播的内容，包括 2006 年 7 月 27 日第 149-FZ 号联邦法律所规定的内容。",
+    "kk": "Қарым-қатынас ережелері. Қорқытуға, қудалауға, алаяқтыққа, басқа адамның атын жамылуға, спамға және зиянды файлдар не сілтемелер таратуға тыйым салынады. РФ заңнамасы, соның ішінде 2006 жылғы 27 шілдедегі № 149-ФЗ Федералдық заңы таратуға тыйым салған материалдарды таратуға болмайды.",
+    "be": "Правілы зносін. Забаронены пагрозы, цкаванне, махлярства, выдаванне сябе за іншага чалавека, спам і рассылка шкоднасных файлаў або спасылак. Забаронена распаўсюджваць матэрыялы, распаўсюджванне якіх забаронена заканадаўствам РФ, у тым ліку Федэральным законам № 149-ФЗ ад 27 ліпеня 2006 года.",
+    "ka": "ურთიერთობის წესები. აკრძალულია მუქარა, შევიწროება, თაღლითობა, სხვისი სახელით მოქმედება, სპამი და მავნე ფაილების ან ბმულების გავრცელება. აკრძალულია მასალების გავრცელება, რომელთა გავრცელებასაც რუსეთის ფედერაციის კანონმდებლობა კრძალავს, მათ შორის 2006 წლის 27 ივლისის № 149-ФЗ ფედერალური კანონი.",
+    "es": "Normas de comunicación. Se prohíben las amenazas, el acoso, el fraude, la suplantación de identidad, el spam y la distribución de archivos o enlaces maliciosos. Se prohíbe distribuir materiales cuya difusión esté prohibida por la legislación de la Federación de Rusia, incluida la Ley Federal n.º 149-FZ del 27 de julio de 2006."
+  },
+  "Чужие права и безопасность. Нельзя публиковать чужие персональные данные без законного основания, нарушать авторские права, получать доступ к чужим аккаунтам и обходить ограничения безопасности. Берегите пароль и коды входа. Перед записью или распространением разговора соблюдайте требования закона и права участников.": {
+    "en": "Others’ rights and security. You must not publish other people’s personal data without a lawful basis, infringe copyright, access others’ accounts or bypass security restrictions. Protect your password and sign-in codes. Before recording or sharing a conversation, comply with the law and participants’ rights.",
+    "zh-CN": "他人权利与安全。不得在没有合法依据的情况下发布他人个人数据、侵犯版权、访问他人账户或绕过安全限制。请保护密码和登录验证码。录制或传播谈话前，应遵守法律要求和参与者的权利。",
+    "kk": "Басқалардың құқықтары және қауіпсіздік. Заңды негізсіз басқа адамның дербес деректерін жариялауға, авторлық құқықты бұзуға, бөтен аккаунтқа кіруге және қауіпсіздік шектеулерін айналып өтуге болмайды. Құпиясөз бен кіру кодтарын қорғаңыз. Әңгімені жазбас бұрын не таратпас бұрын заң талаптары мен қатысушылардың құқықтарын сақтаңыз.",
+    "be": "Чужыя правы і бяспека. Нельга публікаваць чужыя персанальныя даныя без законнай падставы, парушаць аўтарскія правы, атрымліваць доступ да чужых акаўнтаў і абыходзіць абмежаванні бяспекі. Беражыце пароль і коды ўваходу. Перад запісам або распаўсюджваннем размовы выконвайце патрабаванні закона і правы ўдзельнікаў.",
+    "ka": "სხვების უფლებები და უსაფრთხოება. დაუშვებელია სხვისი პერსონალური მონაცემების კანონიერი საფუძვლის გარეშე გამოქვეყნება, საავტორო უფლებების დარღვევა, სხვის ანგარიშზე წვდომა და უსაფრთხოების შეზღუდვების გვერდის ავლა. დაიცავით პაროლი და შესვლის კოდები. საუბრის ჩაწერამდე ან გავრცელებამდე დაიცავით კანონის მოთხოვნები და მონაწილეთა უფლებები.",
+    "es": "Derechos de terceros y seguridad. No se pueden publicar datos personales ajenos sin una base legal, infringir derechos de autor, acceder a cuentas ajenas ni eludir las restricciones de seguridad. Protege tu contraseña y tus códigos de acceso. Antes de grabar o difundir una conversación, respeta la ley y los derechos de los participantes."
+  },
+  "Жалобы и ограничения. О нарушении можно сообщить на trlkacom@mail.ru. При выявлении нарушения или при наличии требования закона доступ к материалу или аккаунту может быть ограничен. Уточнить причину ограничения и оспорить его можно по тому же адресу.": {
+    "en": "Reports and restrictions. Report violations to trlkacom@mail.ru. Access to content or an account may be restricted if a violation is identified or required by law. You can ask for the reason and challenge a restriction at the same address.",
+    "zh-CN": "投诉与限制。如发现违规行为，可发送邮件至 trlkacom@mail.ru。发现违规行为或法律要求时，可能限制对内容或账户的访问。您可以通过同一邮箱了解限制原因并提出异议。",
+    "kk": "Шағымдар және шектеулер. Бұзушылық туралы trlkacom@mail.ru мекенжайына хабарлауға болады. Бұзушылық анықталса немесе заң талабы болса, материалға не аккаунтқа қол жеткізу шектелуі мүмкін. Шектеу себебін сұрауға және оған сол мекенжай арқылы дау айтуға болады.",
+    "be": "Скаргі і абмежаванні. Пра парушэнне можна паведаміць на trlkacom@mail.ru. Пры выяўленні парушэння або патрабаванні закона доступ да матэрыялу ці акаўнта можа быць абмежаваны. Высветліць прычыну і аспрэчыць абмежаванне можна па тым жа адрасе.",
+    "ka": "საჩივრები და შეზღუდვები. დარღვევის შესახებ შეგიძლიათ მოგვწეროთ მისამართზე trlkacom@mail.ru. დარღვევის აღმოჩენისას ან კანონის მოთხოვნით მასალაზე ან ანგარიშზე წვდომა შეიძლება შეიზღუდოს. მიზეზის დაზუსტება და შეზღუდვის გასაჩივრება იმავე მისამართზე შეგიძლიათ.",
+    "es": "Denuncias y restricciones. Puedes comunicar infracciones a trlkacom@mail.ru. El acceso a contenidos o cuentas puede restringirse si se detecta una infracción o lo exige la ley. Puedes solicitar el motivo e impugnar la restricción escribiendo a la misma dirección."
+  },
+  "Аккаунт и доступность. Аккаунт можно удалить в настройках. В работе сервиса возможны перерывы из-за технических работ и сбоев. Обязательные права пользователя по законодательству РФ сохраняются.": {
+    "en": "Account and availability. You can delete your account in settings. Maintenance and failures may interrupt the service. Users’ mandatory rights under Russian law are preserved.",
+    "zh-CN": "账户与可用性。您可以在设置中删除账户。维护或故障可能导致服务中断。用户依据俄罗斯联邦法律享有的法定权利不受影响。",
+    "kk": "Аккаунт және қолжетімділік. Аккаунтты баптауларда жоюға болады. Техникалық жұмыстар мен ақаулар қызметтің үзілуіне әкелуі мүмкін. РФ заңнамасы бойынша пайдаланушының міндетті құқықтары сақталады.",
+    "be": "Акаўнт і даступнасць. Акаўнт можна выдаліць у наладах. Магчымыя перапынкі праз тэхнічныя працы і збоі. Абавязковыя правы карыстальніка паводле заканадаўства РФ захоўваюцца.",
+    "ka": "ანგარიში და ხელმისაწვდომობა. ანგარიშის წაშლა შეგიძლიათ პარამეტრებში. ტექნიკური სამუშაოებისა და შეფერხებების გამო სერვისი შეიძლება შეწყდეს. რუსეთის ფედერაციის კანონმდებლობით მომხმარებლის სავალდებულო უფლებები შენარჩუნებულია.",
+    "es": "Cuenta y disponibilidad. Puedes eliminar tu cuenta en los ajustes. El mantenimiento y los fallos pueden interrumpir el servicio. Se conservan los derechos imperativos del usuario conforme a la legislación rusa."
+  },
+  "Какие данные обрабатываются. TRLKA получает адрес электронной почты, имя пользователя, отображаемое имя, дату рождения при регистрации и добавленные вами сведения профиля. При использовании сервиса обрабатываются сообщения и вложения, список друзей, участие в чатах, сведения о звонках и технические данные входов, включая IP-адрес и сведения о браузере или приложении.": {
+    "en": "Data processed. TRLKA receives your email address, username, display name, date of birth at registration and profile information you add. When you use the service, it processes messages and attachments, your friend list, chat membership, call details and technical sign-in data, including your IP address and browser or app information.",
+    "zh-CN": "处理哪些数据。TRLKA 会获取您的电子邮件地址、用户名、显示名称、注册时填写的出生日期以及您添加的个人资料。使用服务时，还会处理消息和附件、好友列表、聊天成员关系、通话信息以及登录技术数据，包括 IP 地址和浏览器或应用信息。",
+    "kk": "Қандай деректер өңделеді. TRLKA электрондық пошта мекенжайын, пайдаланушы атын, көрсетілетін есімді, тіркелгендегі туған күнді және қосқан профиль мәліметтерін алады. Қызметті пайдалану кезінде хабарламалар мен тіркемелер, достар тізімі, чаттарға қатысу, қоңырау мәліметтері және IP мекенжайы мен браузер не қолданба мәліметтерін қамтитын кірудің техникалық деректері өңделеді.",
+    "be": "Якія даныя апрацоўваюцца. TRLKA атрымлівае адрас электроннай пошты, імя карыстальніка, бачнае імя, дату нараджэння пры рэгістрацыі і дададзеныя вамі звесткі профілю. Пры выкарыстанні апрацоўваюцца паведамленні і ўкладанні, спіс сяброў, удзел у чатах, звесткі пра званкі і тэхнічныя даныя ўваходаў, уключаючы IP-адрас і звесткі пра браўзер або праграму.",
+    "ka": "რა მონაცემები მუშავდება. TRLKA იღებს ელფოსტის მისამართს, მომხმარებლის სახელს, საჩვენებელ სახელს, რეგისტრაციისას დაბადების თარიღს და თქვენ მიერ დამატებულ პროფილის მონაცემებს. გამოყენებისას მუშავდება შეტყობინებები და დანართები, მეგობრების სია, ჩატებში მონაწილეობა, ზარების მონაცემები და შესვლის ტექნიკური მონაცემები, მათ შორის IP მისამართი და ბრაუზერის ან აპის ინფორმაცია.",
+    "es": "Qué datos se tratan. TRLKA recibe tu correo electrónico, nombre de usuario, nombre visible, fecha de nacimiento al registrarte y los datos que añadas al perfil. Al usar el servicio se tratan mensajes y adjuntos, la lista de amigos, la participación en chats, datos de llamadas y datos técnicos de acceso, incluida la dirección IP e información del navegador o la aplicación."
+  },
+  "Зачем нужны данные. Данные используются для создания и защиты аккаунта, доставки сообщений и уведомлений, соединения участников звонков и обработки обращений. Правовые основания определяются по цели обработки, включая исполнение соглашения с пользователем и обязанности по закону. Порядок обработки и права пользователя определяет Федеральный закон № 152-ФЗ от 27 июля 2006 года.": {
+    "en": "Why data is needed. Data is used to create and protect accounts, deliver messages and notifications, connect call participants and handle requests. Legal bases depend on the purpose, including performance of the user agreement and legal obligations. Federal Law No. 152-FZ of 27 July 2006 governs processing procedures and users’ rights.",
+    "zh-CN": "数据用途。数据用于创建和保护账户、传递消息和通知、连接通话参与者以及处理请求。处理的法律依据取决于目的，包括履行用户协议及法定义务。处理程序与用户权利由 2006 年 7 月 27 日第 152-FZ 号联邦法律规定。",
+    "kk": "Деректер не үшін қажет. Деректер аккаунт жасау және қорғау, хабарламалар мен ескертулерді жеткізу, қоңырау қатысушыларын қосу және өтініштерді өңдеу үшін пайдаланылады. Құқықтық негіздер өңдеу мақсатына, оның ішінде пайдаланушы келісімін орындауға және заң талаптарына байланысты анықталады. Өңдеу тәртібі мен пайдаланушы құқықтарын 2006 жылғы 27 шілдедегі № 152-ФЗ Федералдық заңы белгілейді.",
+    "be": "Навошта патрэбныя даныя. Даныя выкарыстоўваюцца для стварэння і абароны акаўнта, дастаўкі паведамленняў і апавяшчэнняў, злучэння ўдзельнікаў званкоў і апрацоўкі зваротаў. Прававыя падставы залежаць ад мэты, у тым ліку выканання пагаднення і абавязкаў паводле закона. Парадак апрацоўкі і правы карыстальніка вызначае Федэральны закон № 152-ФЗ ад 27 ліпеня 2006 года.",
+    "ka": "რისთვის არის საჭირო მონაცემები. მონაცემები გამოიყენება ანგარიშის შექმნისა და დაცვისთვის, შეტყობინებების მიწოდებისთვის, ზარის მონაწილეთა დასაკავშირებლად და მოთხოვნების დასამუშავებლად. სამართლებრივი საფუძველი დამოკიდებულია მიზანზე, მათ შორის მომხმარებლის შეთანხმების შესრულებასა და კანონით გათვალისწინებულ მოვალეობებზე. დამუშავების წესსა და მომხმარებლის უფლებებს განსაზღვრავს 2006 წლის 27 ივლისის № 152-ФЗ ფედერალური კანონი.",
+    "es": "Para qué se necesitan los datos. Los datos se usan para crear y proteger cuentas, entregar mensajes y notificaciones, conectar a los participantes de las llamadas y gestionar solicitudes. Las bases legales dependen de la finalidad, incluido el cumplimiento del acuerdo con el usuario y de obligaciones legales. La Ley Federal n.º 152-FZ del 27 de julio de 2006 establece el procedimiento de tratamiento y los derechos del usuario."
+  },
+  "Кому доступны данные. Дата рождения используется для регистрации и не отображается в профиле. Сведения профиля и сообщения отображаются пользователям в пределах функций сервиса. Для работы сервиса используются поставщики инфраструктуры, доставки писем, уведомлений и защиты от автоматических запросов. Данные могут быть предоставлены по законному требованию уполномоченных органов.": {
+    "en": "Who can access data. Your date of birth is used for registration and is not displayed in your profile. Profile information and messages are shown to users within the service’s features. Infrastructure, email, notification and automated-request protection providers help operate the service. Data may be disclosed in response to a lawful request from competent authorities.",
+    "zh-CN": "谁可以访问数据。出生日期用于注册，不会在个人资料中显示。个人资料和消息会根据服务功能向用户显示。服务使用基础设施、邮件、通知及自动请求防护供应商。数据可能依据有权机关的合法要求提供。",
+    "kk": "Деректер кімге қолжетімді. Туған күн тіркелу үшін қолданылады және профильде көрсетілмейді. Профиль мәліметтері мен хабарламалар қызмет мүмкіндіктері шегінде пайдаланушыларға көрсетіледі. Қызмет инфрақұрылым, хат пен хабарландыру жеткізу және автоматты сұраулардан қорғау жеткізушілерін пайдаланады. Деректер уәкілетті органдардың заңды талабы бойынша берілуі мүмкін.",
+    "be": "Каму даступныя даныя. Дата нараджэння выкарыстоўваецца для рэгістрацыі і не паказваецца ў профілі. Звесткі профілю і паведамленні паказваюцца карыстальнікам у межах функцый сэрвісу. Выкарыстоўваюцца пастаўшчыкі інфраструктуры, дастаўкі лістоў, апавяшчэнняў і абароны ад аўтаматычных запытаў. Даныя могуць быць перададзены па законным патрабаванні ўпаўнаважаных органаў.",
+    "ka": "ვის აქვს მონაცემებზე წვდომა. დაბადების თარიღი გამოიყენება რეგისტრაციისთვის და პროფილში არ ჩანს. პროფილის ინფორმაცია და შეტყობინებები მომხმარებლებს სერვისის ფუნქციების ფარგლებში ეჩვენებათ. სერვისი იყენებს ინფრასტრუქტურის, ელფოსტისა და შეტყობინებების მიწოდებისა და ავტომატური მოთხოვნებისგან დაცვის მომწოდებლებს. უფლებამოსილი ორგანოების კანონიერი მოთხოვნით მონაცემები შეიძლება გადაეცეს მათ.",
+    "es": "Quién puede acceder a los datos. La fecha de nacimiento se usa para el registro y no se muestra en el perfil. La información del perfil y los mensajes se muestran a los usuarios dentro de las funciones del servicio. Se utilizan proveedores de infraestructura, correo, notificaciones y protección frente a solicitudes automáticas. Los datos pueden facilitarse ante un requerimiento legal de las autoridades competentes."
+  },
+  "Звонки и хранение. TRLKA не записывает разговоры на сервере аккаунтов. В звонке аудио, видео и демонстрация передаются участникам через WebRTC, при необходимости через ретранслятор. В истории остаются сведения о звонках. Для чатов со сроком хранения сообщения становятся недоступны по истечении этого срока. Данные аккаунта обрабатываются до удаления аккаунта или до окончания необходимого срока хранения, если он установлен законом либо связан с законной целью обработки.": {
+    "en": "Calls and retention. TRLKA does not record conversations on the account server. Call audio, video and screen sharing are transmitted to participants through WebRTC, using a relay if necessary. Call details remain in history. In chats with a retention period, messages become unavailable when it expires. Account data is processed until account deletion or the end of a necessary retention period set by law or linked to a lawful processing purpose.",
+    "zh-CN": "通话与保存。TRLKA 不会在账户服务器上录制谈话。通话中的音频、视频和屏幕共享通过 WebRTC 传递给参与者，必要时使用中继服务器。历史记录中会保留通话信息。设置保存期限的聊天中，消息在期限届满后将不可用。账户数据会处理至账户删除，或法律规定、或与合法处理目的相关的必要保存期限结束。",
+    "kk": "Қоңыраулар және сақтау. TRLKA аккаунттар серверінде әңгімелерді жазбайды. Қоңыраудың дыбысы, бейнесі және экран көрсетілімі қатысушыларға WebRTC арқылы, қажет болса ретранслятор арқылы беріледі. Тарихта қоңырау мәліметтері қалады. Сақтау мерзімі бар чаттарда хабарламалар мерзім біткенде қолжетімсіз болады. Аккаунт деректері аккаунт жойылғанға дейін немесе заңмен белгіленген не заңды өңдеу мақсатына байланысты қажетті сақтау мерзімі аяқталғанға дейін өңделеді.",
+    "be": "Званкі і захоўванне. TRLKA не запісвае размовы на серверы акаўнтаў. Аўдыя, відэа і паказ экрана перадаюцца ўдзельнікам праз WebRTC, пры патрэбе праз рэтранслятар. У гісторыі застаюцца звесткі пра званкі. У чатах з тэрмінам захоўвання паведамленні становяцца недаступнымі пасля яго заканчэння. Даныя акаўнта апрацоўваюцца да выдалення акаўнта або заканчэння неабходнага тэрміну захоўвання, калі ён вызначаны законам ці звязаны з законнай мэтай апрацоўкі.",
+    "ka": "ზარები და შენახვა. TRLKA ანგარიშების სერვერზე საუბრებს არ იწერს. ზარის აუდიო, ვიდეო და ეკრანის გაზიარება მონაწილეებს WebRTC-ით, საჭიროებისას რეტრანსლატორით გადაეცემა. ისტორიაში რჩება ზარების ინფორმაცია. შენახვის ვადის მქონე ჩატებში შეტყობინებები ვადის გასვლის შემდეგ მიუწვდომელია. ანგარიშის მონაცემები მუშავდება მის წაშლამდე ან აუცილებელი შენახვის ვადის დასრულებამდე, თუ ვადა კანონითაა განსაზღვრული ან დამუშავების კანონიერ მიზანს უკავშირდება.",
+    "es": "Llamadas y conservación. TRLKA no graba conversaciones en el servidor de cuentas. El audio, el vídeo y la pantalla compartida se transmiten a los participantes mediante WebRTC y, si es necesario, a través de un retransmisor. El historial conserva datos de las llamadas. En los chats con plazo de conservación, los mensajes dejan de estar disponibles al vencer ese plazo. Los datos de la cuenta se tratan hasta su eliminación o hasta que termine el plazo necesario de conservación establecido por ley o vinculado a una finalidad lícita."
+  },
+  "Ваши права. Можно запросить сведения об обработке, потребовать уточнения, блокирования или удаления данных в предусмотренных законом случаях и отозвать согласие, если обработка основана на нём. Для таких запросов используйте trlkacom@mail.ru. В настройках можно изменить данные профиля и удалить аккаунт.": {
+    "en": "Your rights. You may request information about processing, require correction, restriction or deletion of data where provided by law, and withdraw consent when processing is based on it. Send these requests to trlkacom@mail.ru. You can edit your profile and delete your account in settings.",
+    "zh-CN": "您的权利。您可以在法律规定的情况下请求处理信息、要求更正、限制处理或删除数据，并在基于同意处理时撤回同意。请将相关请求发送至 trlkacom@mail.ru。您可以在设置中修改个人资料并删除账户。",
+    "kk": "Құқықтарыңыз. Заңда көзделген жағдайларда өңдеу туралы ақпарат сұрауға, деректерді нақтылауды, бұғаттауды не жоюды талап етуге және өңдеу келісімге негізделсе, келісімді қайтарып алуға болады. Өтініштерді trlkacom@mail.ru мекенжайына жіберіңіз. Баптауларда профильді өзгертуге және аккаунтты жоюға болады.",
+    "be": "Вашы правы. Можна запытаць звесткі пра апрацоўку, патрабаваць удакладнення, блакіравання ці выдалення даных у прадугледжаных законам выпадках і адклікаць згоду, калі апрацоўка на ёй заснаваная. Для запытаў выкарыстоўвайце trlkacom@mail.ru. У наладах можна змяніць профіль і выдаліць акаўнт.",
+    "ka": "თქვენი უფლებები. შეგიძლიათ მოითხოვოთ ინფორმაცია დამუშავების შესახებ, კანონით გათვალისწინებულ შემთხვევებში მოითხოვოთ მონაცემების დაზუსტება, დაბლოკვა ან წაშლა და გააუქმოთ თანხმობა, თუ დამუშავება მას ეფუძნება. მოთხოვნები გაგზავნეთ მისამართზე trlkacom@mail.ru. პარამეტრებში შეგიძლიათ შეცვალოთ პროფილი და წაშალოთ ანგარიში.",
+    "es": "Tus derechos. Puedes solicitar información sobre el tratamiento, exigir la rectificación, el bloqueo o la eliminación de datos en los casos previstos por la ley y retirar el consentimiento cuando el tratamiento se base en él. Envía estas solicitudes a trlkacom@mail.ru. En los ajustes puedes modificar tu perfil y eliminar tu cuenta."
+  },
+  "В Trlka с": {
+    "en": "Member of TRLKA since",
+    "zh-CN": "加入 TRLKA 的时间",
+    "kk": "TRLKA-ға қосылған уақыты",
+    "be": "У TRLKA з",
+    "ka": "TRLKA-ში გაწევრიანდა",
+    "es": "En TRLKA desde"
+  },
+  "В TRLKA С": {
+    "en": "MEMBER SINCE",
+    "zh-CN": "加入 TRLKA",
+    "kk": "TRLKA-ҒА ҚОСЫЛДЫ",
+    "be": "У TRLKA З",
+    "ka": "TRLKA-ში გაწევრიანდა",
+    "es": "EN TRLKA DESDE"
+  },
+  "ОБЩИЕ ЧАТЫ": {
+    "en": "SHARED CHATS",
+    "zh-CN": "共同聊天",
+    "kk": "ОРТАҚ ЧАТТАР",
+    "be": "АГУЛЬНЫЯ ЧАТЫ",
+    "ka": "საერთო ჩატები",
+    "es": "CHATS COMPARTIDOS"
+  },
+  "ПОЛНЫЙ ПРОФИЛЬ": {
+    "en": "FULL PROFILE",
+    "zh-CN": "完整资料",
+    "kk": "ТОЛЫҚ ПРОФИЛЬ",
+    "be": "ПОЎНЫ ПРОФІЛЬ",
+    "ka": "სრული პროფილი",
+    "es": "PERFIL COMPLETO"
+  },
+  "Написать": {
+    "en": "Message",
+    "zh-CN": "发消息",
+    "kk": "Хабарлама жазу",
+    "be": "Напісаць",
+    "ka": "შეტყობინება",
+    "es": "Enviar mensaje"
+  },
+  "Я принимаю": {
+    "en": "I accept the",
+    "zh-CN": "我接受",
+    "kk": "Мен қабылдаймын",
+    "be": "Я прымаю",
+    "ka": "ვეთანხმები",
+    "es": "Acepto el"
+  },
+  "Я ознакомился с": {
+    "en": "I have read the",
+    "zh-CN": "我已阅读",
+    "kk": "Мен таныстым",
+    "be": "Я азнаёміўся з",
+    "ka": "გავეცანი",
+    "es": "He leído la"
+  },
+  "После регистрации подтвердите почту кодом из письма": {
+    "en": "After registration, verify your email using the code in your inbox.",
+    "zh-CN": "注册后，请使用邮件中的验证码验证邮箱。",
+    "kk": "Тіркелгеннен кейін поштаңызды хаттағы кодпен растаңыз。",
+    "be": "Пасля рэгістрацыі пацвердзіце пошту кодам з ліста.",
+    "ka": "რეგისტრაციის შემდეგ დაადასტურეთ ელფოსტა წერილში მოცემული კოდით.",
+    "es": "Tras registrarte, verifica tu correo con el código del mensaje."
+  },
+  "Описание не добавлено.": {
+    "en": "No description added.",
+    "zh-CN": "尚未添加简介。",
+    "kk": "Сипаттама қосылмаған.",
+    "be": "Апісанне не дададзена.",
+    "ka": "აღწერა დამატებული არ არის.",
+    "es": "No se ha añadido una descripción."
+  },
+  "Вы в сети — это замечательно.": {
+    "en": "You’re online — great to see you.",
+    "zh-CN": "您在线上，真好！",
+    "kk": "Сіз желідесіз — керемет!",
+    "be": "Вы ў сетцы — гэта цудоўна.",
+    "ka": "ხაზზე ხართ — მშვენიერია.",
+    "es": "Estás en línea, ¡qué bien!"
+  },
+  "Наушники выключены": {
+    "en": "Headphones off",
+    "zh-CN": "耳机已关闭",
+    "kk": "Құлаққап өшірулі",
+    "be": "Навушнікі выключаныя",
+    "ka": "ყურსასმენები გამორთულია",
+    "es": "Auriculares desactivados"
+  },
+  "Привет! Как тебе оформление?": {
+    "en": "Hi! How do you like this theme?",
+    "zh-CN": "你好！你觉得这个界面怎么样？",
+    "kk": "Сәлем! Безендіру ұнады ма?",
+    "be": "Прывітанне! Як табе афармленне?",
+    "ka": "გამარჯობა! როგორ მოგწონს გაფორმება?",
+    "es": "¡Hola! ¿Qué te parece el diseño?"
+  },
+  "Отлично, так намного удобнее.": {
+    "en": "Great, this is much easier to use.",
+    "zh-CN": "很棒，这样用起来方便多了。",
+    "kk": "Керемет, осылай әлдеқайда ыңғайлы.",
+    "be": "Выдатна, так значна зручней.",
+    "ka": "შესანიშნავია, ასე ბევრად მოსახერხებელია.",
+    "es": "Genial, así es mucho más cómodo."
+  },
+  "{count} друг": {
+    "en": "{count} friend",
+    "zh-CN": "{count} 位好友",
+    "kk": "{count} дос",
+    "be": "{count} сябар",
+    "ka": "{count} მეგობარი",
+    "es": "{count} amigo"
+  },
+  "{count} друга": {
+    "en": "{count} friends",
+    "zh-CN": "{count} 位好友",
+    "kk": "{count} дос",
+    "be": "{count} сябры",
+    "ka": "{count} მეგობარი",
+    "es": "{count} amigos"
+  },
+  "{count} друзей": {
+    "en": "{count} friends",
+    "zh-CN": "{count} 位好友",
+    "kk": "{count} дос",
+    "be": "{count} сяброў",
+    "ka": "{count} მეგობარი",
+    "es": "{count} amigos"
+  },
+  "{count} запрос": {
+    "en": "{count} request",
+    "zh-CN": "{count} 条请求",
+    "kk": "{count} сұрау",
+    "be": "{count} запыт",
+    "ka": "{count} მოთხოვნა",
+    "es": "{count} solicitud"
+  },
+  "{count} запроса": {
+    "en": "{count} requests",
+    "zh-CN": "{count} 条请求",
+    "kk": "{count} сұрау",
+    "be": "{count} запыты",
+    "ka": "{count} მოთხოვნა",
+    "es": "{count} solicitudes"
+  },
+  "{count} запросов": {
+    "en": "{count} requests",
+    "zh-CN": "{count} 条请求",
+    "kk": "{count} сұрау",
+    "be": "{count} запытаў",
+    "ka": "{count} მოთხოვნა",
+    "es": "{count} solicitudes"
+  },
+  "Блок": {
+    "en": "Blocked",
+    "zh-CN": "已屏蔽",
+    "kk": "Бұғат",
+    "be": "Блакаваныя",
+    "ka": "დაბლოკილი",
+    "es": "Bloqueados"
+  },
+  "Транслировать звук": {
+    "en": "Share audio",
+    "zh-CN": "共享音频",
+    "kk": "Дыбысты тарату",
+    "be": "Трансляваць гук",
+    "ka": "ხმის გაზიარება",
+    "es": "Compartir audio"
+  }
+}

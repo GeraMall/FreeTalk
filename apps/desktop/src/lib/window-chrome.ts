@@ -8,3 +8,11 @@ declare global {
 export function usesCustomWindowChrome() {
   return Boolean(window.__TAURI_INTERNALS__) && /Windows/i.test(navigator.userAgent);
 }
+
+export function usesMacDesktop() {
+  return (
+    typeof window !== 'undefined' &&
+    Boolean(window.__TAURI_INTERNALS__) &&
+    /Macintosh|Mac OS X/i.test(navigator.userAgent)
+  );
+}

@@ -1,3 +1,5 @@
+import { mergeParticipantAudioState } from '@freetalk/protocol';
+import { useCallAudioControls } from './lib/call-audio-controls';
 import { t } from './lib/app-language';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, PhoneCall, X } from 'lucide-react';
@@ -7,6 +9,8 @@ import type {
   ClientMessage,
   Participant,
   Reaction,
+  RoomActivity,
+  RoomActivityAction,
   RoomChatMessage,
   ServerMessage,
 } from '@freetalk/protocol';
@@ -190,7 +194,10 @@ export function App() {
   const callChatRef = useRef<string | undefined>(undefined);
   const pendingChatRing = useRef(false);
   const [callTitle, setCallTitle] = useState('Комната Trlka');
-  const [deafened, setDeafened] = useState(false);
+  const { muted, deafened, setMuted, setDeafened } = useCallAudioControls();
+  const callAudioStateRef = useRef({ muted, deafened });
+  callAudioStateRef.current = { muted, deafened };
+  const audioActionVersion = useRef(0);
   const [callToolbarTarget, setCallToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [conversationHidden, setConversationHidden] = useState(false);
   const [mobileCallMinimized, setMobileCallMinimized] = useState(false);
@@ -222,7 +229,6 @@ export function App() {
     outputs: MediaDeviceInfo[];
     cameras: MediaDeviceInfo[];
   }>({ inputs: [], outputs: [], cameras: [] });
-  const [muted, setMuted] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ kind: 'idle' });
   const [appVersion, setAppVersion] = useState('0.4.0-beta.1');
   const [turnAvailable, setTurnAvailable] = useState(false);
@@ -230,6 +236,7 @@ export function App() {
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
+  const [roomActivity, setRoomActivity] = useState<RoomActivity>();
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
   const [recordingBannerMessage, setRecordingBannerMessage] = useState('');
@@ -470,6 +477,7 @@ export function App() {
   }, [incomingCall]);
 
   const cleanup = useCallback(() => {
+    audioActionVersion.current++;
     if (callExitTimer.current) window.clearTimeout(callExitTimer.current);
     callExitTimer.current = undefined;
     if (joinTimer.current) window.clearTimeout(joinTimer.current);
@@ -504,6 +512,7 @@ export function App() {
     if (guestWarningTimer.current) window.clearTimeout(guestWarningTimer.current);
     guestWarningTimer.current = undefined;
     reactionTimers.current.clear();
+    setRoomActivity(undefined);
     setRoomId(undefined);
     setRoomDestination('room');
     setParticipants([]);
@@ -759,6 +768,7 @@ export function App() {
       if (message.type === 'joined-room') {
         awaitingRejoin.current = false;
         joinedRoom.current = true;
+        signaling.current?.send({ type: 'mute-changed', ...callAudioStateRef.current });
         if (joinTimer.current) window.clearTimeout(joinTimer.current);
         joinTimer.current = undefined;
         if (pendingRoomId.current) setRoomId(pendingRoomId.current);
@@ -768,6 +778,7 @@ export function App() {
         if (message.participants.some((participant) => participant.id !== selfId.current))
           conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
+        setRoomActivity(message.activity);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
         if (accountUser && pendingRoomId.current) {
           saveBrowserActiveCall({
@@ -922,6 +933,12 @@ export function App() {
         );
         return;
       }
+      if (message.type === 'activity-state') {
+        setRoomActivity((previous) =>
+          !previous || previous.revision <= message.activity.revision ? message.activity : previous,
+        );
+        return;
+      }
       if (message.type === 'reaction') {
         setReactions((old) => [...old.filter((item) => item.id !== message.id), message]);
         const existing = reactionTimers.current.get(message.id);
@@ -982,7 +999,9 @@ export function App() {
       if (message.type === 'mute-changed') {
         setParticipants((old) =>
           old.map((item) =>
-            item.id === message.participantId ? { ...item, muted: message.muted } : item,
+            item.id === message.participantId
+              ? { ...item, ...mergeParticipantAudioState(item, message) }
+              : item,
           ),
         );
         if (message.muted && moderationPending.current?.id === message.participantId) {
@@ -992,6 +1011,7 @@ export function App() {
         return;
       }
       if (message.type === 'force-mute') {
+        audioActionVersion.current++;
         setMuted(true);
         audio.current?.setMuted(true);
         setNotice('Вам выключили микрофон');
@@ -1025,7 +1045,7 @@ export function App() {
         cleanup();
       }
     },
-    [accountUser, cleanup, settings],
+    [accountUser, cleanup, settings, setMuted],
   );
 
   const enterRoom = async (create: boolean, options: EnterRoomOptions = {}) => {
@@ -1079,6 +1099,7 @@ export function App() {
         cardStyle: settings.participantCardStyle,
         cardDecoration: 'none',
         muted,
+        deafened,
         isOwner:
           destinationConversation?.type === 'direct'
             ? false
@@ -1332,10 +1353,13 @@ export function App() {
   }, [callChatId, cleanup, joining, participants, roomId, roomStartedAt, accountUser?.id]);
 
   useEffect(() => {
-    if (roomId) signaling.current?.send({ type: 'mute-changed', muted });
-  }, [roomId, muted]);
+    audio.current?.setMuted(muted);
+    if (muted) setLocalSpeaking(false);
+    if (roomId) signaling.current?.send({ type: 'mute-changed', muted, deafened });
+  }, [roomId, muted, deafened]);
 
   const toggleMute = async () => {
+    const actionVersion = ++audioActionVersion.current;
     const next = !muted;
     if (!roomId) {
       setMuted(next);
@@ -1343,26 +1367,47 @@ export function App() {
     }
     if (!next && !audio.current) {
       setError('');
+      let startingManager: AudioManager | undefined;
       try {
         const manager = new AudioManager(
           setLocalSpeaking,
           setInputLevel,
           processingSettings(settings),
         );
+        startingManager = manager;
+        manager.setMuted(true);
         const stream = await manager.start(settings.inputDeviceId);
-        manager.setMuted(false);
+        if (actionVersion !== audioActionVersion.current) {
+          manager.stop();
+          return;
+        }
         audio.current = manager;
         const track = stream.getAudioTracks()[0];
         if (track) await peers.current?.replaceAudioTrack(track, stream);
+        if (actionVersion !== audioActionVersion.current) {
+          manager.setMuted(true);
+          return;
+        }
       } catch (caught) {
+        startingManager?.stop();
+        if (audio.current === startingManager) audio.current = undefined;
+        if (actionVersion !== audioActionVersion.current) return;
         setError(caught instanceof Error ? caught.message : 'Не удалось включить микрофон');
         return;
       }
     }
     setMuted(next);
     audio.current?.setMuted(next);
-    signaling.current?.send({ type: 'mute-changed', muted: next });
     void playMicrophoneToggleSound(next, settings);
+  };
+
+  const toggleDeafen = () => {
+    audioActionVersion.current++;
+    if (!deafened) {
+      audio.current?.setMuted(true);
+      setLocalSpeaking(false);
+    }
+    setDeafened(!deafened);
   };
 
   const sendRoomChatMessage = (text: string) => {
@@ -1793,6 +1838,11 @@ export function App() {
     );
   };
 
+  const sendActivity = (action: RoomActivityAction) => {
+    if (!roomActivity || awaitingRejoin.current) return;
+    signaling.current?.send({ type: 'activity-action', revision: roomActivity.revision, action });
+  };
+
   const sendReaction = (reaction: Reaction) => {
     const sent = signaling.current?.send({ type: 'reaction', id: crypto.randomUUID(), reaction });
     if (!sent) setNotice('Не удалось отправить реакцию');
@@ -1823,6 +1873,47 @@ export function App() {
     remoteScreenAudio.current.setMuted(peerId, value);
   };
   const saveConnectionDiagnostics = async () => {
+    if (roomId && document.documentElement.classList.contains('mac-desktop-app')) {
+      connectionDiagnostics.record('call-layout', undefined, {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        participants: participants.length,
+        chatHidden: conversationHidden,
+        screenFocus: screenFocusMode,
+      });
+      for (const selector of [
+        '.account-room-workspace',
+        '.room-view-slot',
+        '.room-shell',
+        '.room-body-layout',
+        '.room-main',
+        '.participant-card',
+        '.screen-stage-shell',
+        '.account-page-slot',
+      ]) {
+        const element = document.querySelector(selector);
+        if (!element) {
+          connectionDiagnostics.record('call-layout:element', undefined, {
+            selector,
+            present: false,
+          });
+          continue;
+        }
+        const { x, y, width, height } = element.getBoundingClientRect();
+        const { display, visibility, opacity } = getComputedStyle(element);
+        connectionDiagnostics.record('call-layout:element', undefined, {
+          selector,
+          x: Math.round(x),
+          y: Math.round(y),
+          width: Math.round(width),
+          height: Math.round(height),
+          scrollTop: Math.round(element.scrollTop),
+          display,
+          visibility,
+          opacity,
+        });
+      }
+    }
     return invoke<string>('save_connection_diagnostics', {
       contents: connectionDiagnostics.toText(),
     });
@@ -1947,7 +2038,7 @@ export function App() {
     inputId: settings.inputDeviceId,
     outputId: settings.outputDeviceId,
     onMute: () => void toggleMute(),
-    onDeafen: () => setDeafened((value) => !value),
+    onDeafen: toggleDeafen,
     onCamera: () => {
       if (!localVideo.cameraEnabled && settings.cameraPreviewAlways) {
         setRoomDestination(callChatId ? 'chats' : 'room');
@@ -2085,6 +2176,9 @@ export function App() {
       roomStartedAt={roomStartedAt}
       reactions={reactions}
       roomChatMessages={roomChatMessages}
+      activity={accountUser?.canAccessStore ? roomActivity : undefined}
+      activityUnlocked={accountUser?.canAccessStore === true}
+      onActivity={sendActivity}
       screenFocusMode={screenFocusMode}
       settings={settings}
       signalingState={signalState}
@@ -2102,6 +2196,7 @@ export function App() {
           : void copyInvite()
       }
       onInviteFriends={inviteFriendsToCall}
+      deafened={deafened}
       onMute={toggleMute}
       onCamera={() => void runVideoAction('camera')}
       onInputDevice={(deviceId) => void selectInput(deviceId)}
@@ -2311,6 +2406,7 @@ export function App() {
           {mobileFocusedCall && mobileCallMinimized ? (
             <MobileNavigation
               activePage={roomDestination === 'room' ? 'home' : roomDestination}
+              storeUnlocked={accountUser.canAccessStore}
               onNavigate={(page) => {
                 setRoomDestination(page);
                 if (page !== 'chats') setRoomActiveChatId(undefined);

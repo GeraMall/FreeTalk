@@ -103,3 +103,21 @@ export function startServiceDelivery() {
     window.removeEventListener('online', flushServiceEvents);
   };
 }
+
+// Translate only known service-owned templates; user text and identifiers stay untouched.
+export function localizedServiceBody(message: Pick<ServiceMessage, 'author' | 'body'>): string {
+  if (message.author !== 'bot') return message.body;
+  const accepted =
+    /^Обращение №([a-f0-9]{8}) принято и поставлено в очередь отправки команде TRLKA\. Спасибо за подробности\.$/u.exec(
+      message.body,
+    );
+  if (accepted)
+    return t(
+      'Обращение №{id} принято и поставлено в очередь отправки команде TRLKA. Спасибо за подробности.',
+      { id: accepted[1] },
+    );
+  return message.body
+    .split('\n')
+    .map((line) => t(line))
+    .join('\n');
+}

@@ -23,6 +23,7 @@ interface LifecycleEvent {
   reason: string;
 }
 export interface NativeScreenCapture {
+  includeAudio: boolean;
   stream: MediaStream;
   stop(): Promise<void>;
 }
@@ -42,12 +43,16 @@ export async function startNativeWindowsScreen(
 ): Promise<NativeScreenCapture> {
   await active?.stop();
   const sources = await invoke<NativeScreenSource[]>('windows_screen_sources');
-  const source = await selectNativeScreen(sources);
+  const source = await selectNativeScreen(sources, audio);
   const session = new NativeScreenSession(notice);
   try {
-    await session.start(source, preferences, audio);
+    await session.start(source, preferences, source.includeAudio);
     active = session;
-    return { stream: session.stream, stop: () => session.stop() };
+    return {
+      includeAudio: source.includeAudio,
+      stream: session.stream,
+      stop: () => session.stop(),
+    };
   } catch (error) {
     await session.stop();
     throw error;

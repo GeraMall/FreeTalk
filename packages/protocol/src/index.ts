@@ -1,3 +1,15 @@
+import { roomActivityActionSchema, roomActivitySchema } from './room-activity.js';
+export type {
+  ActivityGame,
+  ActivityRegion,
+  RoomActivity,
+  RoomActivityAction,
+} from './room-activity.js';
+export {
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
+} from './room-activity-session.js';
 import { DISPLAY_NAME_PATTERN, ROOM_CODE_PATTERN } from '@freetalk/config';
 import { z } from 'zod';
 
@@ -36,6 +48,7 @@ export const participantSchema = z.object({
   cardStyle: participantCardStyleSchema.optional(),
   cardDecoration: participantCardDecorationSchema.optional(),
   muted: z.boolean(),
+  deafened: z.boolean().optional(),
   isOwner: z.boolean(),
   connectedAt: z.number().int().nonnegative(),
 });
@@ -163,7 +176,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('offer'), to: clientId, description: sdp }),
   z.object({ type: z.literal('answer'), to: clientId, description: sdp }),
   z.object({ type: z.literal('ice-candidate'), to: clientId, candidate: ice }),
-  z.object({ type: z.literal('mute-changed'), muted: z.boolean() }),
+  z.object({
+    type: z.literal('mute-changed'),
+    muted: z.boolean(),
+    deafened: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('update-profile'), name: displayName, avatar }),
   z.object({
     type: z.literal('update-card-appearance'),
@@ -177,6 +194,11 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     text: roomChatTextSchema,
   }),
   z.object({ type: z.literal('recording-started') }),
+  z.object({
+    type: z.literal('activity-action'),
+    revision: z.number().int().nonnegative(),
+    action: roomActivityActionSchema,
+  }),
   z.object({ type: z.literal('moderation-mute'), targetParticipantId: clientId }),
   z.object({ type: z.literal('telemetry-report'), report: telemetryReportSchema }),
   z.object({ type: z.literal('ping'), timestamp: z.number().int().nonnegative() }),
@@ -198,7 +220,9 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     roomStartedAt: z.number().int().nonnegative().optional(),
     participants: z.array(participantSchema),
     roomChatMessages: z.array(roomChatMessageSchema).max(200).optional(),
+    activity: roomActivitySchema.optional(),
   }),
+  z.object({ type: z.literal('activity-state'), activity: roomActivitySchema }),
   z.object({ type: z.literal('participants'), participants: z.array(participantSchema) }),
   z.object({ type: z.literal('participant-joined'), participant: participantSchema }),
   z.object({ type: z.literal('participant-updated'), participant: participantSchema }),
@@ -223,7 +247,12 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('offer'), from: clientId, description: sdp }),
   z.object({ type: z.literal('answer'), from: clientId, description: sdp }),
   z.object({ type: z.literal('ice-candidate'), from: clientId, candidate: ice }),
-  z.object({ type: z.literal('mute-changed'), participantId: clientId, muted: z.boolean() }),
+  z.object({
+    type: z.literal('mute-changed'),
+    participantId: clientId,
+    muted: z.boolean(),
+    deafened: z.boolean().optional(),
+  }),
   z.object({
     type: z.literal('force-mute'),
     byParticipantId: clientId,
@@ -512,3 +541,12 @@ export {
   REGISTRATION_LEGAL_VERSION,
   registrationLegalDocuments,
 } from './registration-legal.js';
+
+/** Older clients omit deafened. Their explicit unmute must clear a stale headphone state. */
+export function mergeParticipantAudioState(
+  current: { muted: boolean; deafened?: boolean },
+  update: { muted: boolean; deafened?: boolean },
+): { muted: boolean; deafened: boolean } {
+  const deafened = update.deafened ?? (update.muted && Boolean(current.deafened));
+  return { muted: update.muted || deafened, deafened };
+}

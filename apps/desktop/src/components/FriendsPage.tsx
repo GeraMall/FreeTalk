@@ -114,8 +114,12 @@ export function FriendsPage({
     });
   };
 
-  const pendingLabel = `${pending.length} ${pluralize(pending.length, 'запрос', 'запроса', 'запросов')}`;
-  const friendLabel = `${friends.length} ${pluralize(friends.length, 'друг', 'друга', 'друзей')}`;
+  const pendingLabel = t(`{count} ${pluralize(pending.length, 'запрос', 'запроса', 'запросов')}`, {
+    count: pending.length,
+  });
+  const friendLabel = t(`{count} ${pluralize(friends.length, 'друг', 'друга', 'друзей')}`, {
+    count: friends.length,
+  });
 
   return (
     <div className="friends-page page-enter">
@@ -178,7 +182,7 @@ export function FriendsPage({
         <FilterButton
           active={filter === 'blocked'}
           label={t('Заблокированные')}
-          compactLabel="Блок"
+          compactLabel={t('Блок')}
           count={blocked.length}
           onClick={() => setFilter('blocked')}
         />
@@ -460,10 +464,10 @@ function FriendCard({
 }
 
 function presenceLabel(status: PresenceStatus = 'offline') {
-  if (status === 'online') return 'В сети';
-  if (status === 'away') return 'Нет на месте';
-  if (status === 'dnd') return 'Не беспокоить';
-  return 'Не в сети';
+  if (status === 'online') return t('В сети');
+  if (status === 'away') return t('Нет на месте');
+  if (status === 'dnd') return t('Не беспокоить');
+  return t('Не в сети');
 }
 
 function FriendAvatar({
@@ -523,7 +527,7 @@ function FriendsEmpty({
       {action && onAction && (
         <button onClick={onAction}>
           <UserPlus />
-          {action}
+          {t(action)}
         </button>
       )}
     </div>

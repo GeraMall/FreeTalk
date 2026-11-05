@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyRound } from 'lucide-react';
+import { ChevronDown, KeyRound } from 'lucide-react';
 import { accountClient } from '../lib/api-client';
 import { appLanguage, t } from '../lib/app-language';
 import { openPasskeyBrowser, signInWithPasskey } from '../lib/passkeys';
@@ -121,20 +121,27 @@ export function PasskeySettings() {
 
   return (
     <details
-      className="passkey-settings"
+      className="passkey-settings profile-accordion"
       onToggle={(event) => {
         setOpen(event.currentTarget.open);
         if (!event.currentTarget.open) setPassword('');
       }}
     >
       <summary>
-        <KeyRound size={17} /> {t('Ключи доступа')}
+        <span className="connected-devices-icon">
+          <KeyRound size={19} />
+        </span>
+        <span>
+          <strong>{t('Ключи доступа')}</strong>
+        </span>
+        <ChevronDown className="connected-devices-chevron" />
       </summary>
       {native ? (
         <div>
           <p>{t('Чтобы добавить ключ, войдите на trlka.com и откройте настройки профиля.')}</p>
           <button
             type="button"
+            className="secondary passkey-browser-action"
             onClick={() =>
               void openPasskeyBrowser().catch(() => {
                 setMessage(t('Откройте trlka.com в браузере.'));
@@ -155,7 +162,12 @@ export function PasskeySettings() {
                   timeStyle: 'short',
                 }).format(new Date(key.createdAt))}
               </span>
-              <button type="button" disabled={busy} onClick={() => void remove(key.id)}>
+              <button
+                className="secondary"
+                type="button"
+                disabled={busy}
+                onClick={() => void remove(key.id)}
+              >
                 {t('Удалить')}
               </button>
             </div>
@@ -176,7 +188,7 @@ export function PasskeySettings() {
               onChange={(event) => setPassword(event.target.value)}
               aria-required="true"
             />
-            <button type="submit" disabled={busy || !ready || !password}>
+            <button type="submit" className="primary" disabled={busy || !ready || !password}>
               {t('Добавить ключ доступа')}
             </button>
           </form>

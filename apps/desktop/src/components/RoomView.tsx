@@ -12,14 +12,20 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
-import type { Participant, PresenceStatus, Reaction, RoomChatMessage } from '@freetalk/protocol';
+import type {
+  Participant,
+  PresenceStatus,
+  Reaction,
+  RoomActivity,
+  RoomActivityAction,
+  RoomChatMessage,
+} from '@freetalk/protocol';
 import { useRoomPresence } from '../lib/use-room-presence';
 import { AWAY_AFTER_MS } from '../lib/chat-realtime';
 import {
   Ban,
   Check,
   Camera,
-  CameraOff,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -30,11 +36,13 @@ import {
   MessageCircle,
   Mic,
   MicOff,
+  HeadphoneOff,
   MonitorUp,
   Minimize2,
   MoreHorizontal,
   SmilePlus,
   ShieldCheck,
+  Shapes,
   Square,
   UserPlus,
   UserRound,
@@ -52,6 +60,8 @@ import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { RoomChatPanel } from './RoomChatPanel';
+import { CallActivity } from './CallActivity';
+import { DeviceControlIcon } from './CallDock';
 import { CachedMediaImage } from './CachedMedia';
 import type { ScreenRecordingState } from '../lib/screen-recorder';
 import {
@@ -107,9 +117,13 @@ interface RoomViewProps {
   remoteVideos: RemoteVideoUiState;
   videoBusy: boolean;
   muted: boolean;
+  deafened?: boolean;
   roomStartedAt: number;
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   roomChatMessages: RoomChatMessage[];
+  activity?: RoomActivity;
+  activityUnlocked?: boolean;
+  onActivity?(action: RoomActivityAction): void;
   screenFocusMode: boolean;
   signalingState: SignalingState;
   signalStrength?: number;
@@ -167,9 +181,13 @@ export function RoomView({
   remoteVideos,
   videoBusy,
   muted,
+  deafened = false,
   roomStartedAt,
   reactions,
   roomChatMessages,
+  activity,
+  activityUnlocked = false,
+  onActivity,
   screenFocusMode,
   signalingState,
   signalStrength = 100,
@@ -206,6 +224,12 @@ export function RoomView({
   const [menuFor, setMenuFor] = useState<string>();
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [activityHint, setActivityHint] = useState(0);
+  useEffect(() => {
+    if (!activityHint) return;
+    const timer = window.setTimeout(() => setActivityHint(0), 2400);
+    return () => window.clearTimeout(timer);
+  }, [activityHint]);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatClosing, setChatClosing] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -219,7 +243,7 @@ export function RoomView({
   const callFullscreenBusy = useRef(false);
   const [fullscreenCameraId, setFullscreenCameraId] = useState<string>();
   const [callDetached, setCallDetached] = useState(false);
-  const [callControlsVisible, setCallControlsVisible] = useState(false);
+  const [callControlsVisible, setCallControlsVisible] = useState(true);
   const [presentationParticipantsVisible, setPresentationParticipantsVisible] = useState(true);
   const [fullProfileTarget, setFullProfileTarget] = useState<UserProfileTarget>();
   const [friendsInviteOpen, setFriendsInviteOpen] = useState(false);
@@ -238,6 +262,27 @@ export function RoomView({
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
   const self = participants.find((participant) => participant.id === selfId);
+  const activityButton = (layoutClass: string) => (
+    <button
+      type="button"
+      className={`dock-control activity-control ${layoutClass} ${activity?.open ? 'active' : ''}`}
+      aria-label={t('Активность')}
+      aria-pressed={activityUnlocked ? (activity?.open ?? false) : undefined}
+      data-tooltip={t('Активность')}
+      disabled={activityUnlocked && (!activity || signalingState !== 'connected')}
+      onClick={() => {
+        if (activityUnlocked) onActivity?.({ kind: activity?.open ? 'close' : 'open' });
+        else setActivityHint((current) => current + 1);
+      }}
+    >
+      <span className="dock-icon">
+        <Shapes aria-hidden="true" />
+      </span>
+      {layoutClass === 'activity-control-mobile' && (
+        <span className="dock-mobile-label">{t('Активность')}</span>
+      )}
+    </button>
+  );
   const openSlots = Math.max(0, ROOM_MAX_PARTICIPANTS - participants.length);
   const visibleWaitingParticipants = waitingCardsVisible ? waitingParticipants : [];
   const participantMedia = (participant: Participant) =>
@@ -269,12 +314,13 @@ export function RoomView({
     if (conversation && (conversationHidden || callFullscreen)) setFriendsInviteOpen(false);
   }, [callFullscreen, conversation, conversationHidden]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    setCallControlsVisible(true);
+    callControlsTimer.current = setTimeout(() => setCallControlsVisible(false), 3500);
+    return () => {
       if (callControlsTimer.current) clearTimeout(callControlsTimer.current);
-    },
-    [],
-  );
+    };
+  }, [roomId]);
 
   useEffect(() => {
     if (!conversation || !roomStartedAt || waitingParticipants.length === 0) {
@@ -579,7 +625,8 @@ export function RoomView({
     return () => window.clearTimeout(timer);
   }, [recentSpeech, roomId]);
 
-  const renderParticipant = (participant: Participant, compact = false) => {
+  const renderParticipant = (source: Participant, compact = false) => {
+    const participant = source.id === selfId ? { ...source, muted, deafened } : source;
     const accountStatus = participant.accountId
       ? (accountPresence[participant.accountId] ?? 'online')
       : 'online';
@@ -596,16 +643,16 @@ export function RoomView({
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
     const cardStyle = participant.cardStyle ?? 'avatar-glass';
-    const status = speaking
-      ? 'Говорит'
-      : presence === 'away'
-        ? 'Нет на месте'
-        : presence === 'dnd'
-          ? 'Не беспокоить'
-          : presence === 'offline'
-            ? 'Не в сети'
-            : participant.muted
-              ? 'Микрофон выключен'
+    const status = participant.muted
+      ? 'Микрофон выключен'
+      : speaking
+        ? 'Говорит'
+        : presence === 'away'
+          ? 'Нет на месте'
+          : presence === 'dnd'
+            ? 'Не беспокоить'
+            : presence === 'offline'
+              ? 'Не в сети'
               : connectionLabel(connection, hasAudio);
 
     return (
@@ -687,8 +734,14 @@ export function RoomView({
             data-presence={presence}
           >
             {participant.muted ? <MicOff size={13} /> : <i />}
-            {status}
+            {t(status)}
           </div>
+          {participant.deafened && (
+            <div className="participant-status muted participant-deafened">
+              <HeadphoneOff size={13} />
+              {t('Наушники выключены')}
+            </div>
+          )}
         </div>
 
         {!isSelf && !compact && (
@@ -719,7 +772,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -828,6 +881,8 @@ export function RoomView({
                 </div>
               </div>
             </div>
+          ) : activity?.open ? (
+            <CallActivity activity={activity} onAction={onActivity} />
           ) : (
             <div
               className="participants-grid"
@@ -1013,17 +1068,20 @@ export function RoomView({
           document.fullscreenElement ?? document.body,
         )}
 
-      <div className="reaction-burst-layer" aria-live="polite">
-        {reactions.map((item) => {
-          const participant = participants.find((entry) => entry.id === item.participantId);
-          return (
-            <span className="reaction-burst" key={item.id}>
-              <b>{item.reaction}</b>
-              <small>{participant?.name ?? 'Участник'}</small>
-            </span>
-          );
-        })}
-      </div>
+      {createPortal(
+        <div className="reaction-burst-layer" aria-live="polite">
+          {reactions.map((item) => {
+            const participant = participants.find((entry) => entry.id === item.participantId);
+            return (
+              <span className="reaction-burst" key={item.id}>
+                <b>{item.reaction}</b>
+                <small>{participant?.name ?? t('Участник')}</small>
+              </span>
+            );
+          })}
+        </div>,
+        document.fullscreenElement ?? document.body,
+      )}
 
       {conversation && !callFullscreen && (
         <button
@@ -1039,6 +1097,7 @@ export function RoomView({
 
       <div className="call-view-controls" aria-label={t('Режим отображения звонка')}>
         <button
+          className="call-popout-action"
           aria-label={
             callDetached
               ? t('Вернуть звонок в основное окно')
@@ -1050,6 +1109,7 @@ export function RoomView({
           <PictureInPicture2 size={19} />
         </button>
         <button
+          className="call-fullscreen-action"
           aria-label={
             callFullscreen ? t('Выйти из полноэкранного режима') : t('Открыть звонок во весь экран')
           }
@@ -1099,7 +1159,9 @@ export function RoomView({
               data-tooltip={muted ? t('Включить микрофон') : t('Выключить микрофон')}
               onClick={onMute}
             >
-              <span className="dock-icon">{muted ? <MicOff /> : <Mic />}</span>
+              <span className="dock-icon">
+                <DeviceControlIcon icon={Mic} off={muted} />
+              </span>
               <span className="dock-mobile-label">{t('Микрофон')}</span>
             </button>
             <button
@@ -1138,7 +1200,7 @@ export function RoomView({
               }}
             >
               <span className="dock-icon">
-                {localVideo.cameraEnabled ? <Camera /> : <CameraOff />}
+                <DeviceControlIcon icon={Camera} off={!localVideo.cameraEnabled} />
               </span>
               <span className="dock-mobile-label">{t('Камера')}</span>
             </button>
@@ -1165,6 +1227,12 @@ export function RoomView({
             )}
           </div>
         </div>
+        {activityButton('activity-control-mobile')}
+        {activityHint > 0 && (
+          <span className="call-activity-hint" key={activityHint} role="status">
+            {t('Скоро')}
+          </span>
+        )}
         <button
           className={`mobile-call-more-toggle ${mobileActionsOpen ? 'active' : ''}`}
           aria-label={mobileActionsOpen ? t('Скрыть дополнительные действия') : t('Показать ещё')}
@@ -1175,6 +1243,7 @@ export function RoomView({
           <span className="dock-mobile-label">{t('Ещё')}</span>
         </button>
         <div className="dock-island dock-secondary-actions">
+          {activityButton('activity-control-desktop')}
           <button
             className={`dock-control video-control screen-control ${localVideo.screenEnabled ? 'active sharing' : ''}`}
             aria-busy={videoBusy}
@@ -1280,7 +1349,7 @@ export function RoomView({
             </button>
           )}
           <button
-            className="dock-control dock-control-secondary"
+            className="dock-control dock-control-secondary dock-settings-control"
             aria-label={t('Настройки аудио и устройств')}
             data-tooltip={t('Настройки аудио и устройств')}
             onClick={onSettings}
@@ -1304,6 +1373,11 @@ export function RoomView({
       </footer>
       {cameraPreviewOpen && (
         <CameraPreviewDialog
+          workspace={
+            embedded && !callFullscreen
+              ? roomShellRef.current?.closest('.account-room-workspace')
+              : undefined
+          }
           devices={devices.cameras}
           settings={settings}
           cameraEnabled={localVideo.cameraEnabled}
@@ -1485,6 +1559,7 @@ function DeviceMenu({
 }
 
 function CameraPreviewDialog({
+  workspace,
   devices,
   settings,
   cameraEnabled,
@@ -1492,6 +1567,7 @@ function CameraPreviewDialog({
   onEnable,
   onClose,
 }: {
+  workspace?: Element | null;
   devices: MediaDeviceInfo[];
   settings: LocalSettings;
   cameraEnabled: boolean;
@@ -1504,6 +1580,32 @@ function CameraPreviewDialog({
   onEnable(): void;
   onClose(): void;
 }) {
+  const [bounds, setBounds] = useState<DOMRect>();
+  useLayoutEffect(() => {
+    if (!workspace) {
+      setBounds(undefined);
+      return;
+    }
+    const update = () => setBounds(workspace.getBoundingClientRect());
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(workspace);
+    window.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [workspace]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [onClose]);
   const [deviceId, setDeviceId] = useState(settings.cameraDeviceId);
   const [mode, setMode] = useState<CameraBackgroundMode>(settings.cameraBackgroundMode);
   const [dataUrl, setDataUrl] = useState(settings.cameraBackgroundDataUrl);
@@ -1594,8 +1696,24 @@ function CameraPreviewDialog({
     setDeviceMenuOpen(false);
   };
 
-  return (
-    <div className="camera-preview-backdrop" role="presentation" onMouseDown={close}>
+  return createPortal(
+    <div
+      className="camera-preview-backdrop"
+      role="presentation"
+      onMouseDown={close}
+      style={
+        bounds
+          ? {
+              left: bounds.left,
+              top: bounds.top,
+              width: bounds.width,
+              height: bounds.height,
+              right: 'auto',
+              bottom: 'auto',
+            }
+          : undefined
+      }
+    >
       <section
         className="camera-preview-dialog"
         role="dialog"
@@ -1748,7 +1866,8 @@ function CameraPreviewDialog({
           </button>
         </footer>
       </section>
-    </div>
+    </div>,
+    document.fullscreenElement ?? document.body,
   );
 }
 
@@ -1823,6 +1942,7 @@ function ScreenShareStage({
         Math.min(bounds.height, visibleBottom - bounds.top) - SCREEN_STAGE_BOTTOM_GAP,
       );
       const width = Math.min(availableWidth, availableHeight * aspectRatio);
+      if (width < 1) return;
       const height = width / aspectRatio;
       setStageSize((current) =>
         current && Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
@@ -1962,14 +2082,26 @@ function ParticipantVideo({
   onExpand?(): void;
 }) {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
+  const [playback, setPlayback] = useState<'waiting' | 'playing' | 'failed'>('waiting');
+  const play = useCallback(() => {
+    if (!element) return;
+    void element.play().catch((error: unknown) => {
+      if (
+        element.srcObject === stream &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      )
+        setPlayback('failed');
+    });
+  }, [element, stream]);
   useEffect(() => {
     if (!element) return;
+    setPlayback('waiting');
     element.srcObject = stream;
-    void element.play().catch(() => undefined);
+    play();
     return () => {
       if (element.srcObject === stream) element.srcObject = null;
     };
-  }, [element, stream]);
+  }, [element, play, stream]);
   useEffect(() => {
     if (!element) return;
     element.muted = muted;
@@ -2026,6 +2158,8 @@ function ParticipantVideo({
         autoPlay
         muted={muted}
         playsInline
+        onPlaying={() => setPlayback('playing')}
+        onError={() => setPlayback('failed')}
         onLoadedMetadata={(event) => {
           const video = event.currentTarget;
           if (video.videoWidth > 0 && video.videoHeight > 0)
@@ -2049,6 +2183,24 @@ function ParticipantVideo({
             onAspectRatioChange?.(video.videoWidth / video.videoHeight);
         }}
       />
+      {source === 'screen' && playback !== 'playing' && (
+        <div className="screen-stage-waiting" role="status">
+          <span>{playback === 'failed' ? t('Демонстрация экрана') : t('Подключение…')}</span>
+          {playback === 'failed' && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPlayback('waiting');
+                play();
+              }}
+            >
+              {t('Повторить подключение')}
+            </button>
+          )}
+        </div>
+      )}
       {showExpand && onExpand && (
         <button
           className="video-fullscreen"

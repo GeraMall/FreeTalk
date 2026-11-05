@@ -1,13 +1,14 @@
 import { formatChatCallLabel, t } from '../lib/app-language';
 import {
-  Check,
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   Download,
   DoorOpen,
   Edit3,
   EyeOff,
   History,
+  LockKeyhole,
   LogOut,
   MessageCircle,
   MinusCircle,
@@ -16,6 +17,7 @@ import {
   Plus,
   Search,
   Settings,
+  Store,
   Users,
   Volume2,
   X,
@@ -51,7 +53,7 @@ import { playNotificationSound } from '../lib/notification-sounds';
 import { loadSettings } from '../lib/settings';
 import { CallDock, ProfileAudioControls, type CallDockState } from './CallDock';
 
-export type AccountPage = 'home' | 'friends' | 'chats' | 'history';
+export type AccountPage = 'home' | 'friends' | 'chats' | 'store' | 'history';
 export type AccountDestination = AccountPage | 'room';
 
 export function AccountSidebar({
@@ -96,7 +98,6 @@ export function AccountSidebar({
 }) {
   const [presence, setPresence] = useState<PresenceStatus>('offline');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [presenceMode, setLocalPresenceMode] = useState(getPresenceMode);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});
   const [chatSearch, setChatSearch] = useState('');
@@ -196,22 +197,12 @@ export function AccountSidebar({
     const closeOnOutsideClick = (event: PointerEvent) => {
       const target = event.target as Node;
       if (!profileMenuRef.current?.contains(target)) {
-        setStatusOpen(false);
         setMenuOpen(false);
         return;
       }
-      if (statusOpen && !statusPickerRef.current?.contains(target)) {
-        setStatusOpen(false);
-      }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (statusOpen) {
-          setStatusOpen(false);
-        } else {
-          setMenuOpen(false);
-        }
-      }
+      if (event.key === 'Escape') setMenuOpen(false);
     };
     window.addEventListener('pointerdown', closeOnOutsideClick);
     window.addEventListener('keydown', closeOnEscape);
@@ -219,7 +210,7 @@ export function AccountSidebar({
       window.removeEventListener('pointerdown', closeOnOutsideClick);
       window.removeEventListener('keydown', closeOnEscape);
     };
-  }, [menuOpen, statusOpen]);
+  }, [menuOpen]);
 
   const choosePresence = (mode: PresenceMode) => {
     setPresenceMode(mode);
@@ -332,12 +323,14 @@ export function AccountSidebar({
           active={activePage === 'home'}
           icon={<DoorOpen />}
           label={t('Главная')}
+          clickMotion
           onClick={() => onNavigate('home')}
         />
         <Nav
           active={activePage === 'friends'}
           icon={<Users />}
           label={t('Друзья')}
+          clickMotion
           onClick={() => onNavigate('friends')}
         />
         {!chatNavigationEnabled && (
@@ -350,9 +343,17 @@ export function AccountSidebar({
           />
         )}
         <Nav
+          active={activePage === 'store'}
+          icon={user.canAccessStore ? <Store /> : <LockKeyhole />}
+          label={t('Магазин')}
+          clickMotion
+          onClick={() => onNavigate('store')}
+        />
+        <Nav
           active={activePage === 'history'}
           icon={<History />}
           label={t('История')}
+          clickMotion
           onClick={() => onNavigate('history')}
         />
       </nav>
@@ -483,11 +484,11 @@ export function AccountSidebar({
                   @{user.username}
                   <i aria-hidden="true">•</i>
                   <span className={`profile-inline-presence ${inlinePresence.tone}`}>
-                    {inlinePresence.label}
+                    {t(inlinePresence.label)}
                   </span>
                 </small>
               </span>
-              <p>{user.bio || 'Расскажите немного о себе в настройках профиля.'}</p>
+              <p>{user.bio || t('Расскажите немного о себе в настройках профиля.')}</p>
             </div>
             <button
               type="button"
@@ -506,48 +507,35 @@ export function AccountSidebar({
             <div className="profile-presence-picker" ref={statusPickerRef}>
               <button
                 type="button"
-                className={`profile-popover-action profile-status-control${statusOpen ? ' open' : ''}`}
-                aria-expanded={statusOpen}
-                aria-haspopup="menu"
-                aria-controls="profile-status-menu"
-                onClick={() => setStatusOpen((current) => !current)}
+                className="profile-status-arrow"
+                aria-label={t('Предыдущий статус')}
+                onClick={() => {
+                  const modes: PresenceMode[] = ['auto', 'away', 'dnd', 'invisible'];
+                  choosePresence(
+                    modes[(modes.indexOf(presenceMode) + modes.length - 1) % modes.length],
+                  );
+                }}
               >
+                <ChevronLeft size={17} />
+              </button>
+              <span className="profile-status-current" aria-live="polite">
                 <PresenceModeIcon mode={presenceMode} />
                 <span>
                   <strong>{presenceModeLabel(presenceMode)}</strong>
+                  <small>{t(presenceModeDescription(presenceMode))}</small>
                 </span>
-                <ChevronDown
-                  className={statusOpen ? 'expanded' : ''}
-                  size={16}
-                  aria-hidden="true"
-                />
+              </span>
+              <button
+                type="button"
+                className="profile-status-arrow"
+                aria-label={t('Следующий статус')}
+                onClick={() => {
+                  const modes: PresenceMode[] = ['auto', 'away', 'dnd', 'invisible'];
+                  choosePresence(modes[(modes.indexOf(presenceMode) + 1) % modes.length]);
+                }}
+              >
+                <ChevronRight size={17} />
               </button>
-              {statusOpen && (
-                <div
-                  id="profile-status-menu"
-                  className="profile-presence-options"
-                  role="menu"
-                  aria-label={t('Выбор статуса')}
-                >
-                  {(['auto', 'away', 'dnd', 'invisible'] as PresenceMode[]).map((mode) => (
-                    <button
-                      type="button"
-                      className={mode === presenceMode ? 'selected' : ''}
-                      role="menuitemradio"
-                      aria-checked={mode === presenceMode}
-                      key={mode}
-                      onClick={() => choosePresence(mode)}
-                    >
-                      <PresenceModeIcon mode={mode} />
-                      <span>
-                        <strong>{presenceModeLabel(mode)}</strong>
-                        <small>{presenceModeDescription(mode)}</small>
-                      </span>
-                      <Check className="status-item-check" size={15} aria-hidden="true" />
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <button type="button" className="profile-popover-logout" onClick={onLogout}>
               <LogOut size={16} />
@@ -560,7 +548,6 @@ export function AccountSidebar({
           onClickCapture={(event) => {
             if ((event.target as Element).closest('.profile-audio-controls')) {
               setMenuOpen(false);
-              setStatusOpen(false);
             }
           }}
         >
@@ -571,7 +558,6 @@ export function AccountSidebar({
             aria-expanded={menuOpen}
             onClick={() => {
               setMenuOpen((current) => !current);
-              setStatusOpen(false);
             }}
           >
             <ProfileAvatar user={user} />
@@ -595,7 +581,6 @@ export function AccountSidebar({
             aria-label={t('Открыть настройки профиля')}
             onClick={() => {
               setMenuOpen(false);
-              setStatusOpen(false);
               onSettings('profile');
             }}
           >
@@ -705,7 +690,7 @@ function presenceModeDescription(mode: PresenceMode) {
   if (mode === 'away') return 'Показывать, что вы отошли';
   if (mode === 'dnd') return 'Показывать статус «Не беспокоить»';
   if (mode === 'invisible') return 'Другие всегда видят вас не в сети';
-  return 'Автоматически: нет речи и действий 5 минут';
+  return 'Вы в сети — это замечательно.';
 }
 
 function getInlinePresence(mode: PresenceMode, presence: PresenceStatus) {
@@ -744,6 +729,7 @@ function Nav({
   live = false,
   passive = false,
   unread = 0,
+  clickMotion = false,
   onClick,
 }: {
   active: boolean;
@@ -752,8 +738,10 @@ function Nav({
   live?: boolean;
   passive?: boolean;
   unread?: number;
+  clickMotion?: boolean;
   onClick?(): void;
 }) {
+  const iconAnimation = useRef<Animation>(null);
   return (
     <button
       className={`${active ? 'active' : ''} ${live ? 'call-navigation' : ''} ${passive ? 'passive' : ''}`}
@@ -762,7 +750,28 @@ function Nav({
       }
       aria-current={active ? 'page' : undefined}
       aria-disabled={passive || undefined}
-      onClick={passive ? undefined : onClick}
+      onClick={
+        passive
+          ? undefined
+          : (event) => {
+              if (clickMotion && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+                iconAnimation.current?.cancel();
+                iconAnimation.current =
+                  event.currentTarget
+                    .querySelector('svg')
+                    ?.animate?.(
+                      [
+                        { transform: 'scale(1)' },
+                        { offset: 0.22, transform: 'scale(0.86)' },
+                        { offset: 0.55, transform: 'scale(1.16) rotate(-8deg)' },
+                        { transform: 'scale(1)' },
+                      ],
+                      { duration: 300, easing: 'ease-in-out' },
+                    ) ?? null;
+              }
+              onClick?.();
+            }
+      }
     >
       {icon}
       <span>{label}</span>

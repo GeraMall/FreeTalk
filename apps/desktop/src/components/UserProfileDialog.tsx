@@ -1,4 +1,4 @@
-import { t } from '../lib/app-language';
+import { appLanguage, t } from '../lib/app-language';
 import {
   Activity,
   Ban,
@@ -261,7 +261,7 @@ export function FullProfileView({
   if (sharedCalls.lastStartedAt)
     activityItems.push({
       icon: 'call',
-      title: isSelf ? 'Последний звонок' : 'Последний звонок с вами',
+      title: t(isSelf ? 'Последний звонок' : 'Последний звонок с вами'),
       text: `${formatRelativeDate(sharedCalls.lastStartedAt)} · ${formatDuration(sharedCalls.lastDurationSeconds)}`,
     });
   if (commonChats[0])
@@ -269,16 +269,16 @@ export function FullProfileView({
       icon: 'chat',
       title: commonChats[0].title,
       text: commonChats[0].lastInteractionAt
-        ? `${isSelf ? 'Твой чат' : 'Общий чат'} · ${formatRelativeDate(commonChats[0].lastInteractionAt)}`
+        ? `${t(isSelf ? 'Твой чат' : 'Общий чат')} · ${formatRelativeDate(commonChats[0].lastInteractionAt)}`
         : isSelf
-          ? 'Твой чат'
-          : 'Общий чат',
+          ? t('Твой чат')
+          : t('Общий чат'),
     });
   if (profile?.presence && profile.presence !== 'offline')
     activityItems.push({
       icon: 'presence',
       title: presenceLabel(profile.presence),
-      text: 'Текущий статус в Trlka',
+      text: t('Текущий статус в Trlka'),
     });
   const run =
     onRun ??
@@ -291,7 +291,7 @@ export function FullProfileView({
       className={`full-profile-dialog${preview ? ' full-profile-preview' : ''}`}
       role={preview ? 'region' : 'dialog'}
       aria-modal={preview ? undefined : true}
-      aria-label={`${preview ? 'Предпросмотр профиля' : 'Профиль'} ${displayName}`}
+      aria-label={`${t(preview ? 'Предпросмотр профиля' : 'Профиль')} ${displayName}`}
       onMouseDown={(event) => event.stopPropagation()}
     >
       {onClose ? (
@@ -369,7 +369,7 @@ export function FullProfileView({
               role="tab"
               onClick={() => setTab(id)}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </nav>
@@ -504,7 +504,7 @@ function ProfileTabContent({
     <>
       <section className="full-profile-section full-profile-about">
         <h3>{t('О СЕБЕ')}</h3>
-        <p>{profile?.bio || 'Пользователь пока ничего не добавил.'}</p>
+        <p>{profile?.bio || t('Пользователь пока ничего не добавил.')}</p>
       </section>
       <section className="full-profile-section">
         <div className="full-profile-section-heading">
@@ -717,29 +717,29 @@ function ProfileEmpty({
       ) : (
         <MessageCircle />
       )}
-      <span>{text}</span>
+      <span>{t(text)}</span>
     </div>
   );
 }
 
 function presenceLabel(status: PresenceStatus = 'offline') {
-  if (status === 'online') return 'В сети';
-  if (status === 'away') return 'Нет на месте';
-  if (status === 'dnd') return 'Не беспокоить';
-  return 'Не в сети';
+  if (status === 'online') return t('В сети');
+  if (status === 'away') return t('Нет на месте');
+  if (status === 'dnd') return t('Не беспокоить');
+  return t('Не в сети');
 }
 
 function relationshipLabel(relationship?: ProfileRelationship) {
-  if (relationship === 'self') return 'Это ваш профиль';
-  if (relationship === 'friend') return 'У вас в друзьях';
-  if (relationship === 'incoming') return 'Отправил вам запрос в друзья';
-  if (relationship === 'outgoing') return 'Запрос в друзья отправлен';
-  if (relationship === 'none') return 'Вы ещё не друзья';
-  return 'Связь обновляется…';
+  if (relationship === 'self') return t('Это ваш профиль');
+  if (relationship === 'friend') return t('У вас в друзьях');
+  if (relationship === 'incoming') return t('Отправил вам запрос в друзья');
+  if (relationship === 'outgoing') return t('Запрос в друзья отправлен');
+  if (relationship === 'none') return t('Вы ещё не друзья');
+  return t('Связь обновляется…');
 }
 
 function formatRegistrationDate(value: string) {
-  return new Date(value).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return new Date(value).toLocaleDateString(appLanguage(), { month: 'long', year: 'numeric' });
 }
 
 function formatRelativeDate(value: string) {
@@ -747,14 +747,16 @@ function formatRelativeDate(value: string) {
   const difference = Date.now() - date.getTime();
   const day = 86_400_000;
   if (difference >= 0 && difference < day && date.getDate() === new Date().getDate())
-    return `Сегодня, ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
-  if (difference >= day && difference < day * 2) return 'Вчера';
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    return t('Сегодня, {time}', {
+      time: date.toLocaleTimeString(appLanguage(), { hour: '2-digit', minute: '2-digit' }),
+    });
+  if (difference >= day && difference < day * 2) return t('Вчера');
+  return date.toLocaleDateString(appLanguage(), { day: 'numeric', month: 'short' });
 }
 
 function formatDuration(seconds: number | null) {
-  if (!seconds || seconds < 60) return 'меньше минуты';
+  if (!seconds || seconds < 60) return t('меньше минуты');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} мин`;
-  return `${Math.floor(minutes / 60)} ч ${minutes % 60} мин`;
+  if (minutes < 60) return t('{p0} мин', { p0: minutes });
+  return t('{hours} ч {minutes} мин', { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
 }

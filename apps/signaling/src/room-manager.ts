@@ -1,4 +1,11 @@
+import { mergeParticipantAudioState } from '@freetalk/protocol';
 import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
+import {
+  applyRoomActivity,
+  emptyRoomActivity,
+  type RoomActivitySession,
+  type RoomActivityAction,
+} from '@freetalk/protocol';
 import type {
   Participant,
   ParticipantCardDecoration,
@@ -8,6 +15,7 @@ import type {
 } from '@freetalk/protocol';
 
 export interface PeerConnection {
+  canUseActivity?: boolean;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
 }
@@ -19,6 +27,7 @@ interface Peer {
   lastSeen: number;
   profileChanges: number[];
   lastReactionAt: number;
+  lastActivityAt: number;
 }
 
 interface Room {
@@ -28,6 +37,7 @@ interface Room {
   peers: Map<string, Peer>;
   createdAt: number;
   chatMessages: RoomChatMessage[];
+  activity: RoomActivitySession;
 }
 
 export type RoomAuthority =
@@ -66,6 +76,7 @@ export class RoomManager {
       peers: new Map(),
       createdAt: Date.now(),
       chatMessages: [],
+      activity: emptyRoomActivity(),
     });
     return this.join(
       roomId,
@@ -133,6 +144,7 @@ export class RoomManager {
       lastSeen: Date.now(),
       profileChanges: existing?.profileChanges ?? [],
       lastReactionAt: existing?.lastReactionAt ?? 0,
+      lastActivityAt: existing?.lastActivityAt ?? 0,
     };
     room.peers.set(clientId, peer);
     const ownerChanged = this.reconcileOwner(room);
@@ -144,6 +156,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
+      activity: connection.canUseActivity ? room.activity.view : undefined,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -187,12 +200,13 @@ export class RoomManager {
     return true;
   }
 
-  setMuted(roomId: string, clientId: string, muted: boolean) {
+  setMuted(roomId: string, clientId: string, muted: boolean, deafened?: boolean) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return false;
-    peer.participant.muted = muted;
-    this.broadcast(room, { type: 'mute-changed', participantId: clientId, muted });
+    const state = mergeParticipantAudioState(peer.participant, { muted, deafened });
+    Object.assign(peer.participant, state);
+    this.broadcast(room, { type: 'mute-changed', participantId: clientId, ...state });
     return true;
   }
 
@@ -230,6 +244,22 @@ export class RoomManager {
     peer.participant.cardDecoration = 'none';
     this.broadcast(room, { type: 'participant-updated', participant: peer.participant });
     return true;
+  }
+
+  updateActivity(roomId: string, clientId: string, revision: number, action: RoomActivityAction) {
+    const room = this.rooms.get(roomId);
+    const peer = room?.peers.get(clientId);
+    if (!room || !peer?.connection.canUseActivity) return;
+    const now = Date.now();
+    if (now - peer.lastActivityAt < 125) return;
+    peer.lastActivityAt = now;
+    const next = applyRoomActivity(room.activity, revision, action);
+    if (next === room.activity) return;
+    room.activity = next;
+    for (const participant of room.peers.values()) {
+      if (participant.connection.canUseActivity)
+        participant.connection.send({ type: 'activity-state', activity: next.view });
+    }
   }
 
   react(

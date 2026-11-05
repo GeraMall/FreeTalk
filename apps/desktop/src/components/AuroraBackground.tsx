@@ -34,9 +34,9 @@ export function AuroraBackground() {
       <svg className="aurora-ribbon" viewBox="0 0 1600 1080" preserveAspectRatio="xMidYMid slice">
         <defs>
           <linearGradient id="auth-ribbon-fill" x1="0" y1="0" x2="0.8" y2="1">
-            <stop stopColor="#101b2e" />
-            <stop offset=".55" stopColor="#0b121f" />
-            <stop offset="1" stopColor="#1b2d46" />
+            <stop stopColor="#08111d" />
+            <stop offset=".55" stopColor="#050b14" />
+            <stop offset="1" stopColor="#091320" />
           </linearGradient>
           <linearGradient id="auth-ribbon-wave">
             <stop stopColor="white" stopOpacity="0" />

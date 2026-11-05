@@ -4,9 +4,14 @@ export interface NativeScreenSource {
   kind: 'screen' | 'window';
 }
 
+export interface NativeScreenSelection extends NativeScreenSource {
+  includeAudio: boolean;
+}
+
 interface PickerRequest {
+  includeAudio: boolean;
   sources: NativeScreenSource[];
-  complete: (source: NativeScreenSource | null) => void;
+  complete: (source: NativeScreenSelection | null) => void;
 }
 let pending: PickerRequest | null = null;
 const listeners = new Set<() => void>();
@@ -19,11 +24,12 @@ export const screenPickerStore = {
   },
   snapshot: () => pending,
 };
-export function selectNativeScreen(sources: NativeScreenSource[]) {
+export function selectNativeScreen(sources: NativeScreenSource[], includeAudio = true) {
   pending?.complete(null);
-  return new Promise<NativeScreenSource>((resolve, reject) => {
+  return new Promise<NativeScreenSelection>((resolve, reject) => {
     pending = {
       sources,
+      includeAudio,
       complete(source) {
         pending = null;
         listeners.forEach((listener) => listener());
