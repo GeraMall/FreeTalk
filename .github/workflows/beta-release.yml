@@ -65,7 +65,7 @@ jobs:
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
   macos:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.194' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.197' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -159,7 +159,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "TRLKA ${version}: smoother chat navigation, background presence, startup fixes and responsive interface improvements." \
+            --arg notes "TRLKA ${version}: call interface recovery, bounded reconnection, reliable background presence and instant return to the current call." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{
@@ -170,7 +170,7 @@ jobs:
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          draft: ${{ github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.189' }}
+          draft: ${{ github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.189' || github.ref_name == 'v0.4.0-beta.197' }}
           prerelease: false
           make_latest: true
           generate_release_notes: true
