@@ -124,6 +124,7 @@ interface RoomViewProps {
   activity?: RoomActivity;
   activityUnlocked?: boolean;
   onActivity?(action: RoomActivityAction): void;
+  onTabletVisibilityChange?(visible: boolean): void;
   screenFocusMode: boolean;
   signalingState: SignalingState;
   signalStrength?: number;
@@ -165,7 +166,7 @@ interface RoomViewProps {
 export function RoomView({
   conversation = false,
   conversationType,
-  conversationHidden = false,
+  conversationHidden: preferredConversationHidden = false,
   onCallToolbarTarget,
   onConversationToggle,
   cameraPreviewRequest = 0,
@@ -188,6 +189,7 @@ export function RoomView({
   activity,
   activityUnlocked = false,
   onActivity,
+  onTabletVisibilityChange,
   screenFocusMode,
   signalingState,
   signalStrength = 100,
@@ -266,9 +268,8 @@ export function RoomView({
   const joiningActivity = useRef(false);
   const activitySession = `${roomId}:${activity?.sessionId ?? 'legacy'}`;
   const tabletVisible = Boolean(activity?.open && joinedActivity === activitySession);
-  const activityChatBefore = useRef<
-    { roomId: string; conversation: boolean; open: boolean } | undefined
-  >(undefined);
+  const conversationHidden = preferredConversationHidden || tabletVisible;
+  const roomChatVisible = chatOpen && !tabletVisible;
   const joinTablet = () => setJoinedActivity(activitySession);
   useLayoutEffect(() => {
     if (!activity?.open) {
@@ -281,24 +282,9 @@ export function RoomView({
     }
   }, [activity?.open, activity?.startedBy, activitySession, selfId]);
   useLayoutEffect(() => {
-    if (activityChatBefore.current?.roomId !== roomId) activityChatBefore.current = undefined;
-    if (tabletVisible) {
-      activityChatBefore.current ??= {
-        roomId,
-        conversation,
-        open: conversation ? !conversationHidden : chatOpen,
-      };
-      if (conversation && !conversationHidden) onConversationToggle?.();
-      else if (!conversation && chatOpen) setChatOpen(false);
-      return;
-    }
-    const previous = activityChatBefore.current;
-    activityChatBefore.current = undefined;
-    if (!previous) return;
-    if (previous.conversation && conversation) {
-      if (conversationHidden === previous.open) onConversationToggle?.();
-    } else if (!conversation && previous.open) setChatOpen(true);
-  }, [tabletVisible, conversation, conversationHidden, onConversationToggle, chatOpen, roomId]);
+    onTabletVisibilityChange?.(tabletVisible);
+  }, [tabletVisible, onTabletVisibilityChange]);
+  useLayoutEffect(() => () => onTabletVisibilityChange?.(false), [onTabletVisibilityChange]);
   const activityStarter = participants.find(
     (participant) => participant.id === activity?.startedBy,
   );
@@ -383,9 +369,9 @@ export function RoomView({
   }, [conversation, roomId, roomStartedAt, waitingParticipants.length]);
 
   useEffect(() => {
-    chatOpenRef.current = chatOpen;
-    if (chatOpen) setUnreadChatCount(0);
-  }, [chatOpen]);
+    chatOpenRef.current = roomChatVisible;
+    if (roomChatVisible) setUnreadChatCount(0);
+  }, [roomChatVisible]);
 
   useEffect(() => {
     if (!deviceMenu) return;
@@ -831,7 +817,7 @@ export function RoomView({
   const roomContent = (
     <main
       ref={roomShellRef}
-      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${chatOpen ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
+      className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${roomChatVisible ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
       <div className="room-connection-flyout">
@@ -974,7 +960,7 @@ export function RoomView({
               {ordered.map((participant) => renderParticipant(participant))}
               {activity?.open && !tabletVisible && (
                 <article
-                  className="participant-card audio-tile activity-invitation"
+                  className={`participant-card ${roomMode === 'camera' ? 'camera-tile' : 'audio-tile'} activity-invitation`}
                   role="listitem"
                 >
                   <div className="activity-invitation-content">
@@ -1013,7 +999,7 @@ export function RoomView({
           </div>
         )}
 
-        {chatOpen && (
+        {roomChatVisible && (
           <RoomChatPanel
             messages={roomChatMessages.map((message) => ({
               ...message,
@@ -1192,7 +1178,7 @@ export function RoomView({
         document.fullscreenElement ?? document.body,
       )}
 
-      {conversation && !callFullscreen && (
+      {conversation && !callFullscreen && !tabletVisible && (
         <button
           className="conversation-chat-hide"
           aria-label={conversationHidden ? t('Показать чат') : t('Скрыть чат')}
@@ -1434,7 +1420,7 @@ export function RoomView({
           </div>
           {!conversation && (
             <button
-              className={`dock-control dock-control-secondary room-chat-control ${(conversation ? !conversationHidden : chatOpen) ? 'active' : ''}`}
+              className={`dock-control dock-control-secondary room-chat-control ${roomChatVisible ? 'active' : ''}`}
               aria-label={
                 conversation
                   ? t('Показать чат')
@@ -1442,9 +1428,12 @@ export function RoomView({
                     ? t('Чат комнаты, непрочитанных сообщений: {p0}', { p0: unreadChatCount })
                     : t('Чат комнаты')
               }
-              aria-expanded={conversation ? !conversationHidden : chatOpen}
+              aria-expanded={roomChatVisible}
               data-tooltip={conversation ? t('Показать чат') : t('Чат комнаты')}
-              onClick={conversation ? onConversationToggle : toggleRoomChat}
+              onClick={() => {
+                if (tabletVisible) setJoinedActivity(undefined);
+                else toggleRoomChat();
+              }}
             >
               <span className="dock-icon">
                 <MessageCircle />

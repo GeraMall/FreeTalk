@@ -116,6 +116,7 @@ function view(
     activity?: RoomActivity;
     activityUnlocked?: boolean;
     onActivity?: (action: RoomActivityAction) => void;
+    onTabletVisibilityChange?: (visible: boolean) => void;
   } = {},
 ) {
   return (
@@ -153,6 +154,7 @@ function view(
       activity={handlers.activity}
       activityUnlocked={handlers.activityUnlocked}
       onActivity={handlers.onActivity}
+      onTabletVisibilityChange={handlers.onTabletVisibilityChange}
       screenFocusMode={handlers.screenFocusMode ?? false}
       signalingState={handlers.signalingState ?? 'connected'}
       signalStrength={handlers.signalStrength}
@@ -241,7 +243,7 @@ describe('RoomView media layouts', () => {
     expect(result.getByText('Друг приглашает играть вместе')).toBeTruthy();
     expect(result.queryByLabelText('Общий планшет')).toBeNull();
     fireEvent.click(result.getByRole('button', { name: 'Присоединиться' }));
-    expect(hide).toHaveBeenCalledOnce();
+    expect(hide).not.toHaveBeenCalled();
     expect(result.getByLabelText('Общий планшет')).toBeTruthy();
     expect(result.queryByRole('button', { name: 'Завершить для всех' })).toBeNull();
     fireEvent.click(result.getByRole('button', { name: 'Шахматы' }));
@@ -249,6 +251,47 @@ describe('RoomView media layouts', () => {
     fireEvent.click(result.getByRole('button', { name: 'Свернуть планшет' }));
     expect(result.queryByLabelText('Общий планшет')).toBeNull();
     expect(send).not.toHaveBeenCalledWith({ kind: 'close' });
+  });
+
+  it('reports tablet visibility without overwriting chat preference, including owner close and later game updates', () => {
+    const visible = vi.fn();
+    const toggle = vi.fn();
+    const activity: RoomActivity = {
+      open: true,
+      revision: 1,
+      region: 'RU',
+      startedBy: selfId,
+      sessionId: peerId,
+    };
+    const draw = (state: RoomActivity) =>
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        activity: state,
+        conversation: true,
+        onConversationToggle: toggle,
+        onTabletVisibilityChange: visible,
+      });
+    const page = render(draw(activity));
+    expect(page.getByLabelText('Общий планшет')).toBeTruthy();
+    expect(visible).toHaveBeenLastCalledWith(true);
+    fireEvent.click(page.getByRole('button', { name: 'Свернуть планшет' }));
+    expect(visible).toHaveBeenLastCalledWith(false);
+    expect(page.container.querySelector('.conversation-chat-hidden')).toBeNull();
+    page.rerender(draw({ ...activity, revision: 2 }));
+    expect(page.queryByLabelText('Общий планшет')).toBeNull();
+    expect(toggle).not.toHaveBeenCalled();
+    fireEvent.click(page.getByRole('button', { name: 'Присоединиться' }));
+    page.unmount();
+    expect(visible).toHaveBeenLastCalledWith(false);
+  });
+
+  it('matches camera card geometry classes when an invitation appears beside video participants', () => {
+    const page = render(
+      view('camera', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        activity: { open: true, revision: 1, region: 'RU', startedBy: peerId, sessionId: peerId },
+      }),
+    );
+    expect(page.container.querySelector('.activity-invitation.camera-tile')).not.toBeNull();
+    expect(page.container.querySelector('.activity-invitation.audio-tile')).toBeNull();
   });
 
   it('keeps server disconnection distinct from local offline and shows connection startup honestly', () => {

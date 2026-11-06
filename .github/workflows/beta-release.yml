@@ -65,7 +65,7 @@ jobs:
         with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
 
   macos:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' || github.ref_name == 'v0.4.0-beta.201' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -159,7 +159,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "TRLKA ${version}: shared game tablet for everyone, YouTube/Rutube playback controls, reliable chat and call recovery, download progress and receipts." \
+            --arg notes "TRLKA ${version}: shared activity access for all accounts, preserved chat layout after tablet close, matching invitation and participant cards." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson platforms "$platforms" \
             '{
@@ -170,7 +170,7 @@ jobs:
             }' > release-assets/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          draft: ${{ github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.189' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' }}
+          draft: ${{ github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.189' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' || github.ref_name == 'v0.4.0-beta.201' }}
           prerelease: false
           make_latest: true
           generate_release_notes: true

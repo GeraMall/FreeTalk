@@ -199,7 +199,10 @@ export function App() {
   callAudioStateRef.current = { muted, deafened };
   const audioActionVersion = useRef(0);
   const [callToolbarTarget, setCallToolbarTarget] = useState<HTMLDivElement | null>(null);
-  const [conversationHidden, setConversationHidden] = useState(false);
+  const [preferredConversationHidden, setConversationHidden] = useState(false);
+  const [activityTabletVisible, setActivityTabletVisible] = useState(false);
+  // The tablet temporarily covers chat; it must not change the user's layout choice.
+  const conversationHidden = preferredConversationHidden || activityTabletVisible;
   const [mobileCallMinimized, setMobileCallMinimized] = useState(false);
   const [callExiting, setCallExiting] = useState(false);
   const [dismissedWaitingParticipantIds, setDismissedWaitingParticipantIds] = useState<Set<string>>(
@@ -515,6 +518,7 @@ export function App() {
     guestWarningTimer.current = undefined;
     reactionTimers.current.clear();
     setRoomActivity(undefined);
+    setActivityTabletVisible(false);
     setRoomId(undefined);
     setRoomDestination('room');
     setParticipants([]);
@@ -2216,7 +2220,8 @@ export function App() {
       roomStartedAt={roomStartedAt}
       reactions={reactions}
       roomChatMessages={roomChatMessages}
-      activity={accountUser?.canAccessStore ? roomActivity : undefined}
+      activity={roomActivity}
+      onTabletVisibilityChange={setActivityTabletVisible}
       activityUnlocked={Boolean(accountUser)}
       onActivity={sendActivity}
       screenFocusMode={screenFocusMode}
