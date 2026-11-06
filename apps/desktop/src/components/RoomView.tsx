@@ -266,10 +266,10 @@ export function RoomView({
   const joiningActivity = useRef(false);
   const activitySession = `${roomId}:${activity?.sessionId ?? 'legacy'}`;
   const tabletVisible = Boolean(activity?.open && joinedActivity === activitySession);
-  const joinTablet = () => {
-    setJoinedActivity(activitySession);
-    setChatOpen(false);
-  };
+  const activityChatBefore = useRef<
+    { roomId: string; conversation: boolean; open: boolean } | undefined
+  >(undefined);
+  const joinTablet = () => setJoinedActivity(activitySession);
   useLayoutEffect(() => {
     if (!activity?.open) {
       setJoinedActivity(undefined);
@@ -278,12 +278,27 @@ export function RoomView({
     if (joiningActivity.current || activity.startedBy === selfId) {
       joiningActivity.current = false;
       setJoinedActivity(activitySession);
-      setChatOpen(false);
     }
   }, [activity?.open, activity?.startedBy, activitySession, selfId]);
   useLayoutEffect(() => {
-    if (tabletVisible && conversation && !conversationHidden) onConversationToggle?.();
-  }, [tabletVisible, conversation, conversationHidden, onConversationToggle]);
+    if (activityChatBefore.current?.roomId !== roomId) activityChatBefore.current = undefined;
+    if (tabletVisible) {
+      activityChatBefore.current ??= {
+        roomId,
+        conversation,
+        open: conversation ? !conversationHidden : chatOpen,
+      };
+      if (conversation && !conversationHidden) onConversationToggle?.();
+      else if (!conversation && chatOpen) setChatOpen(false);
+      return;
+    }
+    const previous = activityChatBefore.current;
+    activityChatBefore.current = undefined;
+    if (!previous) return;
+    if (previous.conversation && conversation) {
+      if (conversationHidden === previous.open) onConversationToggle?.();
+    } else if (!conversation && previous.open) setChatOpen(true);
+  }, [tabletVisible, conversation, conversationHidden, onConversationToggle, chatOpen, roomId]);
   const activityStarter = participants.find(
     (participant) => participant.id === activity?.startedBy,
   );
@@ -948,25 +963,34 @@ export function RoomView({
           ) : (
             <div
               className="participants-grid"
-              data-count={participants.length + visibleWaitingParticipants.length}
+              data-count={
+                participants.length +
+                visibleWaitingParticipants.length +
+                (activity?.open && !tabletVisible ? 1 : 0)
+              }
               data-mode={roomMode}
               role="list"
             >
               {ordered.map((participant) => renderParticipant(participant))}
               {activity?.open && !tabletVisible && (
-                <article className="activity-invitation" role="listitem">
-                  <span className="activity-invitation-icon">
-                    <Shapes size={27} />
-                  </span>
-                  <strong>{t('Общий планшет')}</strong>
-                  <span>
-                    {t('{name} приглашает играть вместе', {
-                      name: activityStarter?.name ?? 'TRLKA',
-                    })}
-                  </span>
-                  <button type="button" onClick={joinTablet}>
-                    {t('Присоединиться')}
-                  </button>
+                <article
+                  className="participant-card audio-tile activity-invitation"
+                  role="listitem"
+                >
+                  <div className="activity-invitation-content">
+                    <span className="activity-invitation-icon">
+                      <Shapes size={27} />
+                    </span>
+                    <strong>{t('Общий планшет')}</strong>
+                    <span>
+                      {t('{name} приглашает играть вместе', {
+                        name: activityStarter?.name ?? 'TRLKA',
+                      })}
+                    </span>
+                    <button type="button" onClick={joinTablet}>
+                      {t('Присоединиться')}
+                    </button>
+                  </div>
                 </article>
               )}
 

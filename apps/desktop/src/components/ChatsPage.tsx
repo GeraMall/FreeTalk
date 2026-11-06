@@ -3305,7 +3305,7 @@ function MessageBubble({
           ) : message.kind === 'image' ? (
             <ChatImageMessage message={message} accountId={accountId} meta={messageMeta} />
           ) : message.kind === 'file' ? (
-            <ChatFileMessage message={message} />
+            <ChatFileMessage message={message} accountId={accountId} />
           ) : inviteToken ? (
             <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
           ) : roomInviteId ? (
@@ -3954,7 +3954,10 @@ function InviteMessageCard({
   );
 }
 
-function ChatFileMessage({ message }: { message: MessageItem }) {
+const downloadedChatFiles = new Set<string>();
+function ChatFileMessage({ message, accountId }: { message: MessageItem; accountId: string }) {
+  const receiptKey = `${accountId}:${message.id}`;
+  const [downloaded, setDownloaded] = useState(() => downloadedChatFiles.has(receiptKey));
   const [downloading, setDownloading] = useState(false);
   const downloadBusy = useRef(false);
   const mounted = useRef(true);
@@ -3991,6 +3994,10 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
       document.body.append(link);
       link.click();
       link.remove();
+      downloadedChatFiles.add(receiptKey);
+      if (downloadedChatFiles.size > 1000)
+        downloadedChatFiles.delete(downloadedChatFiles.values().next().value!);
+      if (mounted.current) setDownloaded(true);
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch {
       if (mounted.current) setFailed(true);
@@ -4005,7 +4012,14 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
     total > 0 ? Math.min(100, Math.round((progress.received * 100) / total)) : undefined;
   return (
     <div className="chat-file-message">
-      <button type="button" onClick={() => void download()} disabled={downloading}>
+      <button
+        type="button"
+        onClick={() => void download()}
+        disabled={downloading}
+        aria-label={t(downloaded ? 'Скачать повторно: {name}' : 'Скачать: {name}', {
+          name: filename,
+        })}
+      >
         <span className="chat-file-icon">
           <FileText aria-hidden="true" />
         </span>
@@ -4031,6 +4045,8 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
           >
             <span>{percent !== undefined ? `${percent}%` : '…'}</span>
           </span>
+        ) : downloaded && !failed ? (
+          <Check className="chat-file-download completed" aria-label={t('Файл скачан')} />
         ) : (
           <Download className="chat-file-download" aria-hidden="true" />
         )}

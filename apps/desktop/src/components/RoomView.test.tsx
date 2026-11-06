@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   Participant,
@@ -190,6 +191,34 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it.each([false, true])(
+    'restores chat visibility when closing a tablet (initially hidden: %s)',
+    (initialHidden) => {
+      function Harness({ open = true }: { open?: boolean }) {
+        const [hidden, setHidden] = useState(initialHidden);
+        return view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+          conversation: true,
+          conversationHidden: hidden,
+          onConversationToggle: () => setHidden((value) => !value),
+          activity: { open, revision: 1, region: 'RU', startedBy: peerId, sessionId: peerId },
+        });
+      }
+      const page = render(<Harness />);
+      fireEvent.click(page.getByRole('button', { name: 'Присоединиться' }));
+      expect(page.container.querySelector('.conversation-chat-hidden')).not.toBeNull();
+      fireEvent.click(page.getByRole('button', { name: 'Свернуть планшет' }));
+      expect(Boolean(page.container.querySelector('.conversation-chat-hidden'))).toBe(
+        initialHidden,
+      );
+      fireEvent.click(page.getByRole('button', { name: 'Присоединиться' }));
+      expect(page.container.querySelector('.conversation-chat-hidden')).not.toBeNull();
+      page.rerender(<Harness open={false} />);
+      expect(Boolean(page.container.querySelector('.conversation-chat-hidden'))).toBe(
+        initialHidden,
+      );
+    },
+  );
+
   it('shows an invitation first, hides chat on joining, and lets a viewer minimize without ending the shared game', () => {
     const hide = vi.fn(),
       send = vi.fn();

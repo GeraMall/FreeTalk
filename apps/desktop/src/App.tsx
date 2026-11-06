@@ -1,10 +1,11 @@
+import { AppToast } from './components/AppToast';
 import { useSoloCallTimeout } from './lib/use-solo-call-timeout';
 import { clearAccountView } from './lib/account-view-cache';
 import { mergeParticipantAudioState } from '@freetalk/protocol';
 import { useCallAudioControls } from './lib/call-audio-controls';
 import { t } from './lib/app-language';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, PhoneCall, X } from 'lucide-react';
+import { ChevronLeft, PhoneCall } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import type {
@@ -2504,25 +2505,5 @@ export function App() {
         </div>
       )}
     </>
-  );
-}
-
-function AppToast({
-  message,
-  error = false,
-  onClose,
-}: {
-  message: string;
-  error?: boolean;
-  onClose(): void;
-}) {
-  if (!message) return null;
-  return (
-    <div className={`toast ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>
-      <span>{message}</span>
-      <button aria-label={t('Закрыть сообщение')} onClick={onClose}>
-        <X size={16} />
-      </button>
-    </div>
   );
 }

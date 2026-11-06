@@ -822,5 +822,29 @@
     "be": "Прайграць",
     "ka": "დაკვრა",
     "es": "Reproducir"
+  },
+  "Файл скачан": {
+    "en": "File downloaded",
+    "zh-CN": "文件已下载",
+    "kk": "Файл жүктелді",
+    "be": "Файл спампаваны",
+    "ka": "ფაილი ჩამოიტვირთა",
+    "es": "Archivo descargado"
+  },
+  "Скачать: {name}": {
+    "en": "Download: {name}",
+    "zh-CN": "下载：{name}",
+    "kk": "Жүктеу: {name}",
+    "be": "Спампаваць: {name}",
+    "ka": "ჩამოტვირთვა: {name}",
+    "es": "Descargar: {name}"
+  },
+  "Скачать повторно: {name}": {
+    "en": "Download again: {name}",
+    "zh-CN": "重新下载：{name}",
+    "kk": "Қайта жүктеу: {name}",
+    "be": "Спампаваць яшчэ раз: {name}",
+    "ka": "ხელახლა ჩამოტვირთვა: {name}",
+    "es": "Volver a descargar: {name}"
   }
 }

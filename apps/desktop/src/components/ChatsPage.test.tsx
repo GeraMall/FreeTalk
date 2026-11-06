@@ -1644,3 +1644,44 @@ describe('Message interactions', () => {
     );
   });
 });
+
+describe('download receipts', () => {
+  it('shows a check after downloading, retains it across chat remounts, and downloads again on click', async () => {
+    const download = vi.spyOn(accountClient, 'chatFileBlob').mockResolvedValue(new Blob(['file']));
+    const create = URL.createObjectURL,
+      revoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => 'blob:download-test'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const file = {
+      ...message('1', 'self', ''),
+      id: 'download-receipt-1',
+      expires_at: null,
+      kind: 'file',
+      metadata: { filename: 'report.pdf', size: 4 },
+    };
+    try {
+      const page = render(view('download-receipt-chat', [file]));
+      fireEvent.click(page.getByRole('button', { name: 'Скачать: report.pdf' }));
+      await page.findByLabelText('Файл скачан');
+      expect(download).toHaveBeenCalledOnce();
+      page.unmount();
+      const again = render(view('download-receipt-chat', [file]));
+      expect(again.getByLabelText('Файл скачан')).toBeTruthy();
+      fireEvent.click(again.getByRole('button', { name: 'Скачать повторно: report.pdf' }));
+      await waitFor(() => expect(download).toHaveBeenCalledTimes(2));
+      expect(await again.findByLabelText('Файл скачан')).toBeTruthy();
+    } finally {
+      URL.createObjectURL = create;
+      URL.revokeObjectURL = revoke;
+    }
+  });
+});

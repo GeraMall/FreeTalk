@@ -22508,3 +22508,24 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   font-size: 8px;
   font-variant-numeric: tabular-nums;
 }
+
+.chat-file-download.completed {
+  color: #8bc9ab;
+}
+
+.toast.closing {
+  animation: toast-out 280ms ease-in both;
+  pointer-events: none;
+}
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast.closing {
+    animation: none;
+    opacity: 0;
+  }
+}
