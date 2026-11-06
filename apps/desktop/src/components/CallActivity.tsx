@@ -1,30 +1,10 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
-import { ArrowUpRight, Bomb, Flag, Gamepad2, RotateCcw, Ship, X } from 'lucide-react';
-import { useState } from 'react';
-import type {
-  ActivityGame,
-  ActivityRegion,
-  RoomActivity,
-  RoomActivityAction,
-} from '@freetalk/protocol';
-import glovoLogo from '../assets/food/glovo.png';
-import samokatLogo from '../assets/food/samokat.png';
-import woltLogo from '../assets/food/wolt.png';
-import yandexLogo from '../assets/food/yandex.png';
+import { ArrowLeft, Bomb, Crown, Flag, Gamepad2, RotateCcw, Ship, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { ActivityGame, RoomActivity, RoomActivityAction } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
-import vendors from '../lib/food-vendors.json';
-import { PrivateFoodBrowser } from './PrivateFoodBrowser';
 import './call-activity.css';
-
-const vendorLogos: Partial<Record<string, string>> = {
-  glovo: glovoLogo,
-  samokat: samokatLogo,
-  wolt: woltLogo,
-  yandex: yandexLogo,
-};
-
 const games = { chess: 'Шахматы', mines: 'Сапёр', fleet: 'Морской бой' } as const;
-const regions = { RU: 'Россия', KZ: 'Казахстан', GB: 'Великобритания' } as const;
+const gameIcons = { chess: Crown, mines: Bomb, fleet: Ship };
 const pieces: Record<string, string> = {
   k: '♚',
   q: '♛',
@@ -113,126 +93,86 @@ function ChessBoard({
 export function CallActivity({
   activity,
   onAction,
+  onClose,
+  onEnd,
 }: {
   activity: RoomActivity;
   onAction?(action: RoomActivityAction): void;
+  onClose?(): void;
+  onEnd?(): void;
 }) {
   const [flagging, setFlagging] = useState(false);
-  const [deliveryError, setDeliveryError] = useState(false);
-  const [privateVendor, setPrivateVendor] = useState<(typeof vendors)[number]>();
-  const catalog = vendors.filter((entry) => entry.region === activity.region);
-  const selected = catalog.find((entry) => entry.id === activity.service);
   const game = activity.game;
+  const [catalog, setCatalog] = useState(!activity.game);
+  const gameKind = activity.game?.kind;
+  useEffect(() => {
+    if (gameKind) setCatalog(false);
+  }, [gameKind]);
   const play = (next: ActivityGame) => {
     setFlagging(false);
+    setCatalog(false);
     onAction?.({ kind: 'game', game: next });
   };
-
-  if (privateVendor)
-    return (
-      <PrivateFoodBrowser vendor={privateVendor} onClose={() => setPrivateVendor(undefined)} />
-    );
-
   return (
     <section className="call-activity" aria-label={t('Общий планшет')}>
       <header className="activity-heading">
-        <h2>{t('Общий планшет')}</h2>
         <div>
-          <select
-            aria-label={t('Страна')}
-            value={activity.region}
-            disabled={!onAction}
-            onChange={(event) =>
-              onAction?.({ kind: 'region', region: event.target.value as ActivityRegion })
-            }
-          >
-            {Object.entries(regions).map(([code, label]) => (
-              <option key={code} value={code}>
-                {t(label)}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label={t('Закрыть для всех')}
-            disabled={!onAction}
-            onClick={() => onAction?.({ kind: 'close' })}
-          >
+          {!catalog && game ? (
+            <button type="button" aria-label={t('К играм')} onClick={() => setCatalog(true)}>
+              <ArrowLeft size={17} />
+            </button>
+          ) : (
+            <Gamepad2 size={17} />
+          )}
+          <h2>{!catalog && game ? t(games[game.kind]) : t('Общий планшет')}</h2>
+        </div>
+        <div>
+          {onEnd && (
+            <button type="button" onClick={onEnd}>
+              {t('Завершить для всех')}
+            </button>
+          )}
+          <button type="button" aria-label={t('Свернуть планшет')} onClick={onClose}>
             <X size={17} />
           </button>
         </div>
       </header>
-      <div className="activity-content">
-        <h3>{t('Сервисы доставки')}</h3>
-        <div className="activity-services">
-          {catalog.map((service) => (
-            <button
-              type="button"
-              key={service.id}
-              disabled={!onAction}
-              aria-pressed={selected?.id === service.id && !game}
-              onClick={() => {
-                setDeliveryError(false);
-                onAction?.({ kind: 'service', service: service.id });
-              }}
-            >
-              <span className={`food-vendor-mark food-vendor-${service.tone}`} aria-hidden="true">
-                {vendorLogos[service.id] ? (
-                  <img src={vendorLogos[service.id]} alt="" />
-                ) : (
-                  service.mark
-                )}
-              </span>
-              {service.name}
-            </button>
-          ))}
-        </div>
-        {selected && !game && (
-          <div className="activity-delivery">
-            <span>{t('Адрес, корзина и оплата открываются только у вас.')}</span>
-            {isTauri() ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setDeliveryError(false);
-                  if (/Windows|Macintosh/i.test(navigator.userAgent)) {
-                    setPrivateVendor(selected);
-                    return;
-                  }
-                  void invoke('food_vendor_open_browser', { vendor: selected.id }).catch(() =>
-                    setDeliveryError(true),
+      <div
+        className={`activity-content ${catalog || !game ? 'activity-catalog' : 'activity-playing'}`}
+      >
+        {catalog || !game ? (
+          <>
+            <div className="activity-pixel-planet" aria-hidden="true">
+              <i />
+            </div>
+            <div className="activity-catalog-content">
+              <h3>{t('Игры')}</h3>
+              <p className="activity-intro">
+                {t('Выбирайте игру и играйте вместе. Планшетом управляют все участники.')}
+              </p>
+              <div className="activity-tiles">
+                {(Object.keys(games) as ActivityGame[]).map((kind) => {
+                  const Icon = gameIcons[kind];
+                  return (
+                    <button
+                      type="button"
+                      className="activity-tile"
+                      key={kind}
+                      disabled={!onAction}
+                      onClick={() => play(kind)}
+                    >
+                      <span className={`activity-game-mark game-mark-${kind}`}>
+                        <Icon size={27} />
+                      </span>
+                      {t(games[kind])}
+                    </button>
                   );
-                }}
-              >
-                {t('Открыть у себя')} <ArrowUpRight size={14} />
-              </button>
-            ) : (
-              <a href={selected.url} target="_blank" rel="noopener noreferrer">
-                {t('Открыть у себя')} <ArrowUpRight size={14} />
-              </a>
-            )}
-            {deliveryError && <span role="alert">{t('Не удалось открыть браузер.')}</span>}
-          </div>
-        )}
-        <h3>
-          <Gamepad2 size={16} /> {t('Игры')}
-        </h3>
-        <div className="activity-games">
-          {(Object.keys(games) as ActivityGame[]).map((kind) => (
-            <button
-              type="button"
-              key={kind}
-              aria-pressed={game?.kind === kind}
-              disabled={!onAction}
-              onClick={() => {
-                if (game?.kind !== kind) play(kind);
-              }}
-            >
-              {t(games[kind])}
-            </button>
-          ))}
-        </div>
-        {game && (
+                })}
+              </div>
+            </div>
+          </>
+        ) : null}
+        {game && !catalog && (
           <div className="activity-game">
             <div className="activity-game-status">
               <span role="status">
@@ -311,6 +251,32 @@ export function CallActivity({
           </div>
         )}
       </div>
+      <footer className="activity-dock">
+        <span>{!catalog && game ? t(games[game.kind]) : t('Игры')}</span>
+        <div>
+          {(Object.keys(games) as ActivityGame[]).map((kind) => {
+            const Icon = gameIcons[kind];
+            return (
+              <button
+                type="button"
+                key={kind}
+                aria-label={`${t('Открыть')} ${t(games[kind])}`}
+                aria-pressed={!catalog && game?.kind === kind}
+                disabled={!onAction}
+                onClick={() => {
+                  if (game?.kind === kind) setCatalog(false);
+                  else play(kind);
+                }}
+              >
+                <span className={`activity-game-mark game-mark-${kind}`}>
+                  <Icon size={15} />
+                </span>
+                <span>{t(games[kind])}</span>
+              </button>
+            );
+          })}
+        </div>
+      </footer>
     </section>
   );
 }

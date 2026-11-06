@@ -156,7 +156,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
-      activity: connection.canUseActivity ? room.activity.view : undefined,
+      activity: room.activity.view,
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -249,16 +249,25 @@ export class RoomManager {
   updateActivity(roomId: string, clientId: string, revision: number, action: RoomActivityAction) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
-    if (!room || !peer?.connection.canUseActivity) return;
+    if (!room || !peer) return;
+    if (
+      !peer.connection.canUseActivity &&
+      (!room.activity.view.open || !['game', 'cell', 'move'].includes(action.kind))
+    )
+      return;
+    // Delivery content is intentionally absent from the shared gaming tablet.
+    if (action.kind === 'service' || action.kind === 'region') return;
     const now = Date.now();
     if (now - peer.lastActivityAt < 125) return;
     peer.lastActivityAt = now;
     const next = applyRoomActivity(room.activity, revision, action);
     if (next === room.activity) return;
+    if (action.kind === 'open') {
+      next.view = { ...next.view, startedBy: clientId, sessionId: crypto.randomUUID() };
+    }
     room.activity = next;
     for (const participant of room.peers.values()) {
-      if (participant.connection.canUseActivity)
-        participant.connection.send({ type: 'activity-state', activity: next.view });
+      participant.connection.send({ type: 'activity-state', activity: next.view });
     }
   }
 

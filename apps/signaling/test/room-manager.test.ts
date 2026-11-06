@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ServerMessage } from '@freetalk/protocol';
 import { RoomError, RoomManager, type PeerConnection } from '../src/room-manager.js';
 
@@ -17,6 +17,46 @@ const room = 'ABCDEFGH2345';
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 
 describe('RoomManager', () => {
+  it('gates starting a tablet but broadcasts invitations and shares games with invited peers', () => {
+    vi.useFakeTimers();
+    try {
+      const manager = new RoomManager();
+      const host = Object.assign(new FakeConnection(), { canUseActivity: true });
+      const guest = new FakeConnection();
+      manager.create(room, id(1), 'session-123456789', 'Host', host);
+      manager.join(room, id(2), 'session-223456789', 'Guest', guest);
+      manager.updateActivity(room, id(2), 0, { kind: 'open' });
+      expect(guest.messages.filter((m) => m.type === 'activity-state')).toHaveLength(0);
+      manager.updateActivity(room, id(1), 0, { kind: 'open' });
+      const invitation = guest.messages.at(-1);
+      expect(invitation).toMatchObject({
+        type: 'activity-state',
+        activity: { open: true, startedBy: id(1), revision: 1 },
+      });
+      if (invitation?.type !== 'activity-state') throw Error('No invitation');
+      expect(invitation.activity.sessionId).toMatch(/^[a-f0-9-]{36}$/);
+      vi.advanceTimersByTime(126);
+      manager.updateActivity(room, id(2), 1, { kind: 'game', game: 'chess' });
+      expect(host.messages.at(-1)).toMatchObject({
+        type: 'activity-state',
+        activity: { game: { kind: 'chess' }, revision: 2 },
+      });
+      vi.advanceTimersByTime(126);
+      manager.updateActivity(room, id(2), 2, { kind: 'close' });
+      expect(host.messages.at(-1)).toMatchObject({ activity: { open: true } });
+      manager.updateActivity(room, id(2), 2, { kind: 'move', from: 'e2', to: 'e4' });
+      expect(host.messages.at(-1)).toMatchObject({
+        activity: { revision: 3, game: { fen: expect.stringContaining('4P3') } },
+      });
+      const late = new FakeConnection();
+      manager.join(room, id(3), 'session-323456789', 'Late', late);
+      expect(late.messages.find((m) => m.type === 'joined-room')).toMatchObject({
+        activity: { revision: 3, startedBy: id(1) },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('broadcasts headphone state and keeps it in late-join and reconnect snapshots', () => {
     const manager = new RoomManager();
     const first = new FakeConnection();

@@ -262,17 +262,47 @@ export function RoomView({
     (a, b) => Number(b.id === selfId) - Number(a.id === selfId) || a.connectedAt - b.connectedAt,
   );
   const self = participants.find((participant) => participant.id === selfId);
+  const [joinedActivity, setJoinedActivity] = useState<string>();
+  const joiningActivity = useRef(false);
+  const activitySession = `${roomId}:${activity?.sessionId ?? 'legacy'}`;
+  const tabletVisible = Boolean(activity?.open && joinedActivity === activitySession);
+  const joinTablet = () => {
+    setJoinedActivity(activitySession);
+    setChatOpen(false);
+  };
+  useLayoutEffect(() => {
+    if (!activity?.open) {
+      setJoinedActivity(undefined);
+      return;
+    }
+    if (joiningActivity.current || activity.startedBy === selfId) {
+      joiningActivity.current = false;
+      setJoinedActivity(activitySession);
+      setChatOpen(false);
+    }
+  }, [activity?.open, activity?.startedBy, activitySession, selfId]);
+  useLayoutEffect(() => {
+    if (tabletVisible && conversation && !conversationHidden) onConversationToggle?.();
+  }, [tabletVisible, conversation, conversationHidden, onConversationToggle]);
+  const activityStarter = participants.find(
+    (participant) => participant.id === activity?.startedBy,
+  );
   const activityButton = (layoutClass: string) => (
     <button
       type="button"
       className={`dock-control activity-control ${layoutClass} ${activity?.open ? 'active' : ''}`}
       aria-label={t('Активность')}
-      aria-pressed={activityUnlocked ? (activity?.open ?? false) : undefined}
+      aria-pressed={tabletVisible}
       data-tooltip={t('Активность')}
-      disabled={activityUnlocked && (!activity || signalingState !== 'connected')}
+      disabled={(activityUnlocked || activity?.open) && signalingState !== 'connected'}
       onClick={() => {
-        if (activityUnlocked) onActivity?.({ kind: activity?.open ? 'close' : 'open' });
-        else setActivityHint((current) => current + 1);
+        if (activity?.open) {
+          if (tabletVisible) setJoinedActivity(undefined);
+          else joinTablet();
+        } else if (activityUnlocked) {
+          joiningActivity.current = true;
+          onActivity?.({ kind: 'open' });
+        } else setActivityHint((current) => current + 1);
       }}
     >
       <span className="dock-icon">
@@ -643,17 +673,20 @@ export function RoomView({
     const media = participantMedia(participant);
     const showCamera = Boolean(media.camera);
     const cardStyle = participant.cardStyle ?? 'avatar-glass';
-    const status = participant.muted
-      ? 'Микрофон выключен'
-      : speaking
-        ? 'Говорит'
-        : presence === 'away'
-          ? 'Нет на месте'
-          : presence === 'dnd'
-            ? 'Не беспокоить'
-            : presence === 'offline'
-              ? 'Не в сети'
-              : connectionLabel(connection, hasAudio);
+    const connectionInterrupted = ['failed', 'disconnected', 'closed'].includes(connection);
+    const status = connectionInterrupted
+      ? connectionLabel(connection, hasAudio)
+      : participant.muted
+        ? 'Микрофон выключен'
+        : speaking
+          ? 'Говорит'
+          : presence === 'away'
+            ? 'Нет на месте'
+            : presence === 'dnd'
+              ? 'Не беспокоить'
+              : presence === 'offline'
+                ? 'Не в сети'
+                : connectionLabel(connection, hasAudio);
 
     return (
       <article
@@ -733,15 +766,26 @@ export function RoomView({
             className={`participant-status ${participant.muted ? 'muted' : speaking ? 'live' : ''}`}
             data-presence={presence}
           >
-            {participant.muted ? <MicOff size={13} /> : <i />}
-            {t(status)}
+            {!connectionInterrupted && (participant.muted || participant.deafened) ? (
+              <span className="participant-disabled-media">
+                {participant.muted && (
+                  <span aria-label={t('Микрофон выключен')} data-tooltip={t('Микрофон выключен')}>
+                    <MicOff size={18} />
+                  </span>
+                )}
+                {participant.deafened && (
+                  <span aria-label={t('Наушники выключены')} data-tooltip={t('Наушники выключены')}>
+                    <HeadphoneOff size={18} />
+                  </span>
+                )}
+              </span>
+            ) : (
+              <>
+                <i />
+                {t(status)}
+              </>
+            )}
           </div>
-          {participant.deafened && (
-            <div className="participant-status muted participant-deafened">
-              <HeadphoneOff size={13} />
-              {t('Наушники выключены')}
-            </div>
-          )}
         </div>
 
         {!isSelf && !compact && (
@@ -780,7 +824,20 @@ export function RoomView({
           state={signalingState}
           attempt={reconnectAttempt}
           strength={signalStrength}
-          buffering={conversationBuffering}
+          buffering={
+            conversationBuffering ||
+            (hasConversationPeer &&
+              participants.some(
+                (person) =>
+                  person.id !== selfId &&
+                  (!peerState[person.id] ||
+                    ['new', 'connecting'].includes(peerState[person.id]!.connection)),
+              ) &&
+              !participants.some(
+                (person) =>
+                  person.id !== selfId && peerState[person.id]?.connection === 'connected',
+              ))
+          }
         />
       </div>
 
@@ -881,8 +938,13 @@ export function RoomView({
                 </div>
               </div>
             </div>
-          ) : activity?.open ? (
-            <CallActivity activity={activity} onAction={onActivity} />
+          ) : tabletVisible && activity ? (
+            <CallActivity
+              activity={activity}
+              onAction={onActivity}
+              onClose={() => setJoinedActivity(undefined)}
+              onEnd={activityUnlocked ? () => onActivity?.({ kind: 'close' }) : undefined}
+            />
           ) : (
             <div
               className="participants-grid"
@@ -891,6 +953,23 @@ export function RoomView({
               role="list"
             >
               {ordered.map((participant) => renderParticipant(participant))}
+              {activity?.open && !tabletVisible && (
+                <article className="activity-invitation" role="listitem">
+                  <span className="activity-invitation-icon">
+                    <Shapes size={27} />
+                  </span>
+                  <strong>{t('Общий планшет')}</strong>
+                  <span>
+                    {t('{name} приглашает играть вместе', {
+                      name: activityStarter?.name ?? 'TRLKA',
+                    })}
+                  </span>
+                  <button type="button" onClick={joinTablet}>
+                    {t('Присоединиться')}
+                  </button>
+                </article>
+              )}
+
               {visibleWaitingParticipants.map((participant) => (
                 <WaitingParticipantCard participant={participant} key={participant.id} />
               ))}
@@ -903,6 +982,12 @@ export function RoomView({
             </div>
           )}
         </section>
+
+        {screenPresenter && tabletVisible && (
+          <div className="activity-presentation-note" role="status">
+            {t('Планшет свёрнут на время демонстрации')}
+          </div>
+        )}
 
         {chatOpen && (
           <RoomChatPanel
@@ -2357,6 +2442,23 @@ function ConnectionStatus({
   buffering?: boolean;
 }) {
   void attempt;
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  if (!online || state === 'offline')
+    return (
+      <span className="connection-pill" data-state="offline" data-quality="offline" role="status">
+        <i />
+        <span>{t(!online ? 'Нет интернета' : 'Связь с сервером прервана')}</span>
+      </span>
+    );
   if (
     buffering ||
     state === 'connecting' ||
@@ -2394,11 +2496,11 @@ function ConnectionStatus({
           ? 'Сигнал нормальный'
           : quality === 'poor'
             ? 'Сигнал плохой'
-            : 'Нет интернета';
+            : 'Сигнал плохой';
   return (
     <span className="connection-pill" data-state={state} data-quality={quality} role="status">
       <i />
-      <span>{label}</span>
+      <span>{t(label)}</span>
     </span>
   );
 }

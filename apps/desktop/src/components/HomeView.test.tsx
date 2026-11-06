@@ -1,3 +1,4 @@
+import { clearAccountView } from '../lib/account-view-cache';
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
@@ -48,6 +49,7 @@ afterEach(() => {
   homeViewHarness.ready = undefined;
   homeViewHarness.event = undefined;
   localStorage.clear();
+  clearAccountView('self');
 });
 
 function mobileMatchMedia() {
@@ -120,6 +122,23 @@ describe('retained account navigation', () => {
     if (path.endsWith('/messages')) return { messages: [message], hasMore: false };
     throw Error(`Unexpected request ${path}`);
   };
+
+  it('restores the selected chat synchronously after a call remount even while offline', async () => {
+    homeViewHarness.request.mockImplementation(async (path: string) => baseResponse(path));
+    const first = renderHome();
+    fireEvent.click(await first.findByRole('button', { name: 'Чат А' }));
+    await first.findByText(message.body);
+    await act(async () => undefined);
+    first.unmount();
+    homeViewHarness.request.mockRejectedValue(new TypeError('Offline'));
+    const second = renderHome();
+    expect(second.getByText(message.body)).toBeTruthy();
+    expect(second.getByRole('button', { name: 'Чат Б' })).toBeTruthy();
+    expect(second.queryByText('Выберите чат')).toBeNull();
+    await act(async () => undefined);
+    expect(second.getByText(message.body)).toBeTruthy();
+    expect(requestCount('/v1/chats/chat-0/messages')).toBe(1);
+  });
 
   it('coalesces repeated call clicks while keeping other chats navigable', async () => {
     let finish!: (value: { call: null }) => void;

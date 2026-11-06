@@ -1323,7 +1323,7 @@ dependencies = [
 
 [[package]]
 name = "freetalk"
-version = "0.4.0-beta.199"
+version = "0.4.0-beta.200"
 dependencies = [
  "base64 0.22.1",
  "freetalk-secure-session",
@@ -1349,6 +1349,7 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "wasapi",
+ "webview2-com",
  "windows",
 ]
 

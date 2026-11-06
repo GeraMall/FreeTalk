@@ -22,6 +22,8 @@ export const roomActivityActionSchema = z.discriminatedUnion('kind', [
 
 export const roomActivitySchema = z.object({
   revision: z.number().int().nonnegative(),
+  sessionId: z.string().uuid().optional(),
+  startedBy: z.string().uuid().optional(),
   open: z.boolean(),
   region: activityRegionSchema,
   service: z.string().max(32).optional(),

@@ -148,7 +148,20 @@ async function decode<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
+export interface FileDownloadProgress {
+  received: number;
+  total?: number;
+  bytesPerSecond: number;
+}
 export class AccountClient {
+  private readonly fileDownloads = new Map<
+    string,
+    {
+      promise: Promise<Blob>;
+      listeners: Set<(progress: FileDownloadProgress) => void>;
+      progress?: FileDownloadProgress;
+    }
+  >();
   private accessToken?: string;
   private accessExpiresAt = 0;
   private readonly chatHistoryRequests = new Map<string, Promise<unknown>>();
@@ -495,10 +508,82 @@ export class AccountClient {
     });
   }
 
-  async chatFileBlob(messageId: string) {
-    const response = await this.authenticatedFetch(`/v1/messages/${messageId}/file`);
-    if (!response.ok) return decode<never>(response);
+  async linkPreviewImage(key: string) {
+    if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid preview image');
+    const response = await this.authenticatedFetch(`/v1/link-preview/image/${key}`);
+    if (!response.ok) throw new Error('Preview image unavailable');
     return response.blob();
+  }
+
+  async chatFileBlob(messageId: string, onProgress?: (progress: FileDownloadProgress) => void) {
+    const key = `${this.user?.id ?? 'session'}:${messageId}`;
+    const existing = this.fileDownloads.get(key);
+    if (existing) {
+      if (onProgress) {
+        existing.listeners.add(onProgress);
+        if (existing.progress) onProgress(existing.progress);
+      }
+      try {
+        return await existing.promise;
+      } finally {
+        if (onProgress) existing.listeners.delete(onProgress);
+      }
+    }
+    const listeners = new Set<(progress: FileDownloadProgress) => void>();
+    if (onProgress) listeners.add(onProgress);
+    const transfer = {
+      listeners,
+      progress: undefined as FileDownloadProgress | undefined,
+      promise: Promise.resolve(new Blob()),
+    };
+    this.fileDownloads.set(key, transfer);
+    transfer.promise = (async () => {
+      const response = await this.authenticatedFetch(`/v1/messages/${messageId}/file`);
+      if (!response.ok) return decode<never>(response);
+      const total = Number(response.headers.get('content-length')) || undefined;
+      const started = performance.now();
+      let received = 0;
+      let reported = -Infinity;
+      const publish = (force = false) => {
+        const now = performance.now();
+        if (!force && now - reported < 100) return;
+        reported = now;
+        transfer.progress = {
+          received,
+          total,
+          bytesPerSecond: (received * 1000) / Math.max(1, now - started),
+        };
+        for (const listener of listeners) listener(transfer.progress);
+      };
+      publish(true);
+      if (!response.body) {
+        const blob = await response.blob();
+        received = blob.size;
+        publish(true);
+        return blob;
+      }
+      const reader = response.body.getReader();
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(new Uint8Array(value));
+          received += value.byteLength;
+          publish();
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      publish(true);
+      return new Blob(chunks, {
+        type: response.headers.get('content-type') ?? 'application/octet-stream',
+      });
+    })().finally(() => {
+      if (this.fileDownloads.get(key) === transfer) this.fileDownloads.delete(key);
+      listeners.clear();
+    });
+    return transfer.promise;
   }
 
   async chatHistory<T>(chatId: string): Promise<T> {

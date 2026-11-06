@@ -214,3 +214,51 @@ it('shares an in-flight chat history request and waits before retrying a rate li
     vi.useRealTimers();
   }
 });
+
+it('streams file progress and coalesces concurrent downloads without slowing the transfer', async () => {
+  const client = new AccountClient();
+  const user = {
+    id: 'download-user',
+    email: 'qa@example.com',
+    username: 'qa',
+    displayName: 'QA',
+    emailVerified: true,
+    avatarUrl: null,
+    registeredAt: new Date().toISOString(),
+  };
+  const session = {
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    accessExpiresAt: new Date(Date.now() + 60000).toISOString(),
+    refreshExpiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      stream = controller;
+    },
+  });
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ user, session })))
+    .mockResolvedValueOnce(
+      new Response(body, {
+        headers: { 'content-length': '6', 'content-type': 'application/octet-stream' },
+      }),
+    );
+  vi.stubGlobal('fetch', fetchMock);
+  await client.mobileBetaLogin(user.email, 'Password123', 'TRLKA-TEST');
+  const first = vi.fn(),
+    second = vi.fn();
+  const a = client.chatFileBlob('file-1', first),
+    b = client.chatFileBlob('file-1', second);
+  stream.enqueue(new Uint8Array([1, 2, 3]));
+  stream.enqueue(new Uint8Array([4, 5, 6]));
+  stream.close();
+  const [left, right] = await Promise.all([a, b]);
+  expect(left.size).toBe(6);
+  expect(right).toBe(left);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(first.mock.calls.at(-1)?.[0]).toMatchObject({ received: 6, total: 6 });
+  expect(second.mock.calls.at(-1)?.[0]).toMatchObject({ received: 6, total: 6 });
+});

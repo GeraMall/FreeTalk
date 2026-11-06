@@ -23,6 +23,7 @@ function sampleScore(sample: TelemetryConnectionSample) {
 }
 
 export function calculateSignalStrength(samples: TelemetryConnectionSample[]) {
-  if (samples.length === 0) return 100;
-  return Math.min(...samples.map(sampleScore));
+  // Missing peer ICE connections are not measurements of our Internet access.
+  const connected = samples.filter((sample) => sample.connectionState === 'connected');
+  return connected.length ? Math.min(...connected.map(sampleScore)) : 100;
 }

@@ -309,21 +309,29 @@ export class VoiceRoom implements DurableObject {
         return;
       }
       if (message.type === 'activity-action') {
-        if (!attachment.canUseActivity) return;
+        if (message.action.kind === 'service' || message.action.kind === 'region') return;
+        if (!attachment.canUseActivity && !['game', 'cell', 'move'].includes(message.action.kind))
+          return;
         if (now - (attachment.lastActivityAt ?? 0) < 125) return;
         attachment.lastActivityAt = now;
         socket.serializeAttachment(attachment);
         const activity = await this.state.storage.transaction(async (txn) => {
           const current = (await txn.get<RoomActivitySession>('activity')) ?? emptyRoomActivity();
+          if (!attachment.canUseActivity && !current.view.open) return undefined;
           const next = applyRoomActivity(current, message.revision, message.action);
           if (next === current) return undefined;
+          if (message.action.kind === 'open')
+            next.view = {
+              ...next.view,
+              startedBy: attachment.clientId,
+              sessionId: crypto.randomUUID(),
+            };
           await txn.put('activity', next);
           return next.view;
         });
         if (activity) {
           for (const participant of this.active()) {
-            const peer = participant.deserializeAttachment() as SocketAttachment;
-            if (peer.canUseActivity) this.send(participant, { type: 'activity-state', activity });
+            this.send(participant, { type: 'activity-state', activity });
           }
         }
         return;
@@ -523,7 +531,7 @@ export class VoiceRoom implements DurableObject {
       });
       if (!response.ok) return false;
       const result = await response.json<{ allowed?: boolean; canAccessStore?: boolean }>();
-      return result.allowed === true && result.canAccessStore === true;
+      return result.allowed === true;
     } catch {
       return false;
     }
@@ -653,7 +661,7 @@ export class VoiceRoom implements DurableObject {
         this.participant(entry.deserializeAttachment() as SocketAttachment),
       ),
       roomChatMessages,
-      activity: canUseActivity ? activity.view : undefined,
+      activity: activity.view,
     });
     if (message.type === 'create-room')
       this.send(socket, { type: 'room-created', roomId: message.roomId });

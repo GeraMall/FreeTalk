@@ -228,8 +228,7 @@ sockets.on('connection', (socket, request) => {
           // a dead connection to a room after its close handler has already run.
           if (socket.readyState !== socket.OPEN) return;
           send(socket, iceConfig);
-          connection.canUseActivity =
-            authorization.kind === 'registered' && authorization.canAccessStore === true;
+          connection.canUseActivity = authorization.kind === 'registered';
           if (message.type === 'create-room')
             manager.create(
               message.roomId,

@@ -81,6 +81,8 @@ import {
 } from '../lib/conversation-call-lifecycle';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { GroupInviteFriendsDialog } from './GroupInviteFriendsDialog';
+import { MessageLinkPreviewCard } from './MessageLinkPreview';
+import { supportsRichLinkPreview } from '../lib/message-link-preview';
 import { CachedMediaImage } from './CachedMedia';
 import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
 import { PresenceBadge } from './PresenceBadge';
@@ -2202,82 +2204,11 @@ interface MessageContextState {
   pickerOnly?: boolean;
 }
 
-interface MessageLinkPreview {
-  url: string;
-  provider: 'YouTube' | 'Wikipedia';
-  title: string;
-  description: string;
-  imageUrl?: string;
-}
-
-const messageLinkPreviewCache = new Map<string, Promise<MessageLinkPreview | null>>();
-
-function supportsRichLinkPreview(value: string) {
-  try {
-    const url = new URL(value);
-    return (
-      ['youtu.be', 'youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(
-        url.hostname.toLowerCase(),
-      ) || /^[a-z][a-z0-9-]{0,11}\.wikipedia\.org$/i.test(url.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function loadMessageLinkPreview(url: string) {
-  let request = messageLinkPreviewCache.get(url);
-  if (!request) {
-    request = accountClient
-      .request<{ preview: MessageLinkPreview | null }>(
-        `/v1/link-preview?url=${encodeURIComponent(url)}`,
-      )
-      .then((result) => result.preview)
-      .catch(() => null);
-    messageLinkPreviewCache.set(url, request);
-  }
-  return request;
-}
-
 function openChatLink(event: ReactMouseEvent<HTMLAnchorElement>) {
   if (event.defaultPrevented || !isTauri() || (event.type === 'auxclick' && event.button !== 1))
     return;
   event.preventDefault();
-  void invoke('open_chat_link', { url: event.currentTarget.href }).catch((error: unknown) =>
-    console.error('Could not open chat link', error),
-  );
-}
-
-function MessageLinkPreviewCard({ url }: { url: string }) {
-  const [preview, setPreview] = useState<MessageLinkPreview | null>();
-  useEffect(() => {
-    let active = true;
-    void loadMessageLinkPreview(url).then((result) => {
-      if (active) setPreview(result);
-    });
-    return () => {
-      active = false;
-    };
-  }, [url]);
-  if (!preview) return null;
-  return (
-    <a
-      className="message-link-preview"
-      href={preview.url}
-      onClick={openChatLink}
-      onAuxClick={openChatLink}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {preview.imageUrl ? <img src={preview.imageUrl} alt="" loading="lazy" /> : null}
-      <span>
-        <small>{preview.provider}</small>
-        <strong>{preview.title}</strong>
-        {preview.description ? <em>{preview.description}</em> : null}
-      </span>
-      <Link2 aria-hidden="true" />
-    </a>
-  );
+  void invoke('open_chat_link', { url: event.currentTarget.href }).catch(console.error);
 }
 
 function MessageRichText({ text }: { text: string }) {
@@ -4025,16 +3956,33 @@ function InviteMessageCard({
 
 function ChatFileMessage({ message }: { message: MessageItem }) {
   const [downloading, setDownloading] = useState(false);
+  const downloadBusy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [progress, setProgress] = useState({
+    received: 0,
+    total: undefined as number | undefined,
+    bytesPerSecond: 0,
+  });
   const [failed, setFailed] = useState(false);
   const filename = message.metadata?.filename?.trim() || 'Файл';
   const size = Number(message.metadata?.size ?? 0);
 
   const download = async () => {
-    if (downloading) return;
+    if (downloadBusy.current) return;
+    downloadBusy.current = true;
+    setProgress({ received: 0, total: undefined, bytesPerSecond: 0 });
     setDownloading(true);
     setFailed(false);
     try {
-      const blob = await accountClient.chatFileBlob(message.id);
+      const blob = await accountClient.chatFileBlob(message.id, (next) => {
+        if (mounted.current) setProgress({ ...next, total: next.total });
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -4045,12 +3993,16 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch {
-      setFailed(true);
+      if (mounted.current) setFailed(true);
     } finally {
-      setDownloading(false);
+      downloadBusy.current = false;
+      if (mounted.current) setDownloading(false);
     }
   };
 
+  const total = progress.total ?? size;
+  const percent =
+    total > 0 ? Math.min(100, Math.round((progress.received * 100) / total)) : undefined;
   return (
     <div className="chat-file-message">
       <button type="button" onClick={() => void download()} disabled={downloading}>
@@ -4060,10 +4012,28 @@ function ChatFileMessage({ message }: { message: MessageItem }) {
         <span className="chat-file-copy">
           <strong>{filename}</strong>
           <small>
-            {failed ? t('Не удалось скачать — попробуйте ещё раз') : formatFileSize(size)}
+            {failed
+              ? t('Не удалось скачать — попробуйте ещё раз')
+              : downloading
+                ? `${formatFileSize(progress.received)} / ${formatFileSize(total)} · ${formatFileSize(progress.bytesPerSecond)}/${t('с')}`
+                : formatFileSize(size)}
           </small>
         </span>
-        <Download className="chat-file-download" aria-hidden="true" />
+        {downloading ? (
+          <span
+            className="chat-file-progress"
+            role="progressbar"
+            aria-label={t('Скачивание файла')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            style={{ '--download-progress': `${percent ?? 18}%` } as CSSProperties}
+          >
+            <span>{percent !== undefined ? `${percent}%` : '…'}</span>
+          </span>
+        ) : (
+          <Download className="chat-file-download" aria-hidden="true" />
+        )}
       </button>
       {message.body && <p>{message.body}</p>}
     </div>

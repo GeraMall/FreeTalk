@@ -10,7 +10,7 @@ import { safeImageDimensions } from './image-dimensions.js';
 import { canDeleteChatMessage, canPinChatMessage, type ChatMemberRole } from './message-policy.js';
 import { inspectRemoteGif } from './remote-gif.js';
 import { registerGifLibraryRoutes, accessibleGif, privateGif } from './gif-library.js';
-import { resolveLinkPreview } from './link-preview.js';
+import { resolveLinkPreview, resolvePreviewImage } from './link-preview.js';
 import { sendIncomingCallPush } from './web-push.js';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
@@ -486,6 +486,22 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       if (!user) return;
       const { url } = z.object({ url: z.string().url().max(2_048) }).parse(request.query);
       return { preview: await resolveLinkPreview(url) };
+    },
+  );
+
+  app.get(
+    '/v1/link-preview/image/:key',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      if (!(await requireUser(request, reply))) return;
+      const { key } = z.object({ key: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
+      const image = await resolvePreviewImage(key);
+      if (!image) return reply.code(404).send();
+      return reply
+        .header('Content-Type', image.type)
+        .header('Cache-Control', 'private, max-age=600')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(image.body);
     },
   );
 

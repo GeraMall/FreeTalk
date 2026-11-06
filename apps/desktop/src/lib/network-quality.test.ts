@@ -43,7 +43,9 @@ describe('calculateSignalStrength', () => {
     expect(calculateSignalStrength([sample(350, 3)])).toBeLessThan(75);
   });
 
-  it('uses the weakest peer and reports a disconnected connection as unavailable', () => {
-    expect(calculateSignalStrength([sample(40), sample(40, 0, 'disconnected')])).toBe(20);
+  it('does not classify our network as unavailable when another peer disconnects', () => {
+    expect(calculateSignalStrength([sample(40), sample(40, 0, 'disconnected')])).toBe(100);
+    expect(calculateSignalStrength([sample(0, 0, 'new')])).toBe(100);
+    expect(calculateSignalStrength([sample(0, 0, 'failed')])).toBe(100);
   });
 });

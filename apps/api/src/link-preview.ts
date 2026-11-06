@@ -1,136 +1,201 @@
+import { createHash } from 'node:crypto';
+import { fetchPublicPreview, previewUrl } from './safe-preview-fetch.js';
+
 export interface LinkPreview {
   url: string;
-  provider: 'YouTube' | 'Wikipedia';
+  provider: string;
   title: string;
   description: string;
+  imageKey?: string;
   imageUrl?: string;
+  video?: { provider: 'YouTube' | 'Rutube'; id: string };
 }
-
 const cache = new Map<string, { expiresAt: number; value: LinkPreview | null }>();
+const pending = new Map<string, Promise<LinkPreview | null>>();
+const images = new Map<string, { url: string; expiresAt: number }>();
 const CACHE_MS = 10 * 60_000;
-const MAX_CACHE_ENTRIES = 200;
-
+function retain<T>(map: Map<string, T>, key: string, value: T) {
+  if (map.size >= 200) map.delete(map.keys().next().value!);
+  map.set(key, value);
+}
 function compact(value: unknown, maximum: number) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, maximum) : '';
+  return typeof value === 'string'
+    ? decode(value).replace(/\s+/g, ' ').trim().slice(0, maximum)
+    : '';
 }
-
-function youtubeVideoId(url: URL) {
+function decode(value: string) {
+  return value.replace(
+    /&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi,
+    (full, entity: string) => {
+      const names: Record<string, string> = {
+        amp: '&',
+        quot: '"',
+        apos: "'",
+        lt: '<',
+        gt: '>',
+        nbsp: ' ',
+      };
+      if (!entity.startsWith('#')) return names[entity.toLowerCase()] ?? full;
+      const code =
+        entity[1]?.toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    },
+  );
+}
+export function previewVideo(url: URL): LinkPreview['video'] {
   const host = url.hostname.toLowerCase();
-  let candidate = '';
-  if (host === 'youtu.be') candidate = url.pathname.split('/').filter(Boolean)[0] ?? '';
-  else if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(host)) {
-    if (url.pathname === '/watch') candidate = url.searchParams.get('v') ?? '';
-    else if (/^\/(shorts|embed)\//.test(url.pathname)) candidate = url.pathname.split('/')[2] ?? '';
+  let id = '';
+  if (host === 'youtu.be') id = url.pathname.split('/')[1] ?? '';
+  else if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(host))
+    id =
+      url.pathname === '/watch'
+        ? (url.searchParams.get('v') ?? '')
+        : /^\/(shorts|embed)\//.test(url.pathname)
+          ? (url.pathname.split('/')[2] ?? '')
+          : '';
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) return { provider: 'YouTube', id };
+  if (['rutube.ru', 'www.rutube.ru'].includes(host)) {
+    id = /^\/(?:video|play\/embed)\/([a-f0-9]{32})(?:\/|$)/i.exec(url.pathname)?.[1] ?? '';
+    if (id) return { provider: 'Rutube', id: id.toLowerCase() };
   }
-  return /^[A-Za-z0-9_-]{6,20}$/.test(candidate) ? candidate : undefined;
+  return undefined;
 }
-
-function wikipediaArticle(url: URL) {
-  const match = /^([a-z][a-z0-9-]{0,11})\.wikipedia\.org$/i.exec(url.hostname);
-  if (!match || !url.pathname.startsWith('/wiki/')) return undefined;
-  const encodedTitle = url.pathname.slice('/wiki/'.length);
-  if (!encodedTitle || encodedTitle.length > 500) return undefined;
+export function parsePreviewHtml(html: string, input: string): LinkPreview | null {
+  const url = previewUrl(input);
+  const metadata = new Map<string, string>();
+  // Metadata is text only: never render remote HTML, scripts or an arbitrary iframe.
+  for (const tag of html.match(/<meta\b[^>]{0,8192}>/gi) ?? []) {
+    const attrs = new Map<string, string>();
+    for (const match of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g))
+      attrs.set(match[1]!.toLowerCase(), match[2] ?? match[3] ?? match[4] ?? '');
+    const key = (attrs.get('property') ?? attrs.get('name') ?? '').toLowerCase();
+    if (key && !metadata.has(key)) metadata.set(key, attrs.get('content') ?? '');
+  }
+  const title = compact(
+    metadata.get('og:title') ??
+      metadata.get('twitter:title') ??
+      /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1],
+    180,
+  );
+  if (!title) return null;
+  const preview: LinkPreview = {
+    url: url.toString(),
+    provider: compact(metadata.get('og:site_name'), 60) || url.hostname.replace(/^www\./, ''),
+    title,
+    description: compact(
+      metadata.get('og:description') ??
+        metadata.get('description') ??
+        metadata.get('twitter:description'),
+      280,
+    ),
+    video: previewVideo(url),
+  };
+  const source = metadata.get('og:image') ?? metadata.get('twitter:image');
+  if (source) {
+    try {
+      const imageUrl = new URL(decode(source), url).toString();
+      preview.imageKey = rememberImage(imageUrl);
+      if (/^https:\/\/(i\.ytimg\.com|upload\.wikimedia\.org)\//.test(imageUrl))
+        preview.imageUrl = imageUrl;
+    } catch {
+      /* optional media */
+    }
+  }
+  return preview;
+}
+function rememberImage(input: string) {
+  const url = previewUrl(input).toString();
+  const key = createHash('sha256').update(url).digest('hex');
+  retain(images, key, { url, expiresAt: Date.now() + CACHE_MS });
+  return key;
+}
+export async function resolvePreviewImage(key: string) {
+  const image = images.get(key);
+  if (!image || image.expiresAt <= Date.now()) return undefined;
   try {
-    return { language: match[1]!.toLowerCase(), title: decodeURIComponent(encodedTitle) };
+    const result = await fetchPublicPreview(image.url, 2 * 1024 * 1024);
+    if (!/^image\/(jpeg|png|webp|gif)(?:;|$)/i.test(result.type)) return undefined;
+    return result;
   } catch {
     return undefined;
   }
 }
-
-async function fetchJson(url: string) {
-  const response = await fetch(url, {
-    headers: { 'user-agent': 'Trlka-LinkPreview/1.0' },
-    redirect: 'error',
-    signal: AbortSignal.timeout(4_000),
-  });
-  if (!response.ok) throw new Error(`Preview provider returned ${response.status}`);
-  const length = Number(response.headers.get('content-length') ?? 0);
-  if (length > 256 * 1024) throw new Error('Preview response is too large');
-  if (!response.body) throw new Error('Empty preview response');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
+async function resolve(url: URL): Promise<LinkPreview | null> {
+  const video = previewVideo(url);
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > 256 * 1024) throw new Error('Preview response is too large');
-      chunks.push(value);
+    if (video?.provider === 'YouTube') {
+      const canonical = `https://www.youtube.com/watch?v=${video.id}`;
+      const result = await fetchPublicPreview(
+        `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(canonical)}`,
+        256 * 1024,
+      );
+      const data = JSON.parse(result.body.toString('utf8')) as Record<string, unknown>;
+      if (compact(data.title, 180))
+        return {
+          url: canonical,
+          provider: 'YouTube',
+          title: compact(data.title, 180),
+          description: compact(data.author_name, 120),
+          video,
+          imageKey: rememberImage(`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`),
+          imageUrl: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
+        };
+    } else {
+      const result = await fetchPublicPreview(url.toString(), 512 * 1024, true);
+      if (!/^text\/html(?:;|$)/i.test(result.type)) return null;
+      const charset = /charset=["']?([\w-]+)/i.exec(result.type)?.[1] ?? 'utf-8';
+      let html: string;
+      try {
+        html = new TextDecoder(charset).decode(result.body);
+      } catch {
+        html = result.body.toString('utf8');
+      }
+      const preview = parsePreviewHtml(html, result.url);
+      if (preview) return { ...preview, video: video ?? preview.video };
     }
-  } finally {
-    await reader.cancel();
-    reader.releaseLock();
+  } catch {
+    /* A failed preview never prevents sending or reading the message. */
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+  if (video)
+    return {
+      url: url.toString(),
+      provider: video.provider,
+      title: video.provider,
+      description: '',
+      video,
+      imageKey:
+        video.provider === 'YouTube'
+          ? rememberImage(`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`)
+          : undefined,
+    };
+  return null;
 }
-
 export async function resolveLinkPreview(input: string): Promise<LinkPreview | null> {
   let url: URL;
   try {
-    url = new URL(input);
+    url = previewUrl(input);
   } catch {
     return null;
   }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
-  url.hash = '';
-  const key = url.toString();
-  const cached = cache.get(key);
+  const key = url.toString(),
+    cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
-
-  let preview: LinkPreview | null = null;
-  const videoId = youtubeVideoId(url);
-  const article = wikipediaArticle(url);
-  try {
-    if (videoId) {
-      const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const data = await fetchJson(
-        `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(canonicalUrl)}`,
-      );
-      const title = compact(data.title, 180);
-      if (title)
-        preview = {
-          url: canonicalUrl,
-          provider: 'YouTube',
-          title,
-          description: compact(data.author_name, 120),
-          imageUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-        };
-    } else if (article) {
-      const data = await fetchJson(
-        `https://${article.language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(article.title)}`,
-      );
-      const title = compact(data.title, 180);
-      const thumbnail =
-        data.thumbnail && typeof data.thumbnail === 'object'
-          ? (data.thumbnail as Record<string, unknown>).source
-          : undefined;
-      const imageUrl = typeof thumbnail === 'string' ? new URL(thumbnail) : undefined;
-      if (title)
-        preview = {
-          url: key,
-          provider: 'Wikipedia',
-          title,
-          description: compact(data.extract, 280),
-          imageUrl:
-            imageUrl?.protocol === 'https:' && imageUrl.hostname === 'upload.wikimedia.org'
-              ? imageUrl.toString()
-              : undefined,
-        };
-    }
-  } catch {
-    preview = null;
-  }
-
-  if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
-  cache.set(key, { expiresAt: Date.now() + CACHE_MS, value: preview });
-  return preview;
+  const existing = pending.get(key);
+  if (existing) return existing;
+  if (pending.size >= 8) return null;
+  const request = resolve(url)
+    .then((value) => {
+      retain(cache, key, { value, expiresAt: Date.now() + (value ? CACHE_MS : 30000) });
+      return value;
+    })
+    .finally(() => pending.delete(key));
+  pending.set(key, request);
+  return request;
 }
-
 export function isSupportedPreviewUrl(input: string) {
   try {
-    const url = new URL(input);
-    return Boolean(youtubeVideoId(url) || wikipediaArticle(url));
+    previewUrl(input);
+    return true;
   } catch {
     return false;
   }

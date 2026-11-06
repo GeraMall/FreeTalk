@@ -51,6 +51,37 @@ afterEach(async () => {
   await app.close();
 });
 describe('private service chat', () => {
+  it('notifies a verified solo caller and checks that nobody else was present during the timeout', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/call-timeout',
+      payload: { userId, eventId: crypto.randomUUID(), roomId: 'ABCDEFGHJKLM' },
+    });
+    expect(response.statusCode).toBe(200);
+    const validation = query.mock.calls.find(([sql]) =>
+      String(sql).includes('FROM call_participants p JOIN call_sessions'),
+    );
+    expect(validation?.[1]).toEqual(['ABCDEFGHJKLM', userId]);
+    expect(validation?.[0]).toContain('NOT EXISTS');
+    expect(validation?.[0]).toContain('person.user_id IS DISTINCT FROM $2');
+    expect(validation?.[0]).not.toContain('count(DISTINCT');
+    expect(
+      query.mock.calls.find(([sql]) =>
+        String(sql).startsWith('INSERT INTO service_chat_messages'),
+      )?.[1][3],
+    ).toContain('одни более пяти минут');
+  });
+  it('does not send a solo timeout notice when the server cannot verify the waiting interval', async () => {
+    query.mockResolvedValue(result());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/call-timeout',
+      payload: { userId, eventId: crypto.randomUUID(), roomId: 'ABCDEFGHJKLM' },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it('rejects unauthenticated history and sending', async () => {
     authenticated = false;
     expect((await app.inject('/v1/service-chat/messages')).statusCode).toBe(401);

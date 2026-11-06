@@ -1,3 +1,4 @@
+import { readAccountView, retainAccountView } from '../lib/account-view-cache';
 import { appLanguage, t } from '../lib/app-language';
 import {
   useCallback,
@@ -86,6 +87,28 @@ export interface HomeSidebarState {
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
+interface MessageSnapshot {
+  messages: MessageItem[];
+  pinned?: MessageItem;
+  hasMore: boolean;
+  pageStart?: string;
+  fetchedAt: number;
+}
+interface AccountViewSnapshot {
+  page: AccountPage;
+  activeChat?: string;
+  chats: ChatItem[];
+  friends: FriendItem[];
+  pending: PendingItem[];
+  blocked: BlockedItem[];
+  history: CallItem[];
+  messageSnapshots: Map<string, MessageSnapshot>;
+  serviceSummary: Partial<ChatItem>;
+  serviceChatCache: ServiceChatCache;
+  sidebarFetchedAt?: number;
+  historyFetchedAt?: number;
+}
+
 interface ActiveChatCall {
   roomId: string;
   participants?: Array<{ userId: string }>;
@@ -138,21 +161,32 @@ export function HomeView({
   onInstallUpdate?(): void;
   embedded?: boolean;
 }) {
+  const restored = useRef(readAccountView<AccountViewSnapshot>(user.id)).current;
+  const initialConversation = initialChatId ?? restored?.activeChat;
+  const initialMessages = initialConversation
+    ? restored?.messageSnapshots.get(initialConversation)
+    : undefined;
   const isOwnAbandonedCall = (call: ActiveChatCall | null) =>
     Boolean(
       call?.participants?.length &&
       call.participants.every((participant) => participant.userId === user.id),
     );
-  const [internalPage, setInternalPage] = useState<AccountPage>(initialChatId ? 'chats' : 'home');
+  const [internalPage, setInternalPage] = useState<AccountPage>(
+    initialChatId ? 'chats' : (restored?.page ?? 'home'),
+  );
   const page = controlledPage ?? internalPage;
   const [roomCode, setRoomCode] = useState('');
-  const [friends, setFriends] = useState<FriendItem[]>([]);
-  const [pending, setPending] = useState<PendingItem[]>([]);
-  const [blocked, setBlocked] = useState<BlockedItem[]>([]);
-  const [friendsLoading, setFriendsLoading] = useState(controlledPage === 'friends');
+  const [friends, setFriends] = useState<FriendItem[]>(restored?.friends ?? []);
+  const [pending, setPending] = useState<PendingItem[]>(restored?.pending ?? []);
+  const [blocked, setBlocked] = useState<BlockedItem[]>(restored?.blocked ?? []);
+  const [friendsLoading, setFriendsLoading] = useState(
+    !restored?.sidebarFetchedAt && controlledPage === 'friends',
+  );
   const [friendsLoadError, setFriendsLoadError] = useState('');
-  const [chats, setChats] = useState<ChatItem[]>([]);
-  const [serviceSummary, setServiceSummary] = useState<Partial<ChatItem>>({});
+  const [chats, setChats] = useState<ChatItem[]>(restored?.chats ?? []);
+  const [serviceSummary, setServiceSummary] = useState<Partial<ChatItem>>(
+    restored?.serviceSummary ?? {},
+  );
   const visibleChats = useMemo(
     () => [
       { ...serviceChat(user.id), ...serviceSummary },
@@ -160,17 +194,23 @@ export function HomeView({
     ],
     [user.id, chats, serviceSummary],
   );
-  const [activeChat, setActiveChat] = useState<string>();
-  const [messages, setMessages] = useState<MessageItem[]>([]);
-  const [pinnedMessage, setPinnedMessage] = useState<MessageItem>();
-  const [chatsLoading, setChatsLoading] = useState(controlledPage === 'chats');
-  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [activeChat, setActiveChat] = useState<string | undefined>(initialConversation);
+  const [messages, setMessages] = useState<MessageItem[]>(initialMessages?.messages ?? []);
+  const [pinnedMessage, setPinnedMessage] = useState<MessageItem | undefined>(
+    initialMessages?.pinned,
+  );
+  const [chatsLoading, setChatsLoading] = useState(
+    !restored?.sidebarFetchedAt && controlledPage === 'chats',
+  );
+  const [messagesLoading, setMessagesLoading] = useState(
+    Boolean(initialConversation && !initialMessages),
+  );
   const [messagesError, setMessagesError] = useState('');
   const [sentMessageVersion, setSentMessageVersion] = useState(0);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(initialMessages?.hasMore ?? false);
   const [profileRevision, setProfileRevision] = useState(0);
-  const [history, setHistory] = useState<CallItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [history, setHistory] = useState<CallItem[]>(restored?.history ?? []);
+  const [historyLoading, setHistoryLoading] = useState(!restored?.historyFetchedAt);
   const [localError, setLocalError] = useState('');
   const [chatSlowMode, setChatSlowMode] = useState<{ chatId: string; until: number }>();
   const chatSendPacerRef = useRef(new ChatSendPacer());
@@ -185,25 +225,17 @@ export function HomeView({
   } = useAccountSidebarWidth();
   const activeChatRef = useRef(activeChat);
   const messagesRequestIdRef = useRef(0);
-  const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({});
+  const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({
+    chatId: initialConversation,
+    createdAt: initialMessages?.pageStart,
+  });
   const navigationInitialized = useRef(false);
-  const sidebarData = useRef(new RetainedRequest());
-  const historyData = useRef(new RetainedRequest());
-  const messageSnapshots = useRef(
-    new Map<
-      string,
-      {
-        messages: MessageItem[];
-        pinned?: MessageItem;
-        hasMore: boolean;
-        pageStart?: string;
-        fetchedAt: number;
-      }
-    >(),
-  );
-  const messagesFetchedAt = useRef(0);
+  const sidebarData = useRef(new RetainedRequest(30_000, restored?.sidebarFetchedAt));
+  const historyData = useRef(new RetainedRequest(30_000, restored?.historyFetchedAt));
+  const messageSnapshots = useRef(new Map<string, MessageSnapshot>(restored?.messageSnapshots));
+  const messagesFetchedAt = useRef(initialMessages?.fetchedAt ?? 0);
   const startingCall = useRef(false);
-  const serviceChatCache = useRef<ServiceChatCache>({});
+  const serviceChatCache = useRef<ServiceChatCache>(restored?.serviceChatCache ?? {});
   useEffect(() => {
     const invalidate = () => {
       if (serviceChatCache.current.snapshot) serviceChatCache.current.snapshot.fetchedAt = 0;
@@ -211,6 +243,37 @@ export function HomeView({
     window.addEventListener(SERVICE_CHAT_UPDATED, invalidate);
     return () => window.removeEventListener(SERVICE_CHAT_UPDATED, invalidate);
   }, []);
+  useLayoutEffect(() => {
+    retainAccountView<AccountViewSnapshot>(user.id, {
+      page,
+      activeChat,
+      chats,
+      friends,
+      pending,
+      blocked,
+      history,
+      messageSnapshots: messageSnapshots.current,
+      serviceSummary,
+      serviceChatCache: serviceChatCache.current,
+      sidebarFetchedAt:
+        sidebarData.current.loadedAt ??
+        readAccountView<AccountViewSnapshot>(user.id)?.sidebarFetchedAt,
+      historyFetchedAt:
+        historyData.current.loadedAt ??
+        readAccountView<AccountViewSnapshot>(user.id)?.historyFetchedAt,
+    });
+  }, [
+    user.id,
+    page,
+    activeChat,
+    chats,
+    friends,
+    pending,
+    blocked,
+    history,
+    serviceSummary,
+    restored,
+  ]);
   const chatFriendOptions = useMemo(
     () =>
       friends.map((friend) => ({
@@ -488,6 +551,8 @@ export function HomeView({
               setFriends(friendResult.friends);
               setPending(friendResult.pending);
               setBlocked(friendResult.blocked);
+              const snapshot = readAccountView<AccountViewSnapshot>(user.id);
+              if (snapshot) snapshot.sidebarFetchedAt = Date.now();
             })
             .catch(() => {
               // The next normal page refresh will retry without interrupting realtime chat.
@@ -587,60 +652,67 @@ export function HomeView({
     onPageChange?.(next);
   };
 
-  const loadPage = useCallback(async (next: AccountPage, force = true) => {
-    const sidebar = sidebarData.current;
-    const historyResource = historyData.current;
-    const sidebarRequest = sidebar
-      .run(async () => {
-        if (!sidebar.loaded) {
-          setChatsLoading(true);
-          setFriendsLoading(true);
-        }
-        setFriendsLoadError('');
-        try {
-          const [chatResult, friendResult] = await Promise.all([
-            accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
-            accountClient.request<{
-              friends: FriendItem[];
-              pending: PendingItem[];
-              blocked: BlockedItem[];
-            }>('/v1/friends'),
-          ]);
-          setChats(chatResult.chats);
-          setFriends(friendResult.friends);
-          setPending(friendResult.pending);
-          setBlocked(friendResult.blocked);
-        } finally {
-          setChatsLoading(false);
-          setFriendsLoading(false);
-        }
-      }, force)
-      .catch((caught: unknown) => {
-        const message = caught instanceof Error ? caught.message : 'Не удалось загрузить чаты';
-        if (!sidebar.loaded) setFriendsLoadError(message);
-        if (sidebar.loaded || next !== 'friends') setLocalError(message);
-      });
+  const loadPage = useCallback(
+    async (next: AccountPage, force = true) => {
+      const sidebar = sidebarData.current;
+      const historyResource = historyData.current;
+      const sidebarRequest = sidebar
+        .run(async () => {
+          if (!sidebar.loaded) {
+            setChatsLoading(true);
+            setFriendsLoading(true);
+          }
+          setFriendsLoadError('');
+          try {
+            const [chatResult, friendResult] = await Promise.all([
+              accountClient.request<{ chats: ChatItem[] }>('/v1/chats'),
+              accountClient.request<{
+                friends: FriendItem[];
+                pending: PendingItem[];
+                blocked: BlockedItem[];
+              }>('/v1/friends'),
+            ]);
+            setChats(chatResult.chats);
+            setFriends(friendResult.friends);
+            setPending(friendResult.pending);
+            setBlocked(friendResult.blocked);
+            const snapshot = readAccountView<AccountViewSnapshot>(user.id);
+            if (snapshot) snapshot.sidebarFetchedAt = Date.now();
+          } finally {
+            setChatsLoading(false);
+            setFriendsLoading(false);
+          }
+        }, force)
+        .catch((caught: unknown) => {
+          const message = caught instanceof Error ? caught.message : 'Не удалось загрузить чаты';
+          if (!sidebar.loaded) setFriendsLoadError(message);
+          if (sidebar.loaded || next !== 'friends') setLocalError(message);
+        });
 
-    const historyRequest =
-      next === 'home' || next === 'history'
-        ? historyResource
-            .run(async () => {
-              if (!historyResource.loaded) setHistoryLoading(true);
-              try {
-                const result = await accountClient.request<{ calls: CallItem[] }>('/v1/history');
-                setHistory(
-                  result.calls.filter((call) => hasConversationParticipants(call.participants)),
-                );
-              } finally {
-                setHistoryLoading(false);
-              }
-            }, force)
-            .catch((caught: unknown) => {
-              setLocalError(caught instanceof Error ? caught.message : 'Ошибка загрузки');
-            })
-        : undefined;
-    await Promise.all([sidebarRequest, historyRequest]);
-  }, []);
+      const historyRequest =
+        next === 'home' || next === 'history'
+          ? historyResource
+              .run(async () => {
+                if (!historyResource.loaded) setHistoryLoading(true);
+                try {
+                  const result = await accountClient.request<{ calls: CallItem[] }>('/v1/history');
+                  setHistory(
+                    result.calls.filter((call) => hasConversationParticipants(call.participants)),
+                  );
+                  const snapshot = readAccountView<AccountViewSnapshot>(user.id);
+                  if (snapshot) snapshot.historyFetchedAt = Date.now();
+                } finally {
+                  setHistoryLoading(false);
+                }
+              }, force)
+              .catch((caught: unknown) => {
+                setLocalError(caught instanceof Error ? caught.message : 'Ошибка загрузки');
+              })
+          : undefined;
+      await Promise.all([sidebarRequest, historyRequest]);
+    },
+    [user.id],
+  );
 
   useEffect(() => {
     void loadPage(page, false);
@@ -719,11 +791,16 @@ export function HomeView({
     [loadChatMessages],
   );
 
+  const initialMessagesLoaded = useRef(Boolean(initialMessages));
   useEffect(() => {
     if (initialChatId && initialChatId !== activeChatRef.current) {
+      initialMessagesLoaded.current = true;
       void openChat(initialChatId);
+    } else if (!initialMessagesLoaded.current && activeChatRef.current) {
+      initialMessagesLoaded.current = true;
+      void loadChatMessages(activeChatRef.current);
     }
-  }, [initialChatId, openChat]);
+  }, [initialChatId, openChat, loadChatMessages]);
 
   const loadOlderMessages = async () => {
     if (!activeChat || !hasMoreMessages) return;

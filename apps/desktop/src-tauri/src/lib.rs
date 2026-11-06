@@ -8,6 +8,8 @@ mod secure_session;
 mod signaling;
 #[cfg(desktop)]
 mod windows_screen;
+#[cfg(desktop)]
+mod video_player;
 
 #[cfg(desktop)]
 #[derive(Default)]
@@ -469,6 +471,7 @@ pub fn run() {
         .manage(windows_screen::State::default())
         .manage(CallPopoutTransitionState::default())
         .invoke_handler(tauri::generate_handler![
+            video_player::prepare_video_player,
             open_chat_link,
             open_passkey_browser,
             food_webview::food_vendor_open_browser,

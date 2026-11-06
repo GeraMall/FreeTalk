@@ -4,10 +4,12 @@ import type {
   ServerMessage,
 } from '@freetalk/protocol';
 import { parseDnsIpv4Answers, withCloudflareTurnIpFallbacks } from '@freetalk/config';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import worker, { generateIceConfig, VoiceRoom } from '../src/worker';
 
 interface TestAttachment {
+  canUseActivity?: boolean;
+  lastActivityAt?: number;
   joined: boolean;
   roomId: string;
   clientId?: string;
@@ -64,11 +66,24 @@ function attachment(overrides: Partial<TestAttachment>): TestAttachment {
   };
 }
 
-function roomWith(sockets: FakeSocket[]) {
+function roomWith(sockets: FakeSocket[], env: Record<string, string> = {}) {
   const storage = new Map<string, unknown>();
+  const transaction = async (
+    work: (txn: {
+      get(key: string): Promise<unknown>;
+      put(key: string, value: unknown): Promise<void>;
+    }) => Promise<unknown>,
+  ) =>
+    work({
+      get: async (key) => storage.get(key),
+      put: async (key, value) => {
+        storage.set(key, value);
+      },
+    });
   const state = {
     getWebSockets: () => sockets,
     storage: {
+      transaction,
       get: async (key: string | string[]) =>
         Array.isArray(key)
           ? new Map(key.map((item) => [item, storage.get(item)]).filter((entry) => entry[1]))
@@ -80,10 +95,80 @@ function roomWith(sockets: FakeSocket[]) {
       setAlarm: async () => undefined,
     },
   };
-  return new VoiceRoom(state as unknown as DurableObjectState, {} as never);
+  return new VoiceRoom(state as unknown as DurableObjectState, env as never);
 }
 
 describe('Cloudflare voice room reconnects', () => {
+  it('allows a registered account to start activities without store access', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ allowed: true, kind: 'registered', canAccessStore: false }),
+          ),
+        ),
+    );
+    try {
+      const room = roomWith([], {
+        ACCOUNT_API_URL: 'https://api.example.com',
+        INTERNAL_SIGNALING_SECRET: 'test-secret',
+      });
+      const authorize = Reflect.get(room, 'authorizeActivity') as (
+        message: unknown,
+      ) => Promise<boolean>;
+      expect(
+        await authorize.call(room, {
+          type: 'join-room',
+          roomId: 'ABCDEFGH2345',
+          authToken: 'test-token',
+        }),
+      ).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shares a tablet invitation and game actions with an ordinary participant while gating new sessions', async () => {
+    vi.useFakeTimers();
+    try {
+      const host = new FakeSocket(
+        attachment({
+          joined: true,
+          clientId: '286d39ef-61af-4aca-84b8-47f78b0f554a',
+          canUseActivity: true,
+        }),
+      );
+      const guest = new FakeSocket(
+        attachment({ joined: true, clientId: '386d39ef-61af-4aca-84b8-47f78b0f554a' }),
+      );
+      const room = roomWith([host, guest]);
+      const send = (socket: FakeSocket, revision: number, action: unknown) =>
+        room.webSocketMessage(
+          socket as unknown as WebSocket,
+          JSON.stringify({ type: 'activity-action', revision, action }),
+        );
+      await send(guest, 0, { kind: 'open' });
+      expect(host.sent).toHaveLength(0);
+      await send(host, 0, { kind: 'open' });
+      expect(guest.sent.at(-1)).toMatchObject({
+        type: 'activity-state',
+        activity: { startedBy: host.attachment.clientId, open: true, revision: 1 },
+      });
+      vi.advanceTimersByTime(126);
+      await send(guest, 1, { kind: 'game', game: 'chess' });
+      expect(host.sent.at(-1)).toMatchObject({
+        activity: { game: { kind: 'chess' }, revision: 2 },
+      });
+      vi.advanceTimersByTime(126);
+      await send(guest, 2, { kind: 'close' });
+      expect(host.sent.at(-1)).toMatchObject({ activity: { open: true, revision: 2 } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('synchronizes headphone state and preserves it through a hibernated participant snapshot', async () => {
     const first = new FakeSocket(
       attachment({

@@ -222,15 +222,16 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
         `SELECT 1 FROM call_participants p JOIN call_sessions c ON c.id=p.call_id
       WHERE c.room_id=$1 AND p.user_id=$2 AND p.joined_at<=now()-interval '4 minutes'
       AND (p.left_at IS NULL OR p.left_at>now()-interval '24 hours')
-      AND (SELECT count(DISTINCT COALESCE(person.user_id::text,person.anonymous_user_id::text))
-        FROM call_participants person WHERE person.call_id=c.id)<=1 LIMIT 1`,
+      AND NOT EXISTS (SELECT 1 FROM call_participants person
+        WHERE person.call_id=c.id AND person.user_id IS DISTINCT FROM $2
+        AND COALESCE(person.left_at,c.ended_at,now())>now()-interval '4 minutes 55 seconds') LIMIT 1`,
         [roomId, user.id],
       );
       if (!participant.rowCount) return reply.code(404).send({ code: 'CALL_NOT_FOUND' });
       await addServiceNotice(
         user.id,
         'call-timeout',
-        'Звонок завершён: за пять минут никто не подключился. Можно позвонить снова, когда собеседник будет готов.',
+        'Мы отключили вас от звонка, потому что вы были одни более пяти минут. Можно позвонить снова, когда собеседник будет готов.',
         `call-timeout:${eventId}`,
       );
       return { ok: true };

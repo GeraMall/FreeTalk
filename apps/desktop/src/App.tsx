@@ -1,3 +1,5 @@
+import { useSoloCallTimeout } from './lib/use-solo-call-timeout';
+import { clearAccountView } from './lib/account-view-cache';
 import { mergeParticipantAudioState } from '@freetalk/protocol';
 import { useCallAudioControls } from './lib/call-audio-controls';
 import { t } from './lib/app-language';
@@ -80,10 +82,7 @@ import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
 import { BrowserNotificationPrompt } from './components/BrowserNotificationPrompt';
 import { MobileNavigation } from './components/MobileNavigation';
-import {
-  clampConversationCallHeight,
-  remainingUnansweredConversationWaitMs,
-} from './lib/conversation-call-lifecycle';
+import { clampConversationCallHeight } from './lib/conversation-call-lifecycle';
 import {
   clearBrowserActiveCall,
   readBrowserActiveCall,
@@ -1216,9 +1215,14 @@ export function App() {
           if (state === 'offline' || state === 'reconnecting') setSignalStrength(0);
           if (state === 'offline' || state === 'reconnecting') setSignalPing(0);
           else if (state === 'connecting') setSignalStrength(55);
-          else setSignalStrength((current) => (current === 0 ? 100 : current));
+          else setSignalStrength(100);
           setReconnectAttempt(attempt ?? 0);
-          if (state === 'reconnecting') setNotice('Сеть недоступна — пытаемся переподключиться…');
+          if (state === 'reconnecting')
+            setNotice(
+              navigator.onLine
+                ? 'Восстанавливаем соединение с сервером…'
+                : 'Нет интернета — ждём подключения…',
+            );
           else if (state === 'connected') setNotice('');
           else if (state === 'offline' && joinedRoom.current) {
             setError('Соединение с сервером потеряно. Выйдите из комнаты и подключитесь снова.');
@@ -1366,45 +1370,21 @@ export function App() {
     };
   }, [roomId, accountUser]);
 
-  useEffect(() => {
-    if (!roomId || !callChatId || !roomStartedAt) return;
-    const accountId = accountUser?.id;
-    const remaining = remainingUnansweredConversationWaitMs({
-      startedAt: roomStartedAt,
-      joined: joinedRoom.current,
-      joining,
-      established: conversationPeerJoined.current,
-    });
-    if (remaining === undefined) return;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const closeEmptyConversationCall = async () => {
-      if (disposed || conversationPeerJoined.current) return;
-      try {
-        const current = await accountClient.request<{
-          call: { participants: Array<{ userId?: string }> } | null;
-        }>(`/v1/calls/${roomId}`);
-        if (disposed || conversationPeerJoined.current) return;
-        if (current.call?.participants.some((person) => person.userId !== accountId)) {
-          conversationPeerJoined.current = true;
-          return;
-        }
-      } catch {
-        if (!disposed) timer = setTimeout(() => void closeEmptyConversationCall(), 5000);
-        return;
-      }
-      if (disposed || conversationPeerJoined.current) return;
+  useSoloCallTimeout({
+    roomId,
+    joined: joinedRoom.current,
+    joining,
+    selfId: selfId.current,
+    participantIds: participants.map((person) => person.id),
+    connected: signalState === 'connected' && !awaitingRejoin.current,
+    onTimeout: () => {
+      const accountId = accountUser?.id;
       clearBrowserActiveCall();
       cleanup();
-      if (accountId) queueCallTimeoutNotice(accountId, roomId);
-      setNotice('Звонок завершён: за 5 минут никто не подключился. Уведомление — в чате TRLKA.');
-    };
-    timer = setTimeout(() => void closeEmptyConversationCall(), Math.max(0, remaining));
-    return () => {
-      disposed = true;
-      clearTimeout(timer);
-    };
-  }, [callChatId, cleanup, joining, participants, roomId, roomStartedAt, accountUser?.id]);
+      if (accountId && roomId) queueCallTimeoutNotice(accountId, roomId);
+      setNotice('Звонок завершён: вы были одни более 5 минут. Уведомление — в чате TRLKA.');
+    },
+  });
 
   useEffect(() => {
     audio.current?.setMuted(muted);
@@ -1621,7 +1601,10 @@ export function App() {
     callChatRef.current = undefined;
     setCallChatId(undefined);
     pendingChatRing.current = false;
-    if (accountUser) await clearChatImageCache(accountUser.id);
+    if (accountUser) {
+      clearAccountView(accountUser.id);
+      await clearChatImageCache(accountUser.id);
+    }
     await accountClient.logout();
     setActiveAccountMediaScope(undefined);
     setAccountUser(undefined);
@@ -2233,7 +2216,7 @@ export function App() {
       reactions={reactions}
       roomChatMessages={roomChatMessages}
       activity={accountUser?.canAccessStore ? roomActivity : undefined}
-      activityUnlocked={accountUser?.canAccessStore === true}
+      activityUnlocked={Boolean(accountUser)}
       onActivity={sendActivity}
       screenFocusMode={screenFocusMode}
       settings={settings}

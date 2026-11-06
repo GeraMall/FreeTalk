@@ -2,7 +2,12 @@
 
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Participant, RoomChatMessage } from '@freetalk/protocol';
+import type {
+  Participant,
+  RoomChatMessage,
+  RoomActivity,
+  RoomActivityAction,
+} from '@freetalk/protocol';
 import { defaultSettings } from '../lib/settings';
 import { RoomView, type RemoteVideoUiState, type WaitingCallParticipant } from './RoomView';
 import { accountClient } from '../lib/api-client';
@@ -107,6 +112,9 @@ function view(
     mirrorSelfVideo?: boolean;
     signalingState?: 'connecting' | 'connected' | 'reconnecting' | 'offline';
     signalStrength?: number;
+    activity?: RoomActivity;
+    activityUnlocked?: boolean;
+    onActivity?: (action: RoomActivityAction) => void;
   } = {},
 ) {
   return (
@@ -141,6 +149,9 @@ function view(
       roomStartedAt={handlers.roomStartedAt ?? Date.now() - 65_000}
       reactions={handlers.reactions ?? []}
       roomChatMessages={handlers.roomChatMessages ?? []}
+      activity={handlers.activity}
+      activityUnlocked={handlers.activityUnlocked}
+      onActivity={handlers.onActivity}
       screenFocusMode={handlers.screenFocusMode ?? false}
       signalingState={handlers.signalingState ?? 'connected'}
       signalStrength={handlers.signalStrength}
@@ -179,6 +190,54 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it('shows an invitation first, hides chat on joining, and lets a viewer minimize without ending the shared game', () => {
+    const hide = vi.fn(),
+      send = vi.fn();
+    const activity: RoomActivity = {
+      open: true,
+      revision: 1,
+      region: 'RU',
+      startedBy: peerId,
+      sessionId: peerId,
+    };
+    const result = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        activity,
+        onActivity: send,
+        conversation: true,
+        onConversationToggle: hide,
+      }),
+    );
+    expect(result.queryByText('Сервисы доставки')).toBeNull();
+    expect(result.getByText('Друг приглашает играть вместе')).toBeTruthy();
+    expect(result.queryByLabelText('Общий планшет')).toBeNull();
+    fireEvent.click(result.getByRole('button', { name: 'Присоединиться' }));
+    expect(hide).toHaveBeenCalledOnce();
+    expect(result.getByLabelText('Общий планшет')).toBeTruthy();
+    expect(result.queryByRole('button', { name: 'Завершить для всех' })).toBeNull();
+    fireEvent.click(result.getByRole('button', { name: 'Шахматы' }));
+    expect(send).toHaveBeenCalledWith({ kind: 'game', game: 'chess' });
+    fireEvent.click(result.getByRole('button', { name: 'Свернуть планшет' }));
+    expect(result.queryByLabelText('Общий планшет')).toBeNull();
+    expect(send).not.toHaveBeenCalledWith({ kind: 'close' });
+  });
+
+  it('keeps server disconnection distinct from local offline and shows connection startup honestly', () => {
+    const result = render(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+        signalingState: 'connecting',
+        signalStrength: 55,
+      }),
+    );
+    expect(result.getByText('Подключение…')).toBeTruthy();
+    expect(result.queryByText('Сигнал плохой')).toBeNull();
+    result.rerender(
+      view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), { signalingState: 'offline' }),
+    );
+    expect(result.getByText('Связь с сервером прервана')).toBeTruthy();
+    expect(result.queryByText('Нет интернета')).toBeNull();
+  });
+
   it('renders call reactions outside the clipped conversation pane and removes them on exit', () => {
     const result = render(
       view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
@@ -199,8 +258,8 @@ describe('RoomView media layouts', () => {
     const result = render(
       view('none', {}, true, vi.fn(), vi.fn(), vi.fn(), { participants: people }),
     );
-    expect(result.getByText('Микрофон выключен')).toBeTruthy();
-    expect(result.getByText('Наушники выключены')).toBeTruthy();
+    expect(result.getByLabelText('Микрофон выключен')).toBeTruthy();
+    expect(result.getByLabelText('Наушники выключены')).toBeTruthy();
     expect(result.queryByText('Говорит')).toBeNull();
     result.rerender(
       view('none', {}, true, vi.fn(), vi.fn(), vi.fn(), {
@@ -220,8 +279,8 @@ describe('RoomView media layouts', () => {
         deafened: true,
       }),
     );
-    expect(result.getByText('Наушники выключены')).toBeTruthy();
-    expect(result.getByText('Микрофон выключен')).toBeTruthy();
+    expect(result.getByLabelText('Наушники выключены')).toBeTruthy();
+    expect(result.getByLabelText('Микрофон выключен')).toBeTruthy();
   });
 
   it('does not subscribe to native window events in a browser', () => {

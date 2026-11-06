@@ -5,7 +5,16 @@ export class RetainedRequest {
   private refresh: Promise<void> | undefined;
   private failed: { at: number; error: unknown } | undefined;
 
-  constructor(private readonly freshForMs = 30_000) {}
+  constructor(
+    private readonly freshForMs = 30_000,
+    completedAt?: number,
+  ) {
+    this.completedAt = completedAt;
+  }
+
+  get loadedAt() {
+    return this.completedAt;
+  }
 
   get loaded() {
     return this.completedAt !== undefined;
