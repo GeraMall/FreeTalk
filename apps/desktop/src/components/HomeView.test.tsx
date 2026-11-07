@@ -351,6 +351,71 @@ it('filters call history by month and totals the visible durations', async () =>
 });
 
 describe('HomeView chat navigation', () => {
+  it('deduplicates saved-chat creation and opens a private, empty notebook without call controls', async () => {
+    let resolveCreate!: (result: unknown) => void;
+    let created = false;
+    const saved = {
+      id: 'saved-chat',
+      type: 'direct',
+      isSaved: true,
+      title: null,
+      members: [{ id: 'self', username: 'qa_self', displayName: 'QA' }],
+    };
+    homeViewHarness.request.mockImplementation(async (path: string) => {
+      if (path === '/v1/chats/saved')
+        return new Promise((resolve) => {
+          resolveCreate = resolve;
+        });
+      if (path === '/v1/chats') return { chats: created ? [saved] : [] };
+      if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+      if (path === '/v1/history') return { calls: [] };
+      if (path.endsWith('/active-call')) return { call: null };
+      if (path.endsWith('/messages')) return { messages: [], hasMore: false };
+      return {};
+    });
+    const view = render(
+      <HomeView
+        user={{
+          id: 'self',
+          email: 'qa@example.invalid',
+          username: 'qa_self',
+          displayName: 'QA',
+          avatarUrl: null,
+          emailVerified: true,
+          registeredAt: new Date().toISOString(),
+        }}
+        busy={false}
+        error=""
+        onCreateRoom={vi.fn()}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(homeViewHarness.request).toHaveBeenCalledWith('/v1/chats'));
+    const button = view.getByRole('button', { name: 'Избранное' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(
+        homeViewHarness.request.mock.calls.filter(([path]) => path === '/v1/chats/saved'),
+      ).toHaveLength(1),
+    );
+    created = true;
+    await act(async () => resolveCreate({ chat: { id: saved.id } }));
+    await waitFor(() =>
+      expect(
+        view.getByText('Сохраняйте здесь мысли, ссылки и файлы. Их видите только вы.'),
+      ).toBeTruthy(),
+    );
+    expect(view.queryByRole('button', { name: 'Начать голосовой звонок' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Добавить участника' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Показать профиль' })).toBeNull();
+    fireEvent.click(button);
+    expect(
+      homeViewHarness.request.mock.calls.filter(([path]) => path === '/v1/chats/saved'),
+    ).toHaveLength(1);
+  });
   it('repairs a missed call end after realtime reconnect without clearing the draft', async () => {
     let ended = false;
     const user: AccountUser = {

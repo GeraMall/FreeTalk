@@ -25,4 +25,5 @@ output/
 artifacts/
 .playwright-cli/
 .toolchains/
+.build-tmp/
 node_modules.corrupt-backup/

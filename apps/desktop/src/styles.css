@@ -22529,3 +22529,98 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     opacity: 0;
   }
 }
+
+/* Personal chat collections use the same compact controls as group creation. */
+.account-sidebar-chats > header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.account-sidebar-collection-actions,
+.conversation-collection-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.account-sidebar-collection-actions .account-sidebar-chat-add {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border: 1px solid rgba(141, 166, 220, 0.16);
+  border-radius: 9px;
+  background: #0a1521;
+  box-shadow: none;
+  transform: none;
+}
+.account-sidebar-collection-actions .account-sidebar-chat-add svg {
+  width: 16px;
+  height: 16px;
+}
+.account-sidebar-collection-actions .account-sidebar-chat-add:hover,
+.account-sidebar-collection-actions .account-sidebar-chat-add[aria-pressed='true'],
+.account-sidebar-collection-actions .account-sidebar-chat-add[aria-expanded='true'] {
+  color: #b8caec;
+  border-color: rgba(141, 166, 220, 0.4);
+  background: #172438;
+  box-shadow: none;
+}
+.account-sidebar-chat-heading > span {
+  overflow-wrap: anywhere;
+}
+.chat-archive-menu {
+  position: fixed;
+  z-index: 1600;
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border: 1px solid #283a50;
+  border-radius: 12px;
+  background: #0a1521;
+  box-shadow: 0 12px 32px #0006;
+}
+.chat-archive-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #d4dfef;
+  font-size: 13px;
+  text-align: left;
+  transform: none;
+}
+.chat-archive-menu button:hover,
+.chat-archive-menu button:focus-visible {
+  background: #172438;
+}
+.chat-archive-menu svg,
+.saved-chat-avatar svg {
+  width: 18px;
+  height: 18px;
+}
+.saved-chat-avatar {
+  display: grid;
+  place-items: center;
+  color: #b8caec;
+  background: #172438;
+}
+.conversation-collection-actions .new-chat-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+.conversation-sidebar-header > .conversation-collection-actions,
+.mobile-messenger .conversation-sidebar-header > .conversation-collection-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: auto;
+  gap: 5px;
+}

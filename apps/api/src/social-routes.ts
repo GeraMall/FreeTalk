@@ -12,6 +12,7 @@ import { inspectRemoteGif } from './remote-gif.js';
 import { registerGifLibraryRoutes, accessibleGif, privateGif } from './gif-library.js';
 import { resolveLinkPreview, resolvePreviewImage } from './link-preview.js';
 import { sendIncomingCallPush } from './web-push.js';
+import { registerChatCollections } from './chat-collections.js';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   CHAT_MESSAGE_REACTION_LIMIT,
@@ -477,6 +478,7 @@ async function isDirectChat(chatId: string) {
 }
 
 export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireUser) {
+  registerChatCollections(app, requireUser);
   registerGifLibraryRoutes(app, requireUser);
   app.get(
     '/v1/link-preview',
@@ -918,6 +920,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     if (!user) return;
     const chats = await db.query(
       `SELECT c.id,c.type,c.title,c.created_at,c.retention_hours AS "retentionHours",
+       c.is_saved AS "isSaved",(self.archived_at IS NOT NULL) AS archived,
        c.avatar_position_x AS "avatarPositionX",c.avatar_position_y AS "avatarPositionY",
        c.avatar_scale AS "avatarScale",
        CASE WHEN c.avatar_data IS NOT NULL THEN $2::text || '/v1/chats/' || c.id ||
@@ -945,15 +948,20 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          ORDER BY m.created_at DESC LIMIT 1
        ) latest ON true
        WHERE self.user_id=$1 AND self.left_at IS NULL
+       AND (NOT c.is_saved OR $3::boolean)
        AND (c.type<>'direct' OR NOT EXISTS (
          SELECT 1 FROM chat_members other JOIN blocks b ON
          (b.blocker_id=$1 AND b.blocked_id=other.user_id)
          OR (b.blocker_id=other.user_id AND b.blocked_id=$1)
          WHERE other.chat_id=c.id AND other.left_at IS NULL AND other.user_id<>$1
        ))
-       GROUP BY c.id,self.role,latest.body,latest.created_at,latest.kind
+       GROUP BY c.id,self.role,self.archived_at,latest.body,latest.created_at,latest.kind
        ORDER BY COALESCE(latest.created_at,c.created_at) DESC`,
-      [user.id, publicApiUrl('').replace(/\/$/, '')],
+      [
+        user.id,
+        publicApiUrl('').replace(/\/$/, ''),
+        request.headers['x-trlka-chat-collections'] === '1',
+      ],
     );
     return {
       chats: chats.rows.map((chat) => ({
@@ -2252,6 +2260,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
       return reply.code(403).send({ code: 'NOT_CHAT_MEMBER' });
     if (!(await canInteractInChat(chatId, user.id)))
       return reply.code(403).send({ code: 'BLOCKED_RELATIONSHIP' });
+    const saved = await db.query('SELECT 1 FROM chats WHERE id=$1 AND is_saved', [chatId]);
+    if (saved.rowCount) return reply.code(400).send({ code: 'SAVED_CHAT_CANNOT_CALL' });
     await expireAbandonedConversationCalls(chatId);
     const callMessage = await transaction(async (client) => {
       const inserted = await client.query<ChatMessageRow>(

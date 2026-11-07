@@ -2291,6 +2291,8 @@ export function App() {
                 : setRoomDestination(destination)
             }
             onOpenChat={(chatId) => roomSidebarState?.openChat(chatId)}
+            onOpenSavedChat={() => roomSidebarState?.openSavedChat()}
+            onArchiveChat={(chatId, archived) => roomSidebarState?.archiveChat(chatId, archived)}
             onCreateGroup={(title, memberIds) =>
               roomSidebarState?.createGroup(title, memberIds) ?? Promise.resolve(false)
             }
@@ -2431,7 +2433,7 @@ export function App() {
                 busy={joining}
                 error={error}
                 onClearError={() => setError('')}
-                onPageChange={(page) => setRoomDestination(page)}
+                onPageChange={setRoomDestination}
                 onActiveChatChange={setRoomActiveChatId}
                 onSidebarStateChange={setRoomSidebarState}
                 onCreateRoom={() => {

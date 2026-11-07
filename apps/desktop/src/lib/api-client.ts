@@ -658,6 +658,7 @@ export class AccountClient {
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: {
+        ...(path === '/v1/chats' ? { 'x-trlka-chat-collections': '1' } : {}),
         ...(typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}),
         ...init.headers,
         authorization: `Bearer ${this.accessToken}`,

@@ -3,6 +3,9 @@ import { SERVICE_CHAT_ID } from '@freetalk/config';
 import { ServiceBotAvatar } from './ServiceBotAvatar';
 import {
   ChevronLeft,
+  Archive,
+  ArrowLeft,
+  Bookmark,
   ChevronRight,
   Circle,
   Download,
@@ -55,6 +58,7 @@ import { UserProfileDialog, type UserProfileTarget } from './UserProfileDialog';
 import { playNotificationSound } from '../lib/notification-sounds';
 import { loadSettings } from '../lib/settings';
 import { CallDock, ProfileAudioControls, type CallDockState } from './CallDock';
+import { ChatArchiveMenu, type ChatArchiveMenuTarget } from './ChatArchiveMenu';
 
 export type AccountPage = 'home' | 'friends' | 'chats' | 'store' | 'history';
 export type AccountDestination = AccountPage | 'room';
@@ -70,6 +74,8 @@ export function AccountSidebar({
   updateStatus,
   onNavigate,
   onOpenChat,
+  onOpenSavedChat,
+  onArchiveChat,
   onCreateGroup,
   onLeaveGroup,
   onInstallUpdate,
@@ -92,6 +98,8 @@ export function AccountSidebar({
   updateStatus?: UpdateStatus;
   onNavigate(page: AccountDestination): void;
   onOpenChat?(chatId: string): Promise<void> | void;
+  onOpenSavedChat?(): Promise<void> | void;
+  onArchiveChat?(chatId: string, archived: boolean): Promise<void> | void;
   onCreateGroup?(title: string, memberIds: string[]): Promise<boolean>;
   onLeaveGroup?(chatId: string): Promise<void>;
   onInstallUpdate?(): void;
@@ -105,6 +113,8 @@ export function AccountSidebar({
   const [unreadByChat, setUnreadByChat] = useState<Record<string, number>>({});
   const [chatSearch, setChatSearch] = useState('');
   const [groupFormOpen, setGroupFormOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveMenu, setArchiveMenu] = useState<ChatArchiveMenuTarget>();
   const [leaveTarget, setLeaveTarget] = useState<ChatItem>();
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [leaveError, setLeaveError] = useState('');
@@ -242,11 +252,14 @@ export function AccountSidebar({
   const deferredChatSearch = useDeferredValue(chatSearch);
   const sidebarChats = useMemo(() => {
     const query = deferredChatSearch.trim().toLocaleLowerCase('ru-RU');
-    if (!query) return chats ?? [];
-    return (chats ?? []).filter((chat) =>
-      sidebarChatName(chat, user.id).toLocaleLowerCase('ru-RU').includes(query),
+    return (chats ?? []).filter(
+      (chat) =>
+        !chat.isSaved &&
+        Boolean(chat.archived) === showArchived &&
+        (!query || sidebarChatName(chat, user.id).toLocaleLowerCase('ru-RU').includes(query)),
     );
-  }, [chats, deferredChatSearch, user.id]);
+  }, [chats, deferredChatSearch, user.id, showArchived]);
+  const savedChat = chats?.find((chat) => chat.isSaved);
   const chatNavigationEnabled = chats !== undefined && Boolean(onOpenChat && onCreateGroup);
   const updateVersion =
     updateStatus?.kind === 'available' || updateStatus?.kind === 'downloading'
@@ -364,18 +377,46 @@ export function AccountSidebar({
         <section className="account-sidebar-chats" aria-label={t('Чаты и группы')}>
           <header>
             <span className="account-sidebar-chat-heading">
-              <span>{t('Чаты и группы')}</span>
+              <span>{showArchived ? t('Архив') : t('Чаты и группы')}</span>
               {unreadChatCount > 0 ? <b>{unreadChatCount > 99 ? '99+' : unreadChatCount}</b> : null}
             </span>
-            <button
-              type="button"
-              className="account-sidebar-chat-add"
-              aria-label={t('Создать групповой чат')}
-              aria-expanded={groupFormOpen}
-              onClick={() => setGroupFormOpen(true)}
-            >
-              <Plus aria-hidden="true" />
-            </button>
+            <div className="account-sidebar-collection-actions">
+              <button
+                type="button"
+                className="account-sidebar-chat-add"
+                data-tooltip={showArchived ? t('Вернуться к чатам') : t('Архив')}
+                aria-label={showArchived ? t('Вернуться к чатам') : t('Архив')}
+                aria-pressed={showArchived}
+                onClick={() => {
+                  setShowArchived((current) => !current);
+                  setArchiveMenu(undefined);
+                }}
+              >
+                {showArchived ? <ArrowLeft aria-hidden="true" /> : <Archive aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                className="account-sidebar-chat-add"
+                data-tooltip={t('Избранное')}
+                aria-label={t('Избранное')}
+                aria-pressed={Boolean(savedChat && savedChat.id === readingChatId)}
+                onClick={() => {
+                  setShowArchived(false);
+                  void onOpenSavedChat?.();
+                }}
+              >
+                <Bookmark aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="account-sidebar-chat-add"
+                aria-label={t('Создать групповой чат')}
+                aria-expanded={groupFormOpen}
+                onClick={() => setGroupFormOpen(true)}
+              >
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
           </header>
           <div className="account-sidebar-chat-list">
             {chatsLoading && (chats?.length ?? 0) === 0 ? (
@@ -402,6 +443,36 @@ export function AccountSidebar({
                       onClick={() => {
                         onNavigate('chats');
                         void onOpenChat?.(chat.id);
+                      }}
+                      onContextMenu={(event) => {
+                        if (!onArchiveChat || chat.id === SERVICE_CHAT_ID) return;
+                        event.preventDefault();
+                        setArchiveMenu({
+                          chatId: chat.id,
+                          name,
+                          archived: Boolean(chat.archived),
+                          x: event.clientX,
+                          y: event.clientY,
+                          trigger: event.currentTarget,
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          !onArchiveChat ||
+                          chat.id === SERVICE_CHAT_ID ||
+                          !(event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+                        )
+                          return;
+                        event.preventDefault();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setArchiveMenu({
+                          chatId: chat.id,
+                          name,
+                          archived: Boolean(chat.archived),
+                          x: bounds.left,
+                          y: bounds.bottom,
+                          trigger: event.currentTarget,
+                        });
                       }}
                     >
                       <SidebarAvatar
@@ -447,7 +518,11 @@ export function AccountSidebar({
               })
             ) : (
               <div className="account-sidebar-chat-state">
-                {chats?.length ? t('Ничего не найдено') : t('Чатов пока нет')}
+                {deferredChatSearch.trim()
+                  ? t('Ничего не найдено')
+                  : showArchived
+                    ? t('Архив пуст')
+                    : t('Чатов пока нет')}
               </div>
             )}
           </div>
@@ -632,6 +707,13 @@ export function AccountSidebar({
         target={fullProfileTarget}
         onClose={() => setFullProfileTarget(undefined)}
       />
+      {archiveMenu && onArchiveChat ? (
+        <ChatArchiveMenu
+          target={archiveMenu}
+          onClose={() => setArchiveMenu(undefined)}
+          onArchive={onArchiveChat}
+        />
+      ) : null}
     </aside>
   );
 }

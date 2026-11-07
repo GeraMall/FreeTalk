@@ -67,6 +67,61 @@ beforeEach(() => {
   overlayHarness.show.mockReset();
   overlayHarness.onOpen = undefined;
 });
+
+describe('sidebar chat collections', () => {
+  it('opens saved messages from the compact control and keeps them out of the chat list', () => {
+    const onOpenSavedChat = vi.fn();
+    const { getByRole, queryByRole } = render(
+      <AccountSidebar
+        user={user}
+        activePage="chats"
+        chats={[{ id: 'saved', type: 'direct', title: null, isSaved: true, members: [] }]}
+        onNavigate={vi.fn()}
+        onOpenChat={vi.fn()}
+        onOpenSavedChat={onOpenSavedChat}
+        onCreateGroup={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    fireEvent.click(getByRole('button', { name: 'Избранное' }));
+    expect(onOpenSavedChat).toHaveBeenCalledOnce();
+    expect(queryByRole('button', { name: 'Личный чат' })).toBeNull();
+    expect(getByRole('button', { name: 'Создать групповой чат' })).toBeTruthy();
+  });
+
+  it('archives from right-click without opening the chat and restores from the archive', () => {
+    const onOpenChat = vi.fn(),
+      onArchiveChat = vi.fn();
+    const chats: ChatItem[] = [{ id: 'chat', type: 'group', title: 'Команда', members: [] }];
+    const props = {
+      user,
+      activePage: 'chats' as const,
+      onNavigate: vi.fn(),
+      onOpenChat,
+      onArchiveChat,
+      onCreateGroup: vi.fn(),
+      onSettings: vi.fn(),
+      onLogout: vi.fn(),
+    };
+    const view = render(<AccountSidebar {...props} chats={chats} />);
+    fireEvent.contextMenu(view.getByRole('button', { name: 'Команда' }), {
+      clientX: 240,
+      clientY: 300,
+    });
+    fireEvent.click(view.getByRole('menuitem', { name: 'В архив' }));
+    expect(onOpenChat).not.toHaveBeenCalled();
+    expect(onArchiveChat).toHaveBeenCalledWith('chat', true);
+    view.rerender(<AccountSidebar {...props} chats={[{ ...chats[0]!, archived: true }]} />);
+    expect(view.queryByRole('button', { name: 'Команда' })).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: 'Архив' }));
+    const chat = view.getByRole('button', { name: 'Команда' });
+    fireEvent.keyDown(chat, { key: 'F10', shiftKey: true });
+    fireEvent.click(view.getByRole('menuitem', { name: 'Вернуть из архива' }));
+    expect(onArchiveChat).toHaveBeenCalledWith('chat', false);
+    fireEvent.click(view.getByRole('button', { name: 'Вернуться к чатам' }));
+  });
+});
 afterEach(cleanup);
 
 describe('AccountSidebar in an active room', () => {

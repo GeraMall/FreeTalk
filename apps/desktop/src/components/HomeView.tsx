@@ -84,6 +84,8 @@ export interface HomeSidebarState {
   }>;
   chatsLoading: boolean;
   openChat(chatId: string): Promise<void>;
+  openSavedChat(): Promise<void>;
+  archiveChat(chatId: string, archived: boolean): Promise<void>;
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
@@ -645,12 +647,15 @@ export function HomeView({
     return () => realtime.stop();
   }, [user.id]);
 
-  const navigatePage = (next: AccountPage) => {
-    if (next === page) return;
-    window.history.pushState({ ...window.history.state, [NAVIGATION_STATE_KEY]: next }, '');
-    setInternalPage(next);
-    onPageChange?.(next);
-  };
+  const navigatePage = useCallback(
+    (next: AccountPage) => {
+      if (next === page) return;
+      window.history.pushState({ ...window.history.state, [NAVIGATION_STATE_KEY]: next }, '');
+      setInternalPage(next);
+      onPageChange?.(next);
+    },
+    [page, onPageChange],
+  );
 
   const loadPage = useCallback(
     async (next: AccountPage, force = true) => {
@@ -790,6 +795,55 @@ export function HomeView({
     },
     [loadChatMessages],
   );
+
+  const savedChatRequest = useRef<Promise<void> | undefined>(undefined);
+  const openSavedChat = useCallback(async () => {
+    if (savedChatRequest.current) return savedChatRequest.current;
+    const existing = chats.find((chat) => chat.isSaved);
+    if (existing) {
+      navigatePage('chats');
+      await openChat(existing.id);
+      return;
+    }
+    const request = (async () => {
+      try {
+        const { chat } = await accountClient.request<{ chat: { id: string } }>('/v1/chats/saved', {
+          method: 'POST',
+        });
+        const result = await accountClient.request<{ chats: ChatItem[] }>('/v1/chats');
+        setChats(result.chats);
+        navigatePage('chats');
+        await openChat(chat.id);
+      } catch (caught) {
+        setLocalError(caught instanceof Error ? caught.message : t('Не удалось открыть избранное'));
+      }
+    })();
+    savedChatRequest.current = request;
+    try {
+      await request;
+    } finally {
+      savedChatRequest.current = undefined;
+    }
+  }, [chats, navigatePage, openChat]);
+
+  const archiveRequests = useRef(new Set<string>());
+  const archiveChat = useCallback(async (chatId: string, archived: boolean) => {
+    if (archiveRequests.current.has(chatId) || chatId === SERVICE_CHAT_ID) return;
+    archiveRequests.current.add(chatId);
+    try {
+      await accountClient.request(`/v1/chats/${chatId}/archive`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archived }),
+      });
+      setChats((current) =>
+        current.map((chat) => (chat.id === chatId ? { ...chat, archived } : chat)),
+      );
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : t('Не удалось изменить архив'));
+    } finally {
+      archiveRequests.current.delete(chatId);
+    }
+  }, []);
 
   const initialMessagesLoaded = useRef(Boolean(initialMessages));
   useEffect(() => {
@@ -1230,9 +1284,20 @@ export function HomeView({
       friends: chatFriendOptions,
       chatsLoading,
       openChat,
+      openSavedChat,
+      archiveChat,
       createGroup,
     });
-  }, [chatFriendOptions, visibleChats, chatsLoading, createGroup, onSidebarStateChange, openChat]);
+  }, [
+    chatFriendOptions,
+    visibleChats,
+    chatsLoading,
+    createGroup,
+    onSidebarStateChange,
+    openChat,
+    openSavedChat,
+    archiveChat,
+  ]);
 
   const createInvite = async () => {
     if (!activeChat) return;
@@ -1490,6 +1555,8 @@ export function HomeView({
           updateStatus={updateStatus}
           onNavigate={(next) => next !== 'room' && navigatePage(next)}
           onOpenChat={openChat}
+          onOpenSavedChat={openSavedChat}
+          onArchiveChat={archiveChat}
           onCreateGroup={createGroup}
           onLeaveGroup={leaveGroup}
           onInstallUpdate={onInstallUpdate}
@@ -1726,6 +1793,8 @@ export function HomeView({
               chatSlowMode && chatSlowMode.chatId === activeChat ? chatSlowMode.until : undefined
             }
             onOpenChat={openChat}
+            onOpenSavedChat={openSavedChat}
+            onArchiveChat={archiveChat}
             onCloseChat={() => {
               activeChatRef.current = undefined;
               messagesRequestIdRef.current += 1;

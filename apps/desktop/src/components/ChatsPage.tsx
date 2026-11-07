@@ -19,6 +19,7 @@ import {
 import {
   Archive,
   ArchiveRestore,
+  Bookmark,
   ArrowDown,
   ArrowLeft,
   Ban,
@@ -161,6 +162,8 @@ type ChatProfile = UserProfileData;
 export interface ChatItem {
   id: string;
   type: 'direct' | 'group';
+  isSaved?: boolean;
+  archived?: boolean;
   title: string | null;
   members: ChatMember[];
   lastMessage?: string | null;
@@ -285,6 +288,8 @@ interface ChatsPageProps {
   profileRevision?: number;
   slowModeUntil?: number;
   onOpenChat(chatId: string): Promise<void>;
+  onOpenSavedChat?(): Promise<void>;
+  onArchiveChat?(chatId: string, archived: boolean): Promise<void>;
   onCloseChat?(): void;
   onRetryMessages(): void;
   onLoadOlder?(): Promise<void>;
@@ -350,6 +355,8 @@ export function ChatsPage({
   profileRevision = 0,
   slowModeUntil = 0,
   onOpenChat,
+  onOpenSavedChat,
+  onArchiveChat,
   onCloseChat = () => {},
   onRetryMessages,
   onLoadOlder = async () => {},
@@ -498,7 +505,9 @@ export function ChatsPage({
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const activeCallToolbar = activeChat && activeChat.id === joinedChatId ? callToolbarTarget : null;
   const [callProfileChatId, setCallProfileChatId] = useState<string>();
-  const showProfile = activeCallToolbar ? callProfileChatId === activeChatId : profileVisible;
+  const showProfile =
+    !activeChat?.isSaved &&
+    (activeCallToolbar ? callProfileChatId === activeChatId : profileVisible);
   const messageSearchMatches = useMemo(() => {
     const query = messageSearch.trim().toLocaleLowerCase('ru-RU');
     if (!query) return [];
@@ -618,13 +627,16 @@ export function ChatsPage({
     const query = search.trim().toLocaleLowerCase('ru-RU');
     return chats.filter(
       (chat) =>
+        !chat.isSaved &&
         (chat.id === SERVICE_CHAT_ID
           ? !showArchived
-          : archivedChatIds.has(chat.id) === showArchived) &&
+          : (chat.archived ?? archivedChatIds.has(chat.id)) === showArchived) &&
         (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
     );
   }, [archivedChatIds, chats, search, showArchived, userId]);
-  const archivedCount = chats.filter((chat) => archivedChatIds.has(chat.id)).length;
+  const archivedCount = chats.filter(
+    (chat) => !chat.isSaved && (chat.archived ?? archivedChatIds.has(chat.id)),
+  ).length;
 
   const updateStoredChatIds = (
     kind: 'archived' | 'muted',
@@ -693,15 +705,40 @@ export function ChatsPage({
               <h1>{t('Чаты')}</h1>
               <p>{t('Срок хранения задаётся для каждого чата')}</p>
             </div>
-            <button
-              className="new-chat-button"
-              data-tooltip={t('Новый групповой чат')}
-              aria-label={t('Новый групповой чат')}
-              aria-expanded={showGroup}
-              onClick={() => setShowGroup(true)}
-            >
-              <Plus />
-            </button>
+            <div className="conversation-collection-actions">
+              <button
+                type="button"
+                className="new-chat-button"
+                aria-label={t('Архив')}
+                data-tooltip={t('Архив')}
+                aria-pressed={showArchived}
+                onClick={() => setShowArchived((visible) => !visible)}
+              >
+                <Archive />
+              </button>
+              <button
+                type="button"
+                className="new-chat-button"
+                aria-label={t('Избранное')}
+                data-tooltip={t('Избранное')}
+                aria-pressed={Boolean(activeChat?.isSaved)}
+                onClick={() => {
+                  setShowArchived(false);
+                  void onOpenSavedChat?.();
+                }}
+              >
+                <Bookmark />
+              </button>
+              <button
+                className="new-chat-button"
+                data-tooltip={t('Новый групповой чат')}
+                aria-label={t('Новый групповой чат')}
+                aria-expanded={showGroup}
+                onClick={() => setShowGroup(true)}
+              >
+                <Plus />
+              </button>
+            </div>
           </header>
 
           <div className="conversation-top-actions">
@@ -779,13 +816,15 @@ export function ChatsPage({
                   userId={userId}
                   active={chat.id === activeChatId}
                   mobile={mobile}
-                  archived={archivedChatIds.has(chat.id)}
+                  archived={chat.archived ?? archivedChatIds.has(chat.id)}
                   muted={mutedChatIds.has(chat.id)}
                   onClick={() => void onOpenChat(chat.id)}
                   onArchive={() =>
-                    setArchivedChatIds((current) =>
-                      updateStoredChatIds('archived', current, chat.id),
-                    )
+                    onArchiveChat
+                      ? void onArchiveChat(chat.id, !chat.archived)
+                      : setArchivedChatIds((current) =>
+                          updateStoredChatIds('archived', current, chat.id),
+                        )
                   }
                   onMute={() =>
                     setMutedChatIds((current) => updateStoredChatIds('muted', current, chat.id))
@@ -972,6 +1011,7 @@ export function ChatsPage({
               joinedRoomId={joinedRoomId}
               userId={userId}
               groupChat={activeChat.type === 'group'}
+              savedChat={activeChat.isSaved}
               messages={messages}
               pinnedMessage={pinnedMessage}
               showPinned={showPinned}
@@ -1672,7 +1712,11 @@ function ChatHeader({
           <ArrowLeft />
         </button>
       ) : null}
-      {chat.type === 'group' ? (
+      {chat.isSaved ? (
+        <span className="chat-avatar saved-chat-avatar" aria-hidden="true">
+          <Bookmark />
+        </span>
+      ) : chat.type === 'group' ? (
         <button
           className="group-avatar-trigger"
           data-tooltip={canEditAvatar ? t('Изменить аватар группы') : t('Аватар группы')}
@@ -1708,32 +1752,38 @@ function ChatHeader({
       <div className="active-chat-identity">
         <strong>{name}</strong>
         <small>
-          {chat.type === 'group'
-            ? memberCountLabel(chat.members.length)
-            : other
-              ? `@${other.username}`
-              : t('Личный чат')}
+          {chat.isSaved
+            ? t('Заметки, ссылки и файлы для себя')
+            : chat.type === 'group'
+              ? memberCountLabel(chat.members.length)
+              : other
+                ? `@${other.username}`
+                : t('Личный чат')}
         </small>
       </div>
       <div className="active-chat-actions">
-        <button
-          className="chat-voice-action"
-          data-tooltip={t('Начать голосовой звонок')}
-          aria-label={t('Начать голосовой звонок')}
-          disabled={actionBusy === 'call'}
-          onClick={() => onStartCall()}
-        >
-          <PhoneCall />
-        </button>
-        <button
-          className="chat-video-action"
-          data-tooltip={t('Начать видеозвонок')}
-          aria-label={t('Начать видеозвонок')}
-          disabled={actionBusy === 'call'}
-          onClick={() => onStartCall(true)}
-        >
-          <Video />
-        </button>
+        {!chat.isSaved && (
+          <>
+            <button
+              className="chat-voice-action"
+              data-tooltip={t('Начать голосовой звонок')}
+              aria-label={t('Начать голосовой звонок')}
+              disabled={actionBusy === 'call'}
+              onClick={() => onStartCall()}
+            >
+              <PhoneCall />
+            </button>
+            <button
+              className="chat-video-action"
+              data-tooltip={t('Начать видеозвонок')}
+              aria-label={t('Начать видеозвонок')}
+              disabled={actionBusy === 'call'}
+              onClick={() => onStartCall(true)}
+            >
+              <Video />
+            </button>
+          </>
+        )}
         {!callToolbarTarget && pinnedAction}
         {chat.type === 'group' && (
           <button
@@ -1745,15 +1795,17 @@ function ChatHeader({
             <Link2 />
           </button>
         )}
-        <button
-          className="chat-invite-action"
-          data-tooltip={t('Добавить участника')}
-          aria-label={t('Добавить участника')}
-          aria-expanded={showMember}
-          onClick={onToggleMember}
-        >
-          <UserPlus />
-        </button>
+        {!chat.isSaved && (
+          <button
+            className="chat-invite-action"
+            data-tooltip={t('Добавить участника')}
+            aria-label={t('Добавить участника')}
+            aria-expanded={showMember}
+            onClick={onToggleMember}
+          >
+            <UserPlus />
+          </button>
+        )}
         <button
           data-chat-menu-trigger
           data-tooltip={t('Действия с чатом')}
@@ -1763,7 +1815,7 @@ function ChatHeader({
         >
           <MoreHorizontal />
         </button>
-        {!callToolbarTarget && profileAction}
+        {!chat.isSaved && !callToolbarTarget && profileAction}
         {!callToolbarTarget && searchAction}
       </div>
       {callToolbarTarget &&
@@ -2279,6 +2331,7 @@ export function MessageList({
   joinedRoomId,
   userId,
   groupChat,
+  savedChat = false,
   messages,
   pinnedMessage: loadedPinnedMessage,
   showPinned = true,
@@ -2307,6 +2360,7 @@ export function MessageList({
   joinedRoomId?: string;
   userId: string;
   groupChat: boolean;
+  savedChat?: boolean;
   messages: MessageItem[];
   pinnedMessage?: MessageItem;
   showPinned?: boolean;
@@ -2761,9 +2815,13 @@ export function MessageList({
           )}
           {visibleMessages.length === 0 ? (
             <div className="message-history-empty">
-              <MessageCircle />
-              <strong>{t('Начните разговор')}</strong>
-              <p>{t('Напишите первое сообщение в этом чате.')}</p>
+              {savedChat ? <Bookmark /> : <MessageCircle />}
+              <strong>{savedChat ? t('Избранное') : t('Начните разговор')}</strong>
+              <p>
+                {savedChat
+                  ? t('Сохраняйте здесь мысли, ссылки и файлы. Их видите только вы.')
+                  : t('Напишите первое сообщение в этом чате.')}
+              </p>
             </div>
           ) : (
             visibleMessages.map((message, index) => {
@@ -5206,6 +5264,7 @@ export function ChatAvatar({
 }
 
 function chatName(chat: ChatItem, userId: string) {
+  if (chat.isSaved) return t('Избранное');
   if (chat.title) return chat.title;
   return (
     chat.members
