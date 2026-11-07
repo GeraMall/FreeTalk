@@ -32,6 +32,7 @@ interface Peer {
   lastReactionAt: number;
   lastActivityAt: number;
   lastPointerAt: number;
+  lastActivityResyncAt: number;
 }
 
 interface Room {
@@ -160,6 +161,7 @@ export class RoomManager {
       lastReactionAt: existing?.lastReactionAt ?? 0,
       lastActivityAt: existing?.lastActivityAt ?? 0,
       lastPointerAt: 0,
+      lastActivityResyncAt: 0,
     };
     room.peers.set(clientId, peer);
     if (room.identities.size >= 64 && !room.identities.has(clientId)) {
@@ -335,6 +337,18 @@ export class RoomManager {
     // Delivery content is intentionally absent from the shared gaming tablet.
     if (action.kind === 'service' || action.kind === 'region') return;
     const now = Date.now();
+    if (v2 && revision !== room.activity.view.revision) {
+      // A delayed action must refresh this player's private snapshot rather
+      // than leave apparently live controls stuck on an obsolete betting turn.
+      if (now - peer.lastActivityResyncAt >= 250) {
+        peer.lastActivityResyncAt = now;
+        peer.connection.send({
+          type: 'activity-state',
+          activity: roomActivityView(room.activity, clientId, true),
+        });
+      }
+      return;
+    }
     if (!v2 && now - peer.lastActivityAt < 125) return;
     peer.lastActivityAt = now;
     const next = applyRoomActivity(

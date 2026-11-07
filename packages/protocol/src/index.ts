@@ -6,6 +6,7 @@ export { tableSchema } from './activity-table.js';
 export { randomFleet, validFleet } from './activity-table-session.js';
 export { propertyBoard, housePrice } from './activity-property.js';
 export { quizPrizes } from './activity-quiz.js';
+export { canRaisePoker } from './activity-poker.js';
 export type {
   ActivityGame,
   ActivityRegion,

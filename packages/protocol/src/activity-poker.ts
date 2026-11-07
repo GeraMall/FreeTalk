@@ -6,6 +6,17 @@ import {
   type TableContext,
 } from './activity-table-internal.js';
 
+export function canRaisePoker(table: TableOf<'poker'>, seat: number): boolean {
+  if (seat < 0 || !table.seats[seat] || table.folded.includes(seat) || table.allIn.includes(seat))
+    return false;
+  if ((table.bets[seat] ?? 0) + (table.stacks[seat] ?? 0) <= table.bet) return false;
+  if (!table.acted.includes(seat)) return true;
+  const lastBet = table.actedBets?.[seat];
+  // A check does not surrender the right to raise an opening short all-in.
+  // Multiple short all-ins can together reopen betting for an earlier caller.
+  return lastBet === 0 || (lastBet != null && table.bet - lastBet >= table.minRaise);
+}
+
 // Lexicographic ranks: category, then five kickers. Evaluates exactly five cards.
 function five(cards: string[]): number[] {
   const ranks = cards.map((c) => '23456789TJQKA'.indexOf(c[0]!) + 2).sort((a, b) => b - a);
@@ -90,6 +101,7 @@ export function dealPoker(session: TableSession, now: number): TableSession {
   v.folded = v.seats.flatMap((id, i) => (!id || !v.stacks[i] ? [i] : []));
   v.allIn = [];
   v.acted = [];
+  v.actedBets = v.seats.map(() => null);
   v.payouts = v.seats.map(() => 0);
   v.hands = [];
   v.winner = undefined;
@@ -146,6 +158,7 @@ function showdown(session: TableSession): TableSession {
   }
   v.stacks = v.stacks.map((n, i) => n + v.payouts[i]!);
   v.stage = 'showdown';
+  v.turn = v.dealer;
   v.hands = v.seats.flatMap((id, i) =>
     id && !v.folded.includes(i) ? [{ ownerId: id, cards: session.secret.hands?.[i] ?? [] }] : [],
   );
@@ -174,7 +187,7 @@ export function reducePoker(
   } else if (action.action === 'call') pay(v, seat, owed);
   else {
     const target = action.amount ?? 0;
-    if (v.acted.includes(seat) || target <= v.bet || target > v.bets[seat]! + v.stacks[seat]!)
+    if (!canRaisePoker(v, seat) || target <= v.bet || target > v.bets[seat]! + v.stacks[seat]!)
       return session;
     const raise = target - v.bet;
     if (raise < v.minRaise && target !== v.bets[seat]! + v.stacks[seat]!) return session;
@@ -186,6 +199,8 @@ export function reducePoker(
     }
   }
   if (!v.acted.includes(seat)) v.acted.push(seat);
+  v.actedBets ??= v.seats.map((_, i) => (old.acted.includes(i) ? old.bet : null));
+  v.actedBets[seat] = v.bet;
   const alive = v.seats.flatMap((id, i) => (id && !v.folded.includes(i) ? [i] : []));
   if (alive.length === 1) {
     v.payouts = v.seats.map((_, i) => (i === alive[0] ? v.pot : 0));
@@ -215,6 +230,7 @@ export function reducePoker(
   v.minRaise = 20;
   v.bets = v.seats.map(() => 0);
   v.acted = [];
+  v.actedBets = v.seats.map(() => null);
   v.turn = nextIndex(v, v.dealer, (i) => active.includes(i));
   return { view: addLog(v, `Открыт ${v.stage}`), secret: { ...session.secret, deck } };
 }

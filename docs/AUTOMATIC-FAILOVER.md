@@ -12,6 +12,9 @@ This is a single failover followed by operator repair, not automatic failback.
 - If replication stops, Moscow first revokes eligibility in the witness and
   only then permits asynchronous commits. The stale reserve cannot promote.
   If the witness is unreachable, it keeps strict synchronous commits.
+  A connection marked `streaming` must also have a replication acknowledgement
+  within 20 seconds. This catches a black-holed private network before the
+  default 60-second WAL sender timeout exhausts the API connection pool.
 - After at least 90 seconds of failed private and public primary probes,
   Petersburg checks the replay barrier and a fresh, checksum-verified file
   publication, freezes file synchronization, and records a fencing intent.

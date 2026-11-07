@@ -100,6 +100,7 @@ export const tableSchema = z.discriminatedUnion('kind', [
     folded: z.array(count).max(6),
     allIn: z.array(count).max(6),
     acted: z.array(count).max(6),
+    actedBets: z.array(count.nullable()).max(6).optional(),
     hands: z.array(z.object({ ownerId: id, cards: z.array(z.string().max(3)).max(2) })).max(6),
     payouts: z.array(count).max(6),
     handNumber: count,

@@ -1,4 +1,4 @@
-import type { TableOf } from '@freetalk/protocol';
+import { canRaisePoker, type TableOf } from '@freetalk/protocol';
 import { useState } from 'react';
 import { Spade, EyeOff } from 'lucide-react';
 import { t } from '../lib/app-language';
@@ -31,8 +31,17 @@ export function ActivityPoker({
   const owed = Math.max(0, table.bet - (table.bets[seat] ?? 0)),
     minimum = table.bet + table.minRaise,
     maximum = (table.stacks[seat] ?? 0) + (table.bets[seat] ?? 0);
-  const [raise, setRaise] = useState(40);
-  const amount = Math.min(maximum, Math.max(Math.min(minimum, maximum), raise));
+  const scope = `${table.id}:${table.handNumber}:${table.stage}:${table.turn}:${table.bet}`;
+  const [draft, setDraft] = useState({ scope: '', value: '' });
+  const value = draft.scope === scope ? draft.value : String(Math.min(minimum, maximum));
+  const amount = Number(value);
+  const validAmount =
+    value.trim() !== '' &&
+    Number.isSafeInteger(amount) &&
+    amount > table.bet &&
+    amount <= maximum &&
+    (amount >= minimum || amount === maximum);
+  const canRaise = canRaisePoker(table, seat);
   return (
     <div className="poker-game">
       <div className="poker-info">
@@ -116,17 +125,24 @@ export function ActivityPoker({
                 aria-label={t('Размер ставки')}
                 min={Math.min(minimum, maximum)}
                 max={maximum}
-                value={amount}
-                onChange={(e) => setRaise(Number(e.target.value))}
+                value={value}
+                onChange={(e) => setDraft({ scope, value: e.target.value })}
               />
               <button
                 type="button"
                 className="table-primary"
-                disabled={maximum <= table.bet || table.acted.includes(seat)}
-                onClick={() => send({ kind: 'poker-bet', action: 'raise', amount })}
+                disabled={!canRaise || !validAmount}
+                title={
+                  canRaise
+                    ? undefined
+                    : t('Повышение недоступно: можно уравнять или сбросить карты')
+                }
+                onClick={() => {
+                  if (canRaise && validAmount) send({ kind: 'poker-bet', action: 'raise', amount });
+                }}
               >
                 {amount === maximum ? t('Олл-ин') : table.bet ? t('Повысить до') : t('Ставка')}{' '}
-                {amount}
+                {validAmount ? amount : '—'}
               </button>
             </div>
           </>

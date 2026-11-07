@@ -76,7 +76,11 @@ class Database:
             self.query("ALTER SYSTEM SET synchronous_commit = 'on'")
             self.query('SELECT pg_reload_conf()')
     def streaming(self):
-        return self.query("SELECT count(*) FROM pg_stat_replication WHERE application_name='trlka_petersburg' AND state='streaming'")=='1'
+        # A black-holed WireGuard path can still be reported as streaming until
+        # wal_sender_timeout (60 s). Do not hold all API commits for that timeout.
+        # The receiver normally acknowledges at least every 10 s. Eligibility
+        # must still be revoked by the witness before disabling synchronous WAL.
+        return self.query("SELECT count(*) FROM pg_stat_replication WHERE application_name='trlka_petersburg' AND state='streaming' AND reply_time >= clock_timestamp() - interval '20 seconds'")=='1'
     def barrier(self):
         value=self.query('SELECT pg_current_wal_flush_lsn()')
         if not LSN.fullmatch(value):raise RuntimeError('Invalid WAL barrier')

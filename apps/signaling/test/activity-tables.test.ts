@@ -19,6 +19,53 @@ class Connection implements PeerConnection {
   }
 }
 describe('private table projections and pointers', () => {
+  it('repairs stale actions using only the requesting player private snapshot and limits retries', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100000);
+    try {
+      const manager = new RoomManager();
+      const connections = Array.from({ length: 4 }, () => new Connection());
+      manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', connections[0]!);
+      for (let i = 1; i < 4; i++)
+        manager.join('ABCDEFGH2345', id(i + 1), `session-${i}23456789`, 'Peer', connections[i]!);
+      const send = (actor: number, action: RoomActivityAction) =>
+        manager.updateActivity(
+          'ABCDEFGH2345',
+          id(actor + 1),
+          connections[actor]!.activity.revision,
+          action,
+        );
+      send(0, { kind: 'open' });
+      send(0, { kind: 'table-open', game: 'poker' });
+      for (let i = 1; i < 4; i++) send(i, { kind: 'table-seat', seat: i });
+      send(0, { kind: 'table-start' });
+      const counts = connections.map((c) => c.messages.length);
+      const revision = connections[1]!.activity.revision;
+      manager.updateActivity('ABCDEFGH2345', id(2), revision - 1, {
+        kind: 'poker-bet',
+        action: 'call',
+      });
+      expect(connections[1]!.messages.length).toBe(counts[1]! + 1);
+      expect(connections[1]!.activity.revision).toBe(revision);
+      expect(connections[1]!.activity.table).toMatchObject({
+        hands: [{ ownerId: id(2), cards: expect.any(Array) }],
+      });
+      for (const i of [0, 2, 3]) expect(connections[i]!.messages.length).toBe(counts[i]);
+      manager.updateActivity('ABCDEFGH2345', id(2), revision - 1, {
+        kind: 'poker-bet',
+        action: 'call',
+      });
+      expect(connections[1]!.messages.length).toBe(counts[1]! + 1);
+      vi.advanceTimersByTime(250);
+      manager.updateActivity('ABCDEFGH2345', id(2), revision - 1, {
+        kind: 'poker-bet',
+        action: 'call',
+      });
+      expect(connections[1]!.messages.length).toBe(counts[1]! + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('isolates hole cards in updates and rejoin snapshots while preserving old clients', () => {
     vi.useFakeTimers();
     vi.setSystemTime(100000);
