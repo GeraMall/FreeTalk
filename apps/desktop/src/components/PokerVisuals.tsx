@@ -1,0 +1,141 @@
+import { useEffect, useRef, type CSSProperties } from 'react';
+import { MicOff, HeadphoneOff, Spade } from 'lucide-react';
+import { CachedMediaImage } from './CachedMedia';
+import { t } from '../lib/app-language';
+import type { TableParticipant } from './activity-table-ui';
+
+const suits: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
+export function PokerCard({
+  value,
+  highlight = false,
+  delay = 0,
+  animate = false,
+}: {
+  value?: string;
+  highlight?: boolean;
+  delay?: number;
+  animate?: boolean;
+}) {
+  return (
+    <span
+      className={`pkr-card ${value ? `pkr-suit-${value[1]}` : 'pkr-card-back'} ${highlight ? 'pkr-card-best' : ''} ${animate ? 'pkr-card-arrive' : ''}`}
+      style={{ '--card-delay': `${delay}ms` } as CSSProperties}
+      aria-label={
+        value ? `${value[0] === 'T' ? '10' : value[0]} ${suits[value[1]!]}` : t('Закрытая карта')
+      }
+    >
+      {value ? (
+        <>
+          <b>
+            {value[0] === 'T' ? '10' : value[0]}
+            <small>{suits[value[1]!]}</small>
+          </b>
+          <span>{suits[value[1]!]}</span>
+          <i>{value[0] === 'T' ? '10' : value[0]}</i>
+        </>
+      ) : (
+        <>
+          <Spade />
+          <small>TRLKA</small>
+        </>
+      )}
+    </span>
+  );
+}
+export function PokerChips({ amount, compact = false }: { amount: number; compact?: boolean }) {
+  let rest = amount;
+  const piles = [500, 100, 25, 5, 1].flatMap((value, i) => {
+    const count = Math.floor(rest / value);
+    rest %= value;
+    return count ? [{ value, count, color: i }] : [];
+  });
+  return (
+    <span
+      className={`pkr-chips ${compact ? 'pkr-chips-compact' : ''}`}
+      aria-label={`${amount} ${t('фишек')}`}
+    >
+      {piles.slice(0, 4).map((p) => (
+        <span
+          className={`pkr-chip-pile pkr-chip-color-${p.color}`}
+          key={p.value}
+          style={{ height: `${8 + Math.min(p.count, 6) * 3}px` }}
+        >
+          {Array.from({ length: Math.min(p.count, 6) }, (_, i) => (
+            <i key={i} style={{ bottom: `${i * 3}px` }}>
+              <b>{p.value}</b>
+            </i>
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+export function PokerAvatar({
+  person,
+  seconds,
+  moving,
+  self,
+}: {
+  person?: TableParticipant;
+  seconds?: number;
+  moving: boolean;
+  self: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || !person?.cameraStream) return;
+    video.srcObject = person.cameraStream;
+    void video.play().catch(() => {});
+    return () => {
+      video.srcObject = null;
+    };
+  }, [person?.cameraStream]);
+  const speaking = person?.speaking && !person.muted && !person.deafened;
+  return (
+    <div className={`pkr-avatar ${speaking ? 'pkr-speaking' : ''} ${moving ? 'pkr-acting' : ''}`}>
+      {person?.cameraStream ? (
+        <video ref={ref} autoPlay playsInline muted className={self ? 'pkr-self-video' : ''} />
+      ) : person?.avatar ? (
+        <CachedMediaImage src={person.avatar} alt="" />
+      ) : (
+        <span>{person?.name.slice(0, 2) ?? '?'}</span>
+      )}
+      {moving && (
+        <svg className="pkr-time-ring" viewBox="0 0 72 72" aria-hidden="true">
+          <circle cx="36" cy="36" r="33" />
+          <circle
+            cx="36"
+            cy="36"
+            r="33"
+            style={{ strokeDashoffset: 207.35 * (1 - (seconds ?? 30) / 30) }}
+          />
+        </svg>
+      )}
+      <span
+        className={`pkr-voice ${person?.muted || person?.deafened ? 'pkr-muted' : ''}`}
+        aria-label={t(
+          person?.deafened
+            ? 'Звук выключен'
+            : person?.muted
+              ? 'Микрофон выключен'
+              : speaking
+                ? 'Говорит'
+                : 'Слушает',
+        )}
+      >
+        {person?.deafened ? (
+          <HeadphoneOff size={12} />
+        ) : person?.muted ? (
+          <MicOff size={12} />
+        ) : (
+          <>
+            <i />
+            <i />
+            <i />
+          </>
+        )}
+      </span>
+    </div>
+  );
+}

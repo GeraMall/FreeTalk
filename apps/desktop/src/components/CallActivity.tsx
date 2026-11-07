@@ -12,13 +12,7 @@ import {
   Spade,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type {
-  ActivityGame,
-  RoomActivity,
-  RoomActivityAction,
-  TableKind,
-  Participant,
-} from '@freetalk/protocol';
+import type { ActivityGame, RoomActivity, RoomActivityAction, TableKind } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import './call-activity.css';
 import './activity-tables.css';
@@ -27,6 +21,7 @@ import { ActivityChess } from './ActivityChess';
 import { ActivityFleet } from './ActivityFleet';
 import { ActivityMillionaire } from './ActivityMillionaire';
 import { ActivityPoker } from './ActivityPoker';
+import type { TableParticipant } from './activity-table-ui';
 import { ActivityProperty } from './ActivityProperty';
 import { ActivityPointers } from './ActivityPointers';
 const games = {
@@ -140,7 +135,7 @@ export function CallActivity({
 }: {
   activity: RoomActivity;
   selfId?: string;
-  participants?: Pick<Participant, 'id' | 'name' | 'avatar'>[];
+  participants?: TableParticipant[];
   onAction?(action: RoomActivityAction): void;
   onClose?(): void;
   onEnd?(): void;
@@ -171,7 +166,13 @@ export function CallActivity({
     setFlagging(false);
     setCatalog(false);
     onAction?.(
-      next === 'mines' ? { kind: 'game', game: next } : { kind: 'table-open', game: next },
+      next === 'mines'
+        ? { kind: 'game', game: next }
+        : {
+            kind: 'table-open',
+            game: next,
+            ...(next === 'poker' ? { pokerRules: 2 as const } : {}),
+          },
     );
   };
   return (
@@ -191,7 +192,11 @@ export function CallActivity({
                   onAction?.(
                     switchTo === 'mines'
                       ? { kind: 'game', game: 'mines' }
-                      : { kind: 'table-open', game: switchTo },
+                      : {
+                          kind: 'table-open',
+                          game: switchTo,
+                          ...(switchTo === 'poker' ? { pokerRules: 2 as const } : {}),
+                        },
                   );
                   setFlagging(false);
                   setCatalog(false);

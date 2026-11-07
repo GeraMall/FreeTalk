@@ -1,9 +1,14 @@
 import type { ActivityTable, Participant, RoomActivityAction } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
+export type TableParticipant = Pick<Participant, 'id' | 'name' | 'avatar'> &
+  Partial<Pick<Participant, 'muted' | 'deafened'>> & {
+    speaking?: boolean;
+    cameraStream?: MediaStream;
+  };
 export type TableUiProps<T extends ActivityTable = ActivityTable> = {
   table: T;
   selfId?: string;
-  participants: Pick<Participant, 'id' | 'name' | 'avatar'>[];
+  participants: TableParticipant[];
   send: (action: RoomActivityAction) => void;
 };
 export const playerName = (

@@ -78,7 +78,6 @@ function pay(v: TableOf<'poker'>, seat: number, amount: number) {
   if (!v.stacks[seat] && !v.allIn.includes(seat)) v.allIn.push(seat);
 }
 export function dealPoker(session: TableSession, now: number): TableSession {
-  void now;
   if (session.view.kind !== 'poker') return session;
   const v: TableOf<'poker'> = structuredClone(session.view);
   if (v.seats.filter((id, i) => id && v.stacks[i]! > 0).length < 2)
@@ -91,6 +90,17 @@ export function dealPoker(session: TableSession, now: number): TableSession {
       },
     };
   v.phase = 'playing';
+  if (v.pokerRules === 2) {
+    if (!v.handNumber) v.dealer = v.seats.length - 1;
+    v.rebuys ??= v.seats.map(() => 0);
+    v.stats ??= v.seats.map(() => ({ hands: 0, wins: 0, won: 0, lost: 0 }));
+    v.handStartedAt = now;
+    v.handEndedAt = undefined;
+    v.turnAt = now + 2600;
+    v.turnDeadline = v.turnAt + 30000;
+    v.lastAction = undefined;
+  }
+  const startingStacks = [...v.stacks];
   v.stage = 'preflop';
   v.board = [];
   v.pot = 0;
@@ -114,16 +124,36 @@ export function dealPoker(session: TableSession, now: number): TableSession {
   const active = v.seats.length - v.folded.length;
   const small = active === 2 ? v.dealer : nextIndex(v, v.dealer, (i) => !v.folded.includes(i));
   const big = nextIndex(v, small, (i) => !v.folded.includes(i));
+  v.smallBlind = small;
+  v.bigBlind = big;
   pay(v, small, 10);
   pay(v, big, 20);
   v.turn = nextIndex(v, big, (i) => !v.folded.includes(i) && !v.allIn.includes(i));
   const result = {
     view: addLog(v, `Раздача ${v.handNumber} · блайнды 10 / 20`),
-    secret: { ...session.secret, deck, hands },
+    secret: { ...session.secret, deck, hands, pokerStartingStacks: startingStacks },
   };
-  return v.turn === -1 ? showdown(result) : result;
+  return v.turn === -1 ? showdown(result, now) : result;
 }
-function showdown(session: TableSession): TableSession {
+function settlePoker(v: TableOf<'poker'>, session: TableSession, now: number) {
+  if (v.pokerRules !== 2 || v.settledHand === v.handNumber) return;
+  const starting = session.secret.pokerStartingStacks;
+  v.stats = v.seats.map((_, i) => {
+    const old = v.stats?.[i] ?? { hands: 0, wins: 0, won: 0, lost: 0 };
+    if (!starting?.[i]) return old;
+    const net = v.stacks[i]! - starting[i]!;
+    return {
+      hands: old.hands + 1,
+      wins: old.wins + Number(net > 0),
+      won: old.won + Math.max(0, net),
+      lost: old.lost + Math.max(0, -net),
+    };
+  });
+  v.settledHand = v.handNumber;
+  v.handEndedAt = now;
+  v.turnDeadline = undefined;
+}
+function showdown(session: TableSession, now: number): TableSession {
   if (session.view.kind !== 'poker') return session;
   const v = structuredClone(session.view),
     deck = [...(session.secret.deck ?? [])];
@@ -159,6 +189,7 @@ function showdown(session: TableSession): TableSession {
   v.stacks = v.stacks.map((n, i) => n + v.payouts[i]!);
   v.stage = 'showdown';
   v.turn = v.dealer;
+  settlePoker(v, session, now);
   v.hands = v.seats.flatMap((id, i) =>
     id && !v.folded.includes(i) ? [{ ownerId: id, cards: session.secret.hands?.[i] ?? [] }] : [],
   );
@@ -168,15 +199,50 @@ export function reducePoker(
   session: TableSession,
   action: TableAction,
   context: TableContext,
+  timedOut = false,
 ): TableSession {
   if (session.view.kind !== 'poker') return session;
   const old = session.view;
+  const actorSeat = old.seats.indexOf(context.actorId);
+  if (action.kind === 'poker-rebuy') {
+    if (
+      old.pokerRules !== 2 ||
+      old.stage !== 'showdown' ||
+      actorSeat < 0 ||
+      old.stacks[actorSeat] !== 0 ||
+      (old.rebuys?.[actorSeat] ?? 0) >= 3
+    )
+      return session;
+    const v = structuredClone(old);
+    v.rebuys ??= v.seats.map(() => 0);
+    v.rebuys[actorSeat]!++;
+    v.stacks[actorSeat] = 1000;
+    v.phase = 'playing';
+    v.winner = undefined;
+    v.lastAction = {
+      seat: actorSeat,
+      kind: 'rebuy',
+      amount: 1000,
+      at: context.now,
+      sequence: (v.lastAction?.sequence ?? 0) + 1,
+    };
+    return {
+      ...session,
+      view: addLog(v, `Игрок ${actorSeat + 1}: докупка 1000 (${v.rebuys[actorSeat]} / 3)`),
+    };
+  }
   if (action.kind === 'poker-next')
-    return old.stage === 'showdown' && old.hostId === context.actorId
+    return old.stage === 'showdown' &&
+      old.hostId === context.actorId &&
+      (old.pokerRules !== 2 || context.now >= (old.handEndedAt ?? 0) + 1800)
       ? dealPoker(session, context.now)
       : session;
   if (action.kind !== 'poker-bet' || old.phase !== 'playing' || old.stage === 'showdown')
     return session;
+  if (old.pokerRules === 2 && !timedOut) {
+    if (context.now < (old.turnAt ?? 0)) return session;
+    if (old.turnDeadline && context.now >= old.turnDeadline) return tickPoker(session, context.now);
+  }
   const seat = old.seats.indexOf(context.actorId);
   if (seat !== old.turn || old.folded.includes(seat) || old.allIn.includes(seat)) return session;
   const v = structuredClone(old),
@@ -199,6 +265,17 @@ export function reducePoker(
     }
   }
   if (!v.acted.includes(seat)) v.acted.push(seat);
+  if (v.pokerRules === 2) {
+    v.lastAction = {
+      seat,
+      kind: timedOut ? 'timeout' : action.action === 'call' && !owed ? 'check' : action.action,
+      amount: v.contributions[seat]! - old.contributions[seat]!,
+      at: context.now,
+      sequence: (old.lastAction?.sequence ?? 0) + 1,
+    };
+    v.turnAt = context.now;
+    v.turnDeadline = context.now + 30000;
+  }
   v.actedBets ??= v.seats.map((_, i) => (old.acted.includes(i) ? old.bet : null));
   v.actedBets[seat] = v.bet;
   const alive = v.seats.flatMap((id, i) => (id && !v.folded.includes(i) ? [i] : []));
@@ -206,6 +283,7 @@ export function reducePoker(
     v.payouts = v.seats.map((_, i) => (i === alive[0] ? v.pot : 0));
     v.stacks[alive[0]!]! += v.pot;
     v.stage = 'showdown';
+    settlePoker(v, session, context.now);
     return { ...session, view: addLog(v, 'Все соперники сбросили карты') };
   }
   const pending = (i: number) =>
@@ -220,7 +298,8 @@ export function reducePoker(
       ),
     };
   const active = alive.filter((i) => !v.allIn.includes(i));
-  if (v.stage === 'river' || active.length <= 1) return showdown({ ...session, view: v });
+  if (v.stage === 'river' || active.length <= 1)
+    return showdown({ ...session, view: v }, context.now);
   const deck = [...(session.secret.deck ?? [])];
   deck.pop();
   const count = v.stage === 'preflop' ? 3 : 1;
@@ -233,4 +312,24 @@ export function reducePoker(
   v.actedBets = v.seats.map(() => null);
   v.turn = nextIndex(v, v.dealer, (i) => active.includes(i));
   return { view: addLog(v, `Открыт ${v.stage}`), secret: { ...session.secret, deck } };
+}
+
+export function tickPoker(session: TableSession, now: number): TableSession {
+  const v = session.view;
+  if (
+    v.kind !== 'poker' ||
+    v.pokerRules !== 2 ||
+    v.phase !== 'playing' ||
+    v.stage === 'showdown' ||
+    !v.turnDeadline ||
+    now < v.turnDeadline ||
+    !v.seats[v.turn]
+  )
+    return session;
+  return reducePoker(
+    session,
+    { kind: 'poker-bet', action: 'fold' },
+    { actorId: v.seats[v.turn]!, members: v.seats.filter((id): id is string => Boolean(id)), now },
+    true,
+  );
 }

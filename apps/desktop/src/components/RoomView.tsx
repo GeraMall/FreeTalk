@@ -943,7 +943,15 @@ export function RoomView({
             <CallActivity
               activity={activity}
               selfId={selfId}
-              participants={participants}
+              participants={participants.map((person) => ({
+                ...person,
+                speaking:
+                  !person.muted &&
+                  !person.deafened &&
+                  (person.id === selfId ? localSpeaking : peerState[person.id]?.speaking),
+                cameraStream:
+                  person.id === selfId ? localVideo.cameraStream : remoteVideos[person.id]?.camera,
+              }))}
               onAction={onActivity}
               onClose={() => setJoinedActivity(undefined)}
               onEnd={activityUnlocked ? () => onActivity?.({ kind: 'close' }) : undefined}

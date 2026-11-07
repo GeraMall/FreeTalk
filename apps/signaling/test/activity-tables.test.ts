@@ -19,6 +19,38 @@ class Connection implements PeerConnection {
   }
 }
 describe('private table projections and pointers', () => {
+  it('ticks advanced poker only at the deadline and keeps all timeout snapshots private', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100000);
+    try {
+      const manager = new RoomManager(),
+        peers = Array.from({ length: 4 }, () => new Connection());
+      manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', peers[0]!);
+      for (let i = 1; i < 4; i++)
+        manager.join('ABCDEFGH2345', id(i + 1), `session-${i}23456789`, 'Peer', peers[i]!);
+      const send = (i: number, action: RoomActivityAction) =>
+        manager.updateActivity('ABCDEFGH2345', id(i + 1), peers[i]!.activity.revision, action);
+      send(0, { kind: 'open' });
+      send(0, { kind: 'table-open', game: 'poker', pokerRules: 2 });
+      for (let i = 1; i < 4; i++) send(i, { kind: 'table-seat', seat: i });
+      send(0, { kind: 'table-start' });
+      const table = peers[0]!.activity.table;
+      if (table?.kind !== 'poker') throw Error();
+      const before = peers.map((p) => p.messages.length);
+      manager.tickActivities(table.turnDeadline! - 1);
+      expect(peers.map((p) => p.messages.length)).toEqual(before);
+      manager.tickActivities(table.turnDeadline!);
+      for (let i = 0; i < 4; i++) {
+        expect(peers[i]!.activity.table).toMatchObject({
+          lastAction: { kind: 'timeout' },
+          hands: [{ ownerId: id(i + 1), cards: expect.any(Array) }],
+        });
+        expect(peers[i]!.messages.length).toBe(before[i]! + 1);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('repairs stale actions using only the requesting player private snapshot and limits retries', () => {
     vi.useFakeTimers();
     vi.setSystemTime(100000);

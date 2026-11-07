@@ -153,7 +153,7 @@ export function applyRoomActivity(
   if (action.kind === 'tablet-join' || action.kind === 'tablet-pointer') return current;
   if (action.kind === 'table-open' && context) {
     if (current.table && current.table.view.hostId !== context.actorId) return current;
-    const table = createTable(action.game, context);
+    const table = createTable(action.game, context, action.pokerRules);
     return { table, view: { ...view, game: undefined, table: tableView(table) } };
   }
   if (current.table && context) {

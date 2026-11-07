@@ -6,7 +6,7 @@ import {
   type TableSession,
   type TableContext,
 } from './activity-table-internal.js';
-import { dealPoker, reducePoker } from './activity-poker.js';
+import { dealPoker, reducePoker, tickPoker } from './activity-poker.js';
 import { reduceProperty } from './activity-property.js';
 import { makeQuiz, quizQuestion, reduceQuiz } from './activity-quiz.js';
 export type { TableSession, TableContext } from './activity-table-internal.js';
@@ -100,7 +100,7 @@ export function randomFleet(): number[] {
   }
   throw new Error('Fleet placement failed');
 }
-export function createTable(kind: TableKind, context: TableContext): TableSession {
+export function createTable(kind: TableKind, context: TableContext, pokerRules?: 2): TableSession {
   const maximum = kind === 'chess' || kind === 'fleet' ? 2 : kind === 'millionaire' ? 1 : 6;
   const base = {
     id: crypto.randomUUID(),
@@ -174,6 +174,7 @@ export function createTable(kind: TableKind, context: TableContext): TableSessio
       hands: [],
       payouts: base.seats.map(() => 0),
       handNumber: 0,
+      pokerRules,
     };
   return { view, secret: {} };
 }
@@ -203,20 +204,18 @@ export function tableView(session: TableSession, viewerId?: string): ActivityTab
       ),
     };
   }
-  if (v.kind === 'poker')
-    return {
-      ...v,
-      hands:
-        v.stage === 'showdown'
-          ? v.hands
-          : v.seats.flatMap((id, i) =>
-              id === viewerId ? [{ ownerId: id, cards: session.secret.hands?.[i] ?? [] }] : [],
-            ),
-    };
+  if (v.kind === 'poker') {
+    const hands = v.stage === 'showdown' ? [...v.hands] : [];
+    const own = v.seats.indexOf(viewerId ?? '');
+    if (own >= 0 && !hands.some((h) => h.ownerId === viewerId))
+      hands.push({ ownerId: viewerId!, cards: session.secret.hands?.[own] ?? [] });
+    return { ...v, hands };
+  }
   return v;
 }
 export function tickTable(session: TableSession, now: number): TableSession {
   const v = session.view;
+  if (v.kind === 'poker') return tickPoker(session, now);
   if (v.kind !== 'chess' || v.phase !== 'playing' || v.preset === 'unlimited') return session;
   const side = v.fen.split(' ')[1] === 'w' ? 0 : 1;
   if (now - v.turnAt < v.clocks[side]) return session;
@@ -241,7 +240,9 @@ export function reduceTable(
   let v = session.view;
   const seat = v.seats.indexOf(context.actorId);
   if (action.kind === 'table-reset')
-    return context.actorId === v.hostId ? createTable(v.kind, context) : session;
+    return context.actorId === v.hostId
+      ? createTable(v.kind, context, v.kind === 'poker' ? v.pokerRules : undefined)
+      : session;
   if (action.kind === 'table-seat' && v.phase === 'lobby') {
     if (action.seat !== null && (action.seat >= v.seats.length || v.seats[action.seat]))
       return session;

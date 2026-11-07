@@ -13,6 +13,7 @@ export interface TableSession {
     hands?: string[][];
     quiz?: QuizQuestion[];
     votes?: Record<string, number>;
+    pokerStartingStacks?: number[];
   };
 }
 export type TableContext = { actorId: string; members: string[]; now: number };

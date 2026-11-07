@@ -104,13 +104,39 @@ export const tableSchema = z.discriminatedUnion('kind', [
     hands: z.array(z.object({ ownerId: id, cards: z.array(z.string().max(3)).max(2) })).max(6),
     payouts: z.array(count).max(6),
     handNumber: count,
+    pokerRules: z.literal(2).optional(),
+    turnAt: count.optional(),
+    turnDeadline: count.optional(),
+    handStartedAt: count.optional(),
+    handEndedAt: count.optional(),
+    smallBlind: count.optional(),
+    bigBlind: count.optional(),
+    rebuys: z.array(count.max(3)).max(6).optional(),
+    stats: z
+      .array(z.object({ hands: count, wins: count, won: count, lost: count }))
+      .max(6)
+      .optional(),
+    settledHand: count.optional(),
+    lastAction: z
+      .object({
+        seat: count,
+        kind: z.enum(['fold', 'check', 'call', 'raise', 'timeout', 'rebuy']),
+        amount: count,
+        at: count,
+        sequence: count,
+      })
+      .optional(),
   }),
 ]);
 export type ActivityTable = z.infer<typeof tableSchema>;
 export type TableKind = z.infer<typeof tableKindSchema>;
 export type TableOf<K extends TableKind> = Extract<ActivityTable, { kind: K }>;
 export const tableActionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('table-open'), game: tableKindSchema }),
+  z.object({
+    kind: z.literal('table-open'),
+    game: tableKindSchema,
+    pokerRules: z.literal(2).optional(),
+  }),
   z.object({ kind: z.literal('table-seat'), seat: z.number().int().min(0).max(5).nullable() }),
   z.object({
     kind: z.literal('table-config'),
@@ -183,6 +209,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
     amount: z.number().int().min(0).max(1000000).optional(),
   }),
   z.object({ kind: z.literal('poker-next') }),
+  z.object({ kind: z.literal('poker-rebuy') }),
   z.object({ kind: z.literal('tablet-join'), joined: z.boolean() }),
   z.object({
     kind: z.literal('tablet-pointer'),
