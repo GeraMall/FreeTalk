@@ -512,7 +512,7 @@ describe('MessageList rendering', () => {
     expect(await findByText('Приглашение в звонок')).toBeTruthy();
     expect(await findByText('2 участника')).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Присоединиться' }));
-    expect(onJoinCall).toHaveBeenCalledWith(roomId);
+    expect(onJoinCall).toHaveBeenCalledWith(roomId, 'room-invite');
   });
 
   it('marks a room invitation as expired after the call has ended', async () => {

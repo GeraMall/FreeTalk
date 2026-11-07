@@ -327,7 +327,7 @@ interface ChatsPageProps {
     scale: number,
   ): Promise<boolean>;
   onAddMember(username: string): Promise<boolean>;
-  onJoinCall(roomId: string): void;
+  onJoinCall(roomId: string, source?: 'room-invite'): void;
   joinedChatId?: string;
   callToolbarTarget?: HTMLElement | null;
   onRevealCallChat?(): void;
@@ -2370,7 +2370,7 @@ export function MessageList({
   hasMore?: boolean;
   onRetry(): void;
   onLoadOlder?(): Promise<void>;
-  onJoinCall(roomId: string): void;
+  onJoinCall(roomId: string, source?: 'room-invite'): void;
   onJoinInvite?(token: string): Promise<boolean>;
   chats?: ChatItem[];
   canModerateMessages?: boolean;
@@ -3180,7 +3180,7 @@ function MessageBubble({
   grouped: boolean;
   showAuthor: boolean;
   selected: boolean;
-  onJoinCall(roomId: string): void;
+  onJoinCall(roomId: string, source?: 'room-invite'): void;
   onJoinInvite(token: string): Promise<boolean>;
   onContextMenu(
     message: MessageItem,
@@ -3367,7 +3367,10 @@ function MessageBubble({
           ) : inviteToken ? (
             <InviteMessageCard token={inviteToken} onJoin={onJoinInvite} />
           ) : roomInviteId ? (
-            <RoomInviteMessageCard roomId={roomInviteId} onJoin={onJoinCall} />
+            <RoomInviteMessageCard
+              roomId={roomInviteId}
+              onJoin={(code) => onJoinCall(code, 'room-invite')}
+            />
           ) : (
             <MessageRichText text={message.body} />
           )}

@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
         activity?: RoomActivity;
         activityUnlocked?: boolean;
         conversationHidden?: boolean;
+        conversation?: boolean;
         onTabletVisibilityChange?(visible: boolean): void;
         onActivity?(action: RoomActivityAction): void;
       },
@@ -24,6 +25,7 @@ const harness = vi.hoisted(() => ({
   start: vi.fn(),
   stop: vi.fn(),
   token: vi.fn(),
+  request: vi.fn(),
   clients: [] as Array<{ message(message: ServerMessage): Promise<void>; close(): void }>,
 }));
 vi.mock('./lib/api-client', async (original) => ({
@@ -39,7 +41,7 @@ vi.mock('./lib/api-client', async (original) => ({
       avatarUrl: null,
       registeredAt: '2026-01-01T00:00:00Z',
     }),
-    request: async () => ({ chats: [], friends: [], calls: [] }),
+    request: harness.request,
     realtimeAccessToken: harness.token,
   },
 }));
@@ -151,6 +153,7 @@ beforeEach(() => {
   harness.start.mockReset().mockResolvedValue(undefined);
   harness.stop.mockReset();
   harness.token.mockReset().mockResolvedValue('test-token');
+  harness.request.mockReset().mockResolvedValue({ chats: [], friends: [], calls: [] });
   localStorage.clear();
   sessionStorage.clear();
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -165,6 +168,30 @@ afterEach(() => {
 });
 
 describe('application call ownership', () => {
+  it.each([null, 'actual-chat'])(
+    'uses authoritative call context %s instead of the personal chat containing an invitation',
+    async (chatId) => {
+      harness.request.mockImplementation(async (path: string) =>
+        path.endsWith('/context')
+          ? {
+              call: {
+                roomId: 'ABCDEFGH2345',
+                chatId,
+                title: 'Комната Trlka',
+                startedAt: '2026-11-08T00:00:00Z',
+                memberIds: [],
+                participants: [],
+              },
+            }
+          : { chats: [], friends: [], calls: [] },
+      );
+      const page = render(<App />);
+      await page.findByTestId('home');
+      act(() => harness.home!.onJoinRoom('ABCDEFGH2345', 'personal-chat'));
+      await waitFor(() => expect(harness.clients).toHaveLength(1));
+      await waitFor(() => expect(harness.room!.conversation).toBe(Boolean(chatId)));
+    },
+  );
   it('delivers shared activity to an ordinary account and preserves preferred chat visibility', async () => {
     const page = render(<App />);
     await page.findByTestId('home');

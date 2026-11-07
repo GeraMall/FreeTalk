@@ -351,6 +351,81 @@ it('filters call history by month and totals the visible durations', async () =>
 });
 
 describe('HomeView chat navigation', () => {
+  it.each(['room-invite', 'chat-call'] as const)(
+    'keeps the correct call scope when joining %s from a direct chat',
+    async (kind) => {
+      const code = 'ABCDEFGHJKLM';
+      const direct = {
+        id: 'personal-chat',
+        type: 'direct',
+        title: null,
+        members: [
+          { id: 'self', username: 'qa', displayName: 'QA' },
+          { id: 'friend', username: 'friend', displayName: 'Друг' },
+        ],
+      };
+      homeViewHarness.request.mockImplementation(async (path: string) => {
+        if (path === '/v1/chats') return { chats: [direct] };
+        if (path === '/v1/friends') return { friends: [], pending: [], blocked: [] };
+        if (path === '/v1/history') return { calls: [] };
+        if (path.endsWith('/active-call')) return { call: null };
+        if (path.endsWith('/messages'))
+          return {
+            messages: [
+              {
+                id: 'invite',
+                sender_id: 'friend',
+                username: 'friend',
+                display_name: 'Друг',
+                kind: kind === 'room-invite' ? 'text' : 'call',
+                body: kind === 'room-invite' ? `freetalk://join/${code}` : 'Друг начал звонок',
+                metadata: kind === 'chat-call' ? { roomId: code } : undefined,
+                created_at: '2026-11-08T00:00:00Z',
+                expires_at: null,
+              },
+            ],
+            hasMore: false,
+          };
+        if (path === `/v1/room-invites/${code}/preview`)
+          return {
+            room: {
+              roomId: code,
+              active: true,
+              startedAt: '2026-11-08T00:00:00Z',
+              participantCount: 3,
+            },
+          };
+        return {};
+      });
+      const join = vi.fn();
+      const page = render(
+        <HomeView
+          user={{
+            id: 'self',
+            email: 'qa@example.invalid',
+            username: 'qa',
+            displayName: 'QA',
+            avatarUrl: null,
+            emailVerified: true,
+            registeredAt: '2026-01-01T00:00:00Z',
+          }}
+          page="chats"
+          initialChatId={direct.id}
+          busy={false}
+          error=""
+          onCreateRoom={vi.fn()}
+          onJoinRoom={join}
+          onSettings={vi.fn()}
+          onLogout={vi.fn()}
+        />,
+      );
+      fireEvent.click(await page.findByRole('button', { name: 'Присоединиться' }));
+      expect(join).toHaveBeenCalledExactlyOnceWith(
+        code,
+        kind === 'room-invite' ? undefined : direct.id,
+      );
+    },
+  );
   it('deduplicates saved-chat creation and opens a private, empty notebook without call controls', async () => {
     let resolveCreate!: (result: unknown) => void;
     let created = false;

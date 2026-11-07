@@ -1341,10 +1341,11 @@ export function App() {
         setCallTitle(result.call.title || 'Комната Trlka');
         const authoritativeStartedAt = Date.parse(result.call.startedAt);
         if (Number.isFinite(authoritativeStartedAt)) setRoomStartedAt(authoritativeStartedAt);
-        if (result.call.chatId && result.call.chatId !== callChatRef.current) {
-          callChatRef.current = result.call.chatId;
-          setCallChatId(result.call.chatId);
-          setRoomDestination('chats');
+        const authoritativeChatId = result.call.chatId ?? undefined;
+        if (authoritativeChatId !== callChatRef.current) {
+          callChatRef.current = authoritativeChatId;
+          setCallChatId(authoritativeChatId);
+          setRoomDestination(authoritativeChatId ? 'chats' : 'room');
         }
         if (pendingChatRing.current) {
           pendingChatRing.current = false;

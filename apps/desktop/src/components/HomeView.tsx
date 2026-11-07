@@ -1828,7 +1828,9 @@ export function HomeView({
             onDeleteChat={deleteChat}
             onLeaveGroup={() => leaveGroup()}
             onAddMember={addChatMember}
-            onJoinCall={(code) => onJoinRoom(code, activeChat)}
+            onJoinCall={(code, source) =>
+              onJoinRoom(code, source === 'room-invite' ? undefined : activeChat)
+            }
           />
         )}
         {page === 'store' && (user.canAccessStore ? <StorePage /> : <StoreLocked />)}
