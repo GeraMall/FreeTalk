@@ -27,3 +27,7 @@ artifacts/
 .toolchains/
 .build-tmp/
 node_modules.corrupt-backup/
+
+# Python infrastructure checks
+**/__pycache__/
+*.pyc

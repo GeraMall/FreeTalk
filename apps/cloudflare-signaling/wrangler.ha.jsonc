@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trlka-ha-witness",
+  "main": "src/ha-worker.ts",
+  "compatibility_date": "2026-11-07",
+  "durable_objects": {
+    "bindings": [{ "name": "HA_REGISTRY", "class_name": "HaRegistryObject" }],
+  },
+  "migrations": [{ "tag": "ha-v1", "new_sqlite_classes": ["HaRegistryObject"] }],
+  "observability": { "enabled": false },
+}

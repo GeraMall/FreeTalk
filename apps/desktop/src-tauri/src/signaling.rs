@@ -14,6 +14,7 @@ use url::Url;
 const MAX_SIGNAL_BYTES: usize = 32 * 1024;
 const MAX_ACCOUNT_EVENT_BYTES: usize = 1024 * 1024;
 const PRODUCTION_SIGNALING_HOST: &str = "freetalk.191-44-38-60.sslip.io";
+const MOSCOW_SIGNALING_HOST: &str = "freetalk.185-225-201-129.sslip.io";
 
 #[derive(Default)]
 pub struct NativeSignalingState {
@@ -86,7 +87,9 @@ fn validate_url(raw: &str) -> Result<(), String> {
     let host = url
         .host_str()
         .ok_or_else(|| "В адресе сигналинга отсутствует хост".to_string())?;
-    let production = url.scheme() == "wss" && host == PRODUCTION_SIGNALING_HOST;
+    let production = url.scheme() == "wss" && matches!(host, PRODUCTION_SIGNALING_HOST | MOSCOW_SIGNALING_HOST)
+        && url.username().is_empty() && url.password().is_none()
+        && matches!(url.port(), None | Some(443));
     let local = url.scheme() == "ws" && matches!(host, "127.0.0.1" | "localhost" | "::1");
     if !production && !local {
         return Err("Нативный сигналинг разрешён только для сервера Trlka".to_string());
@@ -333,6 +336,11 @@ mod tests {
     #[test]
     fn only_allows_freetalk_or_local_signaling() {
         assert!(validate_url("wss://freetalk.191-44-38-60.sslip.io/ws?room=ABCDEFGH2345").is_ok());
+        assert!(validate_url("wss://freetalk.185-225-201-129.sslip.io/ws?room=ABCDEFGH2345").is_ok());
+        assert!(validate_url("wss://freetalk.185-225-201-129.sslip.io/api/v1/chats/realtime").is_ok());
+        assert!(validate_url("wss://freetalk.185-225-201-129.sslip.io.attacker.test/ws").is_err());
+        assert!(validate_url("wss://user@freetalk.185-225-201-129.sslip.io/ws").is_err());
+        assert!(validate_url("wss://freetalk.185-225-201-129.sslip.io:444/ws").is_err());
         assert!(validate_url("ws://127.0.0.1:8787/ws?room=ABCDEFGH2345").is_ok());
         assert!(validate_url("wss://example.com/ws").is_err());
         assert!(validate_url("https://freetalk.191-44-38-60.sslip.io/ws").is_err());

@@ -25,6 +25,9 @@ cat > /usr/local/sbin/trlka-ha-primary-condition <<'EOF'
 set -eu
 test "$(cat /etc/trlka-ha/role)" = primary
 test "$(psql -U freetalk -d freetalk -Atc 'SELECT pg_is_in_recovery()')" = f
+if test -e /etc/trlka-ha/automatic-enabled; then
+  exec python3 /usr/local/lib/trlka-ha/primary_guard.py
+fi
 EOF
 chmod 755 /usr/local/sbin/trlka-ha-primary-condition
 for service in freetalk-api freetalk-signaling; do

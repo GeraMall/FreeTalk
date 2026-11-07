@@ -35,6 +35,9 @@ export class SignalingClient {
   private messageQueue: Promise<void> = Promise.resolve();
   private joined?: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>;
   private roomJoined = false;
+  private stableCallJoined = false;
+  private recreatedMissingRoom = false;
+  private retriedCreationRace = false;
   private socketJoined = false;
   private readonly blockedBeforeJoin = new Set<ClientMessage['type']>();
   private readonly schedule = new ReconnectSchedule();
@@ -50,6 +53,7 @@ export class SignalingClient {
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
     this.joined = join;
     this.roomJoined = false;
+    this.stableCallJoined = false;
     this.closedByUser = false;
     this.schedule.reset();
     this.open(false);
@@ -140,6 +144,8 @@ export class SignalingClient {
     }
     this.reconnectPending = reconnecting;
     this.socketJoined = false;
+    this.recreatedMissingRoom = false;
+    this.retriedCreationRace = false;
     this.blockedBeforeJoin.clear();
     // A retired asynchronous SDP handler must not hold up a replacement socket.
     this.messageQueue = Promise.resolve();
@@ -194,6 +200,22 @@ export class SignalingClient {
       if (this.socket !== socket || typeof data !== 'string') return;
       try {
         const message = parseServerMessage(data);
+        if (message.type === 'error' && this.reconnectPending && this.roomJoined && this.joined) {
+          if (message.code === 'ROOM_NOT_FOUND' && !this.recreatedMissingRoom) {
+            this.recreatedMissingRoom = true;
+            this.send({ ...this.joined, type: 'create-room' });
+            return;
+          }
+          if (
+            message.code === 'ROOM_EXISTS' &&
+            this.recreatedMissingRoom &&
+            !this.retriedCreationRace
+          ) {
+            this.retriedCreationRace = true;
+            this.send({ ...this.joined, type: 'join-room' });
+            return;
+          }
+        }
         if (message.type === 'joined-room') {
           this.roomJoined = true;
           this.socketJoined = true;
@@ -204,7 +226,10 @@ export class SignalingClient {
           // Pongs during authorization and short-lived rejoins cannot restart an
           // unlimited retry cycle. Reset only after a genuinely stable join.
           this.stableTimer = window.setTimeout(() => {
-            if (this.socket === socket && this.socketJoined) this.schedule.reset();
+            if (this.socket === socket && this.socketJoined) {
+              this.stableCallJoined = true;
+              this.schedule.reset();
+            }
           }, STABLE_CONNECTION_MS);
         }
         connectionDiagnostics.record(`signal-received:${message.type}`, undefined, {
@@ -336,7 +361,7 @@ export class SignalingClient {
 
   private scheduleRetry() {
     if (this.closedByUser || this.retryTimer !== undefined) return;
-    if (!this.schedule.canRetry) {
+    if (!this.schedule.canRetry && !this.stableCallJoined) {
       this.onState('offline', this.schedule.attempts);
       return;
     }

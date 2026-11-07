@@ -15,6 +15,8 @@ rsync -aH --delete --timeout=120 -e "$ssh" root@10.73.54.1:./ "$root/"
 test -s "$root/snapshot-at"
 test -s "$root/api/dist/server.js"
 test -s "$root/server.bundle.mjs"
+digest="$(python3 /usr/local/lib/trlka-ha/snapshot_manifest.py verify "$root")"
+caddy adapt --config "$root/Caddyfile.failover" --validate >/dev/null 2>&1
 rsync -aH --delete "$root/api/" /opt/freetalk/api/
 install -o freetalk -g freetalk -m 644 "$root/server.bundle.mjs" /opt/freetalk/server.bundle.mjs
 rsync -a --delete "$root/config/" /etc/freetalk/
@@ -50,5 +52,15 @@ for staged,live in pairs:
             temp=source.with_name(source.name+'.trlka-dedup')
             os.link(target,temp)
             os.replace(temp,source)
+PY
+install -d -m 700 /var/lib/trlka-ha-controller/last-good-caddy
+rsync -a --delete "$root/caddy/" /var/lib/trlka-ha-controller/last-good-caddy/
+python3 - "$digest" <<'PY'
+import json,os,pathlib,sys,time
+root=pathlib.Path('/var/lib/trlka-ha-controller')
+root.mkdir(mode=0o700,exist_ok=True)
+temp=root/'files-ready.json.new'
+temp.write_text(json.dumps({'sha256':sys.argv[1],'publishedAt':time.time()}))
+os.replace(temp,root/'files-ready.json')
 PY
 echo "TRLKA_STANDBY_FILES_OK snapshot=$(cat "$root/snapshot-at")"

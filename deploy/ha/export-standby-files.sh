@@ -23,8 +23,13 @@ text = Path('/etc/caddy/Caddyfile').read_text()
 marker = 'http://:18080 {'
 assert text.count(marker) == 1
 text = text[:text.index(marker)].replace('header X-Trlka-Node moscow','header X-Trlka-Node petersburg')
+# Preserve the reserve's unrelated CrossInk/Golosom proxy sites.
+previous = Path('/root/trlka-ha/staging/Caddyfile.production').read_text()
+begin, end = previous.index('# CrossInk '), previous.index('# Public Trlka ')
+text += '\n' + previous[begin:end] + '\n'
 (root / 'Caddyfile.failover').write_text(text)
 PY
 caddy adapt --config "$root/Caddyfile.failover" --validate >/dev/null 2>&1
+python3 /usr/local/lib/trlka-ha/snapshot_manifest.py create "$root"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$root/snapshot-at"
 echo TRLKA_STANDBY_EXPORT_OK

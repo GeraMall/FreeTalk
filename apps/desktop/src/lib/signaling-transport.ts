@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { currentSocketUrl, serverEndpoints } from './server-endpoints';
 
 export const SIGNAL_SOCKET_OPEN = 1;
 
@@ -161,19 +162,34 @@ class NativeSignalSocket extends EventTarget implements SignalSocket {
 
 export function createSignalSocket(url: string): SignalSocket {
   const correlationId = crypto.randomUUID();
-  const target = new URL(url);
+  const selected = currentSocketUrl(url);
+  const target = new URL(selected.url);
   target.searchParams.set('cid', correlationId);
-  if (isTauri()) return new NativeSignalSocket(target.toString(), correlationId);
+  if (isTauri())
+    return trackEndpoint(new NativeSignalSocket(target.toString(), correlationId), selected.base);
   const socket = new WebSocket(target.toString()) as WebSocket & { correlationId: string };
   Object.defineProperty(socket, 'correlationId', { value: correlationId });
-  return socket;
+  return trackEndpoint(socket, selected.base);
 }
 
 /** Account presence must keep answering server pings even when the window is hidden. */
 export function createAccountSocket(url: string): SignalSocket {
   const correlationId = crypto.randomUUID();
-  if (isTauri()) return new NativeSignalSocket(url, correlationId);
-  const socket = new WebSocket(url) as WebSocket & { correlationId: string };
+  const selected = currentSocketUrl(url);
+  if (isTauri())
+    return trackEndpoint(new NativeSignalSocket(selected.url, correlationId), selected.base);
+  const socket = new WebSocket(selected.url) as WebSocket & { correlationId: string };
   Object.defineProperty(socket, 'correlationId', { value: correlationId });
+  return trackEndpoint(socket, selected.base);
+}
+
+function trackEndpoint<T extends SignalSocket>(socket: T, base?: string): T {
+  if (!base) return socket;
+  socket.addEventListener('error', () => serverEndpoints.failed(base));
+  socket.addEventListener('close', (event) => {
+    const details =
+      event instanceof MessageEvent ? (event.data as SignalCloseDetails) : (event as CloseEvent);
+    if ([1006, 1011, 1012, 1013].includes(details.code)) serverEndpoints.failed(base);
+  });
   return socket;
 }

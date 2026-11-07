@@ -6,13 +6,12 @@ import type {
 } from '@simplewebauthn/browser';
 import { invoke } from '@tauri-apps/api/core';
 import { dataUrlToBlob } from './profile';
-
-const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8790').replace(/\/$/, '');
+import { currentApiAsset, knownApiBase, serverEndpoints } from './server-endpoints';
 
 export function protectedGifAssetId(sourceUrl: string) {
   try {
     const source = new URL(sourceUrl),
-      base = new URL(`${API_URL}/`);
+      base = new URL(`${knownApiBase(sourceUrl) ?? serverEndpoints.current}/`);
     if (
       source.origin !== base.origin ||
       (source.search && source.search !== '?variant=thumbnail') ||
@@ -33,7 +32,7 @@ export function protectedGifAssetId(sourceUrl: string) {
 }
 
 export function accountRealtimeUrl() {
-  const url = new URL(`${API_URL}/v1/chats/realtime`);
+  const url = new URL(`${serverEndpoints.current}/v1/chats/realtime`);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }
@@ -145,7 +144,21 @@ async function decode<T>(response: Response): Promise<T> {
       response.status,
       payload,
     );
-  return payload as T;
+  return rewriteApiAssets(payload) as T;
+}
+
+function rewriteApiAssets(value: unknown, key = ''): unknown {
+  if (
+    typeof value === 'string' &&
+    ['url', 'avatarUrl', 'coverUrl', 'thumbnailUrl', 'downloadUrl'].includes(key)
+  )
+    return currentApiAsset(value);
+  if (Array.isArray(value)) return value.map((entry) => rewriteApiAssets(entry));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([name, entry]) => [name, rewriteApiAssets(entry, name)]),
+    );
+  return value;
 }
 
 export interface FileDownloadProgress {
@@ -655,7 +668,7 @@ export class AccountClient {
     retry = true,
   ): Promise<Response> {
     if (!this.accessToken) throw new ApiError('UNAUTHORIZED', 'Требуется вход', 401);
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await serverEndpoints.fetch(path, {
       ...init,
       headers: {
         ...(path === '/v1/chats' ? { 'x-trlka-chat-collections': '1' } : {}),
@@ -679,7 +692,7 @@ export class AccountClient {
 
   private async publicRequest<T>(path: string, init: RequestInit = {}) {
     return decode<T>(
-      await fetch(`${API_URL}${path}`, {
+      await serverEndpoints.fetch(path, {
         ...init,
         headers: { 'content-type': 'application/json', ...init.headers },
       }),
