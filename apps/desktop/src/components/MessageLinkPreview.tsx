@@ -2,7 +2,7 @@ import { EmbeddedVideo } from './EmbeddedVideo';
 import { messageVideo } from '../lib/message-link-preview';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ExternalLink, Play, X } from 'lucide-react';
+import { ExternalLink, ImageOff, Play, X } from 'lucide-react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { accountClient } from '../lib/api-client';
 import { getActiveAccountMediaScope } from '../lib/account-media-cache';
@@ -78,34 +78,77 @@ function external(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault();
   void invoke('open_chat_link', { url: event.currentTarget.href }).catch(console.error);
 }
-function PreviewImage({ preview }: { preview: Preview }) {
+function PreviewImage({
+  preview,
+  video,
+}: {
+  preview: Preview;
+  video?: ReturnType<typeof messageVideo>;
+}) {
   const [src, setSrc] = useState<string>();
+  const [failed, setFailed] = useState(false);
+  const advance = useRef<() => void>(() => undefined);
   useEffect(() => {
     let cancelled = false,
       objectUrl: string | undefined;
-    setSrc(undefined);
-    if (preview.imageKey)
-      void loadImage(preview.imageKey)
-        .then((blob) => {
-          if (cancelled) return;
-          objectUrl = URL.createObjectURL(blob);
-          setSrc(objectUrl);
-        })
-        .catch(() => {});
-    else if (
-      preview.imageUrl &&
-      /^https:\/\/(i\.ytimg\.com|upload\.wikimedia\.org)\//.test(preview.imageUrl)
-    )
-      setSrc(preview.imageUrl);
+    const direct = [
+      ...new Set(
+        [preview.imageUrl, video?.thumbnail].filter(
+          (url): url is string =>
+            !!url &&
+            /^https:\/\/(?:i\.ytimg\.com|upload\.wikimedia\.org|pic\.rtbcdn\.ru|pic\.rutube\.ru|(?:[a-z0-9-]+\.)?userapi\.com)\//.test(
+              url,
+            ),
+        ),
+      ),
+    ];
+    // YouTube's cover may be reachable by the viewer even when the VPS cannot reach it.
+    const candidates =
+      video?.provider === 'YouTube'
+        ? [...direct, ...(preview.imageKey ? [`proxy:${preview.imageKey}`] : [])]
+        : [...(preview.imageKey ? [`proxy:${preview.imageKey}`] : []), ...direct];
+    const nextImage = () => {
+      if (cancelled) return;
+      const next = candidates.shift();
+      setFailed(!next);
+      if (next?.startsWith('proxy:')) {
+        setSrc(undefined);
+        void loadImage(next.slice(6))
+          .then((blob) => {
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(blob);
+            setSrc(objectUrl);
+          })
+          .catch(nextImage);
+      } else setSrc(next);
+    };
+    advance.current = nextImage;
+    nextImage();
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [preview.imageKey, preview.imageUrl]);
-  if (!preview.imageKey && !preview.imageUrl) return null;
+  }, [preview.imageKey, preview.imageUrl, video?.thumbnail, video?.provider]);
+  if (!preview.imageKey && !preview.imageUrl && !video) return null;
   return (
-    <span className="link-preview-thumbnail">
-      {src && <img src={src} alt="" loading="lazy" onError={() => setSrc(undefined)} />}
+    <span className={`link-preview-thumbnail${failed ? ' is-unavailable' : ''}`}>
+      {src && (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => advance.current()}
+        />
+      )}
+      {failed && (
+        <ImageOff className="link-preview-image-unavailable" size={24} aria-hidden="true" />
+      )}
+      {video && (
+        <span className="link-preview-play" aria-hidden="true">
+          <Play size={24} fill="currentColor" />
+        </span>
+      )}
     </span>
   );
 }
@@ -165,17 +208,12 @@ export function MessageLinkPreviewCard({ url }: { url: string }) {
   if (!data) return null;
   const content = (
     <>
-      <PreviewImage preview={data} />
+      <PreviewImage preview={data} video={video} />
       <span className="link-preview-copy">
         <small>{data.provider}</small>
         <strong>{data.title}</strong>
         {data.description && <em>{data.description}</em>}
       </span>
-      {video && (
-        <span className="link-preview-play">
-          <Play size={21} fill="currentColor" />
-        </span>
-      )}
     </>
   );
   return (

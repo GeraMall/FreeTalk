@@ -125,6 +125,8 @@ describe('Message links and selection', () => {
       screen.getByRole('link', { name: 'https://youtu.be/abcDEF12345' }).getAttribute('target'),
     ).toBe('_blank');
     expect(await screen.findByText('Тестовый ролик')).toBeTruthy();
+    const text = screen.container.querySelector('.message-rich-text')!;
+    expect(text.nextElementSibling?.classList.contains('message-link-preview')).toBe(true);
   });
 
   it('selects a range by dragging with the left mouse button and clears it with Escape', () => {

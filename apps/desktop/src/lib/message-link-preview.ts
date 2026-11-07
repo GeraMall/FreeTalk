@@ -16,12 +16,13 @@ export function messageVideo(input: string) {
       id =
         url.pathname === '/watch'
           ? (url.searchParams.get('v') ?? '')
-          : /^\/(shorts|embed)\//.test(url.pathname)
+          : /^\/(shorts|embed|live)\//.test(url.pathname)
             ? (url.pathname.split('/')[2] ?? '')
             : '';
     if (/^[a-zA-Z0-9_-]{11}$/.test(id))
       return {
         provider: 'YouTube',
+        thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
         embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&enablejsapi=1&controls=0${senderOrigin}&widget_referrer=${encodeURIComponent(widgetReferrer)}`,
       };
     if (['rutube.ru', 'www.rutube.ru'].includes(host)) {

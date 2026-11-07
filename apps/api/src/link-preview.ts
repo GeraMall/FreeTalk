@@ -50,7 +50,7 @@ export function previewVideo(url: URL): LinkPreview['video'] {
     id =
       url.pathname === '/watch'
         ? (url.searchParams.get('v') ?? '')
-        : /^\/(shorts|embed)\//.test(url.pathname)
+        : /^\/(shorts|embed|live)\//.test(url.pathname)
           ? (url.pathname.split('/')[2] ?? '')
           : '';
   if (/^[A-Za-z0-9_-]{11}$/.test(id)) return { provider: 'YouTube', id };
@@ -59,6 +59,19 @@ export function previewVideo(url: URL): LinkPreview['video'] {
     if (id) return { provider: 'Rutube', id: id.toLowerCase() };
   }
   return undefined;
+}
+export function previewVkId(url: URL): string | undefined {
+  if (!/^(?:(?:www|m)\.)?(?:vkvideo\.ru|vk\.(?:com|ru))$/.test(url.hostname)) return undefined;
+  return /^\/video(-?[1-9]\d{0,18}_[1-9]\d{0,18})(?:\/|$)/.exec(url.pathname)?.[1];
+}
+function directPreviewImage(input: string): string | undefined {
+  const url = new URL(input);
+  return url.protocol === 'https:' &&
+    /^(?:i\.ytimg\.com|upload\.wikimedia\.org|pic\.rtbcdn\.ru|pic\.rutube\.ru|(?:[a-z0-9-]+\.)?userapi\.com)$/.test(
+      url.hostname,
+    )
+    ? url.toString()
+    : undefined;
 }
 export function parsePreviewHtml(html: string, input: string): LinkPreview | null {
   const url = previewUrl(input);
@@ -95,8 +108,7 @@ export function parsePreviewHtml(html: string, input: string): LinkPreview | nul
     try {
       const imageUrl = new URL(decode(source), url).toString();
       preview.imageKey = rememberImage(imageUrl);
-      if (/^https:\/\/(i\.ytimg\.com|upload\.wikimedia\.org)\//.test(imageUrl))
-        preview.imageUrl = imageUrl;
+      preview.imageUrl = directPreviewImage(imageUrl);
     } catch {
       /* optional media */
     }
@@ -123,7 +135,36 @@ export async function resolvePreviewImage(key: string) {
 async function resolve(url: URL): Promise<LinkPreview | null> {
   const video = previewVideo(url);
   try {
-    if (video?.provider === 'YouTube') {
+    const vkId = previewVkId(url);
+    if (vkId) {
+      // Only provider metadata is used. Never execute oEmbed's remote HTML.
+      const result = await fetchPublicPreview(
+        `https://api.vk.com/method/video.getOembed?v=5.199&maxwidth=1280&maxheight=720&url=${encodeURIComponent(`https://vkvideo.ru/video${vkId}`)}`,
+        256 * 1024,
+      );
+      const data = (
+        JSON.parse(result.body.toString('utf8')) as {
+          response?: Record<string, unknown>;
+        }
+      ).response;
+      if (data && compact(data.title, 180)) {
+        const preview: LinkPreview = {
+          url: url.toString(),
+          provider: 'VK Видео',
+          title: compact(data.title, 180),
+          description: compact(data.author_name, 120),
+        };
+        if (typeof data.thumbnail_url === 'string') {
+          try {
+            preview.imageKey = rememberImage(data.thumbnail_url);
+            preview.imageUrl = directPreviewImage(data.thumbnail_url);
+          } catch {
+            /* optional media */
+          }
+        }
+        return preview;
+      }
+    } else if (video?.provider === 'YouTube') {
       const canonical = `https://www.youtube.com/watch?v=${video.id}`;
       const result = await fetchPublicPreview(
         `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(canonical)}`,
@@ -166,6 +207,10 @@ async function resolve(url: URL): Promise<LinkPreview | null> {
       imageKey:
         video.provider === 'YouTube'
           ? rememberImage(`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`)
+          : undefined,
+      imageUrl:
+        video.provider === 'YouTube'
+          ? `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`
           : undefined,
     };
   return null;

@@ -2290,8 +2290,8 @@ function MessageRichText({ text }: { text: string }) {
   if (!links.length) parts.push(text);
   return (
     <>
-      {previewUrl ? <MessageLinkPreviewCard url={previewUrl} /> : null}
       <p className="message-rich-text">{parts}</p>
+      {previewUrl ? <MessageLinkPreviewCard url={previewUrl} /> : null}
     </>
   );
 }

@@ -8,6 +8,7 @@ import {
   isSupportedPreviewUrl,
   parsePreviewHtml,
   previewVideo,
+  previewVkId,
   resolveLinkPreview,
   resolvePreviewImage,
 } from '../src/link-preview.js';
@@ -63,12 +64,58 @@ describe('link previews', () => {
     });
   });
   it('recognizes Rutube and never accepts an arbitrary embed hostname', () => {
+    expect(previewVideo(new URL('https://www.youtube.com/live/9aPR9UXI1kY?si=test'))).toEqual({
+      provider: 'YouTube',
+      id: '9aPR9UXI1kY',
+    });
     expect(previewVideo(new URL('https://rutube.ru/video/' + 'a'.repeat(32) + '/'))).toEqual({
       provider: 'Rutube',
       id: 'a'.repeat(32),
     });
     expect(
       previewVideo(new URL('https://youtube.com.evil.invalid/watch?v=abcDEF12345')),
+    ).toBeUndefined();
+  });
+  it('resolves VK covers through the official public oEmbed endpoint without rendering its HTML', async () => {
+    fetchPublic.mockResolvedValue({
+      body: Buffer.from(
+        JSON.stringify({
+          response: {
+            title: 'VK ролик',
+            author_name: 'Канал',
+            thumbnail_url: 'https://sun9-49.userapi.com/impg/cover.jpg',
+            html: '<script>alert(1)</script>',
+          },
+        }),
+      ),
+      type: 'application/json',
+    });
+    const preview = await resolveLinkPreview('https://vkvideo.ru/video-233694859_456239045');
+    expect(preview).toMatchObject({
+      provider: 'VK Видео',
+      title: 'VK ролик',
+      imageUrl: 'https://sun9-49.userapi.com/impg/cover.jpg',
+      imageKey: expect.any(String),
+    });
+    expect(preview).not.toHaveProperty('html');
+    expect(fetchPublic.mock.calls[0]?.[0]).toBe(
+      'https://api.vk.com/method/video.getOembed?v=5.199&maxwidth=1280&maxheight=720&url=https%3A%2F%2Fvkvideo.ru%2Fvideo-233694859_456239045',
+    );
+    expect(previewVkId(new URL('https://vk.com/video-123_456?list=test'))).toBe('-123_456');
+    expect(previewVkId(new URL('https://vkvideo.ru.evil.invalid/video-123_456'))).toBeUndefined();
+  });
+  it('preserves a Rutube cover and only permits trusted direct-image fallbacks', () => {
+    const html =
+      '<meta property="og:title" content="Видео"><meta property="og:image" content="https://pic.rtbcdn.ru/video/cover.jpg">';
+    expect(parsePreviewHtml(html, 'https://rutube.ru/video/' + 'c'.repeat(32))).toMatchObject({
+      imageUrl: 'https://pic.rtbcdn.ru/video/cover.jpg',
+      imageKey: expect.any(String),
+    });
+    expect(
+      parsePreviewHtml(
+        html.replace('pic.rtbcdn.ru', 'pic.rtbcdn.ru.evil.invalid'),
+        'https://example.com',
+      )?.imageUrl,
     ).toBeUndefined();
   });
   it('keeps a playable provider card on metadata failure and no broken card for ordinary sites', async () => {
