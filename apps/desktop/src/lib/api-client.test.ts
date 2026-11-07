@@ -3,6 +3,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AccountClient } from './api-client';
 
+// These tests exercise account/session behavior with a single mocked API.
+// CI also supplies production build URLs; do not let those enable health probes
+// and consume the responses intended for account requests in this suite.
+vi.hoisted(() => vi.stubEnv('VITE_API_URL', 'http://127.0.0.1:8790'));
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
