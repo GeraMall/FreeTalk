@@ -1,13 +1,17 @@
 import { createRequire } from 'node:module';
 const require = createRequire('/opt/freetalk/api/package.json');
 const WebSocket = require('ws');
-for (const host of ['freetalk.185-225-201-129.sslip.io', 'freetalk.191-44-38-60.sslip.io']) {
+const expectedNode = process.argv[2] || 'moscow';
+const hosts = process.argv.slice(3);
+for (const host of hosts.length
+  ? hosts
+  : ['freetalk.185-225-201-129.sslip.io', 'freetalk.191-44-38-60.sslip.io']) {
   for (const [path, service] of [
     ['/api/health', 'freetalk-api'],
     ['/health', 'freetalk-signaling'],
   ]) {
     const response = await fetch(`https://${host}${path}`, { signal: AbortSignal.timeout(10000) });
-    if (!response.ok || response.headers.get('x-trlka-node') !== 'moscow')
+    if (!response.ok || response.headers.get('x-trlka-node') !== expectedNode)
       throw new Error('Primary routing failed');
     const data = await response.json();
     if (!data.ok || data.service !== service) throw new Error('Unexpected health response');

@@ -1,0 +1,33 @@
+[Unit]
+Description=TRLKA fenced automatic reserve controller
+After=network-online.target wg-quick@trlka-ha.service postgresql@16-main.service
+Wants=network-online.target
+Requires=wg-quick@trlka-ha.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /usr/local/lib/trlka-ha/auto_failover.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+RuntimeDirectory=trlka-ha
+RuntimeDirectoryMode=0755
+StateDirectory=trlka-ha-controller
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/trlka-ha /etc/caddy /var/lib/caddy /run/trlka-ha /run/lock
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=192M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
