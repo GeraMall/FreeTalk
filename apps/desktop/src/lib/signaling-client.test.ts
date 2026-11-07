@@ -81,6 +81,53 @@ const joined = {
 };
 
 describe('SignalingClient', () => {
+  it('keeps a previously stable call recoverable beyond a long server failover', () => {
+    const state = vi.fn();
+    const client = new SignalingClient('wss://example.test/ws', vi.fn(), state);
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive(joined);
+    vi.advanceTimersByTime(30_000);
+    first.failNative('node down');
+    const delays = [500, 1000, 2000, 4000, 8000, 15000, 30000];
+    for (let i = 0; i < 12; i++) {
+      vi.advanceTimersByTime(delays[Math.min(i, delays.length - 1)]!);
+      FakeWebSocket.instances.at(-1)!.failNative('still down');
+    }
+    expect(state).toHaveBeenLastCalledWith('reconnecting', 13);
+    client.close();
+  });
+  it('recreates a lost established room after failover and handles another peer winning the race', async () => {
+    const onMessage = vi.fn();
+    const client = new SignalingClient('wss://example.test/ws', onMessage, vi.fn());
+    client.connect(join);
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.receive(joined);
+    await Promise.resolve();
+    await Promise.resolve();
+    onMessage.mockClear();
+    first.failNative('node stopped');
+    vi.advanceTimersByTime(500);
+    const second = FakeWebSocket.instances[1]!;
+    second.open();
+    second.receive({ type: 'error', code: 'ROOM_NOT_FOUND', message: 'missing', fatal: true });
+    expect(JSON.parse(second.sent.at(-1)!)).toMatchObject({
+      type: 'create-room',
+      roomId: join.roomId,
+    });
+    second.receive({ type: 'error', code: 'ROOM_EXISTS', message: 'race', fatal: true });
+    expect(JSON.parse(second.sent.at(-1)!)).toMatchObject({
+      type: 'join-room',
+      roomId: join.roomId,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onMessage).not.toHaveBeenCalled();
+    second.receive(joined);
+    client.close();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
