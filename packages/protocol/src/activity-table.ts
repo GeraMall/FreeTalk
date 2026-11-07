@@ -1,0 +1,202 @@
+import { z } from 'zod';
+
+export const tableKindSchema = z.enum(['chess', 'fleet', 'monopoly', 'millionaire', 'poker']);
+const id = z.string().uuid();
+const count = z.number().int().nonnegative();
+const base = {
+  id,
+  hostId: id,
+  phase: z.enum(['lobby', 'playing', 'finished']),
+  seats: z.array(id.nullable()).max(6),
+  preset: z.string().max(24),
+  log: z.array(z.string().max(180)).max(80),
+  winner: z.string().max(80).optional(),
+};
+export const tableSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...base,
+    kind: z.literal('chess'),
+    fen: z.string().max(128),
+    moves: z.array(z.string().max(12)).max(400),
+    clocks: z.tuple([count, count]),
+    turnAt: count,
+    increment: count,
+    check: z.boolean(),
+    lastMove: z.tuple([z.string(), z.string()]).optional(),
+    drawOffer: id.optional(),
+  }),
+  z.object({
+    ...base,
+    kind: z.literal('fleet'),
+    ready: z.array(id).max(2),
+    turn: count,
+    boards: z
+      .array(z.object({ ownerId: id, cells: z.array(z.number().int().min(-1).max(3)).length(100) }))
+      .max(2),
+  }),
+  z.object({
+    ...base,
+    kind: z.literal('millionaire'),
+    level: count,
+    earned: count,
+    guaranteed: count,
+    question: z.string().max(300),
+    answers: z.array(z.string().max(160)).max(4),
+    selected: z.number().int().min(0).max(3).optional(),
+    correct: z.number().int().min(0).max(3).optional(),
+    eliminated: z.array(z.number().int().min(0).max(3)).max(2),
+    lifelines: z.array(z.enum(['half', 'audience', 'friend'])).max(3),
+    audience: z.array(count).length(4).optional(),
+    helpUntil: count.optional(),
+  }),
+  z.object({
+    ...base,
+    kind: z.literal('monopoly'),
+    turn: count,
+    positions: z.array(count).max(6),
+    money: z.array(z.number().int()).max(6),
+    owners: z.array(z.number().int().min(-1).max(5)).length(40),
+    houses: z.array(z.number().int().min(0).max(5)).length(40),
+    mortgaged: z.array(count).max(40),
+    bankrupt: z.array(count).max(6),
+    jail: z.array(count).max(6),
+    dice: z.tuple([count, count]),
+    step: z.enum(['roll', 'buy', 'end', 'debt']),
+    doubles: count,
+    extraRoll: z.boolean(),
+    debtTo: z.number().int(),
+    auction: z
+      .object({
+        index: count,
+        bid: count,
+        bidder: z.number().int(),
+        passed: z.array(count).max(6),
+        turn: count,
+      })
+      .optional(),
+    trade: z
+      .object({
+        from: count,
+        to: count,
+        give: z.array(count).max(28),
+        want: z.array(count).max(28),
+        cash: z.number().int(),
+      })
+      .optional(),
+  }),
+  z.object({
+    ...base,
+    kind: z.literal('poker'),
+    dealer: count,
+    turn: count,
+    stage: z.enum(['preflop', 'flop', 'turn', 'river', 'showdown']),
+    board: z.array(z.string().max(3)).max(5),
+    pot: count,
+    bet: count,
+    minRaise: count,
+    stacks: z.array(count).max(6),
+    bets: z.array(count).max(6),
+    contributions: z.array(count).max(6),
+    folded: z.array(count).max(6),
+    allIn: z.array(count).max(6),
+    acted: z.array(count).max(6),
+    hands: z.array(z.object({ ownerId: id, cards: z.array(z.string().max(3)).max(2) })).max(6),
+    payouts: z.array(count).max(6),
+    handNumber: count,
+  }),
+]);
+export type ActivityTable = z.infer<typeof tableSchema>;
+export type TableKind = z.infer<typeof tableKindSchema>;
+export type TableOf<K extends TableKind> = Extract<ActivityTable, { kind: K }>;
+export const tableActionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('table-open'), game: tableKindSchema }),
+  z.object({ kind: z.literal('table-seat'), seat: z.number().int().min(0).max(5).nullable() }),
+  z.object({
+    kind: z.literal('table-config'),
+    preset: z.enum([
+      'bullet',
+      'bullet2',
+      'blitz3',
+      'blitz',
+      'blitz5',
+      'blitz5i',
+      'rapid10',
+      'rapid',
+      'classical',
+      'unlimited',
+      'standard',
+      'quick',
+      'ru',
+      'en',
+    ]),
+  }),
+  z.object({ kind: z.literal('table-start') }),
+  z.object({ kind: z.literal('table-reset') }),
+  z.object({ kind: z.literal('table-resign') }),
+  z.object({ kind: z.literal('chess-draw') }),
+  z.object({
+    kind: z.literal('chess-move'),
+    from: z.string().regex(/^[a-h][1-8]$/),
+    to: z.string().regex(/^[a-h][1-8]$/),
+    promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
+  }),
+  z.object({
+    kind: z.literal('fleet-place'),
+    cells: z.array(z.number().int().min(0).max(99)).length(20),
+  }),
+  z.object({ kind: z.literal('fleet-ready') }),
+  z.object({ kind: z.literal('fleet-shot'), index: z.number().int().min(0).max(99) }),
+  z.object({ kind: z.literal('quiz-vote'), answer: z.number().int().min(0).max(3) }),
+  z.object({ kind: z.literal('quiz-answer'), answer: z.number().int().min(0).max(3) }),
+  z.object({ kind: z.literal('quiz-next') }),
+  z.object({ kind: z.literal('quiz-stop') }),
+  z.object({ kind: z.literal('quiz-help'), help: z.enum(['half', 'audience', 'friend']) }),
+  z.object({
+    kind: z.literal('property'),
+    action: z.enum([
+      'roll',
+      'buy',
+      'pass',
+      'end',
+      'build',
+      'sell-house',
+      'mortgage',
+      'bankrupt',
+      'bid',
+      'auction-pass',
+      'jail-pay',
+    ]),
+    index: z.number().int().min(0).max(39).optional(),
+  }),
+  z.object({
+    kind: z.literal('property-trade'),
+    to: z.number().int().min(0).max(5),
+    give: z.array(z.number().int().min(0).max(39)).max(28),
+    want: z.array(z.number().int().min(0).max(39)).max(28),
+    cash: z.number().int().min(-10000).max(10000),
+  }),
+  z.object({ kind: z.literal('property-trade-answer'), accept: z.boolean() }),
+  z.object({
+    kind: z.literal('poker-bet'),
+    action: z.enum(['fold', 'check', 'call', 'raise']),
+    amount: z.number().int().min(0).max(1000000).optional(),
+  }),
+  z.object({ kind: z.literal('poker-next') }),
+  z.object({ kind: z.literal('tablet-join'), joined: z.boolean() }),
+  z.object({
+    kind: z.literal('tablet-pointer'),
+    surface: z.string().max(80),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    visible: z.boolean(),
+  }),
+]);
+export type TableAction = z.infer<typeof tableActionSchema>;
+export const activityPointerSchema = z.object({
+  type: z.literal('activity-pointer'),
+  participantId: id,
+  surface: z.string().max(80),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  visible: z.boolean(),
+});

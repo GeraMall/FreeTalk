@@ -77,6 +77,7 @@ import {
 } from './lib/account-sidebar-width';
 import mascot from './assets/freetalk-mascot.png';
 import { playRecordingStartNotification } from './lib/recording-start-sound';
+import { publishActivityPointer } from './lib/activity-pointers';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
 import { calculateSignalStrength } from './lib/network-quality';
 import type { CallDockState } from './components/CallDock';
@@ -950,6 +951,10 @@ export function App() {
             participant.id === message.participant.id ? message.participant : participant,
           ),
         );
+        return;
+      }
+      if (message.type === 'activity-pointer') {
+        publishActivityPointer(message);
         return;
       }
       if (message.type === 'activity-state') {

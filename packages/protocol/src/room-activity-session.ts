@@ -1,10 +1,41 @@
 import { Chess } from 'chess.js';
 import type { ActivityGame, RoomActivity, RoomActivityAction } from './room-activity.js';
+import { tableActionSchema } from './activity-table.js';
+import {
+  createTable,
+  reduceTable,
+  tableView,
+  tickTable,
+  type TableSession,
+  type TableContext,
+} from './activity-table-session.js';
 
 export interface RoomActivitySession {
   view: RoomActivity;
   hidden?: number[];
   moves?: string[];
+  table?: TableSession;
+}
+export function roomActivityView(
+  session: RoomActivitySession,
+  viewerId?: string,
+  version2 = true,
+): RoomActivity {
+  return {
+    ...session.view,
+    table: version2 && session.table ? tableView(session.table, viewerId) : undefined,
+  };
+}
+export function tickRoomActivity(session: RoomActivitySession, now: number): RoomActivitySession {
+  if (!session.table) return session;
+  const table = tickTable(session.table, now);
+  return table === session.table
+    ? session
+    : {
+        ...session,
+        table,
+        view: { ...session.view, revision: session.view.revision + 1, table: tableView(table) },
+      };
 }
 
 export function emptyRoomActivity(): RoomActivitySession {
@@ -111,6 +142,7 @@ export function applyRoomActivity(
   current: RoomActivitySession,
   revision: number,
   action: RoomActivityAction,
+  context?: TableContext,
 ): RoomActivitySession {
   const previous = current.view;
   if (revision !== previous.revision) return current;
@@ -118,8 +150,35 @@ export function applyRoomActivity(
   if (action.kind === 'open')
     return previous.open ? current : { ...current, view: { ...view, open: true } };
   if (!previous.open) return current;
+  if (action.kind === 'tablet-join' || action.kind === 'tablet-pointer') return current;
+  if (action.kind === 'table-open' && context) {
+    if (current.table && current.table.view.hostId !== context.actorId) return current;
+    const table = createTable(action.game, context);
+    return { table, view: { ...view, game: undefined, table: tableView(table) } };
+  }
+  if (current.table && context) {
+    if (['close', 'game', 'service', 'region'].includes(action.kind)) {
+      if (current.table.view.hostId !== context.actorId) return current;
+    } else {
+      const parsed = tableActionSchema.safeParse(action);
+      if (!parsed.success) return current;
+      const table = reduceTable(current.table, parsed.data, context);
+      return table === current.table
+        ? current
+        : { ...current, table, view: { ...view, table: tableView(table) } };
+    }
+  }
   if (action.kind === 'close')
-    return { view: { ...view, open: false, service: undefined, game: undefined } };
+    return {
+      view: {
+        ...view,
+        open: false,
+        service: undefined,
+        game: undefined,
+        table: undefined,
+        viewers: [],
+      },
+    };
   if (action.kind === 'region') {
     return action.region === view.region
       ? current
@@ -130,7 +189,7 @@ export function applyRoomActivity(
       ? { view: { ...view, game: undefined, service: action.service } }
       : current;
   }
-  if (action.kind === 'game') return startGame(action.game, view);
+  if (action.kind === 'game') return startGame(action.game, { ...view, table: undefined });
   const game = view.game;
   if (!game || game.result) return current;
 

@@ -59,12 +59,18 @@ export const httpServer = createServer(async (request, response) => {
       return;
     }
     response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    response.end(JSON.stringify({ roomIds: manager.activeRoomIds() }));
+    const roomIds = manager.activeRoomIds();
+    response.end(
+      JSON.stringify({
+        roomIds,
+        roomSizes: Object.fromEntries(roomIds.map((id) => [id, manager.roomSize(id)])),
+      }),
+    );
     return;
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.9' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.10' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -158,7 +164,8 @@ sockets.on('connection', (socket, request) => {
 
     try {
       const message = parseClientMessage(data.toString());
-      logSocketEvent(socket, 'message.received', { messageType: message.type });
+      if (!(message.type === 'activity-action' && message.action.kind === 'tablet-pointer'))
+        logSocketEvent(socket, 'message.received', { messageType: message.type });
       if (message.type === 'create-room' || message.type === 'join-room') {
         if (meta.roomId || meta.joining)
           return send(socket, {
@@ -228,7 +235,9 @@ sockets.on('connection', (socket, request) => {
           // a dead connection to a room after its close handler has already run.
           if (socket.readyState !== socket.OPEN) return;
           send(socket, iceConfig);
-          connection.canUseActivity = authorization.kind === 'registered';
+          connection.canUseActivity =
+            authorization.kind === 'registered' || authorization.kind === 'development';
+          connection.activityVersion = message.activityVersion;
           if (message.type === 'create-room')
             manager.create(
               message.roomId,
@@ -509,7 +518,8 @@ function logSocketEventForMeta(
 function send(socket: WebSocket, message: ServerMessage) {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(message));
-    logSocketEvent(socket, 'message.sent', { messageType: message.type });
+    if (message.type !== 'activity-pointer')
+      logSocketEvent(socket, 'message.sent', { messageType: message.type });
   }
 }
 
@@ -534,6 +544,8 @@ const staleRoomTimer = setInterval(() => {
   }
 }, 15_000).unref();
 httpServer.on('close', () => clearInterval(staleRoomTimer));
+const activityTimer = setInterval(() => manager.tickActivities(), 1000).unref();
+httpServer.on('close', () => clearInterval(activityTimer));
 httpServer.listen(port, '127.0.0.1', () =>
   console.info(`Trlka signaling: ws://127.0.0.1:${port}/ws`),
 );

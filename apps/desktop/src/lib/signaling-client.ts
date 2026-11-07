@@ -51,7 +51,7 @@ export class SignalingClient {
   ) {}
 
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
-    this.joined = join;
+    this.joined = { ...join, activityVersion: 2 };
     this.roomJoined = false;
     this.stableCallJoined = false;
     this.closedByUser = false;
@@ -70,9 +70,10 @@ export class SignalingClient {
       }
       return false;
     }
-    connectionDiagnostics.record(`signal-sent:${message.type}`, undefined, {
-      socketId: this.socket.correlationId,
-    });
+    if (!(message.type === 'activity-action' && message.action.kind === 'tablet-pointer'))
+      connectionDiagnostics.record(`signal-sent:${message.type}`, undefined, {
+        socketId: this.socket.correlationId,
+      });
     this.socket.send(JSON.stringify(message));
     return true;
   }

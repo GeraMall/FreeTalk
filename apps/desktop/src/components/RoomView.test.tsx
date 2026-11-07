@@ -247,7 +247,7 @@ describe('RoomView media layouts', () => {
     expect(result.getByLabelText('Общий планшет')).toBeTruthy();
     expect(result.queryByRole('button', { name: 'Завершить для всех' })).toBeNull();
     fireEvent.click(result.getByRole('button', { name: 'Шахматы' }));
-    expect(send).toHaveBeenCalledWith({ kind: 'game', game: 'chess' });
+    expect(send).toHaveBeenCalledWith({ kind: 'table-open', game: 'chess' });
     fireEvent.click(result.getByRole('button', { name: 'Свернуть планшет' }));
     expect(result.queryByLabelText('Общий планшет')).toBeNull();
     expect(send).not.toHaveBeenCalledWith({ kind: 'close' });

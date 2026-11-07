@@ -1,4 +1,11 @@
 import { roomActivityActionSchema, roomActivitySchema } from './room-activity.js';
+export { Chess } from 'chess.js';
+import { activityPointerSchema } from './activity-table.js';
+export type { ActivityTable, TableKind, TableOf, TableAction } from './activity-table.js';
+export { tableSchema } from './activity-table.js';
+export { randomFleet, validFleet } from './activity-table-session.js';
+export { propertyBoard, housePrice } from './activity-property.js';
+export { quizPrizes } from './activity-quiz.js';
 export type {
   ActivityGame,
   ActivityRegion,
@@ -8,6 +15,8 @@ export type {
 export {
   applyRoomActivity,
   emptyRoomActivity,
+  roomActivityView,
+  tickRoomActivity,
   type RoomActivitySession,
 } from './room-activity-session.js';
 import { DISPLAY_NAME_PATTERN, ROOM_CODE_PATTERN } from '@freetalk/config';
@@ -152,6 +161,7 @@ export const telemetryReportSchema = z.object({
 export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create-room'),
+    activityVersion: z.literal(2).optional(),
     roomId,
     clientId,
     sessionId,
@@ -163,6 +173,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('join-room'),
+    activityVersion: z.literal(2).optional(),
     roomId,
     clientId,
     sessionId,
@@ -211,6 +222,7 @@ export const iceServerSchema = z.object({
 });
 
 export const serverMessageSchema = z.discriminatedUnion('type', [
+  activityPointerSchema,
   z.object({ type: z.literal('room-created'), roomId }),
   z.object({
     type: z.literal('joined-room'),

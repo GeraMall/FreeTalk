@@ -1,23 +1,27 @@
 import { z } from 'zod';
+import { tableSchema, tableActionSchema } from './activity-table.js';
 
 export const activityRegionSchema = z.enum(['RU', 'KZ', 'GB']);
 export const activityGameSchema = z.enum(['chess', 'mines', 'fleet']);
 const cell = z.number().int().min(0).max(63);
 const square = z.string().regex(/^[a-h][1-8]$/);
 
-export const roomActivityActionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('open') }),
-  z.object({ kind: z.literal('close') }),
-  z.object({ kind: z.literal('region'), region: activityRegionSchema }),
-  z.object({ kind: z.literal('service'), service: z.string().regex(/^[a-z0-9-]{1,32}$/) }),
-  z.object({ kind: z.literal('game'), game: activityGameSchema }),
-  z.object({ kind: z.literal('cell'), index: cell, flag: z.boolean().optional() }),
-  z.object({
-    kind: z.literal('move'),
-    from: square,
-    to: square,
-    promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
-  }),
+export const roomActivityActionSchema = z.union([
+  tableActionSchema,
+  z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('open') }),
+    z.object({ kind: z.literal('close') }),
+    z.object({ kind: z.literal('region'), region: activityRegionSchema }),
+    z.object({ kind: z.literal('service'), service: z.string().regex(/^[a-z0-9-]{1,32}$/) }),
+    z.object({ kind: z.literal('game'), game: activityGameSchema }),
+    z.object({ kind: z.literal('cell'), index: cell, flag: z.boolean().optional() }),
+    z.object({
+      kind: z.literal('move'),
+      from: square,
+      to: square,
+      promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
+    }),
+  ]),
 ]);
 
 export const roomActivitySchema = z.object({
@@ -25,6 +29,8 @@ export const roomActivitySchema = z.object({
   sessionId: z.string().uuid().optional(),
   startedBy: z.string().uuid().optional(),
   open: z.boolean(),
+  table: tableSchema.optional(),
+  viewers: z.array(z.string().uuid()).max(8).optional(),
   region: activityRegionSchema,
   service: z.string().max(32).optional(),
   game: z

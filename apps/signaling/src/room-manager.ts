@@ -3,6 +3,8 @@ import { ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
 import {
   applyRoomActivity,
   emptyRoomActivity,
+  roomActivityView,
+  tickRoomActivity,
   type RoomActivitySession,
   type RoomActivityAction,
 } from '@freetalk/protocol';
@@ -16,6 +18,7 @@ import type {
 
 export interface PeerConnection {
   canUseActivity?: boolean;
+  activityVersion?: 2;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
 }
@@ -28,6 +31,7 @@ interface Peer {
   profileChanges: number[];
   lastReactionAt: number;
   lastActivityAt: number;
+  lastPointerAt: number;
 }
 
 interface Room {
@@ -38,6 +42,7 @@ interface Room {
   createdAt: number;
   chatMessages: RoomChatMessage[];
   activity: RoomActivitySession;
+  identities: Map<string, { sessionId: string; accountId?: string }>;
 }
 
 export type RoomAuthority =
@@ -77,6 +82,7 @@ export class RoomManager {
       createdAt: Date.now(),
       chatMessages: [],
       activity: emptyRoomActivity(),
+      identities: new Map(),
     });
     return this.join(
       roomId,
@@ -109,6 +115,14 @@ export class RoomManager {
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
 
     const existing = room.peers.get(clientId);
+    const identity = room.identities.get(clientId);
+    if (
+      !existing &&
+      identity &&
+      !(identity.accountId && identity.accountId === accountId) &&
+      (identity.sessionId !== sessionId || identity.accountId !== accountId)
+    )
+      throw new RoomError('ROOM_FULL', 'Этот идентификатор закреплён за другим участником');
     if (!existing && room.peers.size >= ROOM_MAX_PARTICIPANTS) {
       throw new RoomError('ROOM_FULL', 'В комнате уже восемь участников');
     }
@@ -145,8 +159,16 @@ export class RoomManager {
       profileChanges: existing?.profileChanges ?? [],
       lastReactionAt: existing?.lastReactionAt ?? 0,
       lastActivityAt: existing?.lastActivityAt ?? 0,
+      lastPointerAt: 0,
     };
     room.peers.set(clientId, peer);
+    if (room.identities.size >= 64 && !room.identities.has(clientId)) {
+      const removable = [...room.identities.keys()].find(
+        (id) => !room.peers.has(id) && !room.activity.table?.view.seats.includes(id),
+      );
+      if (removable) room.identities.delete(removable);
+    }
+    room.identities.set(clientId, { sessionId, accountId });
     const ownerChanged = this.reconcileOwner(room);
 
     connection.send({
@@ -156,7 +178,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
-      activity: room.activity.view,
+      activity: roomActivityView(room.activity, clientId, connection.activityVersion === 2),
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -172,6 +194,21 @@ export class RoomManager {
     const peer = room?.peers.get(clientId);
     if (!room || !peer || (connection && peer.connection !== connection)) return false;
     room.peers.delete(clientId);
+    if (room.activity.view.viewers?.includes(clientId)) {
+      room.activity.view = {
+        ...room.activity.view,
+        viewers: room.activity.view.viewers.filter((id) => id !== clientId),
+      };
+      this.sendActivity(room);
+    }
+    if (room.activity.table?.view.hostId === clientId && room.peers.size) {
+      room.activity.table.view = {
+        ...room.activity.table.view,
+        hostId: [...room.peers.keys()][0]!,
+      };
+      room.activity.view = { ...room.activity.view, revision: room.activity.view.revision + 1 };
+      this.sendActivity(room);
+    }
     this.broadcast(room, { type: 'participant-left', participantId: clientId, reason });
     if (room.peers.size === 0) this.rooms.delete(roomId);
     else if (room.authority.scope === 'standalone' && room.ownerId === clientId) {
@@ -250,6 +287,46 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return;
+    const v2 = peer.connection.activityVersion === 2;
+    if (action.kind === 'tablet-join') {
+      if (!v2 || !room.activity.view.open) return;
+      const viewers = new Set(room.activity.view.viewers ?? []);
+      if (action.joined) viewers.add(clientId);
+      else viewers.delete(clientId);
+      if (
+        viewers.size === (room.activity.view.viewers ?? []).length &&
+        viewers.has(clientId) === Boolean(room.activity.view.viewers?.includes(clientId))
+      )
+        return;
+      room.activity.view = { ...room.activity.view, viewers: [...viewers] };
+      this.sendActivity(room);
+      return;
+    }
+    if (action.kind === 'tablet-pointer') {
+      if (!v2 || !room.activity.view.open || !room.activity.view.viewers?.includes(clientId))
+        return;
+      const table = room.activity.table?.view;
+      if (table && ['fleet', 'poker'].includes(table.kind)) return;
+      if (
+        !action.surface.startsWith((table?.id ?? 'catalog') + ':') ||
+        !['tablet', 'catalog', 'chess', 'quiz', 'property'].includes(
+          action.surface.split(':')[1] ?? '',
+        )
+      )
+        return;
+      const now = Date.now();
+      if (action.visible && now - peer.lastPointerAt < 140) return;
+      peer.lastPointerAt = now;
+      for (const [id, other] of room.peers)
+        if (
+          id !== clientId &&
+          other.connection.activityVersion === 2 &&
+          room.activity.view.viewers?.includes(id)
+        )
+          other.connection.send({ type: 'activity-pointer', participantId: clientId, ...action });
+      return;
+    }
+    if (room.activity.table && !v2) return;
     if (
       !peer.connection.canUseActivity &&
       (!room.activity.view.open || !['game', 'cell', 'move'].includes(action.kind))
@@ -258,16 +335,35 @@ export class RoomManager {
     // Delivery content is intentionally absent from the shared gaming tablet.
     if (action.kind === 'service' || action.kind === 'region') return;
     const now = Date.now();
-    if (now - peer.lastActivityAt < 125) return;
+    if (!v2 && now - peer.lastActivityAt < 125) return;
     peer.lastActivityAt = now;
-    const next = applyRoomActivity(room.activity, revision, action);
+    const next = applyRoomActivity(
+      room.activity,
+      revision,
+      action,
+      v2 ? { actorId: clientId, members: [...room.peers.keys()], now } : undefined,
+    );
     if (next === room.activity) return;
     if (action.kind === 'open') {
       next.view = { ...next.view, startedBy: clientId, sessionId: crypto.randomUUID() };
     }
     room.activity = next;
-    for (const participant of room.peers.values()) {
-      participant.connection.send({ type: 'activity-state', activity: next.view });
+    this.sendActivity(room);
+  }
+  private sendActivity(room: Room) {
+    for (const [id, peer] of room.peers)
+      peer.connection.send({
+        type: 'activity-state',
+        activity: roomActivityView(room.activity, id, peer.connection.activityVersion === 2),
+      });
+  }
+  tickActivities(now = Date.now()) {
+    for (const room of this.rooms.values()) {
+      const next = tickRoomActivity(room.activity, now);
+      if (next !== room.activity) {
+        room.activity = next;
+        this.sendActivity(room);
+      }
     }
   }
 

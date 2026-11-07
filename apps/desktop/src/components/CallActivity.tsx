@@ -1,10 +1,50 @@
-import { ArrowLeft, Bomb, Crown, Flag, Gamepad2, RotateCcw, Ship, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { ActivityGame, RoomActivity, RoomActivityAction } from '@freetalk/protocol';
+import {
+  ArrowLeft,
+  Bomb,
+  Crown,
+  Flag,
+  Gamepad2,
+  RotateCcw,
+  Ship,
+  X,
+  Landmark,
+  Trophy,
+  Spade,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type {
+  ActivityGame,
+  RoomActivity,
+  RoomActivityAction,
+  TableKind,
+  Participant,
+} from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import './call-activity.css';
-const games = { chess: 'Шахматы', mines: 'Сапёр', fleet: 'Морской бой' } as const;
-const gameIcons = { chess: Crown, mines: Bomb, fleet: Ship };
+import './activity-tables.css';
+import { ActivityTableLobby } from './ActivityTableLobby';
+import { ActivityChess } from './ActivityChess';
+import { ActivityFleet } from './ActivityFleet';
+import { ActivityMillionaire } from './ActivityMillionaire';
+import { ActivityPoker } from './ActivityPoker';
+import { ActivityProperty } from './ActivityProperty';
+import { ActivityPointers } from './ActivityPointers';
+const games = {
+  chess: 'Шахматы',
+  mines: 'Сапёр',
+  fleet: 'Морской бой',
+  monopoly: 'Монополия',
+  millionaire: 'Кто хочет стать миллионером?',
+  poker: 'Покер',
+} as const;
+const gameIcons = {
+  chess: Crown,
+  mines: Bomb,
+  fleet: Ship,
+  monopoly: Landmark,
+  millionaire: Trophy,
+  poker: Spade,
+};
 const pieces: Record<string, string> = {
   k: '♚',
   q: '♛',
@@ -92,42 +132,102 @@ function ChessBoard({
 
 export function CallActivity({
   activity,
+  selfId,
+  participants = [],
   onAction,
   onClose,
   onEnd,
 }: {
   activity: RoomActivity;
+  selfId?: string;
+  participants?: Pick<Participant, 'id' | 'name' | 'avatar'>[];
   onAction?(action: RoomActivityAction): void;
   onClose?(): void;
   onEnd?(): void;
 }) {
   const [flagging, setFlagging] = useState(false);
   const game = activity.game;
-  const [catalog, setCatalog] = useState(!activity.game);
-  const gameKind = activity.game?.kind;
+  const table = activity.table;
+  const activeKind = table?.kind ?? game?.kind;
+  const surface = useRef<HTMLElement>(null);
+  const actionRef = useRef(onAction);
+  actionRef.current = onAction;
+  const pointerAt = useRef(0);
+  useEffect(() => {
+    actionRef.current?.({ kind: 'tablet-join', joined: true });
+    return () => actionRef.current?.({ kind: 'tablet-join', joined: false });
+  }, [activity.sessionId]);
+  const [catalog, setCatalog] = useState(!activeKind);
+  const gameKind = activeKind;
+  const [switchTo, setSwitchTo] = useState<ActivityGame | TableKind>();
   useEffect(() => {
     if (gameKind) setCatalog(false);
   }, [gameKind]);
-  const play = (next: ActivityGame) => {
+  const play = (next: ActivityGame | TableKind) => {
+    if (table?.phase === 'playing' && next !== table.kind) {
+      setSwitchTo(next);
+      return;
+    }
     setFlagging(false);
     setCatalog(false);
-    onAction?.({ kind: 'game', game: next });
+    onAction?.(
+      next === 'mines' ? { kind: 'game', game: next } : { kind: 'table-open', game: next },
+    );
   };
   return (
-    <section className="call-activity" aria-label={t('Общий планшет')}>
+    <section ref={surface} className="call-activity" aria-label={t('Общий планшет')}>
+      {switchTo && (
+        <div className="table-switch-confirm">
+          <section role="alertdialog" aria-label={t('Сменить игру?')}>
+            <h3>{t('Сменить игру?')}</h3>
+            <p>{t('Текущая партия будет завершена для всех участников.')}</p>
+            <div className="table-inline-controls">
+              <button type="button" onClick={() => setSwitchTo(undefined)}>
+                {t('Продолжить партию')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onAction?.(
+                    switchTo === 'mines'
+                      ? { kind: 'game', game: 'mines' }
+                      : { kind: 'table-open', game: switchTo },
+                  );
+                  setFlagging(false);
+                  setCatalog(false);
+                  setSwitchTo(undefined);
+                }}
+              >
+                {t('Сменить игру')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <header className="activity-heading">
         <div>
-          {!catalog && game ? (
+          {!catalog && activeKind ? (
             <button type="button" aria-label={t('К играм')} onClick={() => setCatalog(true)}>
               <ArrowLeft size={17} />
             </button>
           ) : (
             <Gamepad2 size={17} />
           )}
-          <h2>{!catalog && game ? t(games[game.kind]) : t('Общий планшет')}</h2>
+          <h2>{!catalog && activeKind ? t(games[activeKind]) : t('Общий планшет')}</h2>
+          <div className="tablet-viewers" aria-label={t('Участники планшета')}>
+            {(activity.viewers ?? []).slice(0, 5).map((id) => {
+              const participant = participants.find((p) => p.id === id);
+              return participant ? (
+                <span key={id} title={participant.name}>
+                  {participant.name.slice(0, 1)}
+                </span>
+              ) : null;
+            })}
+            {(activity.viewers?.length ?? 0) > 5 && <small>+{activity.viewers!.length - 5}</small>}
+          </div>
         </div>
         <div>
-          {onEnd && (
+          {onEnd && (!table || table.hostId === selfId) && (
             <button type="button" onClick={onEnd}>
               {t('Завершить для всех')}
             </button>
@@ -138,9 +238,37 @@ export function CallActivity({
         </div>
       </header>
       <div
-        className={`activity-content ${catalog || !game ? 'activity-catalog' : 'activity-playing'}`}
+        data-activity-surface="catalog"
+        onPointerMove={(event) => {
+          if (table && ['fleet', 'poker'].includes(table.kind)) return;
+          const now = performance.now();
+          if (now - pointerAt.current < 145) return;
+          pointerAt.current = now;
+          const anchor =
+            (event.target as HTMLElement).closest<HTMLElement>('[data-activity-surface]') ??
+            event.currentTarget;
+          const rect = anchor.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          onAction?.({
+            kind: 'tablet-pointer',
+            surface: `${table?.id ?? 'catalog'}:${anchor.dataset.activitySurface}`,
+            x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+            visible: true,
+          });
+        }}
+        onPointerLeave={() =>
+          onAction?.({
+            kind: 'tablet-pointer',
+            surface: `${table?.id ?? 'catalog'}:tablet`,
+            x: 0,
+            y: 0,
+            visible: false,
+          })
+        }
+        className={`activity-content ${catalog || !activeKind ? 'activity-catalog' : 'activity-playing'}`}
       >
-        {catalog || !game ? (
+        {catalog || !activeKind ? (
           <>
             <div className="activity-pixel-planet" aria-hidden="true">
               <i />
@@ -148,17 +276,22 @@ export function CallActivity({
             <div className="activity-catalog-content">
               <h3>{t('Игры')}</h3>
               <p className="activity-intro">
-                {t('Выбирайте игру и играйте вместе. Планшетом управляют все участники.')}
+                {t('Выберите игру, займите место или наблюдайте за друзьями.')}
+                {activity.viewers?.length ? (
+                  <small className="tablet-viewer-count">
+                    {t('В планшете')}: {activity.viewers.length}
+                  </small>
+                ) : null}
               </p>
               <div className="activity-tiles">
-                {(Object.keys(games) as ActivityGame[]).map((kind) => {
+                {(Object.keys(games) as (ActivityGame | TableKind)[]).map((kind) => {
                   const Icon = gameIcons[kind];
                   return (
                     <button
                       type="button"
                       className="activity-tile"
                       key={kind}
-                      disabled={!onAction}
+                      disabled={!onAction || Boolean(table && table.hostId !== selfId)}
                       onClick={() => play(kind)}
                     >
                       <span className={`activity-game-mark game-mark-${kind}`}>
@@ -172,6 +305,59 @@ export function CallActivity({
             </div>
           </>
         ) : null}
+        {table && !catalog && (
+          <div className="activity-table-surface" data-activity-surface="tablet">
+            {table.kind === 'fleet' ? (
+              <ActivityFleet
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            ) : table.phase === 'lobby' ? (
+              <ActivityTableLobby
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            ) : table.kind === 'chess' ? (
+              <ActivityChess
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            ) : table.kind === 'millionaire' ? (
+              <ActivityMillionaire
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            ) : table.kind === 'poker' ? (
+              <ActivityPoker
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            ) : (
+              <ActivityProperty
+                key={table.id}
+                table={table}
+                selfId={selfId}
+                participants={participants}
+                send={(action) => onAction?.(action)}
+              />
+            )}
+          </div>
+        )}
         {game && !catalog && (
           <div className="activity-game">
             <div className="activity-game-status">
@@ -202,7 +388,11 @@ export function CallActivity({
                   <Flag size={15} />
                 </button>
               )}
-              <button type="button" disabled={!onAction} onClick={() => play(game.kind)}>
+              <button
+                type="button"
+                disabled={!onAction || Boolean(table && table.hostId !== selfId)}
+                onClick={() => play(game.kind)}
+              >
                 <RotateCcw size={14} /> {t('Новая игра')}
               </button>
             </div>
@@ -251,20 +441,27 @@ export function CallActivity({
           </div>
         )}
       </div>
+      <ActivityPointers
+        root={surface}
+        surfaceId={table?.id ?? 'catalog'}
+        selfId={selfId}
+        participants={participants}
+        disabled={Boolean(table && ['fleet', 'poker'].includes(table.kind))}
+      />
       <footer className="activity-dock">
-        <span>{!catalog && game ? t(games[game.kind]) : t('Игры')}</span>
+        <span>{!catalog && activeKind ? t(games[activeKind]) : t('Игры')}</span>
         <div>
-          {(Object.keys(games) as ActivityGame[]).map((kind) => {
+          {(Object.keys(games) as (ActivityGame | TableKind)[]).map((kind) => {
             const Icon = gameIcons[kind];
             return (
               <button
                 type="button"
                 key={kind}
                 aria-label={`${t('Открыть')} ${t(games[kind])}`}
-                aria-pressed={!catalog && game?.kind === kind}
-                disabled={!onAction}
+                aria-pressed={!catalog && activeKind === kind}
+                disabled={!onAction || Boolean(table && table.hostId !== selfId)}
                 onClick={() => {
-                  if (game?.kind === kind) setCatalog(false);
+                  if (activeKind === kind) setCatalog(false);
                   else play(kind);
                 }}
               >

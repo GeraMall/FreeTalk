@@ -942,6 +942,8 @@ export function RoomView({
           ) : tabletVisible && activity ? (
             <CallActivity
               activity={activity}
+              selfId={selfId}
+              participants={participants}
               onAction={onActivity}
               onClose={() => setJoinedActivity(undefined)}
               onEnd={activityUnlocked ? () => onActivity?.({ kind: 'close' }) : undefined}
