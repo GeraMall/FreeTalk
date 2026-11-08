@@ -1,5 +1,20 @@
 # Проверка изменений дизайна
 
+08.11.2026 ПУБЛИЧНАЯ224 выпущена по прямому запросу владельца для Mac/Windows.
+Windows ТОЛЬКО номер: source11faca7, ровно5строк223→224, CI42514068028success
+(desktop547/nativecheck/signedNSIS). Macsource4ca2613/CI42510597827, capture-size
+fix/defaultprofile, физический результат ещёНЕподтверждён. Signed packages
+promoted/published CI42515773252, источникworkflow98134ff. Неподписанный
+Windows-preview42510597827 НЕ использован. Tagv0.4.0-beta.224 указывает3e7b11d;
+раздельные исходники платформ записаны docs/RELEASE_BETA_224.md.
+GitHublatest/обаmirror224,3ссылкисайтаHTTP200/правильныйsetup. ПолныеSHA setup/
+Macupdater/DMG проверены скачиванием черезLinux; локальноеWindowsскачивание
+превысилотаймаут, не объявлять егоуспешным. Подписи проверены CIдовереннымключом.
+Сайтполучилтолькоссылки; webapp/API/signalingнеизменны,PID336839/336888 прежние.
+HAhealthy/PGstreaming/sync,staticbackup /root/trlka-ha/release224. Следующий>=225.
+Android224APK остаётсяPRIVATE. Владелецпросил сохранитьэмулятордляразработки;
+AVDtrlka_android_224 нужен, не удалять его приочистке безявногозапроса.
+
 08.11.2026 Android native224 PRIVATE APK готов: sourcee36609bcfecf,
 outputs/android/beta224-preview/Trlka_0.4.0-beta.224_android.apk, 55748972bytes,
 SHA256af1fd480682b94fa65764a6fbbb58b26f0afdff89609660d48f828d20c2af8ab.
