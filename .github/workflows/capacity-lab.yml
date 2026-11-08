@@ -35,9 +35,13 @@ jobs:
             /bin/bash scripts/load/capacity/lab.sh
           for attempt in $(seq 1 90); do
             if curl -fsS -H 'x-capacity-client: 0' http://127.0.0.1:18890/health >/dev/null; then exit 0; fi
+            if ! sudo systemctl is-active --quiet trlka-capacity-lab; then break; fi
             sleep 2
           done
           sudo journalctl -u trlka-capacity-lab --no-pager -n 30
+          for log in migrations.log seed.log api.log gateway.log; do
+            if test -f "$RUNNER_TEMP/trlka-capacity/$log"; then sudo tail -n 15 "$RUNNER_TEMP/trlka-capacity/$log"; fi
+          done
           exit 1
       - name: Ramp authenticated users and exercise real chat API
         run: node scripts/load/capacity/run.mjs

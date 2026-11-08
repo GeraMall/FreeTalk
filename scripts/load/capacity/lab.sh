@@ -12,7 +12,7 @@ export IP_HASH_SALT=isolated-capacity-salt-not-for-production
 export TURNSTILE_SECRET_KEY=unused EMAIL_DELIVERY_MODE=log
 export DATABASE_URL="postgresql://postgres@127.0.0.1:54329/trlka_capacity_${GITHUB_RUN_ID}"
 export PGDATA="${CAPACITY_STATE}/postgres"
-export PATH="$(dirname "$CAPACITY_NODE"):/usr/lib/postgresql/16/bin:/usr/bin:/bin"
+export PATH="$(dirname "$CAPACITY_NODE"):/usr/lib/postgresql/16/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 mkdir -p "$PGDATA" "$CAPACITY_STATE/socket"
 chown -R postgres:postgres "$PGDATA" "$CAPACITY_STATE/socket"
 runuser -u postgres -- initdb -D "$PGDATA" -A trust --no-locale > "$CAPACITY_STATE/initdb.log"
