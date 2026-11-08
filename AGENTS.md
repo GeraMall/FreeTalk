@@ -1,5 +1,16 @@
 # Проверка изменений дизайна
 
+08.11.2026 Android225 PRIVATE исправляет воспроизведённый вылет звонка224:
+R8 удалялorg.jni_zero.JniInit/JniUtil, JNI_OnLoad аварийно завершался.
+Добавлен keeporg.jni_zero. Exactrelease224 падает, exactrelease225 nativeprobe
+3раза прошёл (audiofactory/peer/SDP),31JVM/7emulatorUI+native/lint0errors.
+APKsource1748ec5, outputs/android/beta225-preview/Trlka_0.4.0-beta.225_android.apk,
+SHAeaaa984490b3c7a2321395d7620aa1caee3e59758f68f62baa54cffa3faab6b6.
+Пакетio.freetalk.mobile/подпись прежние, direct224→225sameUID безудаления,
+31assets unchanged. Проверять scripts/android/verify-webrtc-jni.py на будущихAPK.
+docs/ANDROID_CALL_CRASH_BETA225.md. Телефонный реальныйзвонок ещёНЕпроверен;
+не объявлять всеAndroidзвонки исправленными. Prod/Windows/Mac/web/feed остаются224.
+
 08.11.2026 выполнен ИЗОЛИРОВАННЫЙ тест чатов 10 000 авторизованных WebSocket:
 CI42520535965/sourcee21d960. Все6ступеней прошли,10k удержаны180сек,
 15kHTTP/6kсообщений на последней ступени, ошибок/потерь0; P95HTTP201мс,
