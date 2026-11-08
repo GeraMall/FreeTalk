@@ -675,3 +675,24 @@ html[data-chat-message-style='compact'] .room-chat-message .room-chat-bubble {
   width: 11px;
   height: 11px;
 }
+
+.selection-mode .message-selection-row,
+.selection-mode .message-bubble-row,
+.selection-mode .message-event-row {
+  cursor: pointer;
+}
+
+.forward-message-error {
+  margin: 0 20px 12px;
+  color: #ff8096;
+  font-size: 13px;
+}
+
+.selection-mode .message-entry.selected {
+  background: transparent;
+}
+
+.message-stream.selection-mode .message-selection-row .message-bubble-row::before,
+.message-stream.selection-mode .message-selection-row .message-event-row::before {
+  opacity: 0;
+}

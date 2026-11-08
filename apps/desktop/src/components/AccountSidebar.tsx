@@ -145,11 +145,13 @@ export function AccountSidebar({
 
   useEffect(() => {
     const realtime = new ChatRealtimeClient((event) => {
+      if (event.type !== 'message-created') return;
+      const serviceNotice = event.chatId === SERVICE_CHAT_ID && event.message.kind === 'system';
       if (
-        event.type !== 'message-created' ||
-        !['text', 'image', 'file'].includes(event.message.kind) ||
-        !event.message.sender_id ||
-        event.message.sender_id === user.id
+        !serviceNotice &&
+        (!['text', 'image', 'file'].includes(event.message.kind) ||
+          !event.message.sender_id ||
+          event.message.sender_id === user.id)
       )
         return;
       if (
@@ -166,7 +168,9 @@ export function AccountSidebar({
 
       const preference = latestChats.current?.find((chat) => chat.id === event.chatId);
       if (getPresenceMode() === 'dnd' || preference?.archived || preference?.muted) return;
-      const senderName = event.message.display_name || event.message.username || 'Новое сообщение';
+      const senderName = serviceNotice
+        ? 'TRLKA'
+        : event.message.display_name || event.message.username || 'Новое сообщение';
       const previewBody =
         event.message.kind === 'image'
           ? event.message.body || 'Фотография'

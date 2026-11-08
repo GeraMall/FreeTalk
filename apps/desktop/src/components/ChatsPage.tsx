@@ -419,6 +419,7 @@ export function ChatsPage({
   }, []);
   const [profile, setProfile] = useState<ChatProfile>();
   const [profileLoading, setProfileLoading] = useState(false);
+  const profileCacheRef = useRef(new Map<string, ChatProfile>());
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [groupProfileTarget, setGroupProfileTarget] = useState<ChatMember>();
   const [showArchived, setShowArchived] = useState(false);
@@ -605,18 +606,25 @@ export function ChatsPage({
   useEffect(() => {
     if (!profileTargetId) {
       setProfile(undefined);
+      setProfileLoading(false);
       return;
     }
     let cancelled = false;
-    setProfileLoading(true);
+    const cacheKey = `${userId}:${profileTargetId}`;
+    const cached = profileCacheRef.current.get(cacheKey);
+    setProfile(cached);
+    setProfileLoading(!cached);
     void accountClient
       .request<{ profile: ChatProfile }>(`/v1/users/${profileTargetId}/profile`)
       .then(async (result) => {
         await warmAccountMediaCache(userId, collectAccountMediaUrls(result.profile), 4_000);
-        if (!cancelled) setProfile(result.profile);
+        if (!cancelled) {
+          profileCacheRef.current.set(cacheKey, result.profile);
+          setProfile(result.profile);
+        }
       })
       .catch(() => {
-        if (!cancelled) setProfile(undefined);
+        if (!cancelled && !cached) setProfile(undefined);
       })
       .finally(() => {
         if (!cancelled) setProfileLoading(false);
@@ -1063,8 +1071,8 @@ export function ChatsPage({
       </section>
       {activeChat && showProfile && (
         <ProfilePanel
-          profile={profile}
-          loading={profileLoading}
+          profile={profile?.id === profileTargetId ? profile : undefined}
+          loading={profileLoading || Boolean(profile && profile.id !== profileTargetId)}
           fallback={profileTarget}
           groupTitle={activeChat.type === 'group' ? chatName(activeChat, userId) : undefined}
           members={activeChat.members}
@@ -2125,7 +2133,7 @@ function ProfilePanel({
       </aside>
     );
   const name = profile?.displayName ?? fallback?.displayName ?? groupTitle ?? 'Профиль';
-  const presence = profile?.presence ?? fallback?.presence ?? 'offline';
+  const presence = fallback?.presence ?? profile?.presence ?? 'offline';
   return (
     <aside className="chat-profile-panel" aria-label={t('Профиль собеседника')}>
       <div className="chat-profile-island">
@@ -2420,7 +2428,22 @@ export function MessageList({
       window.clearTimeout(dismiss);
     };
   }, [photoCopyStatus]);
-  const [forwardingMessage, setForwardingMessage] = useState<MessageItem>();
+  const [forwardingMessages, setForwardingMessages] = useState<MessageItem[]>();
+  const forwardingBatchRef = useRef<MessageItem[] | undefined>(undefined);
+  const forwardingBusyRef = useRef(false);
+  const [forwardingError, setForwardingError] = useState('');
+  const openForward = (batch: MessageItem[]) => {
+    if (forwardingBusyRef.current || !batch.length) return;
+    forwardingBatchRef.current = batch;
+    setForwardingMessages(batch);
+    setForwardingError('');
+  };
+  const closeForward = () => {
+    if (forwardingBusyRef.current) return;
+    forwardingBatchRef.current = undefined;
+    setForwardingMessages(undefined);
+    setForwardingError('');
+  };
   const [deletingMessage, setDeletingMessage] = useState<MessageItem>();
   const [editingMessage, setEditingMessage] = useState<MessageItem>();
   const [editingPending, setEditingPending] = useState(false);
@@ -2448,7 +2471,9 @@ export function MessageList({
 
   useEffect(() => {
     setContextMenu(undefined);
-    setForwardingMessage(undefined);
+    forwardingBatchRef.current = undefined;
+    setForwardingMessages(undefined);
+    setForwardingError('');
     setDeletingMessage(undefined);
     setEditingMessage(undefined);
     setSelectedIds(new Set());
@@ -2847,14 +2872,27 @@ export function MessageList({
                   key={message.id}
                 >
                   {showDate && <DateSeparator date={message.created_at} />}
-                  <div className="message-selection-row">
+                  <div
+                    className="message-selection-row"
+                    onClick={(event) => {
+                      if (!selectionMode) return;
+                      const target = event.target as HTMLElement;
+                      if (
+                        target.closest(
+                          '.message-bubble, .system-call-message, .system-message, .chat-avatar, a, button, input, textarea, select, [contenteditable="true"]',
+                        )
+                      )
+                        return;
+                      toggleSelected(message.id);
+                    }}
+                  >
                     {message.kind === 'call' || message.kind === 'system' ? (
                       <MessageEventRow
                         message={message}
                         selected={selectedIds.has(message.id)}
                         onContextMenu={openMessageContext}
                         onReply={() => onReply(message)}
-                        onForward={() => setForwardingMessage(message)}
+                        onForward={() => openForward([message])}
                       >
                         {message.kind === 'call' ? (
                           <SystemCallMessage
@@ -2887,7 +2925,7 @@ export function MessageList({
                           else void onReact(message.id, emoji);
                         }}
                         onEdit={() => setEditingMessage(message)}
-                        onForward={() => setForwardingMessage(message)}
+                        onForward={() => openForward([message])}
                         onRevealMessage={(messageId) => void revealMessage(messageId)}
                       />
                     )}
@@ -2971,7 +3009,7 @@ export function MessageList({
                 setContextMenu(undefined);
               }}
               onForward={() => {
-                setForwardingMessage(contextMenu.message);
+                openForward([contextMenu.message]);
                 setContextMenu(undefined);
               }}
               onDelete={() => {
@@ -3000,18 +3038,15 @@ export function MessageList({
           >
             <Copy />
           </button>
-          {selectedIds.size === 1 ? (
-            <button
-              type="button"
-              data-tooltip={t('Переслать')}
-              aria-label={t('Переслать выбранное сообщение')}
-              onClick={() =>
-                setForwardingMessage(messages.find((message) => selectedIds.has(message.id)))
-              }
-            >
-              <Forward />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            data-tooltip={t('Поделиться')}
+            aria-label={t('Поделиться выбранными сообщениями')}
+            disabled={actionPending}
+            onClick={() => openForward(messages.filter((message) => selectedIds.has(message.id)))}
+          >
+            <Forward />
+          </button>
           <button
             type="button"
             data-tooltip={t('Снять выделение')}
@@ -3022,24 +3057,48 @@ export function MessageList({
           </button>
         </div>
       ) : null}
-      {forwardingMessage ? (
+      {forwardingMessages ? (
         <ForwardMessageDialog
-          message={forwardingMessage}
+          messages={forwardingMessages}
           chats={chats}
           userId={userId}
           currentChatId={chatId}
           busy={actionPending}
-          onClose={() => !actionPending && setForwardingMessage(undefined)}
+          error={forwardingError}
+          onClose={closeForward}
           onForward={(targetChatId) => {
+            if (forwardingBusyRef.current) return;
+            const batch = forwardingMessages;
+            forwardingBusyRef.current = true;
             setActionPending(true);
-            void onForward(forwardingMessage.id, targetChatId)
-              .then((sent) => {
-                if (sent) {
-                  setForwardingMessage(undefined);
-                  setSelectedIds(new Set());
+            setForwardingError('');
+            void (async () => {
+              let sentCount = 0;
+              try {
+                for (const message of batch) {
+                  if (forwardingBatchRef.current !== batch) return;
+                  if (!(await onForward(message.id, targetChatId))) break;
+                  sentCount += 1;
                 }
-              })
-              .finally(() => setActionPending(false));
+              } catch {
+                // Keep only unsent messages available for a retry.
+              } finally {
+                if (forwardingBatchRef.current === batch) {
+                  const remaining = batch.slice(sentCount);
+                  forwardingBatchRef.current = remaining.length ? remaining : undefined;
+                  setForwardingMessages(remaining.length ? remaining : undefined);
+                  setSelectedIds((current) => {
+                    const next = new Set(current);
+                    for (const message of batch.slice(0, sentCount)) next.delete(message.id);
+                    return next;
+                  });
+                  if (remaining.length)
+                    setForwardingError(t('Не удалось переслать сообщения. Попробуйте ещё раз.'));
+                }
+                forwardingBusyRef.current = false;
+                setActionPending(false);
+              }
+            })();
           }}
         />
       ) : null}
@@ -3740,36 +3799,48 @@ function EditMessageDialog({
 }
 
 function ForwardMessageDialog({
-  message,
+  messages,
   chats,
   userId,
   currentChatId,
   busy,
+  error,
   onClose,
   onForward,
 }: {
-  message: MessageItem;
+  messages: MessageItem[];
   chats: ChatItem[];
   userId: string;
   currentChatId: string;
   busy: boolean;
   onClose(): void;
   onForward(chatId: string): void;
+  error: string;
 }) {
   const [search, setSearch] = useState('');
   const query = search.trim().toLocaleLowerCase('ru-RU');
-  const targets = chats.filter(
-    (chat) =>
-      chat.id !== currentChatId &&
-      (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
-  );
+  const targets = chats
+    .filter(
+      (chat) =>
+        chat.id !== currentChatId &&
+        (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
+    )
+    .sort((first, second) => {
+      const priority = (chat: ChatItem) => (chat.isSaved ? 0 : chat.id === SERVICE_CHAT_ID ? 2 : 1);
+      const timestamp = (chat: ChatItem) => {
+        const time = Date.parse(chat.lastMessageAt ?? '');
+        return Number.isFinite(time) ? time : 0;
+      };
+      return priority(first) - priority(second) || timestamp(second) - timestamp(first);
+    });
+  const title = messages.length === 1 ? t('Переслать сообщение') : t('Переслать сообщения');
   return createPortal(
     <div className="forward-message-backdrop" onPointerDown={onClose}>
       <section
         className="forward-message-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={t('Переслать сообщение')}
+        aria-label={title}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header>
@@ -3777,8 +3848,12 @@ function ForwardMessageDialog({
             <Forward />
           </span>
           <div>
-            <strong>{t('Переслать сообщение')}</strong>
-            <small>{message.body || mediaKindLabel(message.kind)}</small>
+            <strong>{title}</strong>
+            <small>
+              {messages.length === 1
+                ? messages[0].body || mediaKindLabel(messages[0].kind)
+                : t('Выбрано сообщений: {count}', { count: messages.length })}
+            </small>
           </div>
           <button type="button" aria-label={t('Закрыть')} disabled={busy} onClick={onClose}>
             <X />
@@ -3795,6 +3870,11 @@ function ForwardMessageDialog({
           />
         </label>
         <div className="forward-chat-list">
+          {error && (
+            <p className="forward-message-error" role="alert">
+              {error}
+            </p>
+          )}
           {targets.length ? (
             targets.map((chat) => (
               <button
@@ -3815,7 +3895,15 @@ function ForwardMessageDialog({
                 />
                 <span>
                   <strong>{chatName(chat, userId)}</strong>
-                  <small>{chat.type === 'group' ? t('Группа') : t('Личный чат')}</small>
+                  <small>
+                    {chat.isSaved
+                      ? t('Избранное')
+                      : chat.id === SERVICE_CHAT_ID
+                        ? t('Бот')
+                        : chat.type === 'group'
+                          ? t('Группа')
+                          : t('Личный чат')}
+                  </small>
                 </span>
                 <Forward />
               </button>

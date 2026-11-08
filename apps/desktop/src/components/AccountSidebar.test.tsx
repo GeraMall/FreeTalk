@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { AccountUser } from '../lib/api-client';
 import { AccountSidebar } from './AccountSidebar';
 import type { ChatItem } from './ChatsPage';
+import { serviceChat, SERVICE_CHAT_ID } from '../lib/service-chat';
 
 const realtimeHarness = vi.hoisted(() => ({
   onEvent: undefined as ((event: unknown) => void) | undefined,
@@ -392,6 +393,45 @@ describe('AccountSidebar in an active room', () => {
     expect(queryByText('Ты уже заходишь?')).toBeNull();
     expect(document.querySelector('.chat-notification-stack')).toBeNull();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts system notices from TRLKA, ignores own commands, and clears them when opened', () => {
+    const props = {
+      user,
+      activePage: 'home' as const,
+      chats: [serviceChat(user.id)],
+      onNavigate: vi.fn(),
+      onOpenChat: vi.fn(),
+      onCreateGroup: vi.fn(),
+      onSettings: vi.fn(),
+      onLogout: vi.fn(),
+    };
+    const screen = render(<AccountSidebar {...props} />);
+    const emit = (kind: string, sender_id: string | null) =>
+      act(() =>
+        realtimeHarness.onEvent?.({
+          type: 'message-created',
+          chatId: SERVICE_CHAT_ID,
+          message: {
+            id: 'notice',
+            kind,
+            sender_id,
+            body: 'Звонок завершён',
+            created_at: '2026-11-08T12:00:00Z',
+            expires_at: null,
+          },
+        }),
+      );
+    emit('text', user.id);
+    expect(screen.queryByRole('button', { name: /TRLKA, непрочитанных/ })).toBeNull();
+    emit('system', null);
+    expect(screen.getByRole('button', { name: 'TRLKA, непрочитанных сообщений: 1' })).toBeTruthy();
+    screen.rerender(
+      <AccountSidebar {...props} activePage="chats" readingChatId={SERVICE_CHAT_ID} />,
+    );
+    expect(screen.queryByRole('button', { name: /TRLKA, непрочитанных/ })).toBeNull();
+    emit('system', null);
+    expect(screen.queryByRole('button', { name: /TRLKA, непрочитанных/ })).toBeNull();
   });
 
   it('shows the external overlay in the background even for the currently open chat', () => {

@@ -227,6 +227,8 @@ export function HomeView({
     resetWidth: resetAccountSidebarWidth,
   } = useAccountSidebarWidth();
   const activeChatRef = useRef(activeChat);
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const messagesRequestIdRef = useRef(0);
   const messagesPageStartRef = useRef<{ chatId?: string; createdAt?: string }>({
     chatId: initialConversation,
@@ -292,7 +294,8 @@ export function HomeView({
     activeChatRef.current = activeChat;
   }, [activeChat]);
 
-  useEffect(() => {
+  // Save the visible conversation before another navigation can occur.
+  useLayoutEffect(() => {
     if (
       !activeChat ||
       activeChat === SERVICE_CHAT_ID ||
@@ -384,7 +387,10 @@ export function HomeView({
             lastMessage: event.message.body,
             lastMessageAt: event.message.created_at,
             unreadCount:
-              activeChatRef.current === SERVICE_CHAT_ID ? 0 : (current.unreadCount ?? 0) + 1,
+              event.message.sender_id === user.id ||
+              (pageRef.current === 'chats' && activeChatRef.current === SERVICE_CHAT_ID)
+                ? (current.unreadCount ?? 0)
+                : (current.unreadCount ?? 0) + 1,
           }));
           window.dispatchEvent(new Event(SERVICE_CHAT_UPDATED));
           return;
@@ -609,7 +615,6 @@ export function HomeView({
               ),
             })),
           );
-          setProfileRevision((revision) => revision + 1);
         }
       },
       undefined,
@@ -723,6 +728,13 @@ export function HomeView({
   useEffect(() => {
     void loadPage(page, false);
   }, [loadPage, page]);
+
+  useEffect(() => {
+    if (page === 'chats' && activeChat === SERVICE_CHAT_ID)
+      setServiceSummary((current) =>
+        current.unreadCount ? { ...current, unreadCount: 0 } : current,
+      );
+  }, [page, activeChat]);
 
   const loadChatMessages = useCallback(async (chatId: string, silent = false) => {
     if (chatId === SERVICE_CHAT_ID) {

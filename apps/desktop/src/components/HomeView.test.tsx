@@ -12,7 +12,7 @@ import {
   uniqueCallParticipants,
 } from '../lib/call-history';
 import { HomeView, RecentRooms, TransientNotice } from './HomeView';
-import { SERVICE_CHAT_UPDATED } from '../lib/service-chat';
+import { SERVICE_CHAT_UPDATED, SERVICE_CHAT_ID } from '../lib/service-chat';
 
 const homeViewHarness = vi.hoisted(() => ({
   request: vi.fn(),
@@ -122,6 +122,52 @@ describe('retained account navigation', () => {
     if (path.endsWith('/messages')) return { messages: [message], hasMore: false };
     throw Error(`Unexpected request ${path}`);
   };
+
+  it('counts bot notices while a remembered service chat is hidden by another section and clears on return', async () => {
+    homeViewHarness.request.mockImplementation(async (path: string) => baseResponse(path));
+    const sidebar = vi.fn();
+    const page = (controlledPage: 'home' | 'chats') => (
+      <HomeView
+        user={user}
+        busy={false}
+        error=""
+        initialChatId={SERVICE_CHAT_ID}
+        page={controlledPage}
+        onSidebarStateChange={sidebar}
+        onCreateRoom={vi.fn()}
+        onJoinRoom={vi.fn()}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />
+    );
+    const screen = render(page('home'));
+    await waitFor(() => expect(homeViewHarness.event).toBeTruthy());
+    const unread = () =>
+      sidebar.mock.calls
+        .at(-1)?.[0]
+        .chats.find((chat: { id: string }) => chat.id === SERVICE_CHAT_ID).unreadCount ?? 0;
+    const emit = (sender_id: string | null) =>
+      act(() =>
+        homeViewHarness.event?.({
+          type: 'message-created',
+          chatId: SERVICE_CHAT_ID,
+          message: {
+            ...message,
+            id: 'service-notice',
+            kind: sender_id ? 'text' : 'system',
+            sender_id,
+          },
+        }),
+      );
+    emit(null);
+    expect(unread()).toBe(1);
+    emit('self');
+    expect(unread()).toBe(1);
+    screen.rerender(page('chats'));
+    await waitFor(() => expect(unread()).toBe(0));
+    emit(null);
+    expect(unread()).toBe(0);
+  });
 
   it('restores the selected chat synchronously after a call remount even while offline', async () => {
     homeViewHarness.request.mockImplementation(async (path: string) => baseResponse(path));

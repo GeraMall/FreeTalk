@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ChatsPage, MessageList, type ChatItem, type MessageItem } from './ChatsPage';
 import { accountClient } from '../lib/api-client';
+import { SERVICE_CHAT_ID } from '@freetalk/config';
 import { collapseDuplicateCallMessages, extractMessageLinks } from '../lib/chat-call-messages';
 
 const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
@@ -163,6 +164,151 @@ describe('Message links and selection', () => {
       configurable: true,
       value: originalElementFromPoint,
     });
+  });
+
+  const selectMessage = (screen: ReturnType<typeof render>, text: string) => {
+    fireEvent.contextMenu(screen.getByText(text).closest('article')!, {
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Выделить' }));
+  };
+
+  const forwardView = (
+    onForward: (messageId: string, chatId: string) => Promise<boolean> = async () => true,
+    chatId = 'source',
+  ) => (
+    <MessageList
+      chatId={chatId}
+      userId="self"
+      groupChat={false}
+      messages={[message('1', 'friend'), message('2', 'friend'), message('3', 'friend')]}
+      loading={false}
+      error=""
+      sentMessageVersion={0}
+      onRetry={vi.fn()}
+      onJoinCall={vi.fn()}
+      chats={[
+        {
+          id: SERVICE_CHAT_ID,
+          type: 'direct',
+          title: 'TRLKA',
+          members: [],
+          lastMessageAt: '2026-11-09T12:00:00Z',
+        },
+        {
+          id: 'old',
+          type: 'group',
+          title: 'Старый чат',
+          members: [],
+          lastMessageAt: '2026-11-01T12:00:00Z',
+        },
+        { id: 'saved', type: 'direct', title: null, members: [], isSaved: true },
+        { id: 'source', type: 'group', title: 'Текущий чат', members: [] },
+        {
+          id: 'recent',
+          type: 'group',
+          title: 'Свежий чат',
+          members: [],
+          lastMessageAt: '2026-11-08T12:00:00Z',
+        },
+      ]}
+      onForward={onForward}
+    />
+  );
+
+  it('toggles a message from the empty selection row but preserves its text and checkbox clicks', () => {
+    const screen = render(forwardView());
+    selectMessage(screen, 'Сообщение 1');
+    const rows = screen.container.querySelectorAll('.message-selection-row');
+    fireEvent.click(rows[1]);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+    fireEvent.click(screen.getByText('Сообщение 1'));
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+    fireEvent.click(rows[0].querySelector('article')!);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('checkbox', { checked: true }));
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+  });
+
+  it('puts saved messages first, recent conversations next, and TRLKA last without changing the source list', () => {
+    const screen = render(forwardView());
+    selectMessage(screen, 'Сообщение 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться выбранными сообщениями' }));
+    const dialog = screen.getByRole('dialog', { name: 'Переслать сообщение' });
+    expect(
+      [...dialog.querySelectorAll('.forward-chat-list strong')].map((item) => item.textContent),
+    ).toEqual(['Избранное', 'Свежий чат', 'Старый чат', 'TRLKA']);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'свеж' } });
+    expect(dialog.querySelectorAll('.forward-chat-list button')).toHaveLength(1);
+    expect(within(dialog).getByText('Свежий чат')).toBeTruthy();
+  });
+
+  it('forwards a selection once in message order and retains only unsent messages after a failure', async () => {
+    let resolveFirst!: (sent: boolean) => void;
+    const onForward = vi
+      .fn<(messageId: string, chatId: string) => Promise<boolean>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    const screen = render(forwardView(onForward));
+    selectMessage(screen, 'Сообщение 2');
+    fireEvent.click(screen.container.querySelectorAll('.message-selection-row')[0]);
+    const bar = screen.getByRole('toolbar', { name: 'Выбранные сообщения' });
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([
+      'Копировать выбранные сообщения',
+      'Поделиться выбранными сообщениями',
+      'Снять выделение',
+    ]);
+    fireEvent.click(within(bar).getByRole('button', { name: 'Поделиться выбранными сообщениями' }));
+    const target = screen.getByRole('button', { name: 'Свежий чат Группа' });
+    fireEvent.click(target);
+    fireEvent.click(target);
+    expect(onForward.mock.calls).toEqual([['1', 'recent']]);
+    await act(async () => resolveFirst(true));
+    await screen.findByRole('alert');
+    expect(onForward.mock.calls).toEqual([
+      ['1', 'recent'],
+      ['2', 'recent'],
+    ]);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Свежий чат Группа' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onForward.mock.calls).toEqual([
+      ['1', 'recent'],
+      ['2', 'recent'],
+      ['2', 'recent'],
+    ]);
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+  });
+
+  it('stops a pending batch when the user changes chats', async () => {
+    let resolveFirst!: (sent: boolean) => void;
+    const onForward = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const screen = render(forwardView(onForward));
+    selectMessage(screen, 'Сообщение 1');
+    fireEvent.click(screen.container.querySelectorAll('.message-selection-row')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться выбранными сообщениями' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Свежий чат Группа' }));
+    screen.rerender(forwardView(onForward, 'another'));
+    await act(async () => resolveFirst(true));
+    expect(onForward).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
   });
 
   it('keeps native text selection inside a message bubble separate from message selection', () => {
@@ -1099,6 +1245,83 @@ describe('Resizable chat list', () => {
     const avatar = panel.querySelector('.chat-profile-avatar')!;
     expect(avatar.querySelector('.avatar-presence-badge')).toBeTruthy();
     expect(panel.querySelector('.chat-profile-identity .chat-presence')).toBeNull();
+  });
+
+  it('keeps a loaded profile visible during refresh and failure, and updates presence without a new request', async () => {
+    const profile = {
+      id: 'friend',
+      username: 'alex_1',
+      displayName: 'Алексей',
+      bio: 'Описание друга',
+      avatarUrl: null,
+      coverUrl: null,
+      registeredAt: '2026-08-26T00:00:00Z',
+      presence: 'offline',
+      mutualFriendsCount: 0,
+      mutualFriends: [],
+    };
+    const refresh: { promise?: Promise<unknown> } = {};
+    const request = vi
+      .spyOn(accountClient, 'request')
+      .mockImplementation(async (path) =>
+        path === '/v1/users/friend/profile' ? (refresh.promise ?? { profile }) : { call: null },
+      );
+    const profileRequests = () =>
+      request.mock.calls.filter(([path]) => path === '/v1/users/friend/profile').length;
+    const page = (revision = 0, presence: 'online' | 'offline' = 'offline') => (
+      <ChatsPage
+        userId="self"
+        chats={[
+          {
+            ...chat,
+            members: chat.members.map((member) =>
+              member.id === 'friend' ? { ...member, presence } : member,
+            ),
+          },
+        ]}
+        friends={[]}
+        activeChatId="chat-a"
+        profileRevision={revision}
+        messages={[]}
+        chatsLoading={false}
+        messagesLoading={false}
+        messagesError=""
+        sentMessageVersion={0}
+        onOpenChat={vi.fn(async () => undefined)}
+        onRetryMessages={vi.fn()}
+        onSendMessage={vi.fn(async () => true)}
+        onCreateGroup={vi.fn(async () => true)}
+        onJoinInvite={vi.fn(async () => true)}
+        onStartCall={vi.fn(async () => undefined)}
+        onCreateInvite={vi.fn(async () => undefined)}
+        onUpdateRetention={vi.fn(async () => undefined)}
+        onClearHistory={vi.fn(async () => undefined)}
+        onAddMember={vi.fn(async () => true)}
+        onJoinCall={vi.fn()}
+      />
+    );
+    const screen = render(page());
+    const panel = screen.getByRole('complementary', { name: 'Профиль собеседника' });
+    await within(panel).findByText('Описание друга');
+    const avatar = panel.querySelector('.chat-profile-avatar');
+    const count = profileRequests();
+    screen.rerender(page(0, 'online'));
+    expect(profileRequests()).toBe(count);
+    expect(panel.querySelector('.chat-profile-avatar')).toBe(avatar);
+    expect(panel.querySelector('.profile-panel-skeleton')).toBeNull();
+    expect(
+      within(panel).getByRole('button', { name: 'Открыть полный профиль Алексей. В сети' }),
+    ).toBeTruthy();
+    let rejectRefresh!: (reason: Error) => void;
+    refresh.promise = new Promise((_resolve, reject) => {
+      rejectRefresh = reject;
+    });
+    screen.rerender(page(1, 'online'));
+    expect(panel.querySelector('.chat-profile-avatar')).toBe(avatar);
+    expect(panel.querySelector('.profile-panel-skeleton')).toBeNull();
+    await act(async () => rejectRefresh(Error('offline')));
+    expect(within(panel).getByText('Описание друга')).toBeTruthy();
+    expect(panel.querySelector('.chat-profile-avatar')).toBe(avatar);
   });
 
   it('reveals chat actions with a horizontal mobile swipe and confirms deletion', async () => {

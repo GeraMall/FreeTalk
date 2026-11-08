@@ -122,15 +122,16 @@ export function UserProfileDialog({
     targetUsername,
   ]);
 
+  const activeTargetId = activeTarget?.id;
   useEffect(() => {
-    if (!activeTarget) return;
+    if (!activeTargetId) return;
     let cancelled = false;
-    const seed = initialProfile?.id === activeTarget.id ? initialProfile : undefined;
+    const seed = initialProfile?.id === activeTargetId ? initialProfile : undefined;
     setProfile(seed);
-    setLoading(true);
+    setLoading(!seed);
     setError('');
     void accountClient
-      .request<{ profile: UserProfileData }>(`/v1/users/${activeTarget.id}/profile`)
+      .request<{ profile: UserProfileData }>(`/v1/users/${activeTargetId}/profile`)
       .then(async (result) => {
         await warmAccountMediaCache(viewerId, collectAccountMediaUrls(result.profile), 4_000);
         if (!cancelled) setProfile(result.profile);
@@ -145,7 +146,7 @@ export function UserProfileDialog({
     return () => {
       cancelled = true;
     };
-  }, [activeTarget, initialProfile, viewerId]);
+  }, [activeTargetId, initialProfile, viewerId]);
 
   useEffect(() => {
     if (!activeTarget) return;
@@ -252,7 +253,7 @@ export function FullProfileView({
   const displayName = profile?.displayName ?? target.displayName;
   const username = profile?.username ?? target.username;
   const avatarUrl = profile?.avatarUrl ?? target.avatarUrl;
-  const presence = profile?.presence ?? target.presence ?? 'offline';
+  const presence = target.presence ?? profile?.presence ?? 'offline';
   const activityItems: Array<{
     icon: 'call' | 'chat' | 'presence';
     title: string;
