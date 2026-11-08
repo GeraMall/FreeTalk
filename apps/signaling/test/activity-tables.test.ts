@@ -291,3 +291,76 @@ describe('private table projections and pointers', () => {
     }
   });
 });
+
+describe('shared dice gestures', () => {
+  it('only accepts the current player, keeps gestures ephemeral and attaches the accepted release to the throw', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100000);
+    try {
+      const manager = new RoomManager(),
+        host = Object.assign(new Connection(), { tabletVersion: 3 as const }),
+        watcher = Object.assign(new Connection(), { tabletVersion: 3 as const }),
+        outside = new Connection();
+      manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', host);
+      manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'Peer', watcher);
+      manager.join('ABCDEFGH2345', id(3), 'session-323456789', 'Outside', outside);
+      const act = (who: number, action: RoomActivityAction) =>
+        manager.updateActivity('ABCDEFGH2345', id(who), host.activity.revision, action);
+      act(1, { kind: 'open' });
+      act(1, { kind: 'tablet-join', joined: true });
+      act(2, { kind: 'tablet-join', joined: true });
+      act(1, { kind: 'table-open', game: 'monopoly', edition: 3, propertyRules: 2 });
+      act(2, { kind: 'table-seat', seat: 1 });
+      act(1, { kind: 'table-start' });
+      const table = host.activity.table!,
+        revision = host.activity.revision,
+        packet = {
+          id: id(9),
+          seq: 1,
+          phase: 'hold' as const,
+          poses: [
+            { x: 0.4, y: 0.5, rx: 0, ry: 0 },
+            { x: 0.6, y: 0.5, rx: 0, ry: 0 },
+          ] as [
+            { x: number; y: number; rx: number; ry: number },
+            { x: number; y: number; rx: number; ry: number },
+          ],
+          vx: 0.4,
+          vy: -0.1,
+        };
+      const gesture = (
+        dice:
+          typeof packet | (Omit<typeof packet, 'phase'> & { phase: 'move' | 'release' | 'cancel' }),
+      ) => ({
+        kind: 'tablet-pointer' as const,
+        surface: `${table.id}:property`,
+        x: 0.5,
+        y: 0.5,
+        visible: false,
+        dice,
+      });
+      watcher.messages = [];
+      outside.messages = [];
+      act(2, gesture(packet));
+      expect(watcher.messages).toHaveLength(0);
+      act(1, gesture(packet));
+      expect(watcher.messages.filter((m) => m.type === 'activity-pointer')).toHaveLength(1);
+      expect(outside.messages).toHaveLength(0);
+      expect(host.activity.revision).toBe(revision);
+      act(1, gesture({ ...packet, seq: 2, phase: 'move' }));
+      expect(watcher.messages).toHaveLength(1);
+      vi.setSystemTime(100150);
+      act(1, gesture({ ...packet, seq: 3, phase: 'release' }));
+      act(1, { kind: 'property', action: 'roll' });
+      const v = host.activity.table;
+      if (v?.kind !== 'monopoly') throw Error('Wrong table');
+      expect(v.lastMove?.motion?.id).toBe(packet.id);
+      expect(v.lastMove?.motion?.seq).toBe(3);
+      const messages = watcher.messages.length;
+      act(1, gesture({ ...packet, id: id(8) }));
+      expect(watcher.messages.length).toBe(messages);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

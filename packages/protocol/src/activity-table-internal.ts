@@ -1,4 +1,4 @@
-import type { ActivityTable, TableAction } from './activity-table.js';
+import type { DiceMotion, ActivityTable, TableAction } from './activity-table.js';
 export interface QuizQuestion {
   q: string;
   a: [string, string, string, string];
@@ -27,6 +27,7 @@ export type TableContext = {
   adultIds?: string[];
   pokerFlow?: 2;
   propertyRules?: 2;
+  diceMotion?: DiceMotion;
 };
 export type TableReducer = (
   session: TableSession,

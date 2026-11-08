@@ -3,6 +3,31 @@ import { z } from 'zod';
 export const tableKindSchema = z.enum(['chess', 'fleet', 'monopoly', 'millionaire', 'poker']);
 const id = z.string().uuid();
 const count = z.number().int().nonnegative();
+export const diceMotionSchema = z.object({
+  id: z.string().uuid(),
+  seq: count,
+  poses: z.tuple([
+    z.object({
+      x: z.number().min(0).max(1),
+      y: z.number().min(0).max(1),
+      rx: z.number().min(-720).max(720),
+      ry: z.number().min(-720).max(720),
+    }),
+    z.object({
+      x: z.number().min(0).max(1),
+      y: z.number().min(0).max(1),
+      rx: z.number().min(-720).max(720),
+      ry: z.number().min(-720).max(720),
+    }),
+  ]),
+  vx: z.number().min(-3).max(3),
+  vy: z.number().min(-3).max(3),
+});
+export const diceGestureSchema = diceMotionSchema.extend({
+  phase: z.enum(['hold', 'move', 'release', 'cancel']),
+});
+export type DiceMotion = z.infer<typeof diceMotionSchema>;
+export type DiceGesture = z.infer<typeof diceGestureSchema>;
 const base = {
   edition: z.literal(3).optional(),
   training: z.boolean().optional(),
@@ -63,6 +88,7 @@ export const tableSchema = z.discriminatedUnion('kind', [
     lastMove: z
       .object({
         sequence: count,
+        motion: diceMotionSchema.optional(),
         roll: z.boolean().optional(),
         seat: count,
         from: count,
@@ -287,6 +313,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tablet-join'), joined: z.boolean() }),
   z.object({
     kind: z.literal('tablet-pointer'),
+    dice: diceGestureSchema.optional(),
     surface: z.string().max(80),
     x: z.number().min(0).max(1),
     y: z.number().min(0).max(1),
@@ -296,6 +323,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
 export type TableAction = z.infer<typeof tableActionSchema>;
 export const activityPointerSchema = z.object({
   type: z.literal('activity-pointer'),
+  dice: diceGestureSchema.optional(),
   participantId: id,
   surface: z.string().max(80),
   x: z.number().min(0).max(1),

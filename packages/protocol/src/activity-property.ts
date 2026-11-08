@@ -487,6 +487,7 @@ function finishPropertyAction(
     }
     v.lastMove = {
       sequence: (old.lastMove?.sequence ?? 0) + 1,
+      motion: rolling ? context.diceMotion : undefined,
       roll: !resumed,
       seat: roller,
       from,

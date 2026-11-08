@@ -1,34 +1,46 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { DiceGesture, DiceMotion } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import {
   diceLimits,
   diceRotations,
   restDice,
-  settleDice,
-  stepDice,
-  throwDice,
+  diceRollFrames,
+  sampleDiceRoll,
+  DICE_ROLL_MS,
   type DiceBody,
   type DiceBounds,
 } from '../lib/monopoly-dice';
 const faces = [[4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 export function PropertyDice({
   dice,
   rolling,
   sequence,
   startAt,
+  motion,
+  remote,
+  actorName,
+  onGesture,
   canRoll,
   onRoll,
   onShake,
-  onImpact,
+  onThrowSound,
+  onStopped,
 }: {
   dice: [number, number];
   rolling: boolean;
   sequence: number;
   startAt?: number;
+  motion?: DiceMotion;
+  remote?: DiceGesture;
+  actorName?: string;
+  onGesture?(gesture: DiceGesture): void;
   canRoll: boolean;
   onRoll(): void;
   onShake(): void;
-  onImpact?(): void;
+  onThrowSound?(elapsed: number): void;
+  onStopped?(): void;
 }) {
   const root = useRef<HTMLButtonElement>(null),
     wrappers = useRef<(HTMLSpanElement | null)[]>([]),
@@ -38,7 +50,10 @@ export function PropertyDice({
     bodies = useRef(restDice(bounds.current));
   const grab = useRef<
       | {
-          id: number;
+          pointerId: number;
+          id: string;
+          seq: number;
+          sentAt: number;
           clientX: number;
           clientY: number;
           positions: DiceBody[];
@@ -49,14 +64,15 @@ export function PropertyDice({
       | undefined
     >(undefined),
     velocity = useRef({ x: 0, y: 0, at: 0 });
-  const callbacks = useRef({ onRoll, onShake, onImpact });
-  callbacks.current = { onRoll, onShake, onImpact };
-  const values = useRef(dice);
+  const callbacks = useRef({ onRoll, onShake, onThrowSound, onStopped, onGesture });
+  callbacks.current = { onRoll, onShake, onThrowSound, onStopped, onGesture };
+  const values = useRef(dice),
+    rollMotion = useRef(motion),
+    mirror = useRef(remote);
   values.current = dice;
-  const flight = useRef<
-      { sequence: number; at: number; last: number; settling?: DiceBody[] } | undefined
-    >(undefined),
-    wasRolling = useRef(false),
+  rollMotion.current = motion;
+  mirror.current = remote;
+  const lastRemote = useRef<DiceGesture>(undefined),
     [held, setHeld] = useState(false);
   const paint = useCallback(() => {
     bodies.current.forEach((b, i) => {
@@ -67,122 +83,185 @@ export function PropertyDice({
       if (cube)
         cube.style.transform = `translateY(${-Math.min(b.z, Math.max(0, b.y - bounds.current.size * 0.9 - 3))}px) rotateX(${b.rx}deg) rotateY(${b.ry}deg)`;
       if (shadow) {
-        shadow.style.transform = `scale(${Math.max(0.45, 1 - b.z / 150)})`;
-        shadow.style.opacity = String(Math.max(0.12, 0.36 - b.z / 260));
+        shadow.style.transform = `scale(${Math.max(0.6, 1 - b.z / 150)})`;
+        shadow.style.opacity = String(Math.max(0.15, 0.32 - b.z / 260));
       }
     });
   }, []);
-  const alignFaces = useCallback(() => {
+  const align = useCallback(() => {
     bodies.current = bodies.current.map((b, i) => {
       const r = diceRotations[Math.max(0, values.current[i]! - 1)] ?? diceRotations[0];
       return { ...b, z: 0, rx: r[0] - 18, ry: r[1] + 22 };
     });
     paint();
   }, [paint]);
-  // Size is read from the entire felt; positions are clamped again after a resize.
+  const publish = useCallback((phase: DiceGesture['phase'], force = false) => {
+    const g = grab.current;
+    if (!g) return;
+    const now = Date.now();
+    if (!force && now - g.sentAt < 110) return;
+    g.sentAt = now;
+    const poses = bodies.current.map((b) => ({
+      x: clamp(b.x / bounds.current.width, 0, 1),
+      y: clamp(b.y / bounds.current.height, 0, 1),
+      rx: ((b.rx % 720) + 720) % 720,
+      ry: ((b.ry % 720) + 720) % 720,
+    })) as DiceMotion['poses'];
+    callbacks.current.onGesture?.({
+      id: g.id,
+      seq: ++g.seq,
+      phase,
+      poses,
+      vx: clamp(velocity.current.x / bounds.current.width, -3, 3),
+      vy: clamp(velocity.current.y / bounds.current.height, -3, 3),
+    });
+  }, []);
   useEffect(() => {
     const el = root.current;
     if (!el) return;
     let initial = true;
     const measure = () => {
       const old = bounds.current,
-        later = {
+        next = {
           width: el.clientWidth || 260,
           height: el.clientHeight || 180,
           size: parseFloat(getComputedStyle(el).getPropertyValue('--die-size')) || 42,
         };
-      bounds.current = later;
-      const limits = diceLimits(later);
+      bounds.current = next;
+      const l = diceLimits(next);
       bodies.current = initial
-        ? restDice(later)
+        ? restDice(next)
         : bodies.current.map((b) => ({
             ...b,
-            x: Math.max(limits.left, Math.min(limits.right, (b.x * later.width) / old.width)),
-            y: Math.max(limits.top, Math.min(limits.bottom, (b.y * later.height) / old.height)),
+            x: clamp((b.x * next.width) / old.width, l.left, l.right),
+            y: clamp((b.y * next.height) / old.height, l.top, l.bottom),
           }));
       initial = false;
       paint();
     };
     measure();
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measure);
-      return () => window.removeEventListener('resize', measure);
-    }
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
   }, [paint]);
   useEffect(() => {
-    const reduce =
-      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!held) return;
+    const timer = setInterval(() => publish('move'), 250);
+    return () => clearInterval(timer);
+  }, [held, publish]);
+  useEffect(
+    () => () => {
+      if (grab.current) publish('cancel', true);
+      callbacks.current.onStopped?.();
+    },
+    [publish],
+  );
+  useEffect(() => {
     if (!rolling) {
-      wasRolling.current = false;
-      flight.current = undefined;
-      if (!grab.current) alignFaces();
+      if (!grab.current && !mirror.current) align();
+      callbacks.current.onStopped?.();
       return;
     }
-    const at = startAt ?? Date.now();
-    if (!wasRolling.current || !flight.current) {
-      bodies.current = throwDice(bodies.current, sequence, velocity.current);
-      flight.current = { sequence, at, last: at };
-    } else if (flight.current.sequence !== sequence) {
-      flight.current.sequence = sequence;
-      flight.current.at = at;
-      flight.current.last = Math.max(flight.current.last, at);
-    }
-    wasRolling.current = true;
+    if (startAt === undefined) return;
+    const frames = diceRollFrames(values.current, sequence, rollMotion.current),
+      reduce =
+        typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const elapsed = Math.max(0, Date.now() - startAt);
+    if (elapsed < DICE_ROLL_MS && !reduce) callbacks.current.onThrowSound?.(elapsed);
     let raf = 0;
     const animate = () => {
-      const f = flight.current;
-      if (!f) return;
-      const now = Date.now(),
-        elapsed = now - f.at;
-      if (reduce || elapsed >= 890) {
-        alignFaces();
-        return;
-      }
-      if (elapsed < 630) {
-        let dt = Math.max(0, Math.min(0.06, (now - f.last) / 1000));
-        while (dt > 0) {
-          const step = Math.min(dt, 1 / 120);
-          if (stepDice(bodies.current, bounds.current, step)) callbacks.current.onImpact?.();
-          dt -= step;
-        }
-      } else {
-        f.settling ??= bodies.current.map((b) => ({ ...b }));
-        bodies.current = settleDice(f.settling, values.current, (elapsed - 630) / 250);
-      }
-      f.last = now;
+      const elapsed = reduce ? DICE_ROLL_MS : Math.max(0, Date.now() - startAt);
+      bodies.current = sampleDiceRoll(frames, elapsed, bounds.current);
       paint();
-      raf = requestAnimationFrame(animate);
+      if (elapsed < DICE_ROLL_MS) raf = requestAnimationFrame(animate);
+      else callbacks.current.onStopped?.();
     };
-    raf = requestAnimationFrame(animate);
+    animate();
     return () => cancelAnimationFrame(raf);
-  }, [rolling, sequence, startAt, alignFaces, paint]);
-  const release = (cancelled = false) => {
-    if (!grab.current) return;
-    grab.current = undefined;
-    setHeld(false);
-    if (cancelled || !canRoll) {
-      bodies.current = restDice(bounds.current);
-      alignFaces();
+    // Each accepted throw has its own server sequence; gesture packets never restart it.
+  }, [rolling, sequence, startAt, align, paint]);
+  useEffect(() => {
+    const previous = lastRemote.current;
+    lastRemote.current = remote;
+    if (rolling || grab.current) return;
+    if (!remote) {
+      if (previous) {
+        bodies.current = restDice(bounds.current);
+        align();
+        callbacks.current.onStopped?.();
+      }
       return;
     }
+    const from = bodies.current.map((b) => ({ ...b })),
+      l = diceLimits(bounds.current),
+      target = remote.poses.map((p, i) => ({
+        ...from[i]!,
+        x: clamp(p.x * bounds.current.width, l.left, l.right),
+        y: clamp(p.y * bounds.current.height, l.top, l.bottom),
+        z: 2,
+        rx: p.rx,
+        ry: p.ry,
+      }));
+    if (
+      remote.phase !== 'release' &&
+      previous &&
+      remote.poses.some(
+        (p, i) =>
+          Math.abs(p.x - previous.poses[i]!.x) + Math.abs(p.y - previous.poses[i]!.y) > 0.003 ||
+          Math.abs(p.rx - previous.poses[i]!.rx) + Math.abs(p.ry - previous.poses[i]!.ry) > 4,
+      )
+    )
+      callbacks.current.onShake();
+    const at = performance.now();
+    let raf = 0;
+    const animate = () => {
+      const p = clamp((performance.now() - at) / 100, 0, 1),
+        s = p * p * (3 - 2 * p);
+      bodies.current = target.map((b, i) => ({
+        ...b,
+        x: from[i]!.x + (b.x - from[i]!.x) * s,
+        y: from[i]!.y + (b.y - from[i]!.y) * s,
+        rx: from[i]!.rx + (((((b.rx - from[i]!.rx + 180) % 360) + 360) % 360) - 180) * s,
+        ry: from[i]!.ry + (((((b.ry - from[i]!.ry + 180) % 360) + 360) % 360) - 180) * s,
+      }));
+      paint();
+      if (p < 1) raf = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => cancelAnimationFrame(raf);
+  }, [remote, rolling, align, paint]);
+  const release = (cancelled = false) => {
+    if (!grab.current) return;
     if (Date.now() - velocity.current.at > 100) velocity.current = { x: 0, y: 0, at: Date.now() };
+    publish(cancelled || !canRoll ? 'cancel' : 'release', true);
+    grab.current = undefined;
+    setHeld(false);
+    callbacks.current.onStopped?.();
+    if (cancelled || !canRoll) {
+      bodies.current = restDice(bounds.current);
+      align();
+      return;
+    }
     callbacks.current.onRoll();
   };
+  const shaking = held || (!!remote && remote.phase !== 'release'),
+    throwing = rolling || remote?.phase === 'release';
   return (
     <button
       ref={root}
       type="button"
-      className={`mono-dice-tray ${held ? 'is-held' : ''} ${rolling ? 'is-rolling' : ''}`}
+      className={`mono-dice-tray ${shaking ? 'is-held' : ''} ${throwing ? 'is-rolling' : ''}`}
       aria-label={t('Кубики: зажмите, встряхните и отпустите')}
       aria-disabled={!canRoll}
       onPointerDown={(e) => {
         if (!canRoll || e.button !== 0 || grab.current) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         grab.current = {
-          id: e.pointerId,
+          pointerId: e.pointerId,
+          id: crypto.randomUUID(),
+          seq: 0,
+          sentAt: 0,
           clientX: e.clientX,
           clientY: e.clientY,
           positions: bodies.current.map((b) => ({ ...b })),
@@ -192,15 +271,17 @@ export function PropertyDice({
         };
         velocity.current = { x: 0, y: 0, at: Date.now() };
         setHeld(true);
+        publish('hold', true);
       }}
       onPointerMove={(e) => {
         const g = grab.current;
-        if (!g || g.id !== e.pointerId) return;
+        if (!g || g.pointerId !== e.pointerId) return;
         const now = Date.now(),
           dt = Math.max(8, now - g.at),
           dx = e.clientX - g.clientX,
           dy = e.clientY - g.clientY,
-          l = diceLimits(bounds.current);
+          l = diceLimits(bounds.current),
+          changed = Math.abs(e.clientX - g.lastX) + Math.abs(e.clientY - g.lastY) > 0.5;
         velocity.current = {
           x: ((e.clientX - g.lastX) / dt) * 1000,
           y: ((e.clientY - g.lastY) / dt) * 1000,
@@ -208,32 +289,30 @@ export function PropertyDice({
         };
         bodies.current = g.positions.map((b, i) => ({
           ...b,
-          x: Math.max(l.left, Math.min(l.right, b.x + dx)),
-          y: Math.max(l.top, Math.min(l.bottom, b.y + dy)),
-          z: 6,
-          rx: b.rx + dy * 3 + (i ? 10 : 0),
-          ry: b.ry + dx * 3,
+          x: clamp(b.x + dx, l.left, l.right),
+          y: clamp(b.y + dy, l.top, l.bottom),
+          z: 3,
+          rx: b.rx + dy * 0.8 + (i ? 5 : 0),
+          ry: b.ry + dx * 0.8,
         }));
         g.lastX = e.clientX;
         g.lastY = e.clientY;
         g.at = now;
         paint();
-        callbacks.current.onShake();
+        if (changed) callbacks.current.onShake();
+        publish('move');
       }}
       onPointerUp={(e) => {
-        if (e.pointerId === grab.current?.id) release();
+        if (e.pointerId === grab.current?.pointerId) release();
       }}
       onPointerCancel={(e) => {
-        if (e.pointerId === grab.current?.id) release(true);
+        if (e.pointerId === grab.current?.pointerId) release(true);
       }}
       onLostPointerCapture={(e) => {
-        if (e.pointerId === grab.current?.id) release(true);
+        if (e.pointerId === grab.current?.pointerId) release(true);
       }}
       onClick={(e) => {
-        if (e.detail === 0 && canRoll && !grab.current) {
-          velocity.current = { x: 0, y: 0, at: Date.now() };
-          callbacks.current.onRoll();
-        }
+        if (e.detail === 0 && canRoll && !grab.current) callbacks.current.onRoll();
       }}
     >
       <span className="mono-dice-stage" aria-hidden="true">
@@ -272,18 +351,14 @@ export function PropertyDice({
           );
         })}
       </span>
-      <span className="mono-dice-help">
-        {t(
-          held
-            ? 'Отпустите, чтобы бросить'
-            : rolling
-              ? 'Кубики катятся…'
-              : canRoll
-                ? 'Зажмите кубики и перемещайте по полю'
-                : 'Ожидаем ход игрока',
-        )}
+      <span className="mono-dice-help" role="status">
+        {shaking
+          ? `${actorName ?? t('Игрок')} ${t('встряхивает кубики')}`
+          : throwing
+            ? `${actorName ?? t('Игрок')} ${t('бросает кубики')}`
+            : t(canRoll ? 'Зажмите кубики и перемещайте по полю' : 'Ожидаем ход игрока')}
       </span>
-      <span className="mono-dice-result">
+      <span className="mono-dice-result" aria-hidden={shaking || throwing}>
         {dice[0] > 0 ? `${dice[0]} + ${dice[1]} = ${dice[0] + dice[1]}` : '—'}
       </span>
     </button>

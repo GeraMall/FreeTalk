@@ -2452,3 +2452,14 @@
 .mono-cell > small {
   line-height: 1.1;
 }
+
+.mono-dice-result {
+  transition: opacity 180ms ease;
+}
+.mono-dice-tray:is(.is-held, .is-rolling) .mono-dice-result {
+  opacity: 0;
+}
+.mono-dice-tray:is(.is-held, .is-rolling) .mono-dice-help {
+  color: #eee4c9;
+  font-weight: 650;
+}

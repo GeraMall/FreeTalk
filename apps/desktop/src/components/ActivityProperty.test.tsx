@@ -12,6 +12,7 @@ vi.mock('../lib/monopoly-sounds', () => ({
     enabled = true;
     play = vi.fn();
     stop = vi.fn();
+    stopDice = vi.fn();
   },
 }));
 beforeEach(() => {

@@ -38,6 +38,7 @@ interface Peer {
   lastReactionAt: number;
   lastActivityAt: number;
   lastPointerAt: number;
+  lastDiceAt: number;
   lastActivityResyncAt: number;
 }
 
@@ -49,6 +50,12 @@ interface Room {
   createdAt: number;
   chatMessages: RoomChatMessage[];
   activity: RoomActivitySession;
+  dice?: {
+    clientId: string;
+    tableId: string;
+    packet: NonNullable<Extract<RoomActivityAction, { kind: 'tablet-pointer' }>['dice']>;
+    at: number;
+  };
   identities: Map<string, { sessionId: string; accountId?: string }>;
 }
 
@@ -169,6 +176,7 @@ export class RoomManager {
       lastReactionAt: existing?.lastReactionAt ?? 0,
       lastActivityAt: existing?.lastActivityAt ?? 0,
       lastPointerAt: 0,
+      lastDiceAt: 0,
       lastActivityResyncAt: 0,
     };
     room.peers.set(clientId, peer);
@@ -373,6 +381,56 @@ export class RoomManager {
       return;
     }
     if (action.kind === 'tablet-pointer') {
+      if (action.dice) {
+        const table = room.activity.table?.view,
+          packet = action.dice,
+          now = Date.now(),
+          cached = room.dice;
+        if (
+          !v2 ||
+          !peer.connection.canUseActivity ||
+          !room.activity.view.open ||
+          !room.activity.view.viewers?.includes(clientId) ||
+          table?.kind !== 'monopoly' ||
+          table.phase !== 'playing' ||
+          table.seats[table.turn] !== clientId ||
+          table.step !== 'roll' ||
+          table.auction ||
+          now < (table.lastMove?.until ?? 0) ||
+          action.surface !== `${table.id}:property`
+        )
+          return;
+        if (packet.phase === 'hold') {
+          if ((cached && now - peer.lastDiceAt < 100) || cached?.packet.id === packet.id) return;
+        } else if (
+          !cached ||
+          cached.clientId !== clientId ||
+          cached.tableId !== table.id ||
+          cached.packet.id !== packet.id ||
+          packet.seq <= cached.packet.seq ||
+          cached.packet.phase === 'release' ||
+          now - cached.at > 1500
+        )
+          return;
+        if (packet.phase === 'move' && now - peer.lastDiceAt < 100) return;
+        peer.lastDiceAt = now;
+        room.dice =
+          packet.phase === 'cancel' ? undefined : { clientId, tableId: table.id, packet, at: now };
+        for (const [id, other] of room.peers)
+          if (
+            id !== clientId &&
+            other.connection.activityVersion === 2 &&
+            room.activity.view.viewers?.includes(id)
+          )
+            other.connection.send({
+              type: 'activity-pointer',
+              participantId: clientId,
+              ...action,
+              visible: false,
+            });
+        return;
+      }
+
       if (!v2 || !room.activity.view.open || !room.activity.view.viewers?.includes(clientId))
         return;
       const table = room.activity.table?.view;
@@ -441,6 +499,12 @@ export class RoomManager {
             actorId: clientId,
             pokerFlow: peer.connection.pokerFlow,
             propertyRules: peer.connection.propertyRules,
+            diceMotion:
+              room.dice?.clientId === clientId &&
+              room.dice.tableId === room.activity.table?.view.id &&
+              now - room.dice.at < 1500
+                ? room.dice.packet
+                : undefined,
             members: [...room.peers.keys()],
             now,
             voters: [...room.peers]
@@ -448,6 +512,9 @@ export class RoomManager {
                 ([, p]) =>
                   p.connection.tabletVersion === 3 &&
                   p.connection.canUseActivity &&
+                  (room.activity.view.viewers?.includes(p.participant.id) ||
+                    (room.activity.table?.view.phase === 'playing' &&
+                      room.activity.table.view.seats.includes(p.participant.id))) &&
                   (!(
                     action.kind === 'game-propose' &&
                     action.game === 'poker' &&
@@ -466,6 +533,15 @@ export class RoomManager {
     if (action.kind === 'open') {
       next.view = { ...next.view, startedBy: clientId, sessionId: crypto.randomUUID() };
     }
+    if (
+      next.table?.view.kind !== 'monopoly' ||
+      next.table.view.id !== room.activity.table?.view.id ||
+      next.table.view.lastMove?.sequence !==
+        (room.activity.table?.view.kind === 'monopoly'
+          ? room.activity.table.view.lastMove?.sequence
+          : undefined)
+    )
+      room.dice = undefined;
     room.activity = next;
     this.sendActivity(room);
   }

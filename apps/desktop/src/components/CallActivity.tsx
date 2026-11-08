@@ -189,6 +189,10 @@ export function CallActivity({
   }, [gameKind, table?.id]);
   const play = (next: ActivityGame | TableKind) => {
     if (next === 'poker' && activity.canPlayPoker === false) return;
+    if (next === activeKind) {
+      setCatalog(false);
+      return;
+    }
     if (table || game) {
       onAction?.({ kind: 'game-propose', game: next });
       return;
@@ -263,6 +267,7 @@ export function CallActivity({
       <div
         data-activity-surface="catalog"
         onPointerMove={(event) => {
+          if ((event.target as HTMLElement).closest('.mono-dice-tray.is-held')) return;
           if (table && ['fleet', 'poker'].includes(table.kind)) return;
           const now = performance.now();
           if (now - pointerAt.current < 145) return;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  diceRollFrames,
+  sampleDiceRoll,
   diceLimits,
   diceRotations,
   restDice,
@@ -22,8 +24,8 @@ describe('local Monopoly dice motion', () => {
     expect(bodies[1]!.vx).toBeGreaterThan(0);
     const settled = settleDice(bodies, [4, 6], 1);
     expect(settled.map((b) => b.z)).toEqual([0, 0]);
-    expect((settled[0]!.rx + 18) % 360).toBe(diceRotations[3]![0]);
-    expect((settled[1]!.ry - 22) % 360).toBe(diceRotations[5]![1]);
+    expect((((settled[0]!.rx + 18) % 360) + 360) % 360).toBe((diceRotations[3]![0] + 360) % 360);
+    expect((((settled[1]!.ry - 22) % 360) + 360) % 360).toBe(diceRotations[5]![1]);
   });
   it.each([
     [700, 400, 42],
@@ -52,4 +54,25 @@ describe('local Monopoly dice motion', () => {
     expect(propertyBoard[37]?.[0]).toBe('Тверская улица');
     expect(propertyLog('Игрок 1: 3 + 2 → Звёздная')).toBe('Игрок 1: 3 + 2 → Первая Парковая улица');
   });
+});
+
+it('replays the same continuous roll for every viewer and settles on the server result', () => {
+  const frames = diceRollFrames([2, 6], 17),
+    copy = diceRollFrames([2, 6], 17),
+    bounds = { width: 800, height: 500, size: 44 };
+  expect(copy).toEqual(frames);
+  let previous = sampleDiceRoll(frames, 0, bounds);
+  for (let time = 1; time <= 900; time++) {
+    const next = sampleDiceRoll(frames, time, bounds);
+    for (let i = 0; i < 2; i++) {
+      expect(Math.hypot(next[i]!.x - previous[i]!.x, next[i]!.y - previous[i]!.y)).toBeLessThan(4);
+      expect(
+        Math.abs(next[i]!.rx - previous[i]!.rx) + Math.abs(next[i]!.ry - previous[i]!.ry),
+      ).toBeLessThan(15);
+    }
+    previous = next;
+  }
+  expect((((previous[0]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(270);
+  expect((((previous[1]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(180);
+  expect(previous.every((p) => p.z === 0)).toBe(true);
 });

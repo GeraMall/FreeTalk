@@ -346,6 +346,44 @@ function reduceSwitchVote(
   if (!context.members.includes(context.actorId)) return session;
   let vote = session.view.switchVote;
   if (action.kind === 'game-propose') {
+    const eligible = (context.voters ?? context.members).filter((id) =>
+      context.members.includes(id),
+    );
+    if (!eligible.includes(context.actorId)) return session;
+    if (action.game === 'poker' && !context.adultIds?.includes(context.actorId)) return session;
+    const currentKind = session.table?.view.kind ?? session.view.game?.kind;
+    if (action.game === currentKind) return session;
+    const active = session.table
+      ? session.table.view.phase === 'playing'
+      : Boolean(
+          session.view.game &&
+          !session.view.game.result &&
+          (session.view.game.kind === 'chess'
+            ? (session.moves?.length ?? 0) > 0
+            : session.view.game.cells.some((c) => c !== -1)),
+        );
+    if (!active || eligible.length <= 1) {
+      let next: RoomActivitySession;
+      if (action.game === 'mines')
+        next = startGame('mines', { ...session.view, game: undefined, table: undefined });
+      else {
+        const table = createTable(
+          action.game,
+          context,
+          action.game === 'poker' ? 2 : undefined,
+          action.game === 'poker' ? 8 : undefined,
+          3,
+          action.game === 'poker' ? context.pokerFlow : undefined,
+          action.game === 'monopoly' ? context.propertyRules : undefined,
+        );
+        next = { table, view: { ...session.view, game: undefined, table: tableView(table) } };
+      }
+      return {
+        ...next,
+        voteCooldownUntil: undefined,
+        view: { ...next.view, switchVote: undefined, revision: session.view.revision + 1 },
+      };
+    }
     if (vote?.state === 'voting' || context.now < (session.voteCooldownUntil ?? 0)) return session;
     if (action.game === 'poker' && !context.adultIds?.includes(context.actorId)) return session;
     const electorate = (context.voters ?? context.members).filter(

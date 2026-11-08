@@ -1,5 +1,5 @@
 import { propertyBuildingStock, propertyLiquidation, type TableOf } from '@freetalk/protocol';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Landmark,
   Dices,
@@ -18,6 +18,7 @@ import { PropertyBoard } from './PropertyBoard';
 import { propertyBoard, propertyLog, propertyColors, playerColors } from '../lib/monopoly-layout';
 import { PropertyDice } from './PropertyDice';
 import { PropertyDeed, PropertyModal, PropertyTrade } from './PropertyCards';
+import { useSharedDice } from '../lib/use-shared-dice';
 import { MonopolySounds } from '../lib/monopoly-sounds';
 import './monopoly.css';
 const heard = new Set<string>();
@@ -47,6 +48,7 @@ export function ActivityProperty({
     cardSeen = useRef(table.lastCard?.sequence ?? 0),
     previous = useRef(table),
     waitingWin = useRef(false);
+  const shared = useSharedDice(table, selfId, send);
   const move = table.lastMove,
     busy = now < (move?.until ?? 0),
     rolling = pending > 0 || (!!move && move.roll !== false && now < move.at + 900);
@@ -73,7 +75,7 @@ export function ActivityProperty({
   const ownerToShow = portfolio ?? (seat >= 0 ? seat : table.turn),
     own = table.owners.flatMap((owner, i) => (owner === ownerToShow ? [i] : [])),
     stock = propertyBuildingStock(table);
-  useEffect(() => {
+  useLayoutEffect(() => {
     audio.enabled = audioOn && !participants.find((p) => p.id === selfId)?.deafened;
     if (!audio.enabled) audio.stop();
   }, [audio, audioOn, participants, selfId]);
@@ -100,8 +102,7 @@ export function ActivityProperty({
       if (heard.size > 512) heard.delete(heard.values().next().value!);
       void audio.play(sound);
     };
-    if (move && move.roll !== false && now - move.at < 900)
-      once(`${table.id}:${move.sequence}:roll`, 'roll');
+
     if (move && progress > 0 && busy) once(`${table.id}:${move.sequence}:step:${progress}`, 'step');
     if (previous.current.phase === 'playing' && table.phase === 'finished')
       waitingWin.current = true;
@@ -216,10 +217,24 @@ export function ActivityProperty({
             rolling={rolling}
             sequence={move?.sequence ?? 0}
             startAt={pending ? undefined : move?.at}
+            motion={move?.motion}
+            remote={shared.remote}
+            onGesture={shared.onGesture}
+            actorName={playerName(
+              table.seats[pending ? table.turn : rolling && move ? move.seat : table.turn],
+              participants,
+            )}
             canRoll={canRoll}
             onRoll={roll}
             onShake={() => void audio.play('shake')}
-            onImpact={() => void audio.play('shake')}
+            onThrowSound={(elapsed) => {
+              const key = `${table.id}:${move?.sequence}:roll`;
+              if (!heard.has(key)) {
+                heard.add(key);
+                void audio.play('roll', { offsetMs: elapsed, remainingMs: 900 - elapsed });
+              }
+            }}
+            onStopped={() => audio.stopDice()}
           />
           <p className="mono-center-caption">
             {t(table.extraRoll ? 'Дубль · ещё один бросок' : 'За прохождение старта: +200')}

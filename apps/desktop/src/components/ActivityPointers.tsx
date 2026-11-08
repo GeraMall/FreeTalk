@@ -21,6 +21,7 @@ export function ActivityPointers({
     setPointers({});
     if (disabled) return;
     const stop = subscribeActivityPointers((pointer) => {
+      if (pointer.dice) return;
       if (pointer.participantId === selfId || !pointer.surface.startsWith(surfaceId + ':')) return;
       setPointers((old) => {
         const next = { ...old };

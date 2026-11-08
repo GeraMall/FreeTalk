@@ -190,6 +190,14 @@ describe('shared game switch votes', () => {
       { kind: 'table-open', game: 'poker', pokerRules: 2, pokerSeats: 8, edition: 3 },
       ctx(),
     );
+    s = applyRoomActivity(s, s.view.revision, { kind: 'table-seat', seat: 1 }, ctx(ids[1]));
+    s = applyRoomActivity(
+      s,
+      s.view.revision,
+      { kind: 'poker-config', mode: 'classic', ante: false, ageConfirmed: true },
+      ctx(),
+    );
+    s = applyRoomActivity(s, s.view.revision, { kind: 'table-start' }, ctx());
     const original = s.table!.view.id;
     s = applyRoomActivity(s, s.view.revision, { kind: 'game-propose', game: 'chess' }, ctx(ids[1]));
     expect(s.table!.view.id).toBe(original);
@@ -217,7 +225,58 @@ describe('shared game switch votes', () => {
     expect(
       applyRoomActivity(s, s.view.revision, { kind: 'game-propose', game: 'poker' }, ctx(ids[3])),
     ).toBe(s);
+    s = applyRoomActivity(
+      s,
+      s.view.revision,
+      { kind: 'table-open', game: 'chess', edition: 3 },
+      ctx(),
+    );
+    s = applyRoomActivity(s, s.view.revision, { kind: 'table-seat', seat: 1 }, ctx(ids[1]));
+    s = applyRoomActivity(s, s.view.revision, { kind: 'table-start' }, ctx());
     s = applyRoomActivity(s, s.view.revision, { kind: 'game-propose', game: 'monopoly' }, ctx());
     expect(tickRoomActivity(s, 30000).view.switchVote?.state).toBe('expired');
+  });
+});
+
+describe('free selection before a party starts', () => {
+  it('switches lobbies repeatedly without votes or cooldowns, including from a different host', () => {
+    let s = applyRoomActivity(emptyRoomActivity(), 0, { kind: 'open' }, ctx());
+    for (const game of [
+      'millionaire',
+      'poker',
+      'monopoly',
+      'chess',
+      'poker',
+      'fleet',
+      'monopoly',
+    ] as const) {
+      s = applyRoomActivity(
+        s,
+        s.view.revision,
+        { kind: 'game-propose', game },
+        { ...ctx(ids[1]), propertyRules: 2 },
+      );
+      expect(s.table?.view.kind).toBe(game);
+      expect(s.table?.view.phase).toBe('lobby');
+      expect(s.view.switchVote).toBeUndefined();
+      expect(s.voteCooldownUntil).toBeUndefined();
+    }
+  });
+  it('lets a solo human switch an active training table and clears a stale vote', () => {
+    let s = applyRoomActivity(emptyRoomActivity(), 0, { kind: 'open' }, ctx());
+    s.table = createTable('monopoly', ctx(), undefined, undefined, 3, undefined, 2);
+    s.table = reduceTable(s.table, { kind: 'table-bot', seat: 1 }, ctx());
+    s.table = reduceTable(s.table, { kind: 'table-start' }, ctx());
+    s.view = { ...s.view, table: tableView(s.table) };
+    s.voteCooldownUntil = 999999;
+    s = applyRoomActivity(
+      s,
+      s.view.revision,
+      { kind: 'game-propose', game: 'poker' },
+      { ...ctx(), voters: [ids[0]!] },
+    );
+    expect(s.table?.view.kind).toBe('poker');
+    expect(s.view.switchVote).toBeUndefined();
+    expect(s.voteCooldownUntil).toBeUndefined();
   });
 });

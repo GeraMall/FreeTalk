@@ -7,7 +7,14 @@ export {
 import { roomActivityActionSchema, roomActivitySchema } from './room-activity.js';
 export { Chess } from 'chess.js';
 import { activityPointerSchema } from './activity-table.js';
-export type { ActivityTable, TableKind, TableOf, TableAction } from './activity-table.js';
+export type {
+  DiceMotion,
+  DiceGesture,
+  ActivityTable,
+  TableKind,
+  TableOf,
+  TableAction,
+} from './activity-table.js';
 export { tableSchema, tableCountsForStatistics } from './activity-table.js';
 export { randomFleet, validFleet } from './activity-table-session.js';
 export {
