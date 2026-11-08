@@ -1,17 +1,26 @@
-import { propertyBoard, type TableOf } from '@freetalk/protocol';
+import type { TableOf } from '@freetalk/protocol';
 import type { CSSProperties, ReactNode } from 'react';
-import { propertyColors, playerColors, tokenIcons, propertyPosition } from '../lib/monopoly-layout';
+import {
+  propertyBoard,
+  propertyColors,
+  playerColors,
+  tokenIcons,
+  propertyPosition,
+} from '../lib/monopoly-layout';
 import { t } from '../lib/app-language';
+import { PropertyArtwork } from './PropertyArtwork';
 import { playerName, type TableParticipant } from './activity-table-ui';
 export function PropertyBoard({
   table,
   positions,
+  motion,
   participants,
   onSelect,
   children,
 }: {
   table: TableOf<'monopoly'>;
   positions: number[];
+  motion?: { seat: number; sequence: number; step: number };
   participants: TableParticipant[];
   onSelect(index: number): void;
   children: ReactNode;
@@ -28,24 +37,28 @@ export function PropertyBoard({
         const p = propertyPosition(i),
           owner = table.owners[i]!,
           h = table.houses[i]!,
-          special = group < 0;
+          special = group < 0,
+          illustrated = special || group === 8 || group === 9;
         return (
           <button
             key={i}
             type="button"
-            className={`mono-cell ${special ? 'is-special' : ''} ${table.mortgaged.includes(i) ? 'is-mortgaged' : ''} side-${p.col === 0 ? 'left' : p.col === 10 ? 'right' : p.row === 0 ? 'top' : 'bottom'}`}
+            className={`mono-cell ${special ? 'is-special' : ''} ${illustrated ? 'is-illustrated' : ''} tile-${i} ${table.mortgaged.includes(i) ? 'is-mortgaged' : ''} side-${p.col === 0 ? 'left' : p.col === 10 ? 'right' : p.row === 0 ? 'top' : 'bottom'}`}
             style={
               {
                 gridRow: p.row + 1,
                 gridColumn: p.col + 1,
                 '--group-color': propertyColors[group] ?? '#a6b6b2',
                 '--owner-color': playerColors[owner] ?? 'transparent',
+                '--cell-name-size':
+                  name.length > 10 && !/[\s-]/.test(name) ? 'clamp(7px,.9cqw,10.5px)' : undefined,
               } as CSSProperties
             }
             onClick={() => onSelect(i)}
             aria-label={`${t(name)}${price ? ` · ${price}` : ''}${owner >= 0 ? ` · ${playerName(table.seats[owner], participants)}` : ''}`}
           >
             <span className="mono-cell-band" />
+            <PropertyArtwork index={i} />
             <span className="mono-cell-name">{t(name)}</span>
             <small>
               {price ? `${price} ¤` : i === 0 ? '+200' : i === 20 ? 'P' : i === 10 ? '↗' : '◇'}
@@ -61,6 +74,9 @@ export function PropertyBoard({
               </span>
             )}
             {owner >= 0 && <span className="mono-cell-owner" />}
+            {motion && positions[motion.seat] === i && (
+              <span className="mono-step-wave" key={`${motion.sequence}:${motion.step}`} />
+            )}
           </button>
         );
       })}
@@ -87,8 +103,13 @@ export function PropertyBoard({
                 } as CSSProperties
               }
             >
-              <Icon />
-              <i />
+              <span
+                key={motion?.seat === i ? `${motion.sequence}:${motion.step}` : 'rest'}
+                className={`mono-token-piece ${motion?.seat === i ? 'is-hopping' : ''}`}
+              >
+                <Icon />
+                <i />
+              </span>
             </span>
           );
         })}

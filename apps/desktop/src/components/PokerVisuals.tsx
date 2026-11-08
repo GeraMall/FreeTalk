@@ -173,6 +173,25 @@ export function PokerChips({ amount, compact = false }: { amount: number; compac
     </span>
   );
 }
+function PokerFeedback({
+  feedback,
+}: {
+  feedback: { kind: string; label: string; key: string; at?: number };
+}) {
+  const [delay] = useState(() => -Math.max(0, Date.now() - (feedback.at ?? Date.now())));
+  return (
+    <span
+      className={`pkr-feedback-layer pkr-feedback-${feedback.kind}`}
+      style={{ animationDelay: `${delay}ms` }}
+      role="status"
+      aria-label={feedback.label}
+    >
+      <b style={{ animationDelay: `${delay}ms` }}>
+        {feedback.kind === 'timeout' ? t('Пас') : feedback.label}
+      </b>
+    </span>
+  );
+}
 export function PokerAvatar({
   person,
   feedback,
@@ -181,7 +200,7 @@ export function PokerAvatar({
   self,
 }: {
   person?: TableParticipant;
-  feedback?: { kind: string; label: string; key: string };
+  feedback?: { kind: string; label: string; key: string; at?: number };
   seconds?: number;
   moving: boolean;
   self: boolean;
@@ -208,16 +227,7 @@ export function PokerAvatar({
       ) : (
         <span>{person?.name.slice(0, 2) ?? '?'}</span>
       )}
-      {feedback && (
-        <span
-          key={feedback.key}
-          className={`pkr-feedback-layer pkr-feedback-${feedback.kind}`}
-          role="status"
-          aria-label={feedback.label}
-        >
-          {feedback.kind === 'timeout' ? t('Пас') : feedback.label}
-        </span>
-      )}
+      {feedback && <PokerFeedback key={feedback.key} feedback={feedback} />}
       {moving && (
         <svg className="pkr-time-ring" viewBox="0 0 72 72" aria-hidden="true">
           <circle cx="36" cy="36" r="33" />

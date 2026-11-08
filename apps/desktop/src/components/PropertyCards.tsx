@@ -1,6 +1,5 @@
 import {
   housePrice,
-  propertyBoard,
   propertyRentSchedule,
   propertyGroup,
   propertyBuildingStock,
@@ -10,7 +9,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { X, House, Landmark } from 'lucide-react';
 import { t } from '../lib/app-language';
 import { playerName, type TableUiProps } from './activity-table-ui';
-import { propertyColors } from '../lib/monopoly-layout';
+import { propertyBoard, propertyColors } from '../lib/monopoly-layout';
 export function PropertyModal({
   title,
   onClose,

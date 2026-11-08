@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableOf } from '@freetalk/protocol';
 import { ActivityProperty } from './ActivityProperty';
 import { PropertyDeed } from './PropertyCards';
@@ -14,9 +14,19 @@ vi.mock('../lib/monopoly-sounds', () => ({
     stop = vi.fn();
   },
 }));
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 function table(): TableOf<'monopoly'> {
   return {

@@ -52,13 +52,50 @@ describe('poker raise controls', () => {
     expect(screen.getByRole('button', { name: 'Пас' })).toBeTruthy();
     screen.rerender(
       <ActivityPoker
-        table={{ ...state, lastAction: { ...state.lastAction, at: 8000 } }}
+        table={{ ...state, lastAction: { ...state.lastAction, at: 7000 } }}
         selfId="a"
         participants={[]}
         send={vi.fn()}
       />,
     );
     expect(screen.container.querySelector('.pkr-feedback-layer')).toBeNull();
+    vi.restoreAllMocks();
+  });
+  it('lets each avatar finish its fade when the next player acts instead of abruptly removing it', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(10000);
+    const state = {
+      ...table(),
+      lastAction: { seat: 1, kind: 'check' as const, amount: 0, at: 10000, sequence: 1 },
+    };
+    const screen = render(
+      <ActivityPoker table={state} selfId="a" participants={[]} send={vi.fn()} />,
+    );
+    const first = screen.container.querySelector('.pkr-feedback-layer');
+    screen.rerender(
+      <ActivityPoker
+        table={{
+          ...state,
+          lastAction: { ...state.lastAction, seat: 2, kind: 'fold', sequence: 2 },
+        }}
+        selfId="a"
+        participants={[]}
+        send={vi.fn()}
+      />,
+    );
+    expect(screen.container.querySelectorAll('.pkr-feedback-layer')).toHaveLength(2);
+    expect(screen.container.querySelector('.pkr-feedback-layer')).toBe(first);
+    vi.restoreAllMocks();
+  });
+  it('seeks a late action fade and keeps its animation clock across ordinary rerenders', () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1500),
+      feedback = { kind: 'check', label: 'Чек', key: '1', at: 1000 };
+    const screen = render(<PokerAvatar feedback={feedback} moving={false} self={false} />);
+    const layer = screen.container.querySelector<HTMLElement>('.pkr-feedback-layer')!;
+    expect(layer.style.animationDelay).toBe('-500ms');
+    clock.mockReturnValue(1700);
+    screen.rerender(<PokerAvatar feedback={{ ...feedback }} moving={false} self={false} />);
+    expect(screen.container.querySelector('.pkr-feedback-layer')).toBe(layer);
+    expect(layer.style.animationDelay).toBe('-500ms');
     vi.restoreAllMocks();
   });
   it('uses the same vector suit in both mirrored corners and the middle, including tens', () => {

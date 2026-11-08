@@ -1,9 +1,4 @@
-import {
-  propertyBoard,
-  propertyBuildingStock,
-  propertyLiquidation,
-  type TableOf,
-} from '@freetalk/protocol';
+import { propertyBuildingStock, propertyLiquidation, type TableOf } from '@freetalk/protocol';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Landmark,
@@ -20,7 +15,7 @@ import { t } from '../lib/app-language';
 import { playerName, type TableUiProps } from './activity-table-ui';
 import { PokerAvatar } from './PokerVisuals';
 import { PropertyBoard } from './PropertyBoard';
-import { propertyColors, playerColors } from '../lib/monopoly-layout';
+import { propertyBoard, propertyLog, propertyColors, playerColors } from '../lib/monopoly-layout';
 import { PropertyDice } from './PropertyDice';
 import { PropertyDeed, PropertyModal, PropertyTrade } from './PropertyCards';
 import { MonopolySounds } from '../lib/monopoly-sounds';
@@ -87,7 +82,7 @@ export function ActivityProperty({
     const refresh = () => setNow(Date.now());
     refresh();
     if (!move || Date.now() >= move.until) return;
-    const timer = setInterval(refresh, 80);
+    const timer = setInterval(refresh, 25);
     return () => clearInterval(timer);
   }, [move]);
   useEffect(() => {
@@ -149,7 +144,7 @@ export function ActivityProperty({
         <div>
           <h3>{t('Монополия')}</h3>
           <small>
-            {table.training ? t('Тренировка · без статистики') : t('Космическая недвижимость')}
+            {table.training ? t('Тренировка · без статистики') : t('Города и улицы России')}
           </small>
         </div>
         <span className="mono-turn-label">
@@ -207,6 +202,11 @@ export function ActivityProperty({
         <PropertyBoard
           table={table}
           positions={positions}
+          motion={
+            move && busy && progress > 0
+              ? { seat: move.seat, sequence: move.sequence, step: progress }
+              : undefined
+          }
           participants={participants}
           onSelect={deed}
         >
@@ -217,9 +217,11 @@ export function ActivityProperty({
             dice={table.dice}
             rolling={rolling}
             sequence={move?.sequence ?? 0}
+            startAt={pending ? undefined : move?.at}
             canRoll={canRoll}
             onRoll={roll}
             onShake={() => void audio.play('shake')}
+            onImpact={() => void audio.play('shake')}
           />
           <p className="mono-center-caption">
             {t(table.extraRoll ? 'Дубль · ещё один бросок' : 'За прохождение старта: +200')}
@@ -383,8 +385,8 @@ export function ActivityProperty({
               {t('Отели')}: <b>{stock.hotels}/12</b>
             </span>
           </div>
-          <p className="mono-last-log" title={table.log.at(-1)}>
-            {table.log.at(-1)}
+          <p className="mono-last-log" title={propertyLog(table.log.at(-1))}>
+            {propertyLog(table.log.at(-1))}
           </p>
         </aside>
       </div>

@@ -69,6 +69,24 @@ export function ActivityPoker({
 }: TableUiProps<TableOf<'poker'>>) {
   const [now, setNow] = useState(Date.now),
     [drawer, setDrawer] = useState<'hands' | 'stats'>();
+  const [avatarActions, setAvatarActions] = useState<
+    Record<number, NonNullable<TableOf<'poker'>['lastAction']> & { tableId: string; hand: number }>
+  >({});
+  useEffect(() => {
+    const a = table.lastAction;
+    if (!a) return;
+    setAvatarActions((previous) => {
+      const old = previous[a.seat];
+      if (
+        old?.tableId === table.id &&
+        old.hand === table.handNumber &&
+        old.sequence === a.sequence &&
+        old.at === a.at
+      )
+        return previous;
+      return { ...previous, [a.seat]: { ...a, tableId: table.id, hand: table.handNumber } };
+    });
+  }, [table.lastAction, table.id, table.handNumber]);
   const panel = useRef<HTMLElement>(null);
   const sounds = usePokerSounds(
     table,
@@ -114,6 +132,17 @@ export function ActivityPoker({
     advanced = table.pokerRules === 2;
   const dealing =
     advanced && !settled && now < (table.turnAt ?? 0) && now < (table.handStartedAt ?? 0) + 2600;
+  const avatarFeedback = (i: number) => {
+    const a = avatarActions[i];
+    return a &&
+      a.tableId === table.id &&
+      a.hand === table.handNumber &&
+      now - a.at < 2200 &&
+      !dealing
+      ? { at: a.at, kind: a.kind, label: t(actions[a.kind]), key: `${a.hand}:${a.sequence}` }
+      : undefined;
+  };
+
   const canAct =
     seat >= 0 &&
     seat === table.turn &&
@@ -332,15 +361,7 @@ export function ActivityPoker({
                   </span>
                   <PokerAvatar
                     person={person}
-                    feedback={
-                      table.lastAction?.seat === i && now - table.lastAction.at < 1700 && !dealing
-                        ? {
-                            kind: table.lastAction.kind,
-                            label: t(actions[table.lastAction.kind]),
-                            key: `${table.handNumber}:${table.lastAction.sequence}`,
-                          }
-                        : undefined
-                    }
+                    feedback={avatarFeedback(i)}
                     moving={moving}
                     seconds={seconds}
                     self={i === seat}

@@ -268,7 +268,7 @@
   background: #9bad9a;
 }
 .mono-cell-name {
-  font-size: clamp(7px, 1.03cqw, 12px);
+  font-size: var(--cell-name-size, clamp(7px, 1.03cqw, 12px));
   font-weight: 700;
   line-height: 1.13;
   overflow-wrap: anywhere;
@@ -354,7 +354,7 @@
     top 110ms linear;
   filter: drop-shadow(1px 3px 1px #001b17a0);
 }
-.mono-token > svg {
+.mono-token-piece > svg {
   position: relative;
   width: 22px;
   height: 24px;
@@ -364,7 +364,7 @@
   stroke-width: 1.5;
   filter: drop-shadow(1px 1px #53655c);
 }
-.mono-token > i {
+.mono-token-piece > i {
   position: absolute;
   bottom: 0;
   width: 23px;
@@ -374,7 +374,7 @@
   background: var(--seat-color);
   box-shadow: 0 2px #334d47;
 }
-.mono-token.is-turn > i {
+.mono-token.is-turn > .mono-token-piece > i {
   box-shadow:
     0 2px #334d47,
     0 0 0 2px #f8edbd9c;
@@ -550,51 +550,54 @@
   font-size: 12px;
 }
 .mono-dice-tray[class] {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
-  justify-content: stretch;
-  align-items: center;
-  width: clamp(145px, 25cqw, 260px);
-  height: clamp(115px, 25cqh, 180px);
-  padding: 12px;
-  border: 2px solid #52644c;
-  border-radius: 16px;
-  background: #13362b;
-  box-shadow:
-    inset 0 3px 14px #001b18af,
-    0 3px #142b27;
   touch-action: none;
   user-select: none;
   cursor: grab;
 }
 .mono-dice-tray.is-held {
   cursor: grabbing;
-  border-color: #c4be8b;
 }
 .mono-dice-tray[aria-disabled='true'] {
   cursor: default;
 }
 .mono-dice-stage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
+  position: absolute;
+  inset: 0;
+  --half: calc(var(--die-size)/2);
+  pointer-events: none;
+}
+.mono-die-body {
+  position: absolute;
+  left: calc(var(--die-size) / -2);
+  top: calc(var(--die-size) / -2);
+  width: var(--die-size);
+  height: var(--die-size);
   perspective: 500px;
-  --die-size: 42px;
-  --half: 21px;
-  min-height: 57px;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.is-held .mono-die-body {
+  transition: transform 55ms linear;
 }
 .mono-die {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: var(--die-size);
   height: var(--die-size);
   transform-style: preserve-3d;
   transform: rotateX(calc(var(--rx) - 18deg)) rotateY(calc(var(--ry) + 22deg));
+  will-change: transform;
 }
-.is-held .mono-die {
-  transform: translate(var(--tray-x), var(--tray-y))
-    rotateX(calc(var(--rx) + var(--shake-x) - 18deg))
-    rotateY(calc(var(--ry) + var(--shake-y) + 22deg));
+.mono-die-shadow {
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  bottom: -18%;
+  height: 34%;
+  background: #001b16;
+  border-radius: 50%;
+  filter: blur(3px);
+  opacity: 0.36;
 }
 .mono-die-face {
   position: absolute;
@@ -634,32 +637,6 @@
 }
 .face-6 {
   transform: rotateY(180deg) translateZ(var(--half));
-}
-.is-rolling .mono-die {
-  animation: mono-dice-throw 820ms cubic-bezier(0.17, 0.75, 0.26, 1) both;
-}
-.is-rolling .die-1 {
-  animation-delay: 65ms;
-}
-@keyframes mono-dice-throw {
-  0% {
-    transform: translate(-15px, -20px) rotateX(calc(var(--shake-x) + 180deg))
-      rotateY(calc(var(--shake-y) + 180deg));
-  }
-  35% {
-    transform: translate(18px, -15px) rotateX(500deg) rotateY(480deg);
-  }
-  65% {
-    transform: translate(-7px, 9px) rotateX(calc(var(--rx) + 320deg))
-      rotateY(calc(var(--ry) + 340deg));
-  }
-  82% {
-    transform: translate(3px, -4px) rotateX(calc(var(--rx) + 345deg))
-      rotateY(calc(var(--ry) + 390deg));
-  }
-  100% {
-    transform: rotateX(calc(var(--rx) + 342deg)) rotateY(calc(var(--ry) + 382deg));
-  }
 }
 .mono-dice-help {
   font-size: 11px;
@@ -2160,4 +2137,238 @@
 
 .mono-modes b {
   white-space: nowrap;
+}
+
+/* The full felt is the dice surface; the rest of the board remains clickable. */
+.mono-board-center {
+  position: relative;
+  overflow: hidden;
+}
+.mono-viewport .mono-board-center > .mono-dice-tray[class] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  display: block;
+  --die-size: 42px;
+}
+.mono-viewport .mono-board-center > .mono-dice-tray[class]:hover {
+  background: transparent;
+}
+.mono-dice-tray .mono-dice-stage {
+  --die-size: inherit;
+  --half: calc(var(--die-size)/2);
+  min-height: 0;
+}
+.mono-dice-help,
+.mono-dice-result {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  margin: 0;
+  pointer-events: none;
+}
+.mono-dice-help {
+  bottom: 30px;
+  font-size: 12px;
+}
+.mono-dice-result {
+  bottom: 10px;
+  font-size: 15px;
+}
+.mono-center-mark {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  pointer-events: none;
+  z-index: 2;
+  font-size: 15px;
+}
+.mono-center-caption {
+  position: absolute;
+  left: 12px;
+  top: 40px;
+  pointer-events: none;
+  font-size: 11px;
+}
+.mono-last-card[class] {
+  position: absolute;
+  right: 8px;
+  top: 9px;
+  z-index: 3;
+  max-width: 53%;
+  font-size: 10px;
+  min-height: 27px;
+}
+.mono-viewport .mono-property-rack > button:hover:not(:disabled) {
+  background: #d2d7d4;
+  border-color: #abb9b2;
+  color: #233b33;
+  box-shadow: none;
+}
+.mono-token-piece {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  transform-origin: center bottom;
+}
+.mono-token-piece.is-hopping {
+  animation: mono-token-hop 110ms ease-in-out both;
+}
+@keyframes mono-token-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-9px) scale(1.04, 0.98);
+  }
+  80% {
+    transform: translateY(-2px) scale(0.98, 1.03);
+  }
+}
+.mono-step-wave {
+  position: absolute;
+  width: 32px;
+  height: 15px;
+  left: calc(50% - 16px);
+  top: calc(50% - 7px);
+  border: 2px solid #eddfa6;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: mono-footfall 180ms ease-out both;
+}
+@keyframes mono-footfall {
+  from {
+    opacity: 0.8;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+.mono-cell-art {
+  width: 31px;
+  height: 31px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 0 #fff8);
+}
+.mono-viewport button.mono-cell.is-illustrated {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  gap: 0 1px;
+  padding: 4px 2px;
+  align-content: center;
+}
+.is-illustrated .mono-cell-band {
+  display: none;
+}
+.is-illustrated .mono-cell-art {
+  grid-column: 1;
+  grid-row: 1/3;
+  align-self: center;
+}
+.is-illustrated .mono-cell-name {
+  grid-column: 2;
+  align-self: end;
+  font-size: clamp(7px, 0.75cqw, 9px);
+}
+.is-illustrated > small {
+  grid-column: 2;
+  align-self: start;
+}
+.mono-viewport .mono-cell.tile-0 {
+  background: #c5daba;
+}
+.mono-viewport .mono-cell.tile-10,
+.mono-viewport .mono-cell.tile-30 {
+  background: #e9c18d;
+}
+.mono-viewport .mono-cell.tile-20 {
+  background: #e4b5ac;
+}
+.mono-viewport .mono-cell.tile-12 {
+  background: #e8d8ad;
+}
+.mono-viewport .mono-cell.tile-28 {
+  background: #c0ded8;
+}
+@container monopoly (max-width:760px) {
+  .mono-viewport .mono-board-center > .mono-dice-tray[class] {
+    --die-size: 30px;
+  }
+  .mono-dice-help {
+    font-size: 10px;
+    bottom: 25px;
+  }
+  .mono-dice-result {
+    font-size: 12px;
+    bottom: 7px;
+  }
+  .mono-center-mark,
+  .mono-center-caption {
+    display: none;
+  }
+  .mono-last-card[class] {
+    max-width: calc(100% - 16px);
+    font-size: 9px;
+    top: 6px;
+  }
+  .mono-viewport button.mono-cell.is-illustrated {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    display: flex;
+    flex-direction: column;
+    padding: 2px 1px;
+    gap: 0;
+  }
+  .mono-cell-art {
+    width: clamp(13px, 4cqw, 23px);
+    height: clamp(13px, 4cqw, 23px);
+  }
+  .is-illustrated .mono-cell-name {
+    font-size: clamp(6px, 1.5cqw, 9px);
+    line-height: 1.05;
+    max-height: 2.1em;
+    overflow: hidden;
+  }
+  .is-illustrated > small {
+    display: none;
+  }
+}
+@container monopoly (max-height:420px) {
+  .mono-viewport .mono-board-center > .mono-dice-tray[class] {
+    --die-size: 26px;
+  }
+  .mono-dice-help {
+    font-size: 9px;
+    bottom: 21px;
+  }
+  .mono-dice-result {
+    font-size: 11px;
+    bottom: 5px;
+  }
+  .mono-last-card[class] {
+    min-height: 20px;
+    padding: 2px 5px;
+    font-size: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mono-token-piece.is-hopping,
+  .mono-step-wave {
+    animation: none;
+  }
+  .is-held .mono-die-body {
+    transition: none;
+  }
 }
