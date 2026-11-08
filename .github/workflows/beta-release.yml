@@ -2,7 +2,8 @@ name: Beta pre-release
 
 on:
   push:
-    tags: ['v*-beta.*']
+    # beta.224 is assembled from separately verified Mac and version-only Windows builds.
+    tags: ['v*-beta.*', '!v0.4.0-beta.224']
   workflow_dispatch:
     inputs:
       include_macos:
