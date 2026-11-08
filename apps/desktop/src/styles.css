@@ -10078,14 +10078,12 @@ html.notification-overlay-document #root {
 .room-chat-message.own {
   grid-template-columns: minmax(0, 1fr) 30px;
 }
-.room-chat-message.own .room-chat-avatar {
-  grid-column: 2;
-}
-.room-chat-message.own .room-chat-bubble {
+.room-chat-message > .room-chat-avatar {
   grid-row: 1;
   grid-column: 1;
-  justify-self: end;
-  background: var(--ui-surface3-48, rgba(63, 77, 107, 0.48));
+}
+.room-chat-message.own > .room-chat-avatar {
+  grid-column: 2;
 }
 .room-chat-avatar {
   display: grid;
@@ -10116,6 +10114,7 @@ html.notification-overlay-document #root {
 }
 .room-chat-message.own .room-chat-bubble {
   border-radius: 12px 12px 4px;
+  background: var(--ui-surface3-48, rgba(63, 77, 107, 0.48));
 }
 .room-chat-message-meta {
   display: flex;
