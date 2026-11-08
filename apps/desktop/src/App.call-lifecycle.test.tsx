@@ -82,6 +82,7 @@ vi.mock('./lib/audio-manager', () => ({
   monitorRemoteSpeaking: () => () => {},
 }));
 vi.mock('./lib/video-manager', () => ({
+  ScreenCaptureCancelledError: class extends Error {},
   VideoManager: class {
     dispose() {}
     getTracks() {

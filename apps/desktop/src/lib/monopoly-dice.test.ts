@@ -25,8 +25,8 @@ describe('local Monopoly dice motion', () => {
     expect(bodies[1]!.vx).toBeGreaterThan(0);
     const settled = settleDice(bodies, [4, 6], 1);
     expect(settled.map((b) => b.z)).toEqual([0, 0]);
-    expect((((settled[0]!.rx + 18) % 360) + 360) % 360).toBe((diceRotations[3]![0] + 360) % 360);
-    expect((((settled[1]!.ry - 22) % 360) + 360) % 360).toBe(diceRotations[5]![1]);
+    expect(((settled[0]!.rx % 360) + 360) % 360).toBe((diceRotations[3]![0] + 360) % 360);
+    expect(((settled[1]!.ry % 360) + 360) % 360).toBe(diceRotations[5]![1]);
   });
   it.each([
     [700, 400, 42],
@@ -73,14 +73,30 @@ it('replays the same continuous roll for every viewer and settles on the server 
     }
     previous = next;
   }
-  expect((((previous[0]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(270);
-  expect((((previous[1]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(180);
+  expect(((previous[0]!.ry % 360) + 360) % 360).toBeCloseTo(270);
+  expect(((previous[1]!.ry % 360) + 360) % 360).toBeCloseTo(180);
   expect(previous.every((p) => p.z === 0)).toBe(true);
   const middle = sampleDiceRoll(frames, 450, bounds);
   expect(
     Math.abs(middle[0]!.rx - frames[0]![0]!.rx) + Math.abs(middle[0]!.ry - frames[0]![0]!.ry),
   ).toBeGreaterThan(30);
   expect(Math.hypot(middle[0]!.x - middle[1]!.x, middle[0]!.y - middle[1]!.y)).toBeLessThan(180);
+});
+
+it('finishes every result face square to the viewer, without the old perspective tilt', () => {
+  const modulo = (value: number) => ((value % 360) + 360) % 360;
+  for (let value = 1; value <= 6; value++) {
+    const final = sampleDiceRoll(diceRollFrames([value, value], 51), DICE_ROLL_MS, {
+      width: 320,
+      height: 230,
+      size: 32,
+    });
+    for (const die of final) {
+      expect(modulo(die.rx)).toBeCloseTo(modulo(diceRotations[value - 1]![0]));
+      expect(modulo(die.ry)).toBeCloseTo(modulo(diceRotations[value - 1]![1]));
+      expect(die.z).toBe(0);
+    }
+  }
 });
 
 it('keeps an extreme shared gesture together and gives button rolls a gentle shake before launch', () => {

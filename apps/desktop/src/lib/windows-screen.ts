@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { selectNativeScreen, type NativeScreenSource } from './native-screen-picker';
 export { cancelNativeScreenSelection } from './native-screen-picker';
-import { screenEncodingProfile, type VideoPreferences } from './video-quality';
+import { screenEncodingProfile, type VideoPreferences, type ScreenQuality } from './video-quality';
 
 export const NATIVE_SCREEN_CHANNEL = 'trlka-native-screen-v1';
 type Signal =
@@ -24,6 +24,7 @@ interface LifecycleEvent {
 }
 export interface NativeScreenCapture {
   includeAudio: boolean;
+  quality?: ScreenQuality;
   stream: MediaStream;
   stop(): Promise<void>;
 }
@@ -43,13 +44,14 @@ export async function startNativeWindowsScreen(
 ): Promise<NativeScreenCapture> {
   await active?.stop();
   const sources = await invoke<NativeScreenSource[]>('windows_screen_sources');
-  const source = await selectNativeScreen(sources, audio);
+  const source = await selectNativeScreen(sources, audio, preferences);
   const session = new NativeScreenSession(notice);
   try {
-    await session.start(source, preferences, source.includeAudio);
+    await session.start(source, { ...preferences, ...source.quality }, source.includeAudio);
     active = session;
     return {
       includeAudio: source.includeAudio,
+      quality: source.quality,
       stream: session.stream,
       stop: () => session.stop(),
     };

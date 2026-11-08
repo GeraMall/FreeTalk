@@ -164,8 +164,8 @@ export function settleDice(bodies: DiceBody[], values: [number, number], progres
   const p = 1 - (1 - clamp(progress, 0, 1)) ** 3;
   return bodies.map((b, i) => {
     const r = diceRotations[Math.max(0, values[i]! - 1)] ?? diceRotations[0];
-    const rx = r[0] - 18 + 360 * Math.round((b.rx - (r[0] - 18)) / 360),
-      ry = r[1] + 22 + 360 * Math.round((b.ry - (r[1] + 22)) / 360);
+    const rx = r[0] + 360 * Math.round((b.rx - r[0]) / 360),
+      ry = r[1] + 360 * Math.round((b.ry - r[1]) / 360);
     return { ...b, z: b.z * (1 - p), rx: b.rx + (rx - b.rx) * p, ry: b.ry + (ry - b.ry) * p };
   });
 }
@@ -222,8 +222,8 @@ export function diceRollFrames(
       ease = p * p * p * (10 - 15 * p + 6 * p * p);
     frames[frame] = frames[frame]!.map((b, i) => {
       const r = diceRotations[values[i]! - 1] ?? diceRotations[0],
-        targetX = r[0] - 18 + 360 * Math.round((end[i]!.rx - r[0] + 18) / 360),
-        targetY = r[1] + 22 + 360 * Math.round((end[i]!.ry - r[1] - 22) / 360);
+        targetX = r[0] + 360 * Math.round((end[i]!.rx - r[0]) / 360),
+        targetY = r[1] + 360 * Math.round((end[i]!.ry - r[1]) / 360);
       return {
         ...b,
         z: b.z * (1 - ease),

@@ -5,6 +5,7 @@ import {
   screenCaptureConstraints,
   screenSenderPreferences,
   type VideoPreferences,
+  type ScreenQuality,
 } from './video-quality';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import {
@@ -38,6 +39,8 @@ type PublishVideo = (
   stream?: MediaStream,
 ) => Promise<void>;
 
+export class ScreenCaptureCancelledError extends Error {}
+
 export function cameraConstraints(deviceId = ''): MediaTrackConstraints {
   const android = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
   return {
@@ -68,6 +71,7 @@ export class VideoManager {
     private readonly onNotice: (message: string) => void = () => undefined,
     preferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
     cameraBackground: CameraBackgroundSettings = { mode: 'none', dataUrl: '' },
+    private readonly onScreenQuality: (quality: ScreenQuality) => void = () => undefined,
   ) {
     this.preferences = normalizeVideoPreferences(preferences);
     this.cameraBackground = cameraBackground;
@@ -269,6 +273,10 @@ export class VideoManager {
           this.onNotice,
         );
         includeAudio = this.nativeWindowsScreen.includeAudio;
+        if (!this.disposed && this.nativeWindowsScreen.quality) {
+          this.preferences = { ...this.preferences, ...this.nativeWindowsScreen.quality };
+          this.onScreenQuality(this.nativeWindowsScreen.quality);
+        }
         stream = this.nativeWindowsScreen.stream;
       } else
         stream = await navigator.mediaDevices.getDisplayMedia({
@@ -292,6 +300,8 @@ export class VideoManager {
       connectionDiagnostics.record('screen-capture:error', undefined, {
         errorName: error instanceof DOMException ? error.name : 'unknown',
       });
+      if (error instanceof DOMException && error.name === 'NotAllowedError')
+        throw new ScreenCaptureCancelledError(screenErrorMessage(error));
       throw new Error(screenErrorMessage(error));
     }
     const track = stream.getVideoTracks()[0];

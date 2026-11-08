@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
-import { VideoManager } from './video-manager';
+import { VideoManager, ScreenCaptureCancelledError } from './video-manager';
 import { DEFAULT_VIDEO_PREFERENCES } from './video-quality';
 import { startNativeWindowsScreen, usesNativeWindowsCapture } from './windows-screen';
 
@@ -104,6 +104,47 @@ describe('VideoManager', () => {
       expect(stopped).toHaveBeenCalledTimes(attempt + 1);
     }
     expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
+  });
+
+  it('applies quick quality to the sender before publishing and treats picker cancellation as a notice', async () => {
+    vi.mocked(usesNativeWindowsCapture).mockReturnValue(true);
+    const quality = {
+      screenContentMode: 'video' as const,
+      screenResolution: '1440p' as const,
+      screenFrameRate: 60 as const,
+    };
+    const track = new FakeTrack();
+    vi.mocked(startNativeWindowsScreen).mockResolvedValueOnce({
+      includeAudio: false,
+      quality,
+      stream: new FakeStream([track]) as unknown as MediaStream,
+      stop: vi.fn(async () => undefined),
+    });
+    const chosen = vi.fn();
+    const publish = vi.fn(async () => {
+      expect(chosen).toHaveBeenCalledWith(quality);
+      expect(track.contentHint).toBe('motion');
+    });
+    const manager = new VideoManager(
+      publish,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      DEFAULT_VIDEO_PREFERENCES,
+      { mode: 'none', dataUrl: '' },
+      chosen,
+    );
+    await manager.toggleScreen();
+    expect(manager.getCurrent().source).toBe('screen');
+    await manager.toggleScreen();
+    chosen.mockClear();
+    vi.mocked(startNativeWindowsScreen).mockRejectedValueOnce(
+      new DOMException('Cancelled', 'NotAllowedError'),
+    );
+    await expect(manager.toggleScreen()).rejects.toBeInstanceOf(ScreenCaptureCancelledError);
+    expect(chosen).not.toHaveBeenCalled();
+    expect(manager.getCurrent().source).toBe('none');
+    manager.dispose();
   });
 
   it.each([false, true])(

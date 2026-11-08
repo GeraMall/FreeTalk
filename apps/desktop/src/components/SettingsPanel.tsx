@@ -48,6 +48,7 @@ import {
   remainingProfileChanges,
 } from '../lib/profile';
 import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
+import { ScreenQualityFields } from './ScreenQualityFields';
 import type { UpdateStatus } from '../lib/updater';
 import { accountClient, ApiError, type AccountSession, type AccountUser } from '../lib/api-client';
 import {
@@ -1336,58 +1337,7 @@ function VideoTab({
             {settings.screenResolution} · {settings.screenFrameRate} FPS
           </span>
         </div>
-        <div className="video-quality-grid">
-          <label className="field-label">
-            {t('Тип содержимого')}
-            <select
-              value={settings.screenContentMode}
-              onChange={(event) =>
-                onVideoSetting({
-                  screenContentMode: event.target.value as LocalSettings['screenContentMode'],
-                })
-              }
-            >
-              <option value="text">{t('Текст · максимальная чёткость')}</option>
-              <option value="balanced">{t('Универсальный · чётко и плавно')}</option>
-              <option value="video">{t('Видео · плавное движение')}</option>
-            </select>
-            <small>
-              {t('«Текст» бережёт детали, универсальный режим балансирует их с движением.')}
-            </small>
-          </label>
-          <label className="field-label">
-            {t('Максимальное разрешение')}
-            <select
-              value={settings.screenResolution}
-              onChange={(event) =>
-                onVideoSetting({
-                  screenResolution: event.target.value as LocalSettings['screenResolution'],
-                })
-              }
-            >
-              <option value="720p">HD · 1280×720</option>
-              <option value="1080p">Full HD · 1920×1080</option>
-              <option value="1440p">2K · 2560×1440</option>
-            </select>
-            <small>{t('Задаёт верхнюю границу детализации передаваемого изображения.')}</small>
-          </label>
-          <label className="field-label">
-            {t('Частота кадров')}
-            <select
-              value={settings.screenFrameRate}
-              onChange={(event) =>
-                onVideoSetting({
-                  screenFrameRate: Number(event.target.value) as LocalSettings['screenFrameRate'],
-                })
-              }
-            >
-              <option value="15">{t('15 FPS · экономно')}</option>
-              <option value="30">{t('30 FPS · рекомендуется')}</option>
-              <option value="60">{t('60 FPS · плавно')}</option>
-            </select>
-            <small>{t('Определяет плавность движения при достаточной скорости сети.')}</small>
-          </label>
-        </div>
+        <ScreenQualityFields value={settings} onChange={onVideoSetting} />
         <div className="video-toggle-list">
           <Toggle
             label={t('Передавать звук по умолчанию')}

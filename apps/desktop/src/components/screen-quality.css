@@ -1,0 +1,95 @@
+.screen-quality-fields .field-label {
+  min-width: 0;
+}
+.screen-quality-select {
+  position: relative;
+  min-width: 0;
+}
+.screen-quality-select > .birth-date-trigger {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--ft-border, var(--ui-line-100, #30415c));
+  border-radius: 11px;
+  background: var(--ui-surface0-100, #050c16);
+  color: var(--ui-text-100, #e9f0fa);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+.screen-quality-select > .birth-date-trigger:hover {
+  border-color: var(--ft-cyan, #8da6dc);
+}
+.screen-quality-select > .birth-date-trigger[aria-expanded='true'] {
+  border-color: var(--ft-cyan, #8da6dc);
+}
+.screen-quality-select .birth-date-options {
+  z-index: 150;
+  inset-inline: 0 auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(360px, calc(100vw - 48px));
+  background: var(--ui-surface1-100, #101c2a);
+  border: 1px solid var(--ft-border, var(--ui-line-100, #30415c));
+  border-radius: 11px;
+  padding: 5px;
+  box-shadow: 0 10px 28px var(--ui-shadow-33, #0005);
+}
+.screen-quality-fields > .field-label:last-child .birth-date-options {
+  inset-inline: auto 0;
+}
+.screen-quality-select .birth-date-options button > span {
+  white-space: normal;
+  line-height: 1.4;
+}
+.screen-quality-select .birth-date-options > button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-text-100, #e9f0fa);
+}
+.screen-quality-select .birth-date-options > button:is(.active, [aria-selected='true'], :hover) {
+  background: var(--ui-surface2-100, #20314a);
+  color: var(--ui-text-100, #f0f5ff);
+}
+.screen-quality-fields.is-compact {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ft-border, var(--ui-line-100, #30415c));
+}
+.screen-quality-fields.is-compact .field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ui-muted-100, #aab9cc);
+  font-size: 11px;
+  font-weight: 600;
+}
+.screen-quality-fields.is-compact .birth-date-trigger {
+  min-height: 40px;
+  font-size: 12px;
+  padding: 8px;
+}
+@media (max-width: 600px) {
+  .screen-quality-fields.is-compact {
+    grid-template-columns: 1fr 1fr;
+  }
+  .screen-quality-fields.is-compact .field-label:first-child {
+    grid-column: 1/-1;
+  }
+}

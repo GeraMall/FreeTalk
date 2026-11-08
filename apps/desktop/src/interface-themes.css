@@ -576,13 +576,27 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding-top: 15px;
-  border-top: 1px solid var(--ft-border);
+  padding: 14px;
+  border: 1px solid var(--ft-border);
+  border-radius: 12px;
+  background: var(--ui-surface0-100, #07121e);
   color: var(--ft-text);
+  cursor: pointer;
 }
-.theme-sync-control > span {
+.theme-sync-copy {
   flex: 1;
   min-width: 0;
+}
+.theme-sync-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ft-border);
+  border-radius: 10px;
+  background: var(--ui-surface1-100, #101c2a);
+  color: var(--ft-cyan);
 }
 .theme-sync-control strong {
   display: block;
@@ -596,14 +610,73 @@
   font-size: 12px;
   line-height: 1.5;
 }
-.theme-sync-control input {
-  width: 19px;
-  min-height: 19px;
-  height: 19px;
-  accent-color: var(--ft-cyan);
+.theme-sync-switch {
+  position: relative;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 24px;
+}
+.theme-sync-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.theme-sync-switch > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border: 1px solid var(--ft-border);
+  border-radius: 20px;
+  background: var(--ui-surface3-100, #233146);
+  transition:
+    background 180ms,
+    border-color 180ms;
+}
+.theme-sync-switch > span::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ui-muted-100, #afc0d4);
+  transition:
+    transform 180ms,
+    background 180ms;
+}
+.theme-sync-switch input:checked + span {
+  background: var(--ft-cyan);
+  border-color: var(--ft-cyan);
+}
+.theme-sync-switch input:checked + span::after {
+  transform: translateX(18px);
+  background: #fff;
+}
+.theme-sync-switch input:focus-visible + span {
+  outline: 2px solid var(--ft-cyan);
+  outline-offset: 3px;
+}
+.theme-sync-switch input:disabled + span {
+  opacity: 0.45;
+}
+.theme-sync-control:has(input:disabled) {
+  cursor: default;
 }
 .theme-storage-note {
-  padding-left: 32px;
+  padding-inline: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-sync-switch > span,
+  .theme-sync-switch > span::after {
+    transition: none;
+  }
 }
 /* The playing surface, cards, and live video keep their own lighting. */
 :root[data-ui-theme]

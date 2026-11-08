@@ -8289,7 +8289,7 @@ input[type='range']:hover::-webkit-slider-thumb {
   background: var(--ui-surface1-100, #171b21);
   box-shadow: 0 14px 42px var(--ui-shadow-53, #0008);
   font-size: 12px;
-  animation: toast-in 0.22s ease-out;
+  animation: toast-in 280ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
 }
 .toast.error {
   border-color: rgba(255, 102, 115, 0.45);
@@ -8331,7 +8331,7 @@ input[type='range']:hover::-webkit-slider-thumb {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.98);
+    transform: translateY(6px);
   }
 }
 

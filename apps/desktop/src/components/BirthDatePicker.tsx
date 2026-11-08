@@ -9,17 +9,23 @@ interface BirthDateOption {
 const menuHeight = 192;
 const menuGap = 6;
 
-export function BirthDatePicker({
-  label,
-  value,
-  options,
-  onChange,
-}: {
+type ChoicePickerProps = {
   label: string;
   value: string;
   options: BirthDateOption[];
   onChange(value: string): void;
-}) {
+  required?: boolean;
+  className?: string;
+};
+
+export function ChoicePicker({
+  label,
+  value,
+  options,
+  onChange,
+  required = false,
+  className = '',
+}: ChoicePickerProps) {
   const listId = useId();
   const field = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -53,7 +59,7 @@ export function BirthDatePicker({
     const bounds = trigger.getBoundingClientRect();
     const viewport = window.visualViewport;
     const frame = trigger
-      .closest('.account-welcome, .browser-platform-gate')
+      .closest('.account-welcome, .browser-platform-gate, .native-screen-picker, .settings-content')
       ?.getBoundingClientRect();
     const top = Math.max(viewport?.offsetTop ?? 0, frame?.top ?? 0);
     const bottom = Math.min(
@@ -62,11 +68,12 @@ export function BirthDatePicker({
     );
     const above = bounds.top - top - menuGap;
     const below = bottom - bounds.bottom - menuGap;
-    const useAbove = below < menuHeight && above > below;
+    const desiredHeight = Math.min(menuHeight, options.length * 40 + 16);
+    const useAbove = below < desiredHeight && above > below;
     setActive(initial);
     setMenu({
       above: useAbove,
-      height: Math.max(0, Math.min(menuHeight, useAbove ? above : below)),
+      height: Math.max(0, Math.min(desiredHeight, useAbove ? above : below)),
     });
     typed.current.text = '';
   }
@@ -115,13 +122,13 @@ export function BirthDatePicker({
   }
 
   return (
-    <div className="birth-date-picker" ref={field}>
+    <div className={`birth-date-picker ${className}`} ref={field}>
       <button
         type="button"
         className="birth-date-trigger"
         role="combobox"
         aria-label={label}
-        aria-required="true"
+        aria-required={required || undefined}
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-activedescendant={open ? `${listId}-${active}` : undefined}
@@ -167,4 +174,8 @@ export function BirthDatePicker({
       )}
     </div>
   );
+}
+
+export function BirthDatePicker(props: ChoicePickerProps) {
+  return <ChoicePicker {...props} required />;
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_PREFERENCES, type ScreenQuality } from './video-quality';
 export interface NativeScreenSource {
   id: string;
   title: string;
@@ -6,10 +7,12 @@ export interface NativeScreenSource {
 
 export interface NativeScreenSelection extends NativeScreenSource {
   includeAudio: boolean;
+  quality: ScreenQuality;
 }
 
 interface PickerRequest {
   includeAudio: boolean;
+  quality: ScreenQuality;
   sources: NativeScreenSource[];
   complete: (source: NativeScreenSelection | null) => void;
 }
@@ -24,12 +27,21 @@ export const screenPickerStore = {
   },
   snapshot: () => pending,
 };
-export function selectNativeScreen(sources: NativeScreenSource[], includeAudio = true) {
+export function selectNativeScreen(
+  sources: NativeScreenSource[],
+  includeAudio = true,
+  preferences: ScreenQuality = DEFAULT_VIDEO_PREFERENCES,
+) {
   pending?.complete(null);
   return new Promise<NativeScreenSelection>((resolve, reject) => {
     pending = {
       sources,
       includeAudio,
+      quality: {
+        screenResolution: preferences.screenResolution,
+        screenFrameRate: preferences.screenFrameRate,
+        screenContentMode: preferences.screenContentMode,
+      },
       complete(source) {
         pending = null;
         listeners.forEach((listener) => listener());

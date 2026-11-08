@@ -231,6 +231,26 @@ describe('Message links and selection', () => {
     expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
   });
 
+  it('clears stale row focus on Escape without moving focus away from a text input', () => {
+    const screen = render(forwardView());
+    selectMessage(screen, 'Сообщение 1');
+    const article = screen.getByText('Сообщение 1').closest('article')!;
+    article.tabIndex = 0;
+    article.focus();
+    expect(document.activeElement).toBe(article);
+    fireEvent.keyDown(article, { key: 'Escape' });
+    expect(document.activeElement).not.toBe(article);
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+
+    selectMessage(screen, 'Сообщение 1');
+    const input = document.createElement('textarea');
+    screen.container.append(input);
+    input.focus();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('toolbar', { name: 'Выбранные сообщения' })).toBeNull();
+  });
+
   it('puts saved messages first, recent conversations next, and TRLKA last without changing the source list', () => {
     const screen = render(forwardView());
     selectMessage(screen, 'Сообщение 1');

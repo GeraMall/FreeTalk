@@ -2481,7 +2481,18 @@ export function MessageList({
 
   useEffect(() => {
     const cancelSelection = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || !selectionMode) return;
+      // Escape cancels selection, rather than turning the last pointer-focused row
+      // into a keyboard target. Keep inputs and dialogs outside this selection alone.
+      const focused = document.activeElement;
+      if (
+        focused instanceof HTMLElement &&
+        (contentRef.current?.contains(focused) ||
+          scrollRef.current?.parentElement
+            ?.querySelector('.message-selection-bar')
+            ?.contains(focused))
+      )
+        focused.blur();
       setSelectedIds(new Set());
       dragSelectionRef.current = undefined;
       setDragSelecting(false);
@@ -2489,7 +2500,7 @@ export function MessageList({
     };
     document.addEventListener('keydown', cancelSelection);
     return () => document.removeEventListener('keydown', cancelSelection);
-  }, []);
+  }, [selectionMode]);
 
   useEffect(() => {
     if (!focusedMessageId) return;

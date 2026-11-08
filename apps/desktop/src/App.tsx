@@ -47,7 +47,12 @@ import { ChatRealtimeClient } from './lib/chat-realtime';
 import { markVoiceActivity, setCallActive } from './lib/presence-activity';
 import { queueCallTimeoutNotice, startServiceDelivery } from './lib/service-chat';
 import { IncomingCallRingtone } from './lib/incoming-call-ringtone';
-import { VideoManager, type LocalVideoState, type VideoMediaSource } from './lib/video-manager';
+import {
+  VideoManager,
+  ScreenCaptureCancelledError,
+  type LocalVideoState,
+  type VideoMediaSource,
+} from './lib/video-manager';
 import type { VideoPreferences } from './lib/video-quality';
 import {
   checkForUpdate,
@@ -1276,6 +1281,14 @@ export function App() {
           mode: settings.cameraBackgroundMode,
           dataUrl: settings.cameraBackgroundDataUrl,
         },
+        (quality) => {
+          if (!isCurrent()) return;
+          updateSettings(quality);
+          peers.current?.setVideoPreferences({
+            ...videoPreferences(settingsRef.current),
+            ...quality,
+          });
+        },
       );
       await refreshDevices();
       if (!isCurrent()) return;
@@ -1564,7 +1577,9 @@ export function App() {
       if (action === 'camera') await video.current.toggleCamera();
       else await video.current.toggleScreen(settings.screenAudioByDefault);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
+      if (caught instanceof ScreenCaptureCancelledError) setNotice(caught.message);
+      else
+        setError(caught instanceof Error ? caught.message : 'Не удалось изменить источник видео');
     } finally {
       setVideoBusy(false);
     }

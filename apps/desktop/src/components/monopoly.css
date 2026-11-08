@@ -589,7 +589,7 @@
   width: var(--die-size);
   height: var(--die-size);
   transform-style: preserve-3d;
-  transform: rotateX(calc(var(--rx) - 18deg)) rotateY(calc(var(--ry) + 22deg));
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
   will-change: transform;
 }
 .mono-die-shadow {

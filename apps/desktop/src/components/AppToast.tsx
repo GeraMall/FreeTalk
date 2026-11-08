@@ -13,17 +13,25 @@ export function AppToast({
 }) {
   const [closing, setClosing] = useState(false);
   const dismiss = useRef(onClose);
+  const timers = useRef<number[]>([]);
   dismiss.current = onClose;
   useEffect(() => {
     setClosing(false);
-    if (!message || error) return;
-    const fade = window.setTimeout(() => setClosing(true), 4220);
-    const close = window.setTimeout(() => dismiss.current(), 4500);
+    if (message && !error)
+      timers.current = [
+        window.setTimeout(() => setClosing(true), 4220),
+        window.setTimeout(() => dismiss.current(), 4500),
+      ];
     return () => {
-      window.clearTimeout(fade);
-      window.clearTimeout(close);
+      timers.current.forEach(window.clearTimeout);
+      timers.current = [];
     };
   }, [message, error]);
+  const close = () => {
+    timers.current.forEach(window.clearTimeout);
+    setClosing(true);
+    timers.current = [window.setTimeout(() => dismiss.current(), 280)];
+  };
   if (!message) return null;
   return (
     <div
@@ -31,7 +39,7 @@ export function AppToast({
       role={error ? 'alert' : 'status'}
     >
       <span>{t(message)}</span>
-      <button type="button" aria-label={t('Закрыть сообщение')} onClick={onClose}>
+      <button type="button" aria-label={t('Закрыть сообщение')} onClick={close}>
         <X size={16} />
       </button>
     </div>

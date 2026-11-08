@@ -108,7 +108,7 @@ export function PropertyDice({
   const align = useCallback(() => {
     bodies.current = bodies.current.map((b, i) => {
       const r = diceRotations[Math.max(0, values.current[i]! - 1)] ?? diceRotations[0];
-      return { ...b, z: 0, rx: r[0] - 18, ry: r[1] + 22 };
+      return { ...b, z: 0, rx: r[0], ry: r[1] };
     });
     paint();
   }, [paint]);

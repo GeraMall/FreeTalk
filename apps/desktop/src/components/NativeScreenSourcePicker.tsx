@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { AppWindow, Monitor, X } from 'lucide-react';
 import { screenPickerStore } from '../lib/native-screen-picker';
 import './native-screen-picker.css';
+import { ScreenQualityFields } from './ScreenQualityFields';
+import { DEFAULT_VIDEO_PREFERENCES, type ScreenQuality } from '../lib/video-quality';
 
 // Short-lived, bounded memory cache. No images are persisted or sent to a server.
 const thumbnailCache = new Map<string, { image: string; createdAt: number }>();
@@ -14,6 +16,7 @@ const thumbnailKey = (source: { kind: string; id: string; title: string }) =>
 export function NativeScreenSourcePicker() {
   const request = useSyncExternalStore(screenPickerStore.subscribe, screenPickerStore.snapshot);
   const [includeAudio, setIncludeAudio] = useState(true);
+  const [quality, setQuality] = useState<ScreenQuality>(DEFAULT_VIDEO_PREFERENCES);
   const [tab, setTab] = useState<'screen' | 'window'>('screen');
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const dialog = useRef<HTMLDialogElement>(null);
@@ -21,6 +24,7 @@ export function NativeScreenSourcePicker() {
     if (!request) return;
     setTab('screen');
     setIncludeAudio(request.includeAudio);
+    setQuality(request.quality);
     setThumbnails({});
     const element = dialog.current;
     element?.showModal();
@@ -98,7 +102,10 @@ export function NativeScreenSourcePicker() {
         {request.sources
           .filter((source) => source.kind === tab)
           .map((source, index) => (
-            <button key={source.id} onClick={() => request.complete({ ...source, includeAudio })}>
+            <button
+              key={source.id}
+              onClick={() => request.complete({ ...source, includeAudio, quality })}
+            >
               <span className="native-source-preview">
                 {thumbnails[`${source.kind}:${source.id}`] ? (
                   <img src={thumbnails[`${source.kind}:${source.id}`]} alt="" />
@@ -123,6 +130,11 @@ export function NativeScreenSourcePicker() {
         />
         <span>{t('Транслировать звук')}</span>
       </label>
+      <ScreenQualityFields
+        compact
+        value={quality}
+        onChange={(patch) => setQuality((current) => ({ ...current, ...patch }))}
+      />
       <footer>
         <span>
           {tab === 'window'

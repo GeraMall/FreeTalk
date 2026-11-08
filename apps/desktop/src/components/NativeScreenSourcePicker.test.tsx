@@ -19,6 +19,38 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 describe('native capture picker', () => {
+  it('keeps quick quality choices across tabs and closes only the dropdown on Escape', async () => {
+    invoke.mockResolvedValue('data:image/png;base64,quality');
+    const view = render(<NativeScreenSourcePicker />);
+    let selected!: ReturnType<typeof selectNativeScreen>;
+    act(() => {
+      selected = selectNativeScreen(
+        [
+          { id: 'q', title: 'Quality screen', kind: 'screen' },
+          { id: 'w', title: 'Quality window', kind: 'window' },
+        ],
+        true,
+        { screenContentMode: 'balanced', screenResolution: '1080p', screenFrameRate: 30 },
+      );
+    });
+    fireEvent.click(view.getByRole('combobox', { name: 'Тип содержимого' }));
+    fireEvent.click(view.getByRole('option', { name: 'Видео · плавное движение' }));
+    fireEvent.click(view.getByRole('combobox', { name: 'Максимальное разрешение' }));
+    fireEvent.click(view.getByRole('option', { name: '2K · 2560×1440' }));
+    const fps = view.getByRole('combobox', { name: 'Частота кадров' });
+    fireEvent.keyDown(fps, { key: 'ArrowDown' });
+    fireEvent.keyDown(fps, { key: 'Enter' });
+    fireEvent.click(fps);
+    fireEvent.keyDown(fps, { key: 'Escape' });
+    expect(view.queryByRole('listbox')).toBeNull();
+    expect(view.getByRole('tab', { name: 'Окна' })).toBeTruthy();
+    fireEvent.click(view.getByRole('tab', { name: 'Окна' }));
+    fireEvent.click(view.getByRole('button', { name: 'Quality window' }));
+    await expect(selected).resolves.toMatchObject({
+      kind: 'window',
+      quality: { screenContentMode: 'video', screenResolution: '1440p', screenFrameRate: 60 },
+    });
+  });
   it('loads a local still per source and selects the original source without confusing screen and window IDs', async () => {
     invoke.mockResolvedValue('data:image/png;base64,preview');
     const view = render(<NativeScreenSourcePicker />);
@@ -46,7 +78,7 @@ describe('native capture picker', () => {
       }),
     );
     fireEvent.click(view.getByRole('button', { name: 'Editor' }));
-    await expect(selected).resolves.toEqual({ ...sources[1], includeAudio: true });
+    await expect(selected).resolves.toMatchObject({ ...sources[1], includeAudio: true });
   });
   it('stops requesting more thumbnails when the picker closes', async () => {
     const finishes: Array<(image: string) => void> = [];

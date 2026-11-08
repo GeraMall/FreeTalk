@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, fireEvent } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppToast } from './AppToast';
 afterEach(() => {
@@ -29,5 +29,16 @@ it('cancels the previous dismissal when a new notice arrives', () => {
   expect(close).not.toHaveBeenCalled();
   expect(page.getByRole('status').classList.contains('closing')).toBe(false);
   act(() => vi.advanceTimersByTime(4200));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it('plays the exit transition on manual close, including persistent errors', () => {
+  vi.useFakeTimers();
+  const close = vi.fn();
+  const page = render(<AppToast message="Проверка" error onClose={close} />);
+  fireEvent.click(page.getByRole('button', { name: 'Закрыть сообщение' }));
+  expect(page.getByRole('alert').classList.contains('closing')).toBe(true);
+  expect(close).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(280));
   expect(close).toHaveBeenCalledOnce();
 });

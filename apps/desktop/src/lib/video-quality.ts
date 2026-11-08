@@ -12,6 +12,10 @@ export interface VideoPreferences {
   screenAudioByDefault: boolean;
   screenAdaptiveQuality: boolean;
 }
+export type ScreenQuality = Pick<
+  VideoPreferences,
+  'screenContentMode' | 'screenResolution' | 'screenFrameRate'
+>;
 
 export interface ScreenEncodingProfile {
   maxBitrate: number;

@@ -43,17 +43,22 @@ export function InterfaceAppearance() {
         ))}
       </div>
       <label className="theme-sync-control">
-        <Cloud size={20} />
-        <span>
+        <span className="theme-sync-icon" aria-hidden="true">
+          <Cloud size={20} />
+        </span>
+        <span className="theme-sync-copy">
           <strong>{t('Синхронизировать темы')}</strong>
           <small>{t('При входе на другом устройстве применится тема из аккаунта.')}</small>
         </span>
-        <input
-          type="checkbox"
-          checked={state.syncEnabled}
-          disabled={!state.account || !state.ready || !state.available || state.busy}
-          onChange={(event) => interfaceTheme.toggleSync(event.target.checked)}
-        />
+        <span className="theme-sync-switch">
+          <input
+            type="checkbox"
+            checked={state.syncEnabled}
+            disabled={!state.account || !state.ready || !state.available || state.busy}
+            onChange={(event) => interfaceTheme.toggleSync(event.target.checked)}
+          />
+          <span aria-hidden="true" />
+        </span>
       </label>
       <p className="theme-storage-note" role="status">
         {state.busy
