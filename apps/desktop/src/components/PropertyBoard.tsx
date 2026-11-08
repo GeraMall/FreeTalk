@@ -1,13 +1,16 @@
 import type { TableOf } from '@freetalk/protocol';
-import type { CSSProperties, ReactNode } from 'react';
+import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { usePropertyTypography } from '../lib/use-property-typography';
 import {
   propertyBoard,
+  propertyBoardLabels,
   propertyColors,
   playerColors,
   tokenIcons,
   propertyPosition,
 } from '../lib/monopoly-layout';
 import { t } from '../lib/app-language';
+import { PropertyStreetName } from './PropertyStreetName';
 import { PropertyArtwork } from './PropertyArtwork';
 import { playerName, type TableParticipant } from './activity-table-ui';
 export function PropertyBoard({
@@ -25,8 +28,11 @@ export function PropertyBoard({
   onSelect(index: number): void;
   children: ReactNode;
 }) {
+  const boardRef = useRef<HTMLDivElement>(null);
+  usePropertyTypography(boardRef);
   return (
     <div
+      ref={boardRef}
       className="mono-board"
       role="group"
       aria-label={t('Поле Монополии')}
@@ -59,7 +65,11 @@ export function PropertyBoard({
           >
             <span className="mono-cell-band" />
             <PropertyArtwork index={i} />
-            <span className="mono-cell-name">{t(name)}</span>
+            {group >= 0 && group < 8 ? (
+              <PropertyStreetName text={propertyBoardLabels[i] ?? name} />
+            ) : (
+              <span className="mono-cell-name">{t(name)}</span>
+            )}
             <small>
               {price ? `${price} ¤` : i === 0 ? '+200' : i === 20 ? 'P' : i === 10 ? '↗' : '◇'}
             </small>

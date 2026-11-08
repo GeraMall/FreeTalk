@@ -49,7 +49,7 @@ describe('local Monopoly dice motion', () => {
   });
   it('renames the same property indices without changing price/group or old server logs', () => {
     expect(propertyBoard[39]).toEqual(['Арбат', 400, 7]);
-    expect(propertyBoard[37]?.[0]).toBe('Тверская');
-    expect(propertyLog('Игрок 1: 3 + 2 → Звёздная')).toBe('Игрок 1: 3 + 2 → Новосибирск');
+    expect(propertyBoard[37]?.[0]).toBe('Тверская улица');
+    expect(propertyLog('Игрок 1: 3 + 2 → Звёздная')).toBe('Игрок 1: 3 + 2 → Первая Парковая улица');
   });
 });

@@ -143,9 +143,7 @@ export function ActivityProperty({
         </span>
         <div>
           <h3>{t('Монополия')}</h3>
-          <small>
-            {table.training ? t('Тренировка · без статистики') : t('Города и улицы России')}
-          </small>
+          <small>{table.training ? t('Тренировка · без статистики') : t('Улицы Москвы')}</small>
         </div>
         <span className="mono-turn-label">
           {t('Ход')}: <b>{playerName(table.seats[table.turn], participants)}</b>

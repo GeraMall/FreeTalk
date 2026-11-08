@@ -112,7 +112,7 @@ export function PropertyDeed({
               ? `Оплатите в банк ${price} ¤.`
               : 'Возьмите карточку и выполните её указание. Последнюю выпавшую карточку можно прочитать в центре поля.';
   return (
-    <PropertyModal title={t(name)} onClose={onClose}>
+    <PropertyModal title={t(group >= 0 ? 'Собственность' : name)} onClose={onClose}>
       {mine && active && (
         <div className="mono-deed-tabs">
           <button type="button" aria-pressed={!manage} onClick={() => setManage(false)}>
