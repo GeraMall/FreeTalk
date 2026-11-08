@@ -11,12 +11,15 @@ export INTERNAL_SIGNALING_SECRET=isolated-capacity-secret-not-for-production
 export IP_HASH_SALT=isolated-capacity-salt-not-for-production
 export TURNSTILE_SECRET_KEY=unused EMAIL_DELIVERY_MODE=log
 export DATABASE_URL="postgresql://postgres@127.0.0.1:54329/trlka_capacity_${GITHUB_RUN_ID}"
-export PGDATA="${CAPACITY_STATE}/postgres"
 export PATH="$(dirname "$CAPACITY_NODE"):/usr/lib/postgresql/16/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-mkdir -p "$PGDATA" "$CAPACITY_STATE/socket"
-chown -R postgres:postgres "$PGDATA" "$CAPACITY_STATE/socket"
+# The runner's home/work tree is private to runner. PostgreSQL needs its own
+# disposable directory, not relaxed permissions on that private tree.
+pgroot="$(mktemp -d "/var/tmp/trlka-capacity-${GITHUB_RUN_ID}-XXXXXX")"
+export PGDATA="${pgroot}/postgres"
+mkdir -p "$PGDATA" "$pgroot/socket"
+chown -R postgres:postgres "$pgroot"
 runuser -u postgres -- initdb -D "$PGDATA" -A trust --no-locale > "$CAPACITY_STATE/initdb.log"
-runuser -u postgres -- pg_ctl -D "$PGDATA" -l "$PGDATA/server.log" -o "-h 127.0.0.1 -p 54329 -k $CAPACITY_STATE/socket -c shared_buffers=128MB -c max_connections=100" -w start
+runuser -u postgres -- pg_ctl -D "$PGDATA" -l "$PGDATA/server.log" -o "-h 127.0.0.1 -p 54329 -k $pgroot/socket -c shared_buffers=128MB -c max_connections=100" -w start
 runuser -u postgres -- createdb -h 127.0.0.1 -p 54329 "trlka_capacity_${GITHUB_RUN_ID}"
 "$CAPACITY_NODE" apps/api/dist/capacity-migrate.mjs > "$CAPACITY_STATE/migrations.log"
 "$CAPACITY_NODE" scripts/load/capacity/seed.mjs > "$CAPACITY_STATE/seed.log"
