@@ -47,6 +47,17 @@ passed. Record final suite and exact release-probe results in the artifact's
 
 The private APK belongs in
 `outputs/android/beta226-preview/Trlka_0.4.0-beta.226_android.apk`.
+
+Packaged source:`c322dacaa6fb680036be75185938296236e61ce6`.
+Size:55,766,012bytes. SHA256:
+`eece309141a34c61ad38fd6c51482e37d0409b88ed4395598d718020b8c31e97`.
+Final33JVM/8emulator checks passed, with the browser test explicitly skipped in
+the ordinary suite and run separately. Lint:0errors/35warnings/6hints. Exact
+release native factory/audio-peer/SDP probe passed; crash buffer was empty.
+Direct225→226 replacement retained package UID and the same signing certificate.
+All30 tablet assets remained byte-identical; only native translations changed.
+Machine-readable verification:`outputs/android/beta226-preview/verification.json`.
+
 Public web, Windows, Mac and feeds remain224. No server service, DNS, database,
 fencing or failover configuration changes are part of this work.
 

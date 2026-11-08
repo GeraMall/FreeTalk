@@ -1,5 +1,20 @@
 # Проверка изменений дизайна
 
+09.11.2026 Android226 PRIVATE: после225 пользователь сообщил вечное подключение,
+сменаWi-Fi/мобильнойсети не помогает. Физическаяпричина НЕустановлена.
+Sourcec322dac, outputs/android/beta226-preview/Trlka_0.4.0-beta.226_android.apk,
+SHAeece309141a34c61ad38fd6c51482e37d0409b88ed4395598d718020b8c31e97.
+Добавлены локальныйбезсекретныйотчёт Settings→About, ручнойICEretryбезвыхода,
+restartприlatechangedICEconfig длянеготовыхpeers, fulltransportconnectedlabel,
+scope media(roomId), copy nativeDataChannelbuffer доdispatch. org.jni_zero keepсохранён.
+33JVM/8emulatorchecks прошли (browseroptin отдельно). Первыйtablet20secwait timeout,
+изолированныйповтор иполныйповторуспешны. Chrome↔NativeCallMedia debug226 TURNrelay
+двустороннийRTP14/14, exactrelease startup/SDPprobepassed, crashbufferempty,
+directrelease225→226sameUID/key, R8/lint0errors35warnings6hints. 30tabletassets прежние,
+толькоnative-translations обновлены. docs/ANDROID_CALL_CONNECTION_BETA226.md.
+НафизическомтелефонеещёНЕпроверено, не обещатьисправлениезависания. Отчётсохранять
+послепопыткидоубийствапроцесса. Prod/HA/Windows/Mac/web/publicfeeds остаются224.
+
 08.11.2026 Android225 PRIVATE исправляет воспроизведённый вылет звонка224:
 R8 удалялorg.jni_zero.JniInit/JniUtil, JNI_OnLoad аварийно завершался.
 Добавлен keeporg.jni_zero. Exactrelease224 падает, exactrelease225 nativeprobe
