@@ -19,6 +19,32 @@ class Connection implements PeerConnection {
   }
 }
 describe('private table projections and pointers', () => {
+  it('negotiates eight seats without sending oversized snapshots to an older client', () => {
+    const manager = new RoomManager();
+    const host = Object.assign(new Connection(), { pokerSeats: 8 as const });
+    const old = new Connection();
+    manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', host);
+    manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'Older', old);
+    const send = (action: RoomActivityAction) =>
+      manager.updateActivity('ABCDEFGH2345', id(1), host.activity.revision, action);
+    send({ kind: 'open' });
+    send({ kind: 'table-open', game: 'poker', pokerRules: 2, pokerSeats: 8 });
+    expect(host.activity.table?.seats).toHaveLength(8);
+    expect(old.activity.table).toBeUndefined();
+    manager.updateActivity('ABCDEFGH2345', id(2), old.activity.revision, {
+      kind: 'table-seat',
+      seat: 7,
+    });
+    expect(host.activity.table?.seats[7]).toBeNull();
+    const upgraded = Object.assign(new Connection(), { pokerSeats: 8 as const });
+    manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'Upgraded', upgraded);
+    expect(upgraded.activity.table?.seats).toHaveLength(8);
+    manager.updateActivity('ABCDEFGH2345', id(2), upgraded.activity.revision, {
+      kind: 'table-seat',
+      seat: 7,
+    });
+    expect(host.activity.table?.seats[7]).toBe(id(2));
+  });
   it('ticks advanced poker only at the deadline and keeps all timeout snapshots private', () => {
     vi.useFakeTimers();
     vi.setSystemTime(100000);

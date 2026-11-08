@@ -100,8 +100,20 @@ export function randomFleet(): number[] {
   }
   throw new Error('Fleet placement failed');
 }
-export function createTable(kind: TableKind, context: TableContext, pokerRules?: 2): TableSession {
-  const maximum = kind === 'chess' || kind === 'fleet' ? 2 : kind === 'millionaire' ? 1 : 6;
+export function createTable(
+  kind: TableKind,
+  context: TableContext,
+  pokerRules?: 2,
+  pokerSeats?: 8,
+): TableSession {
+  const maximum =
+    kind === 'poker' && pokerSeats === 8
+      ? 8
+      : kind === 'chess' || kind === 'fleet'
+        ? 2
+        : kind === 'millionaire'
+          ? 1
+          : 6;
   const base = {
     id: crypto.randomUUID(),
     hostId: context.actorId,
@@ -175,6 +187,7 @@ export function createTable(kind: TableKind, context: TableContext, pokerRules?:
       payouts: base.seats.map(() => 0),
       handNumber: 0,
       pokerRules,
+      pokerSeats,
     };
   return { view, secret: {} };
 }
@@ -241,7 +254,12 @@ export function reduceTable(
   const seat = v.seats.indexOf(context.actorId);
   if (action.kind === 'table-reset')
     return context.actorId === v.hostId
-      ? createTable(v.kind, context, v.kind === 'poker' ? v.pokerRules : undefined)
+      ? createTable(
+          v.kind,
+          context,
+          v.kind === 'poker' ? v.pokerRules : undefined,
+          v.kind === 'poker' ? v.pokerSeats : undefined,
+        )
       : session;
   if (action.kind === 'table-seat' && v.phase === 'lobby') {
     if (action.seat !== null && (action.seat >= v.seats.length || v.seats[action.seat]))

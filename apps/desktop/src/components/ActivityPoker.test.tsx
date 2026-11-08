@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TableOf } from '@freetalk/protocol';
 import { ActivityPoker } from './ActivityPoker';
-import { PokerAvatar } from './PokerVisuals';
+import { PokerAvatar, PokerCard } from './PokerVisuals';
 vi.mock('../lib/app-language', () => ({ t: (value: string) => value }));
 afterEach(cleanup);
 const seats = ['a', 'b', 'c', 'd'];
@@ -33,6 +33,32 @@ const table = (): TableOf<'poker'> => ({
   handNumber: 1,
 });
 describe('poker raise controls', () => {
+  it('uses the same vector suit in both mirrored corners and the middle, including tens', () => {
+    const screen = render(<PokerCard value="Th" />);
+    const paths = [...screen.container.querySelectorAll('path')].map((p) => p.getAttribute('d'));
+    expect(paths).toHaveLength(3);
+    expect(new Set(paths).size).toBe(1);
+    expect(screen.container.querySelector('b')!.textContent).toBe('10');
+    expect(screen.container.querySelector('i')!.textContent).toBe('10');
+  });
+  it('renders all eight players and retains an independent sound switch', () => {
+    localStorage.removeItem('trlka.poker.sounds');
+    const state = table();
+    state.seats = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const screen = render(
+      <ActivityPoker
+        table={state}
+        selfId="a"
+        participants={state.seats.map((id) => ({ id: id!, name: id! }))}
+        send={vi.fn()}
+      />,
+    );
+    expect(screen.container.querySelectorAll('[data-seat]')).toHaveLength(8);
+    fireEvent.click(screen.getByRole('button', { name: 'Выключить звуки покера' }));
+    expect(screen.getByRole('button', { name: 'Включить звуки покера' })).toBeTruthy();
+    expect(localStorage.getItem('trlka.poker.sounds')).toBe('off');
+    localStorage.removeItem('trlka.poker.sounds');
+  });
   it('reuses an active camera without playing audio or stopping the call track', () => {
     const stop = vi.fn(),
       stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;

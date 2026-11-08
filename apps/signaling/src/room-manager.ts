@@ -19,6 +19,7 @@ import type {
 export interface PeerConnection {
   canUseActivity?: boolean;
   activityVersion?: 2;
+  pokerSeats?: 8;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
 }
@@ -180,7 +181,12 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
-      activity: roomActivityView(room.activity, clientId, connection.activityVersion === 2),
+      activity: roomActivityView(
+        room.activity,
+        clientId,
+        connection.activityVersion === 2,
+        connection.pokerSeats === 8,
+      ),
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
     if (authorityChanged || ownerChanged)
@@ -290,6 +296,16 @@ export class RoomManager {
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return;
     const v2 = peer.connection.activityVersion === 2;
+    // Old clients cannot parse an eight-seat snapshot. Keep their call connected.
+    if (action.kind === 'table-open' && action.pokerSeats === 8 && peer.connection.pokerSeats !== 8)
+      return;
+    if (
+      room.activity.table?.view.kind === 'poker' &&
+      room.activity.table.view.seats.length > 6 &&
+      peer.connection.pokerSeats !== 8 &&
+      (action.kind.startsWith('table-') || action.kind.startsWith('poker-'))
+    )
+      return;
     if (action.kind === 'tablet-join') {
       if (!v2 || !room.activity.view.open) return;
       const viewers = new Set(room.activity.view.viewers ?? []);
@@ -344,7 +360,12 @@ export class RoomManager {
         peer.lastActivityResyncAt = now;
         peer.connection.send({
           type: 'activity-state',
-          activity: roomActivityView(room.activity, clientId, true),
+          activity: roomActivityView(
+            room.activity,
+            clientId,
+            true,
+            peer.connection.pokerSeats === 8,
+          ),
         });
       }
       return;
@@ -368,7 +389,12 @@ export class RoomManager {
     for (const [id, peer] of room.peers)
       peer.connection.send({
         type: 'activity-state',
-        activity: roomActivityView(room.activity, id, peer.connection.activityVersion === 2),
+        activity: roomActivityView(
+          room.activity,
+          id,
+          peer.connection.activityVersion === 2,
+          peer.connection.pokerSeats === 8,
+        ),
       });
   }
   tickActivities(now = Date.now()) {

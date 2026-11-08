@@ -203,6 +203,7 @@
 }
 .pkr-card,
 .pkr-card-slot {
+  container-type: inline-size;
   position: relative;
   display: inline-flex;
   width: 62px;
@@ -227,31 +228,57 @@
     translate 0.35s;
 }
 .pkr-card > b {
+  position: absolute;
+  top: 7%;
+  left: 9%;
   display: grid;
   justify-items: center;
   align-self: flex-start;
-  font-size: 21px;
+  font-size: 28cqw !important;
   line-height: 1;
   font-weight: 800;
 }
 .pkr-card > b small {
-  font-size: 12px;
-  line-height: 1.1;
+  display: block;
+  width: 16cqw;
+  height: 16cqw;
+  margin-top: 2cqw;
 }
 .pkr-card > span {
   position: absolute;
   left: 50%;
-  top: 52%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  font-size: 36px;
+  width: 40cqw;
+  height: 40cqw;
   line-height: 1;
 }
 .pkr-card > i {
+  position: absolute;
+  bottom: 7%;
+  right: 9%;
+  display: grid;
+  justify-items: center;
   font-style: normal;
   font-weight: 750;
-  font-size: 13px;
-  align-self: flex-end;
+  font-size: 28cqw !important;
+  line-height: 1;
   transform: rotate(180deg);
+}
+.pkr-card:not(.pkr-card-back) {
+  padding: 0 !important;
+}
+.pkr-card > i small {
+  display: block;
+  width: 16cqw;
+  height: 16cqw;
+  margin-top: 2cqw;
+}
+.pkr-card .pkr-suit {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
 }
 .pkr-suit-h {
   color: #a9394e;
@@ -1838,5 +1865,616 @@
   }
   .pkr-shuffle {
     display: none;
+  }
+}
+
+/* Eight seats use the extra space on the sides; the six-seat layout stays intact. */
+.call-activity:has(.pkr) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.call-activity:has(.pkr) > .activity-content {
+  width: 100%;
+  box-sizing: border-box;
+}
+.call-activity:has(.pkr) > .activity-dock {
+  min-width: 0;
+  overflow-x: auto;
+}
+.pkr-heading-actions .pkr-sound-toggle {
+  min-width: 39px;
+  justify-content: center;
+}
+.pkr-eight .pkr-seat {
+  width: 155px;
+}
+.pkr-eight .pkr-own {
+  width: 185px;
+}
+.pkr-eight .pkr-arena {
+  height: clamp(400px, calc(100dvh - 440px), 600px);
+}
+.pkr-eight .pkr-avatar {
+  width: 46px;
+  height: 46px;
+}
+.pkr-eight .pkr-time-ring {
+  width: 54px;
+  height: 54px;
+}
+.pkr-eight .pkr-pos-0 {
+  inset: auto auto 20px 50%;
+  transform: translateX(-50%);
+}
+.pkr-eight .pkr-pos-1 {
+  inset: auto auto 28px 7%;
+  transform: none;
+}
+.pkr-eight .pkr-pos-2 {
+  inset: 39% auto auto 0;
+  transform: none;
+}
+.pkr-eight .pkr-pos-3 {
+  inset: 12px auto auto 10%;
+  transform: none;
+}
+.pkr-eight .pkr-pos-4 {
+  inset: 0 auto auto 50%;
+  transform: translateX(-50%);
+}
+.pkr-eight .pkr-pos-5 {
+  inset: 12px 10% auto auto;
+  transform: none;
+}
+.pkr-eight .pkr-pos-6 {
+  inset: 39% 0 auto auto;
+  transform: none;
+}
+.pkr-eight .pkr-pos-7 {
+  inset: auto 7% 28px auto;
+  transform: none;
+}
+.pkr-eight .pkr-wager {
+  top: auto;
+  bottom: calc(100% + 7px);
+  left: auto;
+}
+.pkr-eight :is(.pkr-pos-3, .pkr-pos-4, .pkr-pos-5) .pkr-wager {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.pkr-eight .pkr-pos-0 .pkr-wager {
+  left: calc(100% + 3px);
+  bottom: 40%;
+}
+.pkr-eight .pkr-pos-4 .pkr-wager {
+  left: calc(100% + 3px);
+  top: 60px;
+}
+.pkr-eight .pkr-pos-2 .pkr-wager {
+  left: calc(100% + 3px);
+  bottom: 40%;
+}
+.pkr-eight .pkr-pos-6 .pkr-wager {
+  right: calc(100% + 3px);
+  bottom: 40%;
+}
+.pkr-eight .pkr-table-wordmark {
+  display: none;
+}
+.pkr-eight .pkr-center {
+  scale: 1;
+}
+.pkr-eight .pkr-pot {
+  position: absolute;
+  left: calc(100% + 25px);
+  top: 0;
+  width: 110px;
+  min-height: 0;
+}
+
+@media (max-height: 900px) and (min-width: 681px) {
+  .pkr-eight .pkr-arena {
+    height: clamp(420px, calc(100dvh - 360px), 510px);
+  }
+  .pkr-eight .pkr-seat {
+    scale: 0.8;
+    transform-origin: top left;
+  }
+  .pkr-eight .pkr-center {
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  .pkr-eight .pkr-pos-0 {
+    transform-origin: bottom center;
+  }
+  .pkr-eight .pkr-pos-4 {
+    transform-origin: top center;
+  }
+  .pkr-eight :is(.pkr-pos-5, .pkr-pos-6) {
+    transform-origin: top right;
+  }
+  .pkr-eight .pkr-pos-1 {
+    transform-origin: bottom left;
+  }
+  .pkr-eight .pkr-pos-7 {
+    transform-origin: bottom right;
+  }
+}
+
+/* Container queries also cover a narrow tablet inside a wide desktop window. */
+@container activity-tablet (max-width: 680px) {
+  .call-activity:has(.pkr) > .activity-dock > div {
+    gap: 3px;
+    min-width: 0;
+  }
+  .call-activity:has(.pkr) > .activity-dock button {
+    min-width: 36px;
+    padding: 3px;
+  }
+  .activity-playing:has(.pkr) {
+    padding: 8px 5px;
+  }
+  .pkr-heading {
+    gap: 6px;
+    margin-inline: 0;
+  }
+  .pkr-heading-title {
+    gap: 6px;
+  }
+  .pkr-heading h3 {
+    font-size: 14px;
+  }
+  .pkr-heading p {
+    font-size: 9px;
+    gap: 5px;
+  }
+  .pkr-heading-actions {
+    gap: 4px;
+  }
+  .pkr-heading-actions button {
+    min-width: 36px;
+    min-height: 40px;
+    padding: 8px;
+  }
+  .pkr-heading-actions button span {
+    display: none;
+  }
+  .pkr-brand {
+    display: none;
+  }
+  .pkr-decisions {
+    padding: 10px;
+    gap: 9px;
+    grid-template-columns: 1fr 0.85fr;
+  }
+  .pkr-bet-builder {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) 105px;
+  }
+  .pkr-bet-title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .pkr-bet-title label {
+    display: none;
+  }
+  .pkr-amount-field input {
+    width: 55px;
+  }
+  .pkr-bet-presets {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .pkr-action-buttons {
+    grid-column: 1;
+  }
+  .pkr-decisions > .pkr-raise {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 48px;
+  }
+  .pkr-action-buttons > button {
+    min-height: 48px;
+    font-size: 12px;
+  }
+  .pkr-raise > b {
+    font-size: 19px;
+  }
+  .pkr-bet-presets > button {
+    min-height: 36px;
+    font-size: 10px;
+  }
+  .pkr-bet-builder > input[type='range'] {
+    grid-column: 1;
+    grid-row: 1;
+    height: 24px;
+    margin: 0;
+    touch-action: pan-y;
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .pkr-bet-builder > input[type='range']::-webkit-slider-runnable-track {
+    height: 4px;
+    background: #819f91;
+    border-radius: 4px;
+  }
+  .pkr-bet-builder > input[type='range']::-webkit-slider-thumb {
+    appearance: none;
+    width: 19px;
+    height: 19px;
+    margin-top: -7px;
+    border-radius: 50%;
+    border: 2px solid #d1dfb9;
+    background: #698e79;
+    box-shadow: 0 2px 4px #0005;
+  }
+  .pkr-bet-builder > input[type='range']::-moz-range-track {
+    height: 4px;
+    background: #819f91;
+  }
+  .pkr-bet-builder > input[type='range']::-moz-range-thumb {
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    border: 2px solid #d1dfb9;
+    background: #698e79;
+  }
+  .pkr-amount-field input {
+    font-size: 16px;
+    min-height: 26px;
+  }
+  .pkr-between-hands {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pkr-between-hands > button {
+    min-height: 44px;
+  }
+  .pkr-drawer {
+    position: fixed;
+    inset: 8px 5px auto;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 80px);
+  }
+  .pkr-drawer-header > button {
+    width: 40px;
+    height: 40px;
+  }
+  .pkr-eight .pkr-arena {
+    height: 420px;
+    margin: 0;
+  }
+  .pkr-eight .pkr-rail {
+    inset: 47px 3px 55px;
+    border-width: 7px;
+    border-radius: 45%;
+  }
+  .pkr-eight .pkr-seat {
+    width: 94px;
+    gap: 4px;
+    scale: 1;
+    transform: none;
+  }
+  .pkr-eight .pkr-player {
+    width: 100%;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 12px;
+  }
+  .pkr-eight .pkr-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+  .pkr-eight .pkr-time-ring {
+    inset: -5px;
+    width: 36px;
+    height: 36px;
+  }
+  .pkr-eight .pkr-voice {
+    width: 16px;
+    height: 15px;
+    right: -3px;
+    bottom: -4px;
+    border-radius: 5px;
+  }
+  .pkr-eight .pkr-voice svg {
+    width: 9px;
+    height: 9px;
+  }
+  .pkr-eight .pkr-player-copy {
+    gap: 3px;
+  }
+  .pkr-eight .pkr-player-copy > strong {
+    font-size: 9px;
+    max-width: 49px;
+  }
+  .pkr-eight .pkr-player-copy > strong > small {
+    display: none;
+  }
+  .pkr-eight .pkr-player-state {
+    display: none;
+  }
+  .pkr-eight .pkr-stack {
+    font-size: 10px;
+    gap: 2px;
+  }
+  .pkr-eight .pkr-stack svg {
+    width: 10px;
+  }
+  .pkr-eight .pkr-seat-number {
+    justify-self: start;
+    font-size: 7px;
+    letter-spacing: 0.02em;
+  }
+  .pkr-eight .pkr-hole {
+    gap: 3px;
+  }
+  .pkr-eight .pkr-seat:not(.pkr-own) .pkr-hole {
+    position: absolute;
+    bottom: -33px;
+    right: 5px;
+    opacity: 0.85;
+  }
+  .pkr-eight .pkr-hole .pkr-card {
+    width: 23px;
+    height: 33px;
+    border-radius: 4px;
+  }
+  .pkr-eight .pkr-card-back {
+    border-width: 2px;
+  }
+  .pkr-eight .pkr-card-back > svg {
+    width: 12px;
+    height: 12px;
+  }
+  .pkr-eight .pkr-card-back > small {
+    display: none;
+  }
+  .pkr-eight .pkr-pos-0 {
+    inset: auto auto 8px 50%;
+    transform: translateX(-50%);
+  }
+  .pkr-eight .pkr-pos-1 {
+    inset: auto auto 105px 0;
+  }
+  .pkr-eight .pkr-pos-2 {
+    inset: 87px auto auto 0;
+  }
+  .pkr-eight .pkr-pos-3 {
+    inset: 0 auto auto 0;
+  }
+  .pkr-eight .pkr-pos-4 {
+    inset: 0 auto auto 50%;
+    transform: translateX(-50%);
+  }
+  .pkr-eight .pkr-pos-5 {
+    inset: 0 0 auto auto;
+  }
+  .pkr-eight .pkr-pos-6 {
+    inset: 87px 0 auto auto;
+  }
+  .pkr-eight .pkr-pos-7 {
+    inset: auto 0 105px auto;
+  }
+  .pkr-eight .pkr-own {
+    width: 219px;
+    grid-template-columns: 104px 1fr;
+    align-items: center;
+    gap: 9px;
+  }
+  .pkr-eight .pkr-own .pkr-player {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .pkr-eight .pkr-own .pkr-hole {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .pkr-eight .pkr-own .pkr-seat-number {
+    display: none;
+  }
+  .pkr-eight .pkr-own .pkr-hole .pkr-card {
+    width: 46px;
+    height: 65px;
+  }
+  .pkr-eight .pkr-own .pkr-player-copy > strong {
+    max-width: 61px;
+    font-size: 10px;
+  }
+  .pkr-eight .pkr-seat-tokens {
+    right: 0;
+    left: auto;
+    top: -3px;
+    bottom: auto;
+    gap: 2px;
+  }
+  .pkr-eight .pkr-own .pkr-seat-tokens {
+    right: auto;
+    left: 0;
+    top: auto;
+    bottom: -18px;
+  }
+  .pkr-eight .pkr-dealer {
+    width: 17px;
+    height: 17px;
+    font-size: 9px;
+  }
+  .pkr-eight .pkr-blind {
+    width: 16px;
+    height: 16px;
+    font-size: 7px;
+  }
+  .pkr-eight .pkr-allin {
+    width: 30px;
+    height: 30px;
+    font-size: 6px;
+  }
+  .pkr-eight .pkr-center {
+    transform: translate(-50%, -50%);
+    top: 51%;
+    gap: 7px;
+    scale: 1;
+    width: 100%;
+  }
+  .pkr-eight .pkr-pot {
+    position: static;
+    width: auto;
+    min-height: 49px;
+    gap: 2px;
+  }
+  .pkr-eight .pkr-pot > strong {
+    font-size: 22px;
+  }
+  .pkr-eight .pkr-pot > .pkr-chips {
+    scale: 0.8;
+    min-height: 12px;
+  }
+  .pkr-eight .pkr-board {
+    gap: 5px;
+  }
+  .pkr-eight .pkr-board > .pkr-card,
+  .pkr-eight .pkr-card-slot {
+    width: 43px;
+    height: 61px;
+  }
+  .pkr-eight .pkr-hand-outlook {
+    min-height: 40px;
+    gap: 3px;
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+  .pkr-eight .pkr-hand-outlook > strong {
+    font-size: 14px;
+  }
+  .pkr-eight .pkr-hand-outlook > small {
+    font-size: 9px;
+  }
+  .pkr-eight .pkr-wager {
+    width: 42px;
+    font-size: 9px;
+    gap: 0;
+    bottom: auto;
+    top: calc(100% + 2px);
+  }
+  .pkr-eight :is(.pkr-pos-3, .pkr-pos-4, .pkr-pos-5) .pkr-wager {
+    top: calc(100% + 2px);
+    bottom: auto;
+    left: 0;
+  }
+  .pkr-eight :is(.pkr-pos-1, .pkr-pos-7) .pkr-wager {
+    top: auto;
+    bottom: calc(100% + 4px);
+  }
+  .pkr-eight .pkr-pos-2 .pkr-wager {
+    inset: auto auto 9px calc(100% + 2px);
+  }
+  .pkr-eight .pkr-pos-6 .pkr-wager {
+    inset: auto calc(100% + 2px) 9px auto;
+  }
+  .pkr-eight .pkr-pos-0 .pkr-wager {
+    left: -48px;
+    top: auto;
+    bottom: 10px;
+  }
+  .pkr-eight .pkr-chips-compact {
+    scale: 0.6;
+    min-height: 10px;
+  }
+  .pkr-eight .pkr-action-bubble {
+    font-size: 9px;
+    padding: 4px 7px;
+    bottom: calc(100% + 2px);
+  }
+  .pkr-eight .pkr-payout {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .pkr-eight .pkr-seat-clock {
+    font-size: 9px;
+    padding: 3px 5px;
+    z-index: 7;
+  }
+  .pkr-eight .pkr-turnline {
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 22px 0 8px;
+  }
+  .pkr-eight .pkr-turnline > strong {
+    font-size: 11px;
+  }
+  .pkr-eight .pkr-turn-order {
+    margin-left: auto;
+    gap: 3px;
+  }
+  .pkr-eight .pkr-turn-order i {
+    width: 18px;
+    height: 19px;
+    font-size: 9px;
+  }
+  .pkr-eight .pkr-turnline > small {
+    display: none;
+  }
+}
+@container activity-tablet (max-width: 360px) {
+  .pkr-heading h3 {
+    font-size: 12px;
+  }
+  .pkr-heading p {
+    font-size: 8px;
+  }
+  .pkr-heading-actions button {
+    padding: 6px;
+    min-width: 32px;
+  }
+  .pkr-eight .pkr-seat {
+    width: 83px;
+  }
+  .pkr-eight .pkr-own {
+    width: 206px;
+    grid-template-columns: 98px 1fr;
+  }
+  .pkr-eight .pkr-player {
+    padding: 4px;
+  }
+  .pkr-eight .pkr-player-copy > strong {
+    max-width: 41px;
+  }
+  .pkr-eight .pkr-own .pkr-player-copy > strong {
+    max-width: 55px;
+  }
+  .pkr-eight .pkr-avatar {
+    width: 27px;
+    height: 27px;
+  }
+  .pkr-eight .pkr-time-ring {
+    width: 33px;
+    height: 33px;
+  }
+  .pkr-eight .pkr-board > .pkr-card,
+  .pkr-eight .pkr-card-slot {
+    width: 39px;
+    height: 56px;
+  }
+  .pkr-eight .pkr-own .pkr-hole .pkr-card {
+    width: 42px;
+    height: 60px;
+  }
+  .pkr-eight .pkr-board {
+    gap: 4px;
+  }
+  .pkr-eight .pkr-turn-order i {
+    width: 16px;
+  }
+  .pkr-between-hands {
+    padding: 10px;
   }
 }

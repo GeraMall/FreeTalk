@@ -51,7 +51,7 @@ export class SignalingClient {
   ) {}
 
   connect(join: Extract<ClientMessage, { type: 'create-room' | 'join-room' }>) {
-    this.joined = { ...join, activityVersion: 2 };
+    this.joined = { ...join, activityVersion: 2, pokerSeats: 8 };
     this.roomJoined = false;
     this.stableCallJoined = false;
     this.closedByUser = false;

@@ -1,6 +1,7 @@
 .call-activity {
   position: relative;
   container-type: inline-size;
+  container-name: activity-tablet;
 }
 .activity-table-surface {
   min-height: 100%;
@@ -191,6 +192,9 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+.table-seats-8 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .table-seats-6 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1332,5 +1336,11 @@
 @container (max-width:850px) {
   .property-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 680px) {
+  .table-seats-8 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

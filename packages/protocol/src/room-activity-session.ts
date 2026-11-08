@@ -20,10 +20,14 @@ export function roomActivityView(
   session: RoomActivitySession,
   viewerId?: string,
   version2 = true,
+  pokerEight = true,
 ): RoomActivity {
   return {
     ...session.view,
-    table: version2 && session.table ? tableView(session.table, viewerId) : undefined,
+    table:
+      version2 && session.table && (pokerEight || session.table.view.seats.length <= 6)
+        ? tableView(session.table, viewerId)
+        : undefined,
   };
 }
 export function tickRoomActivity(session: RoomActivitySession, now: number): RoomActivitySession {
@@ -153,7 +157,7 @@ export function applyRoomActivity(
   if (action.kind === 'tablet-join' || action.kind === 'tablet-pointer') return current;
   if (action.kind === 'table-open' && context) {
     if (current.table && current.table.view.hostId !== context.actorId) return current;
-    const table = createTable(action.game, context, action.pokerRules);
+    const table = createTable(action.game, context, action.pokerRules, action.pokerSeats);
     return { table, view: { ...view, game: undefined, table: tableView(table) } };
   }
   if (current.table && context) {

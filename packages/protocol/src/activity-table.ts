@@ -87,6 +87,7 @@ export const tableSchema = z.discriminatedUnion('kind', [
   z.object({
     ...base,
     kind: z.literal('poker'),
+    seats: z.array(id.nullable()).max(8),
     dealer: count,
     turn: count,
     stage: z.enum(['preflop', 'flop', 'turn', 'river', 'showdown']),
@@ -94,27 +95,28 @@ export const tableSchema = z.discriminatedUnion('kind', [
     pot: count,
     bet: count,
     minRaise: count,
-    stacks: z.array(count).max(6),
-    bets: z.array(count).max(6),
-    contributions: z.array(count).max(6),
-    folded: z.array(count).max(6),
-    allIn: z.array(count).max(6),
-    acted: z.array(count).max(6),
-    actedBets: z.array(count.nullable()).max(6).optional(),
-    hands: z.array(z.object({ ownerId: id, cards: z.array(z.string().max(3)).max(2) })).max(6),
-    payouts: z.array(count).max(6),
+    stacks: z.array(count).max(8),
+    bets: z.array(count).max(8),
+    contributions: z.array(count).max(8),
+    folded: z.array(count).max(8),
+    allIn: z.array(count).max(8),
+    acted: z.array(count).max(8),
+    actedBets: z.array(count.nullable()).max(8).optional(),
+    hands: z.array(z.object({ ownerId: id, cards: z.array(z.string().max(3)).max(2) })).max(8),
+    payouts: z.array(count).max(8),
     handNumber: count,
     pokerRules: z.literal(2).optional(),
+    pokerSeats: z.literal(8).optional(),
     turnAt: count.optional(),
     turnDeadline: count.optional(),
     handStartedAt: count.optional(),
     handEndedAt: count.optional(),
     smallBlind: count.optional(),
     bigBlind: count.optional(),
-    rebuys: z.array(count.max(3)).max(6).optional(),
+    rebuys: z.array(count.max(3)).max(8).optional(),
     stats: z
       .array(z.object({ hands: count, wins: count, won: count, lost: count }))
-      .max(6)
+      .max(8)
       .optional(),
     settledHand: count.optional(),
     lastAction: z
@@ -136,8 +138,9 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
     kind: z.literal('table-open'),
     game: tableKindSchema,
     pokerRules: z.literal(2).optional(),
+    pokerSeats: z.literal(8).optional(),
   }),
-  z.object({ kind: z.literal('table-seat'), seat: z.number().int().min(0).max(5).nullable() }),
+  z.object({ kind: z.literal('table-seat'), seat: z.number().int().min(0).max(7).nullable() }),
   z.object({
     kind: z.literal('table-config'),
     preset: z.enum([

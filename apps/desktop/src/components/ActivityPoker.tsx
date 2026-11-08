@@ -10,12 +10,16 @@ import {
   RotateCcw,
   Coins,
   ChevronRight,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { t } from '../lib/app-language';
 import { pokerHand } from '../lib/poker-hand';
 import { playerName, type TableUiProps } from './activity-table-ui';
 import { PokerCard, PokerChips, PokerAvatar } from './PokerVisuals';
 import { pokerCombinations } from '../lib/poker-guide';
+import { pokerDealDelay } from '../lib/poker-sounds';
+import { usePokerSounds } from './use-poker-sounds';
 import './poker-table.css';
 
 const stages = {
@@ -39,14 +43,18 @@ const positions: Record<number, number[]> = {
   4: [0, 1, 3, 5],
   5: [0, 1, 2, 4, 5],
   6: [0, 1, 2, 3, 4, 5],
+  7: [0, 1, 2, 3, 5, 6, 7],
+  8: [0, 1, 2, 3, 4, 5, 6, 7],
 };
 const dealVectors = [
-  ['0px', '-180px'],
-  ['220px', '-100px'],
-  ['220px', '180px'],
   ['0px', '200px'],
   ['-220px', '180px'],
-  ['-220px', '-100px'],
+  ['-300px', '0px'],
+  ['-220px', '-180px'],
+  ['0px', '-200px'],
+  ['220px', '-180px'],
+  ['300px', '0px'],
+  ['220px', '180px'],
 ];
 const fmt = (n: number) => n.toLocaleString('ru-RU');
 
@@ -59,6 +67,12 @@ export function ActivityPoker({
   const [now, setNow] = useState(Date.now),
     [drawer, setDrawer] = useState<'hands' | 'stats'>();
   const panel = useRef<HTMLElement>(null);
+  const sounds = usePokerSounds(
+    table,
+    selfId,
+    now,
+    Boolean(participants.find((p) => p.id === selfId)?.deafened),
+  );
   useEffect(() => {
     if (table.stage === 'showdown' && !table.handEndedAt) return;
     const refresh = () => setNow(Date.now());
@@ -148,7 +162,10 @@ export function ActivityPoker({
     big = table.bigBlind ?? (small + 1) % table.seats.length;
   const raiseLabel = amount === maximum ? 'ALL IN' : t(table.bet ? 'Повысить до' : 'Ставка');
   return (
-    <div className="poker-game pkr" data-hand={table.handNumber}>
+    <div
+      className={`poker-game pkr ${table.seats.length > 6 ? 'pkr-eight' : ''}`}
+      data-hand={table.handNumber}
+    >
       <header className="pkr-heading">
         <div className="pkr-heading-title">
           <span className="pkr-brand">
@@ -168,7 +185,18 @@ export function ActivityPoker({
         <div className="pkr-heading-actions">
           <button
             type="button"
+            className="pkr-sound-toggle"
+            aria-label={t(sounds.enabled ? 'Выключить звуки покера' : 'Включить звуки покера')}
+            title={t(sounds.enabled ? 'Выключить звуки покера' : 'Включить звуки покера')}
+            aria-pressed={sounds.enabled}
+            onClick={sounds.toggle}
+          >
+            {sounds.enabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
+          </button>
+          <button
+            type="button"
             data-poker-drawer-toggle
+            aria-label={t('Статистика стола')}
             aria-expanded={drawer === 'stats'}
             onClick={() => setDrawer(drawer === 'stats' ? undefined : 'stats')}
           >
@@ -178,6 +206,7 @@ export function ActivityPoker({
           <button
             type="button"
             data-poker-drawer-toggle
+            aria-label={t('Комбинации')}
             aria-expanded={drawer === 'hands'}
             onClick={() => setDrawer(drawer === 'hands' ? undefined : 'hands')}
           >
@@ -257,7 +286,7 @@ export function ActivityPoker({
         <div className="pkr-seats">
           {table.seats.map((id, i) => {
             if (!id) return null;
-            const pos = (positions[table.seats.length] ?? positions[6]!)[
+            const pos = (positions[table.seats.length] ?? positions[8]!)[
               seat >= 0 ? (i - seat + table.seats.length) % table.seats.length : i
             ]!;
             const person = participants.find((p) => p.id === id),
@@ -270,6 +299,7 @@ export function ActivityPoker({
             return (
               <div
                 key={id}
+                data-seat={i}
                 className={`pkr-seat pkr-pos-${pos} ${i === seat ? 'pkr-own' : ''} ${moving ? 'pkr-seat-turn' : ''} ${folded ? 'pkr-folded' : ''} ${winning ? 'pkr-winning' : ''}`}
                 style={{ '--deal-x': vector[0], '--deal-y': vector[1] } as CSSProperties}
               >
@@ -319,12 +349,7 @@ export function ActivityPoker({
                       value={hole?.[n]}
                       highlight={i === seat && Boolean(hole?.[n] && hand.cards.includes(hole[n]!))}
                       animate={dealing && !folded}
-                      delay={
-                        780 +
-                        (n * table.seats.length +
-                          ((i - small + table.seats.length) % table.seats.length)) *
-                          105
-                      }
+                      delay={pokerDealDelay(table, i, n)}
                     />
                   ))}
                 </div>

@@ -163,6 +163,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create-room'),
     activityVersion: z.literal(2).optional(),
+    pokerSeats: z.literal(8).optional(),
     roomId,
     clientId,
     sessionId,
@@ -175,6 +176,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('join-room'),
     activityVersion: z.literal(2).optional(),
+    pokerSeats: z.literal(8).optional(),
     roomId,
     clientId,
     sessionId,

@@ -171,7 +171,7 @@ export function CallActivity({
         : {
             kind: 'table-open',
             game: next,
-            ...(next === 'poker' ? { pokerRules: 2 as const } : {}),
+            ...(next === 'poker' ? { pokerRules: 2 as const, pokerSeats: 8 as const } : {}),
           },
     );
   };
@@ -195,7 +195,9 @@ export function CallActivity({
                       : {
                           kind: 'table-open',
                           game: switchTo,
-                          ...(switchTo === 'poker' ? { pokerRules: 2 as const } : {}),
+                          ...(switchTo === 'poker'
+                            ? { pokerRules: 2 as const, pokerSeats: 8 as const }
+                            : {}),
                         },
                   );
                   setFlagging(false);

@@ -5,6 +5,19 @@ import { t } from '../lib/app-language';
 import type { TableParticipant } from './activity-table-ui';
 
 const suits: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
+const suitPaths: Record<string, string> = {
+  h: 'M12 21C10 18 2 13 2 7.5A5.5 5.5 0 0 1 12 4.3 5.5 5.5 0 0 1 22 7.5C22 13 14 18 12 21Z',
+  d: 'M12 1 22 12 12 23 2 12Z',
+  s: 'M12 1C9 5 2 9 2 14a5 5 0 0 0 8.3 3.8L8.5 23h7l-1.8-5.2A5 5 0 0 0 22 14C22 9 15 5 12 1Z',
+  c: 'M10 16C6 21 1 18 1 14a5 5 0 0 1 6-5A5.5 5.5 0 1 1 17 9a5 5 0 0 1 6 5c0 4-5 7-9 2l2 7H8Z',
+};
+function CardSuit({ suit }: { suit: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="pkr-suit">
+      <path d={suitPaths[suit]} />
+    </svg>
+  );
+}
 export function PokerCard({
   value,
   highlight = false,
@@ -28,10 +41,19 @@ export function PokerCard({
         <>
           <b>
             {value[0] === 'T' ? '10' : value[0]}
-            <small>{suits[value[1]!]}</small>
+            <small>
+              <CardSuit suit={value[1]!} />
+            </small>
           </b>
-          <span>{suits[value[1]!]}</span>
-          <i>{value[0] === 'T' ? '10' : value[0]}</i>
+          <span aria-hidden="true">
+            <CardSuit suit={value[1]!} />
+          </span>
+          <i aria-hidden="true">
+            {value[0] === 'T' ? '10' : value[0]}
+            <small>
+              <CardSuit suit={value[1]!} />
+            </small>
+          </i>
         </>
       ) : (
         <>
@@ -54,7 +76,7 @@ export function PokerChips({ amount, compact = false }: { amount: number; compac
       className={`pkr-chips ${compact ? 'pkr-chips-compact' : ''}`}
       aria-label={`${amount} ${t('фишек')}`}
     >
-      {piles.slice(0, 4).map((p) => (
+      {piles.slice(0, compact ? 2 : 4).map((p) => (
         <span
           className={`pkr-chip-pile pkr-chip-color-${p.color}`}
           key={p.value}
