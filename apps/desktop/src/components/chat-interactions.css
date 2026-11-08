@@ -290,6 +290,9 @@
   align-self: flex-start;
   margin-top: 0;
 }
+.room-chat-message.own .room-chat-message-content > .room-chat-message-reactions {
+  align-self: flex-end;
+}
 .room-chat-message .room-chat-avatar {
   align-self: start;
   margin-top: 2px;
