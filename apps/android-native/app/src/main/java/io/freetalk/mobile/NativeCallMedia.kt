@@ -19,6 +19,7 @@ import java.nio.ByteBuffer
 class NativeCallMedia(private val context: Context, private val signal: RoomSignaling) {
     val egl = EglBase.create()
     private val main = Handler(Looper.getMainLooper())
+    private val trace = CallDiagnostics.begin(signal.fileOrigin)
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val previousMode = audioManager.mode
     private val previousSpeaker = audioManager.isSpeakerphoneOn
@@ -44,6 +45,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     var videos by mutableStateOf(emptyMap<String, VideoTrack>()); private set
     var connections by mutableStateOf(emptyMap<String, String>()); private set
     private var ice = emptyList<PeerConnection.IceServer>()
+    private var lastRetryAt = -5_000L
     private val peers = mutableMapOf<String, Peer>()
     private val captures = mutableMapOf<String, Capture>()
     private data class Capture(val capturer: VideoCapturer, val source: VideoSource, val helper: SurfaceTextureHelper, val track: VideoTrack)
@@ -57,8 +59,11 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         val senders = mutableMapOf<String, SenderBinding>()
         val remoteTracks = mutableMapOf<String, VideoTrack>()
         var remoteSources: JSONObject? = null
+        var state = PeerConnection.PeerConnectionState.NEW
+        var lastRtpSnapshotAt = 0L
     }
     init {
+        trace.event("media-initializing")
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         selectDefaultRoute()
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions())
@@ -88,6 +93,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         signal.pendingSignals.toList().forEach(::accept); signal.pendingSignals.clear()
         signal.room.peers.filter { it.id != signal.room.selfId }.forEach { ensure(it.id) }
         main.post { stats.run() }
+        trace.event("media-ready")
     }
     private fun post(action: () -> Unit) { main.post { if (!stopped) action() } }
     private fun observer(failure: (String?) -> Unit, success: () -> Unit) = object : SdpObserver {
@@ -100,10 +106,18 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         peers[id]?.let { return it }
         val config = PeerConnection.RTCConfiguration(ice).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }
         val pc = factory.createPeerConnection(config, object : PeerConnection.Observer {
-            override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
+            override fun onSignalingChange(state: PeerConnection.SignalingState?) = post { trace.event("sdp-state", id, state?.name) }
+            override fun onConnectionChange(state: PeerConnection.PeerConnectionState?) = post {
+                trace.event("transport-state", id, state?.name)
+                if (state != null) peers[id]?.state = state
+                if (state == PeerConnection.PeerConnectionState.CONNECTED) connections = connections + (id to "Подключён")
+                if (state == PeerConnection.PeerConnectionState.FAILED) connections = connections + (id to "Ошибка связи")
+            }
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) = post {
+                trace.event("ice-state", id, state?.name)
                 connections = connections + (id to when (state) {
-                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> "Подключён"
+                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED ->
+                        if (peers[id]?.state == PeerConnection.PeerConnectionState.CONNECTED) "Подключён" else "Подключение…"
                     PeerConnection.IceConnectionState.FAILED -> "Ошибка связи"
                     PeerConnection.IceConnectionState.DISCONNECTED -> "Связь потеряна"
                     else -> "Подключение…"
@@ -114,8 +128,11 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                 if (state == PeerConnection.IceConnectionState.FAILED) peers[id]?.pc?.restartIce()
             }
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {}
-            override fun onIceCandidate(c: IceCandidate) { post { signal.send(JSONObject().put("type", "ice-candidate").put("to", id).put("candidate", JSONObject().put("candidate", c.sdp).put("sdpMid", c.sdpMid).put("sdpMLineIndex", c.sdpMLineIndex))) } }
+            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) = post { trace.event("ice-gathering", id, state?.name) }
+            override fun onIceCandidate(c: IceCandidate) { post {
+                trace.count("local-candidate")
+                if (!signal.send(JSONObject().put("type", "ice-candidate").put("to", id).put("candidate", JSONObject().put("candidate", c.sdp).put("sdpMid", c.sdpMid).put("sdpMLineIndex", c.sdpMLineIndex)))) trace.event("signal-send-failed", id, "candidate")
+            } }
             override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
             override fun onAddStream(stream: MediaStream?) {}
             override fun onRemoveStream(stream: MediaStream?) {}
@@ -128,6 +145,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             }
         }) ?: error("Не удалось создать медиасоединение")
         val peer = Peer(pc); peers[id] = peer
+        trace.event("peer-created", id)
         pc.addTrack(audio, listOf("audio"))
         captures.forEach { (source, c) -> peer.senders[source] = addVideoSender(pc, source, c.track) }
         if (signal.room.selfId < id) channel(id, pc.createDataChannel("freetalk-video-state-v1", DataChannel.Init()))
@@ -143,6 +161,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     }
     private fun createDescription(id: String, p: Peer, offer: Boolean, done: () -> Unit) {
         val fail: (String?) -> Unit = { message ->
+            trace.event("sdp-create-failed", id, if (offer) "offer" else "answer")
             if (peers[id] === p) error = message ?: "Ошибка подключения"
             done()
         }
@@ -151,8 +170,10 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                 if (peers[id] !== p) { done(); return@post }
                 p.pc.setLocalDescription(observer(fail) {
                     if (peers[id] !== p) { done(); return@observer }
-                    signal.send(JSONObject().put("type", if (offer) "offer" else "answer").put("to", id)
-                        .put("description", JSONObject().put("type", sdp.type.canonicalForm()).put("sdp", sdp.description)))
+                    val kind = if (offer) "offer" else "answer"
+                    trace.event("local-description", id, kind)
+                    if (!signal.send(JSONObject().put("type", kind).put("to", id)
+                        .put("description", JSONObject().put("type", sdp.type.canonicalForm()).put("sdp", sdp.description)))) trace.event("signal-send-failed", id, kind)
                     publishVideo(p)
                     done()
                     if (!offer && p.negotiationPending) negotiate(id)
@@ -169,12 +190,21 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         when (j.optString("type")) {
             "ice-config" -> {
                 val list = j.getJSONArray("iceServers")
-                ice = (0 until list.length()).map { i ->
+                val updated = (0 until list.length()).map { i ->
                     val s = list.getJSONObject(i); val urls = s.optJSONArray("urls")
                     PeerConnection.IceServer.builder(if (urls == null) listOf(s.getString("urls")) else (0 until urls.length()).map { urls.getString(it) })
                         .setUsername(s.optString("username")).setPassword(s.optString("credential")).createIceServer()
                 }
-                peers.values.forEach { it.pc.setConfiguration(PeerConnection.RTCConfiguration(ice).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }) }
+                val changed = updated != ice
+                ice = updated
+                trace.event("ice-config", value = if (ice.any { s -> s.urls.any { it.startsWith("turn:") || it.startsWith("turns:") } }) "TURN-available" else "STUN-only")
+                if (changed) peers.forEach { (id, p) ->
+                    val applied = p.pc.setConfiguration(PeerConnection.RTCConfiguration(ice).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN })
+                    trace.event("ice-config-applied", id, applied.toString())
+                    // Credentials can arrive after initial gathering. Match desktop recovery,
+                    // without restarting an already working media connection.
+                    if (applied && p.state != PeerConnection.PeerConnectionState.CONNECTED) p.pc.restartIce()
+                }
             }
             "participant-joined" -> ensure(j.getJSONObject("participant").getString("id"))
             "participant-left" -> {
@@ -183,6 +213,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             }
             "offer", "answer" -> {
                 val id = j.getString("from"); val p = ensure(id); val offer = j.getString("type") == "offer"
+                trace.event("remote-description", id, j.getString("type"))
                 val description = j.getJSONObject("description")
                 p.operations.submit { done ->
                     if (peers[id] !== p) { done(); return@submit }
@@ -192,8 +223,8 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                     }
                     val collision = offer && p.pc.signalingState() != PeerConnection.SignalingState.STABLE
                     p.ignore = collision && signal.room.selfId < id
-                    if (p.ignore) { done(); return@submit }
-                    val fail: (String?) -> Unit = { message -> error = message ?: "Ошибка подключения"; done() }
+                    if (p.ignore) { trace.event("offer-collision-ignored", id); done(); return@submit }
+                    val fail: (String?) -> Unit = { message -> trace.event("sdp-apply-failed", id); error = message ?: "Ошибка подключения"; done() }
                     val apply = {
                         p.pc.setRemoteDescription(observer(fail) {
                             if (peers[id] !== p) { done(); return@observer }
@@ -210,6 +241,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                 }
             }
             "ice-candidate" -> {
+                trace.count("remote-candidate")
                 val p = ensure(j.getString("from"))
                 val c = j.getJSONObject("candidate"); val candidate = IceCandidate(if (c.isNull("sdpMid")) null else c.optString("sdpMid"), c.optInt("sdpMLineIndex"), c.getString("candidate"))
                 p.operations.submit { done ->
@@ -220,6 +252,17 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                 }
             }
             "force-mute" -> changeMuted(true)
+        }
+    }
+    fun retryConnection() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (stopped || now - lastRetryAt < 5_000) return
+        lastRetryAt = now
+        error = ""
+        peers.filterValues { it.state != PeerConnection.PeerConnectionState.CONNECTED }.forEach { (id, p) ->
+            trace.event("manual-ice-restart", id)
+            connections = connections + (id to "Подключение…")
+            p.pc.restartIce()
         }
     }
     private fun channel(id: String, c: DataChannel) {
@@ -233,12 +276,15 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                     publishVideo(p)
                 }
             }
-            override fun onMessage(buffer: DataChannel.Buffer) = post {
-                if (buffer.binary) return@post
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                if (buffer.binary) return
+                // WebRTC owns the callback buffer; copy before dispatching to the UI thread.
                 val bytes = ByteArray(buffer.data.remaining()); buffer.data.get(bytes)
-                val message = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull() ?: return@post
-                if (message.optString("request") == "video-state") publishVideo(p)
-                message.optJSONObject("sources")?.let { p.remoteSources = it; refreshRemoteVideo(id) }
+                post {
+                    val message = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull() ?: return@post
+                    if (message.optString("request") == "video-state") publishVideo(p)
+                    message.optJSONObject("sources")?.let { p.remoteSources = it; refreshRemoteVideo(id) }
+                }
             }
         })
     }
@@ -371,6 +417,23 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             levels = levels + (signal.room.selfId to if (muted) 0f else microphoneLevel)
             speaking = (speaking - signal.room.selfId) + if (!muted && android.os.SystemClock.elapsedRealtime() - lastSpeechAt < 400) setOf(signal.room.selfId) else emptySet()
             peers.forEach { (id, p) -> p.pc.getStats { report ->
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - p.lastRtpSnapshotAt >= 5_000) {
+                    p.lastRtpSnapshotAt = now
+                    for (type in listOf("inbound-rtp", "outbound-rtp")) {
+                        val packets = report.statsMap.values.filter { it.type == type && (it.members["kind"] == "audio" || it.members["mediaType"] == "audio") }
+                            .sumOf { (it.members[if (type == "inbound-rtp") "packetsReceived" else "packetsSent"] as? Number)?.toLong() ?: 0L }
+                        trace.event(type, id, packets.toString())
+                    }
+                    val pair = report.statsMap.values.firstOrNull {
+                        it.type == "candidate-pair" && it.members["state"] == "succeeded" && it.members["nominated"] == true
+                    }
+                    if (pair != null) {
+                        val local = report.statsMap[pair.members["localCandidateId"] as? String]?.members
+                        val remote = report.statsMap[pair.members["remoteCandidateId"] as? String]?.members
+                        trace.event("route", id, "${local?.get("candidateType")}/${remote?.get("candidateType")}/${local?.get("protocol")}")
+                    }
+                }
                 val level = report.statsMap.values.filter { it.type == "inbound-rtp" }
                     .mapNotNull { (it.members["audioLevel"] as? Number)?.toFloat() }.maxOrNull() ?: 0f
                 post {
@@ -383,6 +446,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     }
     fun close() {
         if (stopped) return
+        trace.event("media-closed")
         stopped = true; signal.onSignal = null; main.removeCallbacksAndMessages(null)
         videos = emptyMap()
         peers.values.forEach { it.operations.close(); it.pc.close() }; peers.clear()

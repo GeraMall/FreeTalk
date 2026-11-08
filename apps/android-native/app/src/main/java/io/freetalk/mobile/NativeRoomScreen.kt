@@ -50,11 +50,12 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = signaling.room
-    var media by remember { mutableStateOf<NativeCallMedia?>(null) }
+    var media by remember(roomId) { mutableStateOf<NativeCallMedia?>(null) }
     var sheet by remember { mutableStateOf<String?>(null) }
     var tabletVisible by remember(roomId) { mutableStateOf(false) }
-    var feedback by remember { mutableStateOf("") }
+    var feedback by remember(roomId) { mutableStateOf("") }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    val enteredAt = remember(roomId) { System.currentTimeMillis() }
     var pendingInvite by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf<String?>(null) }
     var videoMode by remember { mutableStateOf(false) }
@@ -143,6 +144,10 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 TextButton(onClick = { sheet = "invite" }, enabled = state.peers.size < 8) { Icon(Icons.Outlined.PersonAdd, null, Modifier.size(16.dp)); MobileText("Добавить", Modifier.padding(start = 6.dp), fontSize = 12.sp) }
             }
             if (feedback.isNotBlank() || media?.error?.isNotBlank() == true) MobileText(feedback.ifBlank { media?.error.orEmpty() }, color = MobileDesign.red, fontSize = 12.sp)
+            if (media != null && state.peers.size > 1 && now - enteredAt > 15_000 &&
+                media?.connections?.values?.none { it == "Подключён" } == true) {
+                OutlinedButton(onClick = { media?.retryConnection() }) { MobileText("Повторить подключение") }
+            }
             CallParticipants(state.peers, state.selfId, media, videoMode, focused, { focused = it }, Modifier.weight(1f))
         }
     }

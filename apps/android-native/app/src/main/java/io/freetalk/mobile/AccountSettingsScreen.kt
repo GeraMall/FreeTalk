@@ -1,6 +1,8 @@
 package io.freetalk.mobile
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +36,16 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
     var cacheBytes by remember { mutableLongStateOf(0) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val saveCallReport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) scope.launch {
+            runCatching {
+                val report = CallDiagnostics.export()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    checkNotNull(context.contentResolver.openOutputStream(uri)).bufferedWriter().use { it.write(report) }
+                }
+            }.onSuccess { error = "Отчёт сохранён" }.onFailure { error = "Не удалось сохранить отчёт" }
+        }
+    }
     LaunchedEffect(section) { if (section == "Чаты") cacheBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.sizeBytes() } }
     val back = { if (section.isNotEmpty()) section = "" else onBack() }
     BackHandler(onBack = back)
@@ -125,6 +137,10 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
                     MobileText("TRLKA", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     MobileText("${BuildConfig.VERSION_NAME} · нативная beta", color = MobileDesign.muted)
                     MobileText("Голосовые и видеозвонки, демонстрация экрана, сообщения и друзья.", fontSize = 14.sp)
+                    OutlinedButton(onClick = { saveCallReport.launch("Trlka-Android-call-${System.currentTimeMillis()}.json") }) {
+                        Icon(Icons.Outlined.SaveAlt, null); Spacer(Modifier.width(8.dp)); MobileText("Сохранить диагностику звонка")
+                    }
+                    MobileText("Последняя попытка подключения. Без сообщений, адресов и паролей. Отправляется только вручную.", fontSize = 12.sp, color = MobileDesign.muted)
                 }
             }
             if (error.isNotEmpty()) MobileText(error, color = MobileDesign.accent, fontSize = 13.sp)
