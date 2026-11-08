@@ -1,0 +1,56 @@
+name: Isolated 10000-user capacity lab
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  chat-capacity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@freetalk/api...' build
+      - run: node scripts/load/capacity/build.mjs
+      - name: Prepare disposable PostgreSQL and constrained application group
+        shell: bash
+        run: |
+          test -x /usr/lib/postgresql/16/bin/initdb || { sudo apt-get update -qq && sudo apt-get install -y postgresql-16; }
+          mkdir -p "$RUNNER_TEMP/trlka-capacity"
+          sudo systemd-run --unit=trlka-capacity-lab --service-type=exec \
+            --property=CPUQuota=200% --property=MemoryMax=4G --property=MemorySwapMax=0 \
+            --property=TasksMax=50000 --property=LimitNOFILE=131072 \
+            --property="WorkingDirectory=$GITHUB_WORKSPACE" \
+            --setenv=GITHUB_ACTIONS=true --setenv=TRLKA_CAPACITY_LAB=isolated-ci \
+            --setenv="RUNNER_TEMP=$RUNNER_TEMP" --setenv="CAPACITY_STATE=$RUNNER_TEMP/trlka-capacity" \
+            --setenv="GITHUB_RUN_ID=$GITHUB_RUN_ID" --setenv="CAPACITY_NODE=$(command -v node)" \
+            /bin/bash scripts/load/capacity/lab.sh
+          for attempt in $(seq 1 90); do
+            if curl -fsS -H 'x-capacity-client: 0' http://127.0.0.1:18890/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          sudo journalctl -u trlka-capacity-lab --no-pager -n 30
+          exit 1
+      - name: Ramp authenticated users and exercise real chat API
+        run: node scripts/load/capacity/run.mjs
+        env:
+          TRLKA_CAPACITY_LAB: isolated-ci
+          CAPACITY_STATE: ${{ runner.temp }}/trlka-capacity
+          DATABASE_URL: postgresql://postgres@127.0.0.1:54329/trlka_capacity_${{ github.run_id }}
+      - name: Stop test environment
+        if: always()
+        run: sudo systemctl stop trlka-capacity-lab || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-lab-report
+          path: output/load/capacity-*.json
+          if-no-files-found: warn

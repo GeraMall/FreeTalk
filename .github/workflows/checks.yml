@@ -5,12 +5,18 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      capacity_lab:
+        description: Run isolated capacity lab instead of normal checks (no production access)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   javascript:
+    if: ${{ inputs.capacity_lab != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +32,7 @@ jobs:
       - run: pnpm audit --audit-level=high
 
   rust-security:
+    if: ${{ inputs.capacity_lab != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +45,7 @@ jobs:
       - run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
 
   windows-native:
+    if: ${{ inputs.capacity_lab != true }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,3 +58,7 @@ jobs:
       - run: pnpm --filter @freetalk/desktop build
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
       - run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib malformed_screen_sdp_returns_error_without_aborting --locked
+
+  capacity-lab:
+    if: ${{ inputs.capacity_lab == true }}
+    uses: ./.github/workflows/capacity-lab.yml
