@@ -5,7 +5,6 @@ import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
 import type { RoomChatMessage, RoomChatAttachment, RoomChatAction } from '@freetalk/protocol';
 import { MessageContextMenu, type MessageContextState, type MessageItem } from './ChatsPage';
 import { TypingIndicator } from './TypingIndicator';
-import { MessageReadersDialog } from './MessageReadersDialog';
 import { AppToast } from './AppToast';
 import { useTypingSender, useVisibleMessageReads } from '../lib/chat-interactions';
 import {
@@ -68,7 +67,6 @@ export function RoomChatPanel({
     [reply, setReply] = useState<RoomChatMessage>(),
     [editing, setEditing] = useState<string>(),
     [selection, setSelection] = useState(new Set<string>()),
-    [readersId, setReadersId] = useState<string>(),
     [notice, setNotice] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -123,6 +121,7 @@ export function RoomChatPanel({
   useEffect(() => {
     if (!menuId) return;
     const close = (e: PointerEvent) => {
+      if ((e.target as Element)?.closest?.('[data-message-readers]')) return;
       if (!menuRef.current?.contains(e.target as Node)) setMenu(undefined);
     };
     document.addEventListener('pointerdown', close, true);
@@ -605,24 +604,19 @@ export function RoomChatPanel({
               toggle(menu.message.id);
               setMenu(undefined);
             }}
-            onReaders={
-              menu.message.sender_id === selfId && onAction
-                ? () => {
-                    setReadersId(menu.message.id);
-                    setMenu(undefined);
+            readReceipt={
+              menu.message.sender_id === selfId &&
+              onAction &&
+              !messages.find((m) => m.id === menu.message.id)?.deleted
+                ? {
+                    group: true,
+                    readers: messages.find((m) => m.id === menu.message.id)?.readers ?? [],
                   }
                 : undefined
             }
           />,
           document.body,
         )}
-      {readersId && (
-        <MessageReadersDialog
-          messageId={readersId}
-          readers={messages.find((m) => m.id === readersId)?.readers ?? []}
-          onClose={() => setReadersId(undefined)}
-        />
-      )}
       {deleting && (
         <ChatActionConfirmDialog
           title={t('Удалить сообщение?')}

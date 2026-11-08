@@ -66,7 +66,7 @@ it('uses the shared menu for replies, edits, reactions, selection, and confirmed
       .getAllByRole('menuitem')
       .map((el) => el.textContent?.trim())
       .slice(-2),
-  ).toEqual(['Выделить', 'Кто просмотрел']);
+  ).toEqual(['Выделить', '0 просмотров']);
   fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ответить' }));
   fireEvent.change(view.getByLabelText('Сообщение в чат комнаты'), { target: { value: 'Reply' } });
   fireEvent.click(view.getByRole('button', { name: 'Отправить сообщение' }));
@@ -104,6 +104,6 @@ it('never offers editing, deletion, or private readers on another participant’
   );
   fireEvent.contextMenu(view.getByText('Original'));
   expect(view.getByRole('menuitem', { name: 'Ответить' })).toBeTruthy();
-  for (const name of ['Изменить', 'Удалить', 'Кто просмотрел'])
+  for (const name of ['Изменить', 'Удалить', '0 просмотров'])
     expect(view.queryByRole('menuitem', { name })).toBeNull();
 });

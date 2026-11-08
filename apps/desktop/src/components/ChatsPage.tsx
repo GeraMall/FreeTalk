@@ -2,7 +2,7 @@ import { clipboardPng } from '../lib/clipboard-image';
 import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
 import { useTypingSender, useVisibleMessageReads } from '../lib/chat-interactions';
 import { TypingIndicator } from './TypingIndicator';
-import { MessageReadersDialog } from './MessageReadersDialog';
+import { MessageReceiptMenuItem, type MessageReceiptSource } from './MessageReadReceipt';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
 import { ServiceBotAvatar, SERVICE_BOT_AVATAR_URL } from './ServiceBotAvatar';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -61,7 +61,6 @@ import {
   Trash2,
   UserPlus,
   Users,
-  Eye,
   Volume2,
   X,
 } from 'lucide-react';
@@ -2390,7 +2389,6 @@ export function MessageList({
 }) {
   const visibleMessages = useMemo(() => collapseDuplicateCallMessages(messages), [messages]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [readersMessage, setReadersMessage] = useState<string>();
   useVisibleMessageReads(
     scrollRef,
     !loading && !savedChat ? chatId : undefined,
@@ -2478,7 +2476,6 @@ export function MessageList({
     setForwardingError('');
     setDeletingMessage(undefined);
     setEditingMessage(undefined);
-    setReadersMessage(undefined);
     setSelectedIds(new Set());
   }, [chatId]);
 
@@ -2530,6 +2527,7 @@ export function MessageList({
   useEffect(() => {
     if (!contextMenu) return;
     const close = (event: PointerEvent) => {
+      if ((event.target as Element)?.closest?.('[data-message-readers]')) return;
       if (!menuRef.current?.contains(event.target as Node)) setContextMenu(undefined);
     };
     const closeOnKey = (event: globalThis.KeyboardEvent) => {
@@ -3040,28 +3038,18 @@ export function MessageList({
                 toggleSelected(contextMenu.message.id);
                 setContextMenu(undefined);
               }}
-              onReaders={
-                contextMenu.message.sender_id === userId && !savedChat
-                  ? () => {
-                      setReadersMessage(contextMenu.message.id);
-                      setContextMenu(undefined);
-                    }
+              readReceipt={
+                contextMenu.message.sender_id === userId &&
+                !savedChat &&
+                !contextMenu.message.metadata?.deleted &&
+                !contextMenu.message.deleted_at
+                  ? { chatId, group: groupChat }
                   : undefined
               }
             />,
             document.body,
           )
         : null}
-      {readersMessage && (
-        <MessageReadersDialog
-          key={`${chatId}:${readersMessage}`}
-          messageId={readersMessage}
-          load={() =>
-            accountClient.request(`/v1/chats/${chatId}/messages/${readersMessage}/readers`)
-          }
-          onClose={() => setReadersMessage(undefined)}
-        />
-      )}
       {selectedIds.size > 0 ? (
         <div className="message-selection-bar" role="toolbar" aria-label={t('Выбранные сообщения')}>
           <strong>{selectedIds.size}</strong>
@@ -3616,7 +3604,7 @@ export function MessageContextMenu({
   onForward,
   onDelete,
   onSelect,
-  onReaders,
+  readReceipt,
 }: {
   menuRef: { current: HTMLDivElement | null };
   state: MessageContextState;
@@ -3633,7 +3621,7 @@ export function MessageContextMenu({
   onForward?(): void;
   onDelete(): void;
   onSelect(): void;
-  onReaders?(): void;
+  readReceipt?: MessageReceiptSource;
 }) {
   const [customReaction, setCustomReaction] = useState('');
   const reactionsAllowed = state.message.kind !== 'system' && state.message.kind !== 'call';
@@ -3772,11 +3760,12 @@ export function MessageContextMenu({
           <button type="button" role="menuitem" onClick={onSelect}>
             <CheckCircle2 /> {t('Выделить')}
           </button>
-          {own && onReaders && (
-            <button type="button" role="menuitem" onClick={onReaders}>
-              <Eye />
-              {t('Кто просмотрел')}
-            </button>
+          {own && readReceipt && (
+            <MessageReceiptMenuItem
+              key={state.message.id}
+              messageId={state.message.id}
+              source={readReceipt}
+            />
           )}
         </div>
       ) : null}

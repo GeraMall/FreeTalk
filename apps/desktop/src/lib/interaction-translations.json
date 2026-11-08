@@ -86,5 +86,53 @@
     "be": "зменена",
     "ka": "შესწორებულია",
     "es": "editado"
+  },
+  "{count} просмотр": {
+    "en": "{count} view",
+    "zh-CN": "{count} 次查看",
+    "kk": "{count} қаралым",
+    "be": "{count} прагляд",
+    "ka": "{count} ნახვა",
+    "es": "{count} visualización"
+  },
+  "{count} просмотра": {
+    "en": "{count} views",
+    "zh-CN": "{count} 次查看",
+    "kk": "{count} қаралым",
+    "be": "{count} прагляды",
+    "ka": "{count} ნახვა",
+    "es": "{count} visualizaciones"
+  },
+  "{count} просмотров": {
+    "en": "{count} views",
+    "zh-CN": "{count} 次查看",
+    "kk": "{count} қаралым",
+    "be": "{count} праглядаў",
+    "ka": "{count} ნახვა",
+    "es": "{count} visualizaciones"
+  },
+  "Просмотрено": {
+    "en": "Seen",
+    "zh-CN": "已读",
+    "kk": "Қаралды",
+    "be": "Прачытана",
+    "ka": "ნანახია",
+    "es": "Visto"
+  },
+  "Ещё не просмотрено": {
+    "en": "Not seen yet",
+    "zh-CN": "尚未查看",
+    "kk": "Әлі қаралмаған",
+    "be": "Яшчэ не прачытана",
+    "ka": "ჯერ არ უნახავთ",
+    "es": "Aún no visto"
+  },
+  "Загружаем просмотры…": {
+    "en": "Loading views…",
+    "zh-CN": "正在加载已读记录…",
+    "kk": "Қаралымдар жүктелуде…",
+    "be": "Загрузка праглядаў…",
+    "ka": "ნახვების ჩატვირთვა…",
+    "es": "Cargando lecturas…"
   }
 }
