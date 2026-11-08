@@ -267,16 +267,30 @@
   height: 14px;
 }
 
-.room-chat-panel .room-chat-message {
-  row-gap: 4px;
-}
-.room-chat-message > .room-chat-message-reactions {
+.room-chat-message > .room-chat-message-content {
   grid-column: 2;
-  grid-row: 2;
-  margin-top: 0;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   justify-self: start;
+  gap: 3px;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
 }
-.room-chat-message.own .room-chat-message > .room-chat-message-reactions {
+.room-chat-message.own > .room-chat-message-content {
   grid-column: 1;
   justify-self: end;
+}
+.room-chat-message-content > .room-chat-bubble {
+  max-width: 100%;
+}
+.room-chat-message-content > .room-chat-message-reactions {
+  align-self: flex-start;
+  margin-top: 0;
+}
+.room-chat-message .room-chat-avatar {
+  align-self: start;
+  margin-top: 2px;
 }

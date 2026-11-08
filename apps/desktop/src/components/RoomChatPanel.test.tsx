@@ -128,6 +128,9 @@ it('keeps own and received reactions below, outside their respective message bub
     const reaction = view.getByRole('button', { name });
     expect(reaction.closest('.room-chat-bubble')).toBeNull();
     expect(reaction.closest('.room-chat-message')?.querySelector('.room-chat-bubble')).toBeTruthy();
+    expect(
+      reaction.closest('.room-chat-message-content')?.querySelector('.room-chat-bubble'),
+    ).toBeTruthy();
   }
   fireEvent.click(view.getByRole('button', { name: '👍: 1' }));
   expect(action).toHaveBeenCalledWith({

@@ -332,67 +332,69 @@ export function RoomChatPanel({
                     message.senderName.slice(0, 1).toUpperCase()
                   )}
                 </span>
-                <span className="room-chat-bubble">
-                  <span className="room-chat-message-meta">
-                    <strong>{own ? t('Вы') : message.senderName}</strong>
-                    <time dateTime={new Date(message.timestamp).toISOString()}>
-                      {new Date(message.timestamp).toLocaleTimeString(appLanguage(), {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
+                <span className="room-chat-message-content">
+                  <span className="room-chat-bubble">
+                    <span className="room-chat-message-meta">
+                      <strong>{own ? t('Вы') : message.senderName}</strong>
+                      <time dateTime={new Date(message.timestamp).toISOString()}>
+                        {new Date(message.timestamp).toLocaleTimeString(appLanguage(), {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                    </span>
+                    {message.replyTo && (
+                      <button
+                        className="room-chat-reply-preview"
+                        onClick={() =>
+                          listRef.current
+                            ?.querySelector<HTMLElement>(`[data-message-id="${message.replyTo}"]`)
+                            ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                        }
+                      >
+                        {(() => {
+                          const original = messages.find((m) => m.id === message.replyTo);
+                          return original?.deleted
+                            ? t('Сообщение удалено')
+                            : original
+                              ? `${original.senderName}: ${original.text}`
+                              : t('Сообщение');
+                        })()}
+                      </button>
+                    )}
+                    {!message.deleted && message.attachment && fileToken && (
+                      <RoomAttachment attachment={message.attachment} token={fileToken} />
+                    )}
+                    {(!message.attachment || message.text !== message.attachment.name) && (
+                      <span className="room-chat-message-text">
+                        {message.deleted ? t('Сообщение удалено') : message.text}
+                        {message.editedAt && (
+                          <small className="room-chat-edited">{t('изменено')}</small>
+                        )}
+                      </span>
+                    )}
                   </span>
-                  {message.replyTo && (
-                    <button
-                      className="room-chat-reply-preview"
-                      onClick={() =>
-                        listRef.current
-                          ?.querySelector<HTMLElement>(`[data-message-id="${message.replyTo}"]`)
-                          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-                      }
+                  {!message.deleted && !!message.reactions?.length && (
+                    <span
+                      className="message-reactions room-chat-message-reactions"
+                      aria-label={t('Реакции на сообщение')}
                     >
-                      {(() => {
-                        const original = messages.find((m) => m.id === message.replyTo);
-                        return original?.deleted
-                          ? t('Сообщение удалено')
-                          : original
-                            ? `${original.senderName}: ${original.text}`
-                            : t('Сообщение');
-                      })()}
-                    </button>
-                  )}
-                  {!message.deleted && message.attachment && fileToken && (
-                    <RoomAttachment attachment={message.attachment} token={fileToken} />
-                  )}
-                  {(!message.attachment || message.text !== message.attachment.name) && (
-                    <span className="room-chat-message-text">
-                      {message.deleted ? t('Сообщение удалено') : message.text}
-                      {message.editedAt && (
-                        <small className="room-chat-edited">{t('изменено')}</small>
-                      )}
+                      {message.reactions.map((r) => (
+                        <button
+                          key={r.emoji}
+                          className={r.userIds.includes(selfId) ? 'mine' : ''}
+                          aria-label={`${r.emoji}: ${r.userIds.length}`}
+                          onClick={() =>
+                            onAction?.({ kind: 'react', id: message.id, emoji: r.emoji })
+                          }
+                        >
+                          <span>{r.emoji}</span>
+                          <b>{r.userIds.length}</b>
+                        </button>
+                      ))}
                     </span>
                   )}
                 </span>
-                {!message.deleted && !!message.reactions?.length && (
-                  <span
-                    className="message-reactions room-chat-message-reactions"
-                    aria-label={t('Реакции на сообщение')}
-                  >
-                    {message.reactions.map((r) => (
-                      <button
-                        key={r.emoji}
-                        className={r.userIds.includes(selfId) ? 'mine' : ''}
-                        aria-label={`${r.emoji}: ${r.userIds.length}`}
-                        onClick={() =>
-                          onAction?.({ kind: 'react', id: message.id, emoji: r.emoji })
-                        }
-                      >
-                        <span>{r.emoji}</span>
-                        <b>{r.userIds.length}</b>
-                      </button>
-                    ))}
-                  </span>
-                )}
               </article>
             );
           })
