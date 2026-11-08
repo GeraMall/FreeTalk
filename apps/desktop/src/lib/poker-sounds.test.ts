@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TableOf } from '@freetalk/protocol';
-import { PokerSounds, PokerSoundTracker, pokerDealDelay } from './poker-sounds';
+import {
+  PokerSounds,
+  PokerSoundTracker,
+  pokerDealDelay,
+  pokerDealSeats,
+  POKER_HOLE_CARD_FLIGHT,
+} from './poker-sounds';
 const table = (): TableOf<'poker'> => ({
   id: 'sound-table',
   kind: 'poker',
@@ -59,10 +65,35 @@ describe('local poker foley', () => {
     const events = tracker.update(v, 'a', 10000);
     expect(events.filter((e) => e.sound === 'deal')).toHaveLength(16);
     expect(events[0]!.sound).toBe('shuffle');
-    expect(Math.max(...events.map((e) => e.at)) + 600).toBeLessThan(v.turnAt!);
+    expect(Math.max(...events.map((e) => e.at)) + POKER_HOLE_CARD_FLIGHT).toBeLessThan(v.turnAt!);
     expect(tracker.update(v, 'a', 10250)).toEqual([]);
     expect(new PokerSoundTracker().update(v, 'a', 20000)).toEqual([]);
     expect(pokerDealDelay(v, 0, 1)).toBeGreaterThan(pokerDealDelay(v, 1, 0));
+  });
+  it.each([2, 3, 4, 5, 6, 7, 8])(
+    'finishes the first round before the second begins for %i seats, then releases the turn',
+    (count) => {
+      const v = {
+        ...table(),
+        seats: table().seats.slice(0, count),
+        dealer: count - 1,
+        folded: [],
+        smallBlind: count - 1,
+      };
+      const order = pokerDealSeats(v);
+      expect(order).toEqual(Array.from({ length: count }, (_, i) => i));
+      const first = order.map((seat) => pokerDealDelay(v, seat, 0));
+      const second = order.map((seat) => pokerDealDelay(v, seat, 1));
+      expect(Math.max(...first) + POKER_HOLE_CARD_FLIGHT).toBeLessThan(Math.min(...second));
+      expect(Math.max(...second) + POKER_HOLE_CARD_FLIGHT).toBeLessThan(
+        v.turnAt! - v.handStartedAt!,
+      );
+      expect(first[1]! - first[0]!).toBeGreaterThanOrEqual(70);
+    },
+  );
+  it('skips vacant and busted seats, including when the dealer wraps around the table', () => {
+    const v = { ...table(), seats: ['a', null, 'c', 'd', null, 'f'], dealer: 3, folded: [2] };
+    expect(pokerDealSeats(v)).toEqual([5, 0, 3]);
   });
   it('plays knocks and chips for accepted actions once, with a distinct all-in accent', () => {
     const tracker = new PokerSoundTracker(),

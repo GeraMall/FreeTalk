@@ -94,15 +94,20 @@ export function PokerCard({
   delay = 0,
   animate = false,
   fromDeck,
+  startAt,
 }: {
   value?: string;
   highlight?: boolean;
   delay?: number;
   animate?: boolean;
   fromDeck?: number;
+  startAt?: number;
 }) {
   // Only a newly mounted card can enter. Betting snapshots must not restart opacity/flight.
-  const [entry] = useState(() => ({ animate, delay }));
+  const [entry] = useState(() => ({
+    animate,
+    delay: animate && startAt !== undefined ? delay - Math.max(0, Date.now() - startAt) : delay,
+  }));
   return (
     <span
       className={`pkr-card ${value ? `pkr-suit-${value[1]}` : 'pkr-card-back'} ${highlight ? 'pkr-card-best' : ''} ${entry.animate ? 'pkr-card-arrive' : ''} ${fromDeck !== undefined ? 'pkr-from-deck' : ''}`}

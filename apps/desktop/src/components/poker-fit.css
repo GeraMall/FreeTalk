@@ -1256,3 +1256,87 @@
   font-size: 14px;
   min-height: 42px;
 }
+
+/* Reserve the top-hand lane and keep the pot beside the community cards.
+   The deck stays on the left, including its original dealing direction. */
+@container activity-tablet (min-width:681px) {
+  .poker-viewport .pkr:not(.pkr-eight) .pkr-center::before {
+    content: '';
+    width: 1px;
+    height: 76px;
+    grid-row: 1;
+  }
+  .poker-viewport .pkr:not(.pkr-eight) .pkr-board-frame {
+    grid-row: 2;
+  }
+  .poker-viewport .pkr:not(.pkr-eight) .pkr-hand-outlook {
+    grid-row: 3;
+  }
+  .poker-viewport .pkr .pkr-pot {
+    position: absolute;
+    left: calc(100% + 16px);
+    right: auto;
+    top: 90px;
+    width: 110px;
+    min-height: 0;
+  }
+  .poker-viewport .pkr-eight .pkr-pot {
+    top: 30px;
+  }
+}
+
+@container activity-tablet (min-width:681px) {
+  .poker-viewport .pkr-eight .pkr-center {
+    top: calc(49% + 10px);
+  }
+  .poker-viewport .pkr-eight .pkr-board > .pkr-card,
+  .poker-viewport .pkr-eight .pkr-card-slot,
+  .poker-viewport .pkr-eight .pkr-draw-pile,
+  .poker-viewport .pkr-eight .pkr-draw-pile > .pkr-card {
+    width: clamp(49px, calc((var(--poker-fit-arena, 430px) - 412px) * 0.705), 62px);
+    height: clamp(70px, calc(var(--poker-fit-arena, 430px) - 412px), 88px);
+  }
+  .poker-viewport .pkr-eight .pkr-board {
+    gap: 7px;
+  }
+  .poker-viewport .pkr-eight .pkr-board-frame {
+    --board-step: clamp(56px, calc((var(--poker-fit-arena, 430px) - 412px) * 0.705 + 7px), 69px);
+    --deck-distance: clamp(
+      63px,
+      calc((var(--poker-fit-arena, 430px) - 412px) * 0.705 + 14px),
+      76px
+    );
+  }
+}
+@container activity-tablet (max-width:1100px) {
+  .poker-height-tight .pkr-eight .pkr-wager {
+    display: none;
+  }
+}
+@container activity-tablet (min-width:681px) and (max-width:900px) {
+  .poker-height-tight .pkr-eight .pkr-center {
+    left: 44%;
+  }
+  .poker-height-tight .pkr-eight .pkr-board > .pkr-card,
+  .poker-height-tight .pkr-eight .pkr-card-slot,
+  .poker-height-tight .pkr-eight .pkr-draw-pile,
+  .poker-height-tight .pkr-eight .pkr-draw-pile > .pkr-card {
+    width: 36px;
+    height: 51px;
+  }
+  .poker-height-tight .pkr-eight .pkr-board {
+    gap: 5px;
+  }
+  .poker-height-tight .pkr-eight .pkr-board-frame {
+    gap: 10px;
+    --board-step: 41px;
+    --deck-distance: 46px;
+  }
+  .poker-height-tight .pkr-eight .pkr-pot {
+    top: 0;
+    left: calc(100% + 10px);
+  }
+  .poker-height-tight .pkr-eight .pkr-pot > strong {
+    font-size: 24px;
+  }
+}

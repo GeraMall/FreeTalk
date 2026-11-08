@@ -2884,3 +2884,7 @@
     position: static;
   }
 }
+
+.pkr-hole > .pkr-card-arrive {
+  animation-duration: var(--hole-flight, 280ms);
+}

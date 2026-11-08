@@ -38,19 +38,19 @@ export function savePokerSoundsEnabled(enabled: boolean) {
   }
 }
 export function pokerDealSeats(table: TableOf<'poker'>) {
-  const first = table.smallBlind ?? (table.dealer + 1) % table.seats.length;
+  const first = (table.dealer + 1) % table.seats.length;
   return Array.from(
     { length: table.seats.length },
     (_, i) => (first + i) % table.seats.length,
   ).filter((seat) => table.seats[seat] && !table.folded.includes(seat));
 }
+export const POKER_HOLE_CARD_FLIGHT = 280;
 export function pokerDealDelay(table: TableOf<'poker'>, seat: number, card: number) {
   const seats = pokerDealSeats(table);
-  return (
-    780 +
-    (card * seats.length + Math.max(0, seats.indexOf(seat))) *
-      Math.min(105, 1200 / Math.max(1, seats.length * 2))
-  );
+  // A visible pause separates the rounds. Fit all 16 flights inside the
+  // existing 2.6-second server grace period without changing the turn clock.
+  const step = Math.min(240, 1100 / Math.max(1, seats.length * 2 - 1));
+  return 820 + (card * seats.length + Math.max(0, seats.indexOf(seat))) * step + card * 260;
 }
 
 /** Tracks accepted snapshots, never button clicks. Opening an old table is silent. */

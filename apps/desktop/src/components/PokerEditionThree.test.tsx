@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoomActivity, TableOf } from '@freetalk/protocol';
+import { PokerCard } from './PokerVisuals';
 import { PokerBoard } from './PokerBoard';
 import { pokerVisibleBoard, pokerRevealing } from '../lib/poker-board';
 import { PokerRulesPicker } from './PokerRulesPicker';
@@ -47,6 +48,16 @@ const table = (): TableOf<'poker'> => ({
   turnDeadline: 42040,
 });
 describe('staged poker rendering and shared controls', () => {
+  it('seeks a late-arriving hole card to the shared deal clock and never restarts it on a betting snapshot', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1500);
+    const screen = render(<PokerCard value="Ah" animate delay={800} startAt={1000} />);
+    const card = screen.getByLabelText('A ♥');
+    expect(card.style.getPropertyValue('--card-delay')).toBe('300ms');
+    screen.rerender(<PokerCard value="Ah" animate={false} delay={1000} startAt={1000} />);
+    expect(screen.getByLabelText('A ♥')).toBe(card);
+    expect(card.style.getPropertyValue('--card-delay')).toBe('300ms');
+    vi.restoreAllMocks();
+  });
   it('highlights and focuses the missing age confirmation without starting; starts only after server confirmation and enough seats', () => {
     const send = vi.fn(),
       v = { ...table(), phase: 'lobby' as const, seats: ['a', null] };

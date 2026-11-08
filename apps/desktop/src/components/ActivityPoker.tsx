@@ -18,7 +18,7 @@ import { pokerHand } from '../lib/poker-hand';
 import { playerName, type TableUiProps } from './activity-table-ui';
 import { PokerCard, PokerChips, PokerAvatar, PokerTableMarker } from './PokerVisuals';
 import { pokerCombinations } from '../lib/poker-guide';
-import { pokerDealDelay } from '../lib/poker-sounds';
+import { pokerDealDelay, POKER_HOLE_CARD_FLIGHT } from '../lib/poker-sounds';
 import { usePokerSounds } from './use-poker-sounds';
 import { PokerBoard } from './PokerBoard';
 import { pokerVisibleBoard, pokerRevealing } from '../lib/poker-board';
@@ -366,6 +366,7 @@ export function ActivityPoker({
                 </div>
                 <div
                   className="pkr-hole"
+                  style={{ '--hole-flight': `${POKER_HOLE_CARD_FLIGHT}ms` } as CSSProperties}
                   aria-label={i === seat ? t('Ваши карты') : t('Карты игрока')}
                 >
                   {[0, 1].map((n) => (
@@ -375,6 +376,7 @@ export function ActivityPoker({
                       highlight={i === seat && Boolean(hole?.[n] && hand.cards.includes(hole[n]!))}
                       animate={dealing && !folded}
                       delay={pokerDealDelay(table, i, n)}
+                      startAt={table.handStartedAt}
                     />
                   ))}
                 </div>
