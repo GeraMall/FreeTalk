@@ -1,3 +1,14 @@
+@font-face {
+  font-family: 'Trlka Currency';
+  src: url('/fonts/trlka-currency.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+00A4;
+}
+.mono-viewport {
+  font-family: 'Trlka Currency', var(--font-ui);
+}
 .activity-content.activity-monopoly-fit {
   display: block;
   padding: 8px 12px;
