@@ -47,3 +47,5 @@ sound('collect', .55, [(i * .06, .16, 'chip', .4) for i in range(6)])
 sound('win', .65, [(0, .3, 'note', .65), (.18, .35, 'high', .7)])
 sound('turn', .26, [(0, .24, 'note', .5)])
 sound('warning', .4, [(0, .16, 'note', .4), (.2, .16, 'note', .4)])
+
+sound('vote', .65, [(0, .22, 'note', .7), (.16, .24, 'high', .7), (.32, .28, 'note', .45)])

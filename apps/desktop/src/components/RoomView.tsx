@@ -60,6 +60,7 @@ import type { LocalSettings } from '../lib/settings';
 import type { SignalingState } from '../lib/signaling-client';
 import type { LocalVideoState, VideoMediaSource } from '../lib/video-manager';
 import { RoomChatPanel } from './RoomChatPanel';
+import { ActivitySwitchVote } from './ActivitySwitchVote';
 import { CallActivity } from './CallActivity';
 import { DeviceControlIcon } from './CallDock';
 import { CachedMediaImage } from './CachedMedia';
@@ -820,6 +821,13 @@ export function RoomView({
       className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${roomChatVisible ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
+      <ActivitySwitchVote
+        activity={activity}
+        selfId={selfId}
+        participants={participants}
+        send={onActivity}
+        deafened={Boolean(deafened)}
+      />
       <div className="room-connection-flyout">
         <ConnectionStatus
           state={signalingState}

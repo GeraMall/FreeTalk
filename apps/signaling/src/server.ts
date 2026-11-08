@@ -70,7 +70,7 @@ export const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.13' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.14' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -239,6 +239,10 @@ sockets.on('connection', (socket, request) => {
             authorization.kind === 'registered' || authorization.kind === 'development';
           connection.activityVersion = message.activityVersion;
           connection.pokerSeats = message.pokerSeats;
+          connection.tabletVersion = message.tabletVersion;
+          connection.isAdult =
+            authorization.kind === 'development' ||
+            ('isAdult' in authorization && authorization.isAdult === true);
           if (message.type === 'create-room')
             manager.create(
               message.roomId,
@@ -338,6 +342,7 @@ sockets.on('connection', (socket, request) => {
             meta.authorization && 'userId' in meta.authorization && meta.authorization.userId
               ? await getRegisteredProfile(meta.authorization.userId)
               : null;
+          if (registeredProfile) connection.isAdult = registeredProfile.isAdult === true;
           const result = manager.updateProfile(
             meta.roomId,
             meta.clientId,
@@ -345,6 +350,12 @@ sockets.on('connection', (socket, request) => {
             registeredProfile?.avatar ??
               (meta.authorization?.kind === 'development' ? message.avatar : undefined),
           );
+          if (registeredProfile)
+            manager.refreshPokerAccess(
+              meta.roomId,
+              meta.clientId,
+              registeredProfile.isAdult === true,
+            );
           if (result === 'RATE_LIMITED')
             send(socket, {
               type: 'error',
@@ -361,9 +372,22 @@ sockets.on('connection', (socket, request) => {
             message.cardDecoration,
           );
           break;
-        case 'activity-action':
+        case 'activity-action': {
+          if (
+            connection.tabletVersion === 3 &&
+            message.action.kind === 'game-access' &&
+            Date.now() - (connection.lastAgeCheckAt ?? 0) > 5000 &&
+            meta.authorization &&
+            'userId' in meta.authorization &&
+            meta.authorization.userId
+          ) {
+            connection.lastAgeCheckAt = Date.now();
+            const profile = await getRegisteredProfile(meta.authorization.userId);
+            connection.isAdult = profile?.isAdult === true;
+          }
           manager.updateActivity(meta.roomId, meta.clientId, message.revision, message.action);
           break;
+        }
         case 'reaction':
           manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
           break;

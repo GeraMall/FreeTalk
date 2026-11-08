@@ -4,6 +4,7 @@ import { RoomManager, type PeerConnection } from '../src/room-manager.js';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 class Connection implements PeerConnection {
   canUseActivity = true;
+  isAdult = true;
   activityVersion: 2 | undefined = 2;
   messages: ServerMessage[] = [];
   send(message: ServerMessage) {
@@ -19,6 +20,46 @@ class Connection implements PeerConnection {
   }
 }
 describe('private table projections and pointers', () => {
+  it('never allows a real connection to assume a server bot identity', () => {
+    const manager = new RoomManager();
+    const host = Object.assign(new Connection(), {
+      pokerSeats: 8 as const,
+      tabletVersion: 3 as const,
+    });
+    manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', host);
+    const send = (action: RoomActivityAction) =>
+      manager.updateActivity('ABCDEFGH2345', id(1), host.activity.revision, action);
+    send({ kind: 'open' });
+    send({ kind: 'table-open', game: 'poker', pokerRules: 2, pokerSeats: 8, edition: 3 });
+    send({ kind: 'table-bot', seat: 1 });
+    const bot = host.activity.table?.bots?.[0];
+    expect(bot).toBeDefined();
+    expect(() =>
+      manager.join('ABCDEFGH2345', bot!.id, 'session-223456789', 'Impersonator', new Connection()),
+    ).toThrow('зарезервирован');
+  });
+  it('blocks underage and unknown-age poker viewing and actions even through an older protocol', () => {
+    const manager = new RoomManager(),
+      host = new Connection(),
+      minor = Object.assign(new Connection(), { isAdult: false });
+    manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', host);
+    manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'Minor', minor);
+    manager.updateActivity('ABCDEFGH2345', id(1), host.activity.revision, { kind: 'open' });
+    manager.updateActivity('ABCDEFGH2345', id(1), host.activity.revision, {
+      kind: 'table-open',
+      game: 'poker',
+    });
+    expect(host.activity.table?.kind).toBe('poker');
+    expect(minor.activity.table).toBeUndefined();
+    expect(minor.activity.canPlayPoker).toBe(false);
+    manager.updateActivity('ABCDEFGH2345', id(2), minor.activity.revision, {
+      kind: 'table-seat',
+      seat: 1,
+    });
+    expect(host.activity.table?.seats[1]).toBeNull();
+    manager.refreshPokerAccess('ABCDEFGH2345', id(2), true);
+    expect(minor.activity.table?.kind).toBe('poker');
+  });
   it('negotiates eight seats without sending oversized snapshots to an older client', () => {
     const manager = new RoomManager();
     const host = Object.assign(new Connection(), { pokerSeats: 8 as const });

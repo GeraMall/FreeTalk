@@ -1,4 +1,5 @@
-import type { TableOf, TableAction } from './activity-table.js';
+import { pokerBoardDuration } from './poker-timing.js';
+import { tableCountsForStatistics, type TableOf, type TableAction } from './activity-table.js';
 import {
   addLog,
   shuffled,
@@ -90,10 +91,23 @@ export function dealPoker(session: TableSession, now: number): TableSession {
       },
     };
   v.phase = 'playing';
+  if (v.edition === 3) {
+    v.tournamentStartedAt ??= now;
+    v.blindLevel =
+      v.pokerMode === 'tournament'
+        ? Math.min(10, Math.floor((now - v.tournamentStartedAt) / 900000))
+        : 0;
+    v.smallBlindAmount = 10 * 2 ** v.blindLevel;
+    v.bigBlindAmount = v.smallBlindAmount * 2;
+    v.anteAmount = v.pokerAnte ? Math.max(1, Math.floor(v.bigBlindAmount / 10)) : 0;
+    v.boardAt = undefined;
+    v.boardFrom = 0;
+  }
   if (v.pokerRules === 2) {
     if (!v.handNumber) v.dealer = v.seats.length - 1;
     v.rebuys ??= v.seats.map(() => 0);
-    v.stats ??= v.seats.map(() => ({ hands: 0, wins: 0, won: 0, lost: 0 }));
+    if (tableCountsForStatistics(v))
+      v.stats ??= v.seats.map(() => ({ hands: 0, wins: 0, won: 0, lost: 0 }));
     v.handStartedAt = now;
     v.handEndedAt = undefined;
     v.turnAt = now + 2600;
@@ -104,8 +118,8 @@ export function dealPoker(session: TableSession, now: number): TableSession {
   v.stage = 'preflop';
   v.board = [];
   v.pot = 0;
-  v.bet = 20;
-  v.minRaise = 20;
+  v.bet = v.bigBlindAmount ?? 20;
+  v.minRaise = v.bigBlindAmount ?? 20;
   v.bets = v.seats.map(() => 0);
   v.contributions = v.seats.map(() => 0);
   v.folded = v.seats.flatMap((id, i) => (!id || !v.stacks[i] ? [i] : []));
@@ -126,11 +140,18 @@ export function dealPoker(session: TableSession, now: number): TableSession {
   const big = nextIndex(v, small, (i) => !v.folded.includes(i));
   v.smallBlind = small;
   v.bigBlind = big;
-  pay(v, small, 10);
-  pay(v, big, 20);
+  if (v.anteAmount) {
+    for (let i = 0; i < v.seats.length; i++) if (!v.folded.includes(i)) pay(v, i, v.anteAmount);
+    v.bets = v.seats.map(() => 0); // Ante is dead money, not part of the amount to call.
+  }
+  pay(v, small, v.smallBlindAmount ?? 10);
+  pay(v, big, v.bigBlindAmount ?? 20);
   v.turn = nextIndex(v, big, (i) => !v.folded.includes(i) && !v.allIn.includes(i));
   const result = {
-    view: addLog(v, `Раздача ${v.handNumber} · блайнды 10 / 20`),
+    view: addLog(
+      v,
+      `Раздача ${v.handNumber} · блайнды ${v.smallBlindAmount ?? 10} / ${v.bigBlindAmount ?? 20}`,
+    ),
     secret: { ...session.secret, deck, hands, pokerStartingStacks: startingStacks },
   };
   return v.turn === -1 ? showdown(result, now) : result;
@@ -138,25 +159,43 @@ export function dealPoker(session: TableSession, now: number): TableSession {
 function settlePoker(v: TableOf<'poker'>, session: TableSession, now: number) {
   if (v.pokerRules !== 2 || v.settledHand === v.handNumber) return;
   const starting = session.secret.pokerStartingStacks;
-  v.stats = v.seats.map((_, i) => {
-    const old = v.stats?.[i] ?? { hands: 0, wins: 0, won: 0, lost: 0 };
-    if (!starting?.[i]) return old;
-    const net = v.stacks[i]! - starting[i]!;
-    return {
-      hands: old.hands + 1,
-      wins: old.wins + Number(net > 0),
-      won: old.won + Math.max(0, net),
-      lost: old.lost + Math.max(0, -net),
-    };
-  });
+  if (tableCountsForStatistics(v))
+    v.stats = v.seats.map((_, i) => {
+      const old = v.stats?.[i] ?? { hands: 0, wins: 0, won: 0, lost: 0 };
+      if (!starting?.[i]) return old;
+      const net = v.stacks[i]! - starting[i]!;
+      return {
+        hands: old.hands + 1,
+        wins: old.wins + Number(net > 0),
+        won: old.won + Math.max(0, net),
+        lost: old.lost + Math.max(0, -net),
+      };
+    });
   v.settledHand = v.handNumber;
-  v.handEndedAt = now;
+  if (!tableCountsForStatistics(v)) v.stats = undefined;
+  v.handEndedAt =
+    now +
+    (v.edition === 3 && v.boardAt === now
+      ? pokerBoardDuration(v.board.length - (v.boardFrom ?? v.board.length))
+      : 0);
+  if (
+    v.pokerMode &&
+    v.pokerMode !== 'classic' &&
+    v.stacks.filter((n, i) => v.seats[i] && n > 0).length === 1
+  ) {
+    v.phase = 'finished';
+    v.winner = v.seats[v.stacks.findIndex((n) => n > 0)] ?? undefined;
+  }
   v.turnDeadline = undefined;
 }
 function showdown(session: TableSession, now: number): TableSession {
   if (session.view.kind !== 'poker') return session;
   const v = structuredClone(session.view),
     deck = [...(session.secret.deck ?? [])];
+  if (v.edition === 3 && v.board.length < 5) {
+    v.boardAt = now;
+    v.boardFrom = v.board.length;
+  }
   while (v.board.length < 5) v.board.push(deck.pop()!);
   const levels = [...new Set(v.contributions.filter((x) => x > 0))].sort((a, b) => a - b);
   let previous = 0;
@@ -206,6 +245,7 @@ export function reducePoker(
   const actorSeat = old.seats.indexOf(context.actorId);
   if (action.kind === 'poker-rebuy') {
     if (
+      (old.pokerMode !== undefined && old.pokerMode !== 'classic') ||
       old.pokerRules !== 2 ||
       old.stage !== 'showdown' ||
       actorSeat < 0 ||
@@ -302,15 +342,23 @@ export function reducePoker(
     return showdown({ ...session, view: v }, context.now);
   const deck = [...(session.secret.deck ?? [])];
   deck.pop();
+  if (v.edition === 3) {
+    v.boardAt = context.now;
+    v.boardFrom = v.board.length;
+  }
   const count = v.stage === 'preflop' ? 3 : 1;
   for (let i = 0; i < count; i++) v.board.push(deck.pop()!);
   v.stage = v.stage === 'preflop' ? 'flop' : v.stage === 'flop' ? 'turn' : 'river';
   v.bet = 0;
-  v.minRaise = 20;
+  v.minRaise = v.bigBlindAmount ?? 20;
   v.bets = v.seats.map(() => 0);
   v.acted = [];
   v.actedBets = v.seats.map(() => null);
   v.turn = nextIndex(v, v.dealer, (i) => active.includes(i));
+  if (v.edition === 3) {
+    v.turnAt = context.now + pokerBoardDuration(count);
+    v.turnDeadline = v.turnAt + 30000;
+  }
   return { view: addLog(v, `Открыт ${v.stage}`), secret: { ...session.secret, deck } };
 }
 

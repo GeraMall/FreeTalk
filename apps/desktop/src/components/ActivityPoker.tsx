@@ -16,10 +16,13 @@ import {
 import { t } from '../lib/app-language';
 import { pokerHand } from '../lib/poker-hand';
 import { playerName, type TableUiProps } from './activity-table-ui';
-import { PokerCard, PokerChips, PokerAvatar } from './PokerVisuals';
+import { PokerCard, PokerChips, PokerAvatar, PokerTableMarker } from './PokerVisuals';
 import { pokerCombinations } from '../lib/poker-guide';
 import { pokerDealDelay } from '../lib/poker-sounds';
 import { usePokerSounds } from './use-poker-sounds';
+import { PokerBoard } from './PokerBoard';
+import { pokerVisibleBoard, pokerRevealing } from '../lib/poker-board';
+import { TableBotControls } from './TableBotControls';
 import './poker-table.css';
 
 const stages = {
@@ -105,15 +108,17 @@ export function ActivityPoker({
       document.removeEventListener('pointerdown', outside);
     };
   }, [drawer]);
+  const revealing = pokerRevealing(table, now);
   const seat = table.seats.indexOf(selfId ?? ''),
-    settled = table.stage === 'showdown',
+    settled = table.stage === 'showdown' && !pokerRevealing(table, now),
     advanced = table.pokerRules === 2;
   const dealing =
     advanced && !settled && now < (table.turnAt ?? 0) && now < (table.handStartedAt ?? 0) + 2600;
   const canAct =
     seat >= 0 &&
     seat === table.turn &&
-    !settled &&
+    table.stage !== 'showdown' &&
+    now >= (table.turnAt ?? 0) &&
     table.phase === 'playing' &&
     !dealing &&
     !table.folded.includes(seat) &&
@@ -138,7 +143,7 @@ export function ActivityPoker({
       value: String(Math.min(maximum, Math.max(Math.min(minimum, maximum), Math.round(n)))),
     });
   const ownCards = table.hands.find((h) => h.ownerId === selfId)?.cards ?? [];
-  const cardsKey = [...ownCards, ...table.board].join(',');
+  const cardsKey = [...ownCards, ...pokerVisibleBoard(table, now)].join(',');
   const hand = useMemo(
     () => (ownCards.length ? pokerHand(cardsKey.split(',')) : { name: '', cards: [], draw: '' }),
     [cardsKey, ownCards.length],
@@ -149,17 +154,26 @@ export function ActivityPoker({
         Math.min(30, Math.ceil((table.turnDeadline - Math.max(now, table.turnAt ?? 0)) / 1000)),
       )
     : undefined;
+  const tournament = table.pokerMode !== undefined && table.pokerMode !== 'classic';
   const order = Array.from(
     { length: table.seats.length },
     (_, n) => (table.turn + n) % table.seats.length,
   ).filter((i) => table.seats[i] && !table.folded.includes(i) && !table.allIn.includes(i));
   const nextSeat = order[1],
     rebuyCount = table.rebuys?.[seat] ?? 0;
-  const canRebuy = advanced && seat >= 0 && settled && table.stacks[seat] === 0 && rebuyCount < 3;
+  const canRebuy =
+    advanced && !tournament && seat >= 0 && settled && table.stacks[seat] === 0 && rebuyCount < 3;
   const small =
       table.smallBlind ??
       (table.seats.length === 2 ? table.dealer : (table.dealer + 1) % table.seats.length),
     big = table.bigBlind ?? (small + 1) % table.seats.length;
+  const nextLevel =
+    table.pokerMode === 'tournament'
+      ? Math.max(
+          0,
+          (table.tournamentStartedAt ?? now) + ((table.blindLevel ?? 0) + 1) * 900000 - now,
+        )
+      : undefined;
   const raiseLabel = amount === maximum ? 'ALL IN' : t(table.bet ? 'Повысить до' : 'Ставка');
   return (
     <div
@@ -176,9 +190,18 @@ export function ActivityPoker({
             <p>
               {t('Раздача')} {String(table.handNumber).padStart(2, '0')}
               <i />
-              10 / 20
+              {table.smallBlindAmount ?? 10} / {table.bigBlindAmount ?? 20}
+              {Boolean(table.anteAmount) && ` · ${t('Анте')} ${table.anteAmount}`}
               <i />
               {advanced ? t('30 секунд на ход') : t('Виртуальные фишки')}
+              {tournament && (
+                <span>
+                  {t('Турнир')} ·{' '}
+                  {table.pokerMode === 'tournament-fixed'
+                    ? t('Постоянные блайнды')
+                    : `${t('Уровень')} ${(table.blindLevel ?? 0) + 1} · ${nextLevel === 0 ? t('повышение со следующей раздачи') : `${t('повышение через')} ${Math.floor((nextLevel ?? 0) / 60000)}:${String(Math.floor(((nextLevel ?? 0) % 60000) / 1000)).padStart(2, '0')}`}`}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -234,23 +257,7 @@ export function ActivityPoker({
             </strong>
             <PokerChips amount={table.pot} />
           </div>
-          <div className="pkr-board" aria-label={t('Общие карты')}>
-            {Array.from({ length: 5 }, (_, i) =>
-              table.board[i] ? (
-                <PokerCard
-                  key={`${table.handNumber}:${i}:${table.board[i]}`}
-                  value={table.board[i]}
-                  highlight={hand.cards.includes(table.board[i]!)}
-                  animate={Boolean(table.lastAction && now - table.lastAction.at < 1800)}
-                  delay={(i < 3 ? i : 0) * 100}
-                />
-              ) : (
-                <span className="pkr-card-slot" key={`empty:${i}`}>
-                  <Spade size={17} />
-                </span>
-              ),
-            )}
-          </div>
+          <PokerBoard table={table} now={now} best={hand.cards} dealing={dealing} />
           <div className="pkr-hand-outlook" aria-live="polite">
             {ownCards.length && !dealing ? (
               <>
@@ -290,23 +297,34 @@ export function ActivityPoker({
               seat >= 0 ? (i - seat + table.seats.length) % table.seats.length : i
             ]!;
             const person = participants.find((p) => p.id === id),
-              moving = !settled && table.turn === i && !dealing,
+              moving =
+                table.stage !== 'showdown' &&
+                table.turn === i &&
+                !dealing &&
+                now >= (table.turnAt ?? 0),
               folded = table.folded.includes(i),
               allIn = table.allIn.includes(i),
               winning = settled && table.payouts[i]! > table.contributions[i]!,
-              hole = table.hands.find((h) => h.ownerId === id)?.cards;
+              hole =
+                table.stage === 'showdown' && !settled && i !== seat
+                  ? undefined
+                  : table.hands.find((h) => h.ownerId === id)?.cards;
             const vector = dealVectors[pos]!;
             return (
               <div
                 key={id}
                 data-seat={i}
-                className={`pkr-seat pkr-pos-${pos} ${i === seat ? 'pkr-own' : ''} ${moving ? 'pkr-seat-turn' : ''} ${folded ? 'pkr-folded' : ''} ${winning ? 'pkr-winning' : ''}`}
+                className={`pkr-seat pkr-pos-${pos} ${i === seat ? 'pkr-own' : ''} ${moving ? 'pkr-seat-turn' : ''} ${folded ? 'pkr-folded' : ''} ${winning ? 'pkr-winning' : ''} ${small === i ? 'pkr-seat-small' : ''} ${big === i ? 'pkr-seat-big' : ''}`}
                 style={{ '--deal-x': vector[0], '--deal-y': vector[1] } as CSSProperties}
               >
-                <span className="pkr-seat-number">
-                  {t('Место')} {String(i + 1).padStart(2, '0')}
-                </span>
                 <div className="pkr-player">
+                  <span
+                    className="pkr-place"
+                    aria-label={`${t('Место')} ${i + 1}`}
+                    title={`${t('Место')} ${i + 1}`}
+                  >
+                    {i + 1}
+                  </span>
                   <PokerAvatar
                     person={person}
                     moving={moving}
@@ -328,13 +346,15 @@ export function ActivityPoker({
                           ? 'Пас'
                           : allIn
                             ? 'Олл-ин'
-                            : person?.deafened
-                              ? 'Звук выключен'
-                              : person?.muted
-                                ? 'Микрофон выключен'
-                                : person?.speaking
-                                  ? 'Говорит'
-                                  : 'За столом',
+                            : person?.bot
+                              ? 'Тренировочный бот'
+                              : person?.deafened
+                                ? 'Звук выключен'
+                                : person?.muted
+                                  ? 'Микрофон выключен'
+                                  : person?.speaking
+                                    ? 'Говорит'
+                                    : 'За столом',
                       )}
                     </span>
                   </div>
@@ -355,12 +375,24 @@ export function ActivityPoker({
                 </div>
                 <div className="pkr-seat-tokens">
                   {table.dealer === i && (
-                    <span className="pkr-dealer" title={t('Дилер')}>
-                      D
-                    </span>
+                    <PokerTableMarker
+                      label="D"
+                      dealer
+                      description={t('Дилер: от этого места отсчитывается порядок раздачи.')}
+                    />
                   )}
-                  {small === i && <span className="pkr-blind">SB</span>}
-                  {big === i && <span className="pkr-blind">BB</span>}
+                  {small === i && (
+                    <PokerTableMarker
+                      label="SB"
+                      description={`${t('Малый блайнд — обязательная ставка')}: ${table.smallBlindAmount ?? 10} ${t('фишек')}.`}
+                    />
+                  )}
+                  {big === i && (
+                    <PokerTableMarker
+                      label="BB"
+                      description={`${t('Большой блайнд — обязательная ставка')}: ${table.bigBlindAmount ?? 20} ${t('фишек')}.`}
+                    />
+                  )}
                   {allIn && !settled && (
                     <span className="pkr-allin" aria-label="ALL IN">
                       <b>ALL</b>
@@ -399,24 +431,30 @@ export function ActivityPoker({
           })}
         </div>
       </div>
+      {table.edition === 3 && settled && (
+        <TableBotControls table={table} selfId={selfId} send={send} />
+      )}
       <div className="pkr-turnline" role="status">
         <span className={`pkr-turn-dot ${settled ? 'pkr-turn-done' : ''}`} />
         <strong>
           {t(
             dealing
               ? 'Раздаём карты'
-              : settled
-                ? 'Раздача завершена'
-                : seat === table.turn
-                  ? 'Ваш ход'
-                  : 'Сейчас ходит',
+              : revealing
+                ? 'Открываем общие карты'
+                : settled
+                  ? 'Раздача завершена'
+                  : seat === table.turn
+                    ? 'Ваш ход'
+                    : 'Сейчас ходит',
           )}
           {!dealing &&
+            !revealing &&
             !settled &&
             seat !== table.turn &&
             ` ${playerName(table.seats[table.turn], participants)}`}
         </strong>
-        {!settled && !dealing && nextSeat !== undefined && (
+        {!settled && !dealing && !revealing && nextSeat !== undefined && (
           <small>
             {t('Далее')}
             <ChevronRight size={12} />
@@ -440,6 +478,20 @@ export function ActivityPoker({
           className={`pkr-decisions ${canAct ? 'pkr-your-decision' : ''}`}
           aria-label={t('Ваше действие')}
         >
+          <div className="pkr-decision-heading">
+            <strong>
+              {t(
+                revealing
+                  ? 'Открываем общие карты'
+                  : canAct
+                    ? 'Ваше решение'
+                    : 'Ожидаем ход соперника',
+              )}
+            </strong>
+            <span>
+              {t('К уравниванию')}: {fmt(owed)} · {t('Ваш стек')}: {fmt(table.stacks[seat] ?? 0)}
+            </span>
+          </div>
           <div className="pkr-action-buttons">
             <button
               type="button"
@@ -529,6 +581,8 @@ export function ActivityPoker({
             </span>
           ) : !settled && table.allIn.includes(seat) ? (
             <span>{t('Вы в олл-ине. Ждём вскрытия.')}</span>
+          ) : tournament && table.stacks[seat] === 0 ? (
+            <span>{t('Вы выбыли из турнира. Можно наблюдать за оставшимися игроками.')}</span>
           ) : advanced && table.stacks[seat] === 0 ? (
             <>
               <span>
@@ -545,9 +599,13 @@ export function ActivityPoker({
               {!settled && rebuyCount < 3 && <small>{t('Докупка доступна между раздачами')}</small>}
             </>
           ) : (
-            <span>{t(settled ? 'Банк распределён' : 'Вы в раздаче')}</span>
+            <span>
+              {table.phase === 'finished' && tournament
+                ? `${t('Победитель турнира')}: ${playerName(table.winner, participants)}`
+                : t(settled ? 'Банк распределён' : 'Вы в раздаче')}
+            </span>
           )}
-          {settled && selfId === table.hostId && (
+          {settled && table.phase !== 'finished' && selfId === table.hostId && (
             <button
               type="button"
               className="pkr-next-hand"
@@ -571,8 +629,12 @@ export function ActivityPoker({
           {t('Только виртуальные фишки')}
         </span>
         <span>
-          {advanced ? t('30 секунд без ответа — пас') : t('Техасский холдем')}
-          {advanced && seat >= 0 && ` · ${t('Докупки')} ${rebuyCount} / 3`}
+          {tournament
+            ? t('Турнир на выбывание · без докупок')
+            : advanced
+              ? t('30 секунд без ответа — пас')
+              : t('Техасский холдем')}
+          {advanced && !tournament && seat >= 0 && ` · ${t('Докупки')} ${rebuyCount} / 3`}
         </span>
       </footer>
       <aside
@@ -592,7 +654,13 @@ export function ActivityPoker({
           </button>
         </div>
         <div className="pkr-drawer-scroll">
-          {drawer === 'stats' ? (
+          {drawer === 'stats' && table.training ? (
+            <p className="pkr-drawer-note">
+              {t(
+                'Тренировочная партия с ботами. Победы, поражения и фишки не учитываются в статистике.',
+              )}
+            </p>
+          ) : drawer === 'stats' ? (
             <>
               <p className="pkr-drawer-note">
                 {t(

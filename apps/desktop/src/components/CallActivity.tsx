@@ -23,6 +23,7 @@ import { ActivityMillionaire } from './ActivityMillionaire';
 import { ActivityPoker } from './ActivityPoker';
 import type { TableParticipant } from './activity-table-ui';
 import { ActivityProperty } from './ActivityProperty';
+import { TableBotControls } from './TableBotControls';
 import { ActivityPointers } from './ActivityPointers';
 const games = {
   chess: 'Шахматы',
@@ -128,7 +129,7 @@ function ChessBoard({
 export function CallActivity({
   activity,
   selfId,
-  participants = [],
+  participants: humanParticipants = [],
   onAction,
   onClose,
   onEnd,
@@ -143,6 +144,10 @@ export function CallActivity({
   const [flagging, setFlagging] = useState(false);
   const game = activity.game;
   const table = activity.table;
+  const participants: TableParticipant[] = [
+    ...humanParticipants,
+    ...(table?.bots ?? []).map((b) => ({ ...b, bot: true })),
+  ];
   const activeKind = table?.kind ?? game?.kind;
   const surface = useRef<HTMLElement>(null);
   const actionRef = useRef(onAction);
@@ -152,15 +157,15 @@ export function CallActivity({
     actionRef.current?.({ kind: 'tablet-join', joined: true });
     return () => actionRef.current?.({ kind: 'tablet-join', joined: false });
   }, [activity.sessionId]);
-  const [catalog, setCatalog] = useState(!activeKind);
+  const [catalog, setCatalog] = useState(!activeKind && !activity.restrictedGame);
   const gameKind = activeKind;
-  const [switchTo, setSwitchTo] = useState<ActivityGame | TableKind>();
   useEffect(() => {
     if (gameKind) setCatalog(false);
-  }, [gameKind]);
+  }, [gameKind, table?.id]);
   const play = (next: ActivityGame | TableKind) => {
-    if (table?.phase === 'playing' && next !== table.kind) {
-      setSwitchTo(next);
+    if (next === 'poker' && activity.canPlayPoker === false) return;
+    if (table || game) {
+      onAction?.({ kind: 'game-propose', game: next });
       return;
     }
     setFlagging(false);
@@ -171,46 +176,13 @@ export function CallActivity({
         : {
             kind: 'table-open',
             game: next,
+            edition: 3,
             ...(next === 'poker' ? { pokerRules: 2 as const, pokerSeats: 8 as const } : {}),
           },
     );
   };
   return (
     <section ref={surface} className="call-activity" aria-label={t('Общий планшет')}>
-      {switchTo && (
-        <div className="table-switch-confirm">
-          <section role="alertdialog" aria-label={t('Сменить игру?')}>
-            <h3>{t('Сменить игру?')}</h3>
-            <p>{t('Текущая партия будет завершена для всех участников.')}</p>
-            <div className="table-inline-controls">
-              <button type="button" onClick={() => setSwitchTo(undefined)}>
-                {t('Продолжить партию')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onAction?.(
-                    switchTo === 'mines'
-                      ? { kind: 'game', game: 'mines' }
-                      : {
-                          kind: 'table-open',
-                          game: switchTo,
-                          ...(switchTo === 'poker'
-                            ? { pokerRules: 2 as const, pokerSeats: 8 as const }
-                            : {}),
-                        },
-                  );
-                  setFlagging(false);
-                  setCatalog(false);
-                  setSwitchTo(undefined);
-                }}
-              >
-                {t('Сменить игру')}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
       <header className="activity-heading">
         <div>
           {!catalog && activeKind ? (
@@ -234,7 +206,7 @@ export function CallActivity({
           </div>
         </div>
         <div>
-          {onEnd && (!table || table.hostId === selfId) && (
+          {onEnd && !activity.restrictedGame && (!table || table.hostId === selfId) && (
             <button type="button" onClick={onEnd}>
               {t('Завершить для всех')}
             </button>
@@ -273,9 +245,9 @@ export function CallActivity({
             visible: false,
           })
         }
-        className={`activity-content ${catalog || !activeKind ? 'activity-catalog' : 'activity-playing'}`}
+        className={`activity-content ${catalog || (!activeKind && !activity.restrictedGame) ? 'activity-catalog' : 'activity-playing'}`}
       >
-        {catalog || !activeKind ? (
+        {catalog || (!activeKind && !activity.restrictedGame) ? (
           <>
             <div className="activity-pixel-planet" aria-hidden="true">
               <i />
@@ -290,6 +262,19 @@ export function CallActivity({
                   </small>
                 ) : null}
               </p>
+              {activity.canPlayPoker === false && (
+                <div className="activity-age-catalog">
+                  <strong>{t('Покер · 18+')}</strong>
+                  <p>
+                    {t(
+                      'Доступ определяется датой рождения в аккаунте. Если дата не указана, отправьте её боту TRLKA: ДД.ММ.ГГГГ.',
+                    )}
+                  </p>
+                  <button type="button" onClick={() => onAction?.({ kind: 'game-access' })}>
+                    {t('Обновить доступ')}
+                  </button>
+                </div>
+              )}
               <div className="activity-tiles">
                 {(Object.keys(games) as (ActivityGame | TableKind)[]).map((kind) => {
                   const Icon = gameIcons[kind];
@@ -298,13 +283,14 @@ export function CallActivity({
                       type="button"
                       className="activity-tile"
                       key={kind}
-                      disabled={!onAction || Boolean(table && table.hostId !== selfId)}
+                      disabled={!onAction || (kind === 'poker' && activity.canPlayPoker === false)}
                       onClick={() => play(kind)}
                     >
                       <span className={`activity-game-mark game-mark-${kind}`}>
                         <Icon size={27} />
                       </span>
                       {t(games[kind])}
+                      {kind === 'poker' && activity.canPlayPoker === false && <small>18+</small>}
                     </button>
                   );
                 })}
@@ -312,8 +298,37 @@ export function CallActivity({
             </div>
           </>
         ) : null}
+        {activity.restrictedGame === 'poker' && !catalog && (
+          <div className="activity-age-lock">
+            <strong>18+</strong>
+            <h3>{t('Покер доступен только с 18 лет')}</h3>
+            <p>
+              {t(
+                'Участие и просмотр стола закрыты. Если дата рождения не указана, отправьте её боту TRLKA в формате ДД.ММ.ГГГГ.',
+              )}
+            </p>
+            <button type="button" onClick={() => onAction?.({ kind: 'game-access' })}>
+              {t('Обновить доступ')}
+            </button>
+            <button type="button" onClick={() => setCatalog(true)}>
+              {t('К другим играм')}
+            </button>
+          </div>
+        )}
         {table && !catalog && (
           <div className="activity-table-surface" data-activity-surface="tablet">
+            {table.training && (
+              <div className="table-training-banner">
+                {t('Тренировка с ботами · статистика не учитывается')}
+              </div>
+            )}
+            {table.phase === 'lobby' && (
+              <TableBotControls
+                table={table}
+                selfId={selfId}
+                send={(action) => onAction?.(action)}
+              />
+            )}
             {table.kind === 'fleet' ? (
               <ActivityFleet
                 key={table.id}
@@ -395,11 +410,7 @@ export function CallActivity({
                   <Flag size={15} />
                 </button>
               )}
-              <button
-                type="button"
-                disabled={!onAction || Boolean(table && table.hostId !== selfId)}
-                onClick={() => play(game.kind)}
-              >
+              <button type="button" disabled={!onAction} onClick={() => play(game.kind)}>
                 <RotateCcw size={14} /> {t('Новая игра')}
               </button>
             </div>
@@ -466,7 +477,7 @@ export function CallActivity({
                 key={kind}
                 aria-label={`${t('Открыть')} ${t(games[kind])}`}
                 aria-pressed={!catalog && activeKind === kind}
-                disabled={!onAction || Boolean(table && table.hostId !== selfId)}
+                disabled={!onAction || (kind === 'poker' && activity.canPlayPoker === false)}
                 onClick={() => {
                   if (activeKind === kind) setCatalog(false);
                   else play(kind);

@@ -1,0 +1,114 @@
+.activity-switch-vote {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  top: max(72px, env(safe-area-inset-top));
+  z-index: 220;
+  width: 330px;
+  max-width: calc(100vw - 24px);
+  padding: 16px;
+  color: #e6ecee;
+  border: 1px solid #526b68;
+  border-radius: 15px;
+  background: #101f2bf5;
+  box-shadow: 0 12px 30px #0007;
+  backdrop-filter: blur(15px);
+  animation: game-vote-enter 0.28s ease-out;
+}
+.activity-switch-vote header,
+.game-vote-count,
+.game-vote-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.activity-switch-vote header > svg {
+  color: #a4c0a2;
+  flex-shrink: 0;
+}
+.activity-switch-vote header strong {
+  font-size: 14px;
+  flex: 1;
+}
+.activity-switch-vote header button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: #22343e;
+  color: #a5b8bd;
+  cursor: pointer;
+}
+.activity-switch-vote p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0 7px;
+}
+.activity-switch-vote small {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #91a9af;
+  display: block;
+}
+.game-vote-count {
+  justify-content: space-between;
+  padding: 12px 0;
+  font-size: 11px;
+}
+.game-vote-count span:first-child {
+  color: #abd3ae;
+}
+.game-vote-count span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #b2c3cb;
+}
+.game-vote-actions {
+  margin-bottom: 8px;
+}
+.game-vote-actions button {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid #3b545a;
+  border-radius: 9px;
+  background: #21353e;
+  color: #d6e5e7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.game-vote-actions button:first-child {
+  background: #486c56;
+  border-color: #759177;
+}
+.game-vote-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+@keyframes game-vote-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-9px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 600px) {
+  .activity-switch-vote {
+    right: 12px;
+    top: 58px;
+    padding: 14px;
+  }
+  .game-vote-actions button {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-switch-vote {
+    animation: none;
+  }
+}

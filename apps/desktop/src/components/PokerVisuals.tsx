@@ -1,10 +1,80 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
-import { MicOff, HeadphoneOff, Spade } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { MicOff, HeadphoneOff, Spade, Bot } from 'lucide-react';
 import { CachedMediaImage } from './CachedMedia';
 import { t } from '../lib/app-language';
 import type { TableParticipant } from './activity-table-ui';
 
 const suits: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
+export function PokerTableMarker({
+  label,
+  description,
+  dealer = false,
+}: {
+  label: string;
+  description: string;
+  dealer?: boolean;
+}) {
+  const [point, setPoint] = useState<{ left: number; top: number }>();
+  const root = useRef<HTMLSpanElement>(null),
+    id = useId();
+  useEffect(() => {
+    if (!point) return;
+    const close = () => setPoint(undefined);
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) close();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', key);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', key);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [point]);
+  return (
+    <span className="pkr-marker" ref={root}>
+      <button
+        type="button"
+        className={
+          dealer
+            ? 'pkr-dealer'
+            : `pkr-blind ${label === 'BB' ? 'pkr-blind-big' : 'pkr-blind-small'}`
+        }
+        aria-label={description}
+        title={description}
+        aria-expanded={Boolean(point)}
+        aria-describedby={point ? id : undefined}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setPoint(
+            point
+              ? undefined
+              : {
+                  left: Math.max(8, Math.min(window.innerWidth - 198, rect.left - 65)),
+                  top: Math.max(8, Math.min(window.innerHeight - 72, rect.bottom + 8)),
+                },
+          );
+        }}
+      >
+        {label}
+      </button>
+      {point &&
+        createPortal(
+          <span id={id} role="tooltip" className="pkr-marker-tip" style={point}>
+            {description}
+          </span>,
+          document.body,
+        )}
+    </span>
+  );
+}
 const suitPaths: Record<string, string> = {
   h: 'M12 21C10 18 2 13 2 7.5A5.5 5.5 0 0 1 12 4.3 5.5 5.5 0 0 1 22 7.5C22 13 14 18 12 21Z',
   d: 'M12 1 22 12 12 23 2 12Z',
@@ -23,16 +93,22 @@ export function PokerCard({
   highlight = false,
   delay = 0,
   animate = false,
+  fromDeck,
 }: {
   value?: string;
   highlight?: boolean;
   delay?: number;
   animate?: boolean;
+  fromDeck?: number;
 }) {
+  // Only a newly mounted card can enter. Betting snapshots must not restart opacity/flight.
+  const [entry] = useState(() => ({ animate, delay }));
   return (
     <span
-      className={`pkr-card ${value ? `pkr-suit-${value[1]}` : 'pkr-card-back'} ${highlight ? 'pkr-card-best' : ''} ${animate ? 'pkr-card-arrive' : ''}`}
-      style={{ '--card-delay': `${delay}ms` } as CSSProperties}
+      className={`pkr-card ${value ? `pkr-suit-${value[1]}` : 'pkr-card-back'} ${highlight ? 'pkr-card-best' : ''} ${entry.animate ? 'pkr-card-arrive' : ''} ${fromDeck !== undefined ? 'pkr-from-deck' : ''}`}
+      style={
+        { '--card-delay': `${entry.delay}ms`, '--board-index': fromDeck ?? 0 } as CSSProperties
+      }
       aria-label={
         value ? `${value[0] === 'T' ? '10' : value[0]} ${suits[value[1]!]}` : t('Закрытая карта')
       }
@@ -116,7 +192,9 @@ export function PokerAvatar({
   const speaking = person?.speaking && !person.muted && !person.deafened;
   return (
     <div className={`pkr-avatar ${speaking ? 'pkr-speaking' : ''} ${moving ? 'pkr-acting' : ''}`}>
-      {person?.cameraStream ? (
+      {person?.bot ? (
+        <Bot size={25} />
+      ) : person?.cameraStream ? (
         <video ref={ref} autoPlay playsInline muted className={self ? 'pkr-self-video' : ''} />
       ) : person?.avatar ? (
         <CachedMediaImage src={person.avatar} alt="" />

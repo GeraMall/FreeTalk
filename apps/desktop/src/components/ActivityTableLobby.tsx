@@ -1,5 +1,6 @@
 import { playerName, tableNames, clockModes, type TableUiProps } from './activity-table-ui';
 import { Crown, Eye, UserPlus, Users } from 'lucide-react';
+import { PokerRulesPicker } from './PokerRulesPicker';
 import { t } from '../lib/app-language';
 export function ActivityTableLobby({
   table,
@@ -24,9 +25,11 @@ export function ActivityTableLobby({
             ? t('Два капитана, два поля. Зрители видят оба поля после начала боя.')
             : table.kind === 'poker'
               ? t(
-                  table.pokerRules === 2
-                    ? 'До 8 игроков · 1000 фишек · блайнды 10 / 20 · ход 30 секунд · 3 докупки'
-                    : 'Техасский холдем · 1000 виртуальных фишек · блайнды 10 / 20',
+                  table.edition === 3
+                    ? t('Выберите режим, анте и подтвердите возраст участников перед стартом.')
+                    : table.pokerRules === 2
+                      ? 'До 8 игроков · 1000 фишек · блайнды 10 / 20 · ход 30 секунд · 3 докупки'
+                      : 'Техасский холдем · 1000 виртуальных фишек · блайнды 10 / 20',
                 )
               : table.kind === 'millionaire'
                 ? t('Один игрок отвечает, остальные помогают голосом и голосуют в помощи зала.')
@@ -34,6 +37,7 @@ export function ActivityTableLobby({
                     'Покупайте участки, стройте дома и договаривайтесь об обмене. От 2 до 6 игроков.',
                   )}
       </p>
+      {table.kind === 'poker' && <PokerRulesPicker table={table} host={host} send={send} />}
       <div className={`table-seats table-seats-${table.seats.length}`}>
         {table.seats.map((id, index) => (
           <button
@@ -105,7 +109,9 @@ export function ActivityTableLobby({
           type="button"
           className="table-primary"
           disabled={
-            !host || table.seats.filter(Boolean).length < (table.kind === 'millionaire' ? 1 : 2)
+            !host ||
+            (table.kind === 'poker' && table.edition === 3 && !table.ageConfirmed) ||
+            table.seats.filter(Boolean).length < (table.kind === 'millionaire' ? 1 : 2)
           }
           onClick={() => send({ kind: 'table-start' })}
         >

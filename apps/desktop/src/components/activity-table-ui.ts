@@ -3,6 +3,7 @@ import { t } from '../lib/app-language';
 export type TableParticipant = Pick<Participant, 'id' | 'name' | 'avatar'> &
   Partial<Pick<Participant, 'muted' | 'deafened'>> & {
     speaking?: boolean;
+    bot?: boolean;
     cameraStream?: MediaStream;
   };
 export type TableUiProps<T extends ActivityTable = ActivityTable> = {

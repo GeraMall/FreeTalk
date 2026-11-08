@@ -51,6 +51,63 @@ afterEach(async () => {
   await app.close();
 });
 describe('private service chat', () => {
+  it('captures only the sender missing birthday and privately refreshes age access without mailing support', async () => {
+    const original = query.getMockImplementation()!;
+    query.mockImplementation(async (sql: string, args: unknown[]) => {
+      if (sql.startsWith('SELECT birth_date')) return result([{ birth_date: null }]);
+      if (sql.startsWith('UPDATE users SET birth_date')) return result([{ id: userId }]);
+      return original(sql, args);
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/messages',
+      payload: { requestId: crypto.randomUUID(), body: '25.12.2000', userId: other },
+    });
+    expect(response.statusCode).toBe(200);
+    const update = query.mock.calls.find(([sql]) =>
+      String(sql).startsWith('UPDATE users SET birth_date'),
+    );
+    expect(update?.[1]).toEqual([userId, '2000-12-25']);
+    expect(update?.[0]).toContain('birth_date IS NULL');
+    expect(publish).toHaveBeenCalledWith([userId], { type: 'profile-updated', userId });
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).startsWith('INSERT INTO support_reports')),
+    ).toBe(false);
+  });
+  it('does not overwrite a saved birthday or store an impossible date', async () => {
+    const original = query.getMockImplementation()!;
+    query.mockImplementation(async (sql: string, args: unknown[]) =>
+      sql.startsWith('SELECT birth_date')
+        ? result([{ birth_date: '2010-01-01' }])
+        : original(sql, args),
+    );
+    await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/messages',
+      payload: { requestId: crypto.randomUUID(), body: '01.01.1990' },
+    });
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE users SET birth_date')),
+    ).toBe(false);
+    query.mockImplementation(async (sql: string, args: unknown[]) =>
+      sql.startsWith('SELECT birth_date') ? result([{ birth_date: null }]) : original(sql, args),
+    );
+    await app.inject({
+      method: 'POST',
+      url: '/v1/service-chat/messages',
+      payload: { requestId: crypto.randomUUID(), body: '31.02.2000' },
+    });
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE users SET birth_date')),
+    ).toBe(false);
+  });
+  it('targets birthday reminders only at the account missing its date, with a deduplication key', async () => {
+    await app.inject('/v1/service-chat/messages');
+    const reminder = query.mock.calls.find(([sql]) => String(sql).includes("'birth-date-request'"));
+    expect(reminder?.[0]).toContain('birth_date IS NULL');
+    expect(reminder?.[0]).toContain('ON CONFLICT(user_id,event_key) DO NOTHING');
+    expect(reminder?.[1][0]).toBe(userId);
+  });
   it('notifies a verified solo caller and checks that nobody else was present during the timeout', async () => {
     const response = await app.inject({
       method: 'POST',

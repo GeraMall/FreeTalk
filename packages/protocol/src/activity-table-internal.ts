@@ -8,6 +8,9 @@ export interface QuizQuestion {
 export interface TableSession {
   view: ActivityTable;
   secret: {
+    botSignature?: string;
+    botNextAt?: number;
+    botActing?: boolean;
     fleet?: number[][];
     deck?: string[];
     hands?: string[][];
@@ -16,7 +19,13 @@ export interface TableSession {
     pokerStartingStacks?: number[];
   };
 }
-export type TableContext = { actorId: string; members: string[]; now: number };
+export type TableContext = {
+  actorId: string;
+  members: string[];
+  now: number;
+  voters?: string[];
+  adultIds?: string[];
+};
 export type TableReducer = (
   session: TableSession,
   action: TableAction,

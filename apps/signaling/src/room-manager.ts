@@ -20,6 +20,9 @@ export interface PeerConnection {
   canUseActivity?: boolean;
   activityVersion?: 2;
   pokerSeats?: 8;
+  tabletVersion?: 3;
+  isAdult?: boolean;
+  lastAgeCheckAt?: number;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
 }
@@ -115,6 +118,8 @@ export class RoomManager {
     void _cardDecoration;
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', 'Комната не найдена');
+    if (room.activity.table?.view.bots?.some((bot) => bot.id === clientId))
+      throw new RoomError('ROOM_FULL', 'Этот идентификатор зарезервирован тренировочным ботом');
 
     const existing = room.peers.get(clientId);
     const identity = room.identities.get(clientId);
@@ -186,6 +191,8 @@ export class RoomManager {
         clientId,
         connection.activityVersion === 2,
         connection.pokerSeats === 8,
+        connection.tabletVersion === 3,
+        connection.isAdult === true,
       ),
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
@@ -255,6 +262,13 @@ export class RoomManager {
     return true;
   }
 
+  refreshPokerAccess(roomId: string, clientId: string, isAdult: boolean) {
+    const room = this.rooms.get(roomId),
+      peer = room?.peers.get(clientId);
+    if (!room || !peer) return;
+    peer.connection.isAdult = isAdult;
+    this.sendActivity(room);
+  }
   updateProfile(
     roomId: string,
     clientId: string,
@@ -296,6 +310,27 @@ export class RoomManager {
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return;
     const v2 = peer.connection.activityVersion === 2;
+    const targetsPoker =
+      (action.kind === 'table-open' || action.kind === 'game-propose') && action.game === 'poker';
+    const controlsPoker =
+      room.activity.table?.view.kind === 'poker' &&
+      (action.kind.startsWith('poker-') ||
+        (action.kind.startsWith('table-') && !action.kind.startsWith('tablet-')));
+    if (peer.connection.isAdult !== true && (targetsPoker || controlsPoker)) {
+      this.sendActivity(room);
+      return;
+    }
+    if (
+      ['table-bot', 'poker-config', 'game-propose', 'game-vote', 'game-access'].includes(
+        action.kind,
+      ) &&
+      peer.connection.tabletVersion !== 3
+    )
+      return;
+    if (action.kind === 'game-access') {
+      this.sendActivity(room);
+      return;
+    }
     // Old clients cannot parse an eight-seat snapshot. Keep their call connected.
     if (action.kind === 'table-open' && action.pokerSeats === 8 && peer.connection.pokerSeats !== 8)
       return;
@@ -353,7 +388,7 @@ export class RoomManager {
     // Delivery content is intentionally absent from the shared gaming tablet.
     if (action.kind === 'service' || action.kind === 'region') return;
     const now = Date.now();
-    if (v2 && revision !== room.activity.view.revision) {
+    if (v2 && revision !== room.activity.view.revision && action.kind !== 'game-vote') {
       // A delayed action must refresh this player's private snapshot rather
       // than leave apparently live controls stuck on an obsolete betting turn.
       if (now - peer.lastActivityResyncAt >= 250) {
@@ -365,6 +400,8 @@ export class RoomManager {
             clientId,
             true,
             peer.connection.pokerSeats === 8,
+            peer.connection.tabletVersion === 3,
+            peer.connection.isAdult === true,
           ),
         });
       }
@@ -376,7 +413,19 @@ export class RoomManager {
       room.activity,
       revision,
       action,
-      v2 ? { actorId: clientId, members: [...room.peers.keys()], now } : undefined,
+      v2
+        ? {
+            actorId: clientId,
+            members: [...room.peers.keys()],
+            now,
+            voters: [...room.peers]
+              .filter(([, p]) => p.connection.tabletVersion === 3 && p.connection.canUseActivity)
+              .map(([id]) => id),
+            adultIds: [...room.peers]
+              .filter(([, p]) => p.connection.isAdult === true)
+              .map(([id]) => id),
+          }
+        : undefined,
     );
     if (next === room.activity) return;
     if (action.kind === 'open') {
@@ -394,12 +443,14 @@ export class RoomManager {
           id,
           peer.connection.activityVersion === 2,
           peer.connection.pokerSeats === 8,
+          peer.connection.tabletVersion === 3,
+          peer.connection.isAdult === true,
         ),
       });
   }
   tickActivities(now = Date.now()) {
     for (const room of this.rooms.values()) {
-      const next = tickRoomActivity(room.activity, now);
+      const next = tickRoomActivity(room.activity, now, [...room.peers.keys()]);
       if (next !== room.activity) {
         room.activity = next;
         this.sendActivity(room);

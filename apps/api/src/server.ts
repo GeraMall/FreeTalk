@@ -34,7 +34,11 @@ import { registerMobileBetaRoutes } from './mobile-beta.js';
 import { registerPasskeyRoutes } from './passkeys.js';
 import { registerQrLoginRoutes } from './qr-login.js';
 import { registerWebPush, startWebPush } from './web-push.js';
-import { registerServiceChat, startSupportDelivery } from './service-chat.js';
+import {
+  registerServiceChat,
+  startSupportDelivery,
+  ensureBirthDateNotice,
+} from './service-chat.js';
 import {
   chatRealtimeClientMessageSchema,
   LEGACY_REGISTRATION_LEGAL_VERSION,
@@ -116,6 +120,7 @@ app.setErrorHandler((error, _request, reply) => {
   return reply.code(500).send({ code: 'INTERNAL_ERROR', message: 'Внутренняя ошибка' });
 });
 
+const birthNoticeUsers = new Set<string>();
 async function requireUser(request: FastifyRequest, reply: FastifyReply) {
   const user = await authenticate(request);
   if (!user) {
@@ -125,6 +130,17 @@ async function requireUser(request: FastifyRequest, reply: FastifyReply) {
   if (!user.email_verified_at) {
     reply.code(403).send({ code: 'EMAIL_NOT_VERIFIED', message: 'Подтвердите почту' });
     return null;
+  }
+  if (!birthNoticeUsers.has(user.id)) {
+    birthNoticeUsers.add(user.id);
+    if (birthNoticeUsers.size > 5000)
+      birthNoticeUsers.delete(birthNoticeUsers.values().next().value!);
+    try {
+      await ensureBirthDateNotice(user.id);
+    } catch {
+      birthNoticeUsers.delete(user.id);
+      app.log.warn('Birth date reminder temporarily unavailable');
+    }
   }
   return user;
 }
@@ -746,8 +762,9 @@ app.post(
         display_name: string;
         has_avatar: boolean;
         can_access_store: boolean;
+        is_adult: boolean;
       }>(
-        `SELECT s.user_id,u.display_name,u.can_access_store,u.avatar_data IS NOT NULL AS has_avatar
+        `SELECT s.user_id,u.display_name,u.can_access_store,(u.birth_date IS NOT NULL AND u.birth_date <= (CURRENT_DATE - INTERVAL '18 years')::date) AS is_adult,u.avatar_data IS NOT NULL AS has_avatar
          FROM sessions s JOIN users u ON u.id=s.user_id
          WHERE s.access_token_hash=$1 AND s.revoked_at IS NULL
          AND s.access_expires_at>now() AND u.deleted_at IS NULL`,
@@ -794,6 +811,7 @@ app.post(
         userId: registered.user.user_id,
         displayName: registered.user.display_name,
         canAccessStore: registered.user.can_access_store,
+        isAdult: registered.user.is_adult === true,
         avatar: publicAvatarUrl(registered.user.user_id, registered.user.has_avatar),
         callScope: registered.call?.chat_type,
         groupOwnerId: registered.call?.group_owner_id ?? undefined,
@@ -980,14 +998,16 @@ app.get(
     const result = await db.query<{
       display_name: string;
       has_avatar: boolean;
+      is_adult: boolean;
     }>(
-      `SELECT display_name,avatar_data IS NOT NULL AS has_avatar
+      `SELECT display_name,(birth_date IS NOT NULL AND birth_date <= (CURRENT_DATE - INTERVAL '18 years')::date) AS is_adult,avatar_data IS NOT NULL AS has_avatar
        FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [id],
     );
     if (!result.rows[0]) return reply.code(404).send({ ok: false });
     return {
       displayName: result.rows[0].display_name,
+      isAdult: result.rows[0].is_adult === true,
       avatar: publicAvatarUrl(id, result.rows[0].has_avatar),
     };
   },

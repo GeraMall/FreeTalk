@@ -4,6 +4,12 @@ export const tableKindSchema = z.enum(['chess', 'fleet', 'monopoly', 'millionair
 const id = z.string().uuid();
 const count = z.number().int().nonnegative();
 const base = {
+  edition: z.literal(3).optional(),
+  training: z.boolean().optional(),
+  bots: z
+    .array(z.object({ id, name: z.string().max(40) }))
+    .max(8)
+    .optional(),
   id,
   hostId: id,
   phase: z.enum(['lobby', 'playing', 'finished']),
@@ -107,6 +113,16 @@ export const tableSchema = z.discriminatedUnion('kind', [
     handNumber: count,
     pokerRules: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
+    pokerMode: z.enum(['classic', 'tournament', 'tournament-fixed']).optional(),
+    pokerAnte: z.boolean().optional(),
+    ageConfirmed: z.boolean().optional(),
+    tournamentStartedAt: count.optional(),
+    blindLevel: count.optional(),
+    smallBlindAmount: count.optional(),
+    bigBlindAmount: count.optional(),
+    anteAmount: count.optional(),
+    boardAt: count.optional(),
+    boardFrom: count.optional(),
     turnAt: count.optional(),
     turnDeadline: count.optional(),
     handStartedAt: count.optional(),
@@ -133,9 +149,14 @@ export const tableSchema = z.discriminatedUnion('kind', [
 export type ActivityTable = z.infer<typeof tableSchema>;
 export type TableKind = z.infer<typeof tableKindSchema>;
 export type TableOf<K extends TableKind> = Extract<ActivityTable, { kind: K }>;
+/** Required gate for any current or future game leaderboard. Training is permanent for a match. */
+export function tableCountsForStatistics(table: ActivityTable) {
+  return table.training !== true && !table.bots?.length;
+}
 export const tableActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('table-open'),
+    edition: z.literal(3).optional(),
     game: tableKindSchema,
     pokerRules: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
@@ -210,6 +231,17 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
     kind: z.literal('poker-bet'),
     action: z.enum(['fold', 'check', 'call', 'raise']),
     amount: z.number().int().min(0).max(1000000).optional(),
+  }),
+  z.object({
+    kind: z.literal('poker-config'),
+    mode: z.enum(['classic', 'tournament', 'tournament-fixed']),
+    ante: z.boolean(),
+    ageConfirmed: z.boolean().optional(),
+  }),
+  z.object({
+    kind: z.literal('table-bot'),
+    seat: z.number().int().min(0).max(7),
+    remove: z.boolean().optional(),
   }),
   z.object({ kind: z.literal('poker-next') }),
   z.object({ kind: z.literal('poker-rebuy') }),

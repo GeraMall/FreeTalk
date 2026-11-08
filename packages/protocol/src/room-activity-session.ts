@@ -15,22 +15,37 @@ export interface RoomActivitySession {
   hidden?: number[];
   moves?: string[];
   table?: TableSession;
+  voteCooldownUntil?: number;
 }
 export function roomActivityView(
   session: RoomActivitySession,
   viewerId?: string,
   version2 = true,
   pokerEight = true,
+  version3 = true,
+  adult = true,
 ): RoomActivity {
   return {
     ...session.view,
+    canPlayPoker: adult,
+    restrictedGame: session.table?.view.kind === 'poker' && !adult ? 'poker' : undefined,
+    switchVote: version3 ? session.view.switchVote : undefined,
     table:
-      version2 && session.table && (pokerEight || session.table.view.seats.length <= 6)
+      version2 &&
+      session.table &&
+      (version3 || session.table.view.edition !== 3) &&
+      (adult || session.table.view.kind !== 'poker') &&
+      (pokerEight || session.table.view.seats.length <= 6)
         ? tableView(session.table, viewerId)
         : undefined,
   };
 }
-export function tickRoomActivity(session: RoomActivitySession, now: number): RoomActivitySession {
+export function tickRoomActivity(
+  session: RoomActivitySession,
+  now: number,
+  members?: string[],
+): RoomActivitySession {
+  session = tickSwitchVote(session, now, members);
   if (!session.table) return session;
   const table = tickTable(session.table, now);
   return table === session.table
@@ -149,15 +164,29 @@ export function applyRoomActivity(
   context?: TableContext,
 ): RoomActivitySession {
   const previous = current.view;
-  if (revision !== previous.revision) return current;
+  if (revision !== previous.revision && action.kind !== 'game-vote') return current;
   const view = { ...previous, revision: previous.revision + 1 };
   if (action.kind === 'open')
     return previous.open ? current : { ...current, view: { ...view, open: true } };
   if (!previous.open) return current;
+  if ((action.kind === 'game-propose' || action.kind === 'game-vote') && context)
+    return reduceSwitchVote(current, action, context);
   if (action.kind === 'tablet-join' || action.kind === 'tablet-pointer') return current;
   if (action.kind === 'table-open' && context) {
     if (current.table && current.table.view.hostId !== context.actorId) return current;
-    const table = createTable(action.game, context, action.pokerRules, action.pokerSeats);
+    if (
+      action.game === 'poker' &&
+      action.edition === 3 &&
+      !context.adultIds?.includes(context.actorId)
+    )
+      return current;
+    const table = createTable(
+      action.game,
+      context,
+      action.pokerRules,
+      action.pokerSeats,
+      action.edition,
+    );
     return { table, view: { ...view, game: undefined, table: tableView(table) } };
   }
   if (current.table && context) {
@@ -244,4 +273,115 @@ export function applyRoomActivity(
     else if (cells.filter((cell) => cell === 0).length >= 24) result = 'lost';
   }
   return { view: { ...view, game: { ...game, cells, result } }, hidden: layout };
+}
+
+function completeSwitch(
+  session: RoomActivitySession,
+  state: 'accepted' | 'rejected' | 'expired',
+  now: number,
+): RoomActivitySession {
+  const vote = session.view.switchVote!;
+  const resolved = { ...vote, state, finishedAt: now };
+  let next = session;
+  if (state === 'accepted') {
+    const context = { actorId: vote.requestedBy, members: vote.electorate, now };
+    if (vote.game === 'mines')
+      next = startGame('mines', { ...session.view, table: undefined, game: undefined });
+    else {
+      const table = createTable(
+        vote.game,
+        context,
+        vote.game === 'poker' ? 2 : undefined,
+        vote.game === 'poker' ? 8 : undefined,
+        3,
+      );
+      next = {
+        ...session,
+        table,
+        view: { ...session.view, game: undefined, table: tableView(table) },
+      };
+    }
+  }
+  return {
+    ...next,
+    voteCooldownUntil: session.voteCooldownUntil,
+    view: { ...next.view, switchVote: resolved, revision: session.view.revision + 1 },
+  };
+}
+function tickSwitchVote(
+  session: RoomActivitySession,
+  now: number,
+  members?: string[],
+): RoomActivitySession {
+  const vote = session.view.switchVote;
+  if (!vote) return session;
+  if (vote.state !== 'voting')
+    return now >= (vote.finishedAt ?? now) + 4500
+      ? {
+          ...session,
+          view: { ...session.view, switchVote: undefined, revision: session.view.revision + 1 },
+        }
+      : session;
+  if (members && !members.includes(vote.requestedBy))
+    return completeSwitch(session, 'rejected', now);
+  if (now >= vote.deadline) return completeSwitch(session, 'expired', now);
+  return session;
+}
+function reduceSwitchVote(
+  session: RoomActivitySession,
+  action: Extract<RoomActivityAction, { kind: 'game-propose' | 'game-vote' }>,
+  context: TableContext,
+): RoomActivitySession {
+  if (!context.members.includes(context.actorId)) return session;
+  let vote = session.view.switchVote;
+  if (action.kind === 'game-propose') {
+    if (vote?.state === 'voting' || context.now < (session.voteCooldownUntil ?? 0)) return session;
+    if (action.game === 'poker' && !context.adultIds?.includes(context.actorId)) return session;
+    const electorate = (context.voters ?? context.members).filter(
+      (id) =>
+        context.members.includes(id) && (action.game !== 'poker' || context.adultIds?.includes(id)),
+    );
+    if (!electorate.includes(context.actorId)) return session;
+    vote = {
+      id: crypto.randomUUID(),
+      game: action.game,
+      from: session.table?.view.kind ?? session.view.game?.kind,
+      requestedBy: context.actorId,
+      electorate,
+      yes: [context.actorId],
+      no: [],
+      state: 'voting',
+      deadline: context.now + 20000,
+    };
+    session = {
+      ...session,
+      voteCooldownUntil: context.now + 30000,
+      view: { ...session.view, switchVote: vote, revision: session.view.revision + 1 },
+    };
+  } else {
+    if (
+      !vote ||
+      vote.state !== 'voting' ||
+      vote.id !== action.id ||
+      !vote.electorate.includes(context.actorId) ||
+      vote.yes.includes(context.actorId) ||
+      vote.no.includes(context.actorId)
+    )
+      return session;
+    if (context.now >= vote.deadline) return completeSwitch(session, 'expired', context.now);
+    vote = {
+      ...vote,
+      yes: action.accept ? [...vote.yes, context.actorId] : vote.yes,
+      no: action.accept ? vote.no : [...vote.no, context.actorId],
+    };
+    session = {
+      ...session,
+      view: { ...session.view, switchVote: vote, revision: session.view.revision + 1 },
+    };
+  }
+  const majority = Math.floor(vote.electorate.length / 2) + 1;
+  if (vote.yes.length >= majority) return completeSwitch(session, 'accepted', context.now);
+  if (vote.no.length > vote.electorate.length - majority)
+    return completeSwitch(session, 'rejected', context.now);
+  return session;
 }

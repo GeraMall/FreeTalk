@@ -11,6 +11,7 @@ export type RoomAuthorization =
       callScope?: 'direct' | 'group';
       groupOwnerId?: string;
       canAccessStore?: boolean;
+      isAdult?: boolean;
     }
   | { allowed: false; reason?: string };
 
@@ -103,5 +104,5 @@ export async function getRegisteredProfile(userId: string) {
     },
   );
   if (!response.ok) return null;
-  return (await response.json()) as { displayName: string; avatar?: string };
+  return (await response.json()) as { displayName: string; avatar?: string; isAdult?: boolean };
 }

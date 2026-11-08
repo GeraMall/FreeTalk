@@ -1,7 +1,13 @@
-import type { TableOf } from '@freetalk/protocol';
+import {
+  POKER_BOARD_DELAY,
+  POKER_BOARD_STEP,
+  pokerBoardDuration,
+  type TableOf,
+} from '@freetalk/protocol';
 import { loadSettings } from './settings';
 
 export type PokerSound =
+  | 'vote'
   | 'shuffle'
   | 'deal'
   | 'flip'
@@ -86,12 +92,27 @@ export class PokerSoundTracker {
       }
       if (table.board.length > old.board.length)
         for (let i = old.board.length; i < table.board.length; i++)
-          add(`board:${i}`, 'flip', now + (i - old.board.length) * 100);
+          add(
+            `board:${i}`,
+            'flip',
+            table.edition === 3 && table.boardAt !== undefined
+              ? table.boardAt +
+                  POKER_BOARD_DELAY +
+                  (i - (table.boardFrom ?? old.board.length)) * POKER_BOARD_STEP
+              : now + (i - old.board.length) * 100,
+          );
       if (table.stage === 'showdown' && old.stage !== 'showdown') {
         const seat = table.seats.indexOf(selfId ?? '');
-        add('collect', 'collect');
+        const payoutAt =
+          table.edition === 3 && table.boardAt !== undefined
+            ? Math.max(
+                now,
+                table.boardAt + pokerBoardDuration(table.board.length - (table.boardFrom ?? 0)),
+              )
+            : now;
+        add('collect', 'collect', payoutAt);
         if (seat >= 0 && table.payouts[seat]! > table.contributions[seat]!)
-          add('win', 'win', now + 280);
+          add('win', 'win', payoutAt + 280);
       }
     }
     const turn = `${hand}:${table.turn}:${table.turnDeadline ?? ''}`;
@@ -102,7 +123,7 @@ export class PokerSoundTracker {
     if (turn !== this.turn) {
       if (old && ownTurn) add(`turn:${turn}`, 'turn');
       // Keep the pending deal turn unacknowledged until its animation finishes.
-      if (!freshDeal) this.turn = turn;
+      if (!freshDeal && now >= (table.turnAt ?? 0)) this.turn = turn;
     }
     if (
       ownTurn &&

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tableSchema, tableActionSchema } from './activity-table.js';
+import { tableSchema, tableActionSchema, tableKindSchema } from './activity-table.js';
 
 export const activityRegionSchema = z.enum(['RU', 'KZ', 'GB']);
 export const activityGameSchema = z.enum(['chess', 'mines', 'fleet']);
@@ -9,6 +9,12 @@ const square = z.string().regex(/^[a-h][1-8]$/);
 export const roomActivityActionSchema = z.union([
   tableActionSchema,
   z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('game-access') }),
+    z.object({
+      kind: z.literal('game-propose'),
+      game: z.enum(['chess', 'mines', 'fleet', 'monopoly', 'millionaire', 'poker']),
+    }),
+    z.object({ kind: z.literal('game-vote'), id: z.string().uuid(), accept: z.boolean() }),
     z.object({ kind: z.literal('open') }),
     z.object({ kind: z.literal('close') }),
     z.object({ kind: z.literal('region'), region: activityRegionSchema }),
@@ -24,12 +30,27 @@ export const roomActivityActionSchema = z.union([
   ]),
 ]);
 
+export const gameSwitchVoteSchema = z.object({
+  id: z.string().uuid(),
+  game: z.enum(['chess', 'mines', 'fleet', 'monopoly', 'millionaire', 'poker']),
+  from: z.union([tableKindSchema, z.literal('mines')]).optional(),
+  requestedBy: z.string().uuid(),
+  electorate: z.array(z.string().uuid()).max(8),
+  yes: z.array(z.string().uuid()).max(8),
+  no: z.array(z.string().uuid()).max(8),
+  deadline: z.number().int().nonnegative(),
+  state: z.enum(['voting', 'accepted', 'rejected', 'expired']),
+  finishedAt: z.number().int().nonnegative().optional(),
+});
 export const roomActivitySchema = z.object({
   revision: z.number().int().nonnegative(),
   sessionId: z.string().uuid().optional(),
   startedBy: z.string().uuid().optional(),
   open: z.boolean(),
   table: tableSchema.optional(),
+  switchVote: gameSwitchVoteSchema.optional(),
+  canPlayPoker: z.boolean().optional(),
+  restrictedGame: z.literal('poker').optional(),
   viewers: z.array(z.string().uuid()).max(8).optional(),
   region: activityRegionSchema,
   service: z.string().max(32).optional(),

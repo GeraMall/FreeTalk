@@ -3,6 +3,192 @@
   container-type: inline-size;
   container-name: activity-tablet;
 }
+.table-training-banner {
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #4e655a;
+  border-radius: 9px;
+  background: #19342b;
+  color: #b5d3bd;
+  font-size: 11px;
+}
+.table-bot-controls {
+  margin: 14px 0;
+  padding: 13px;
+  border: 1px solid #334d50;
+  border-radius: 12px;
+  background: #10202b;
+}
+.table-bot-controls > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #a8c9bc;
+}
+.table-bot-controls strong {
+  font-size: 12px;
+}
+.table-bot-controls small {
+  display: block;
+  font-size: 10px;
+  color: #8da8aa;
+  line-height: 1.6;
+  margin-top: 4px;
+}
+.table-bot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+.table-bot-actions > button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #3b575b;
+  border-radius: 8px;
+  background: #1b333c;
+  color: #c0d4d1;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.poker-rules-picker {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.poker-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.poker-modes > button {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  padding: 14px;
+  min-height: 105px;
+  align-content: start;
+  border: 1px solid #354e52;
+  border-radius: 12px;
+  background: #10212c;
+  color: #c3d2d3;
+  cursor: pointer;
+}
+.poker-modes > button[aria-pressed='true'] {
+  background: #233f36;
+  border-color: #94aa85;
+}
+.poker-modes strong {
+  font-size: 13px;
+}
+.poker-modes small {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #93acaa;
+}
+.poker-rule-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #324d4c;
+  border-radius: 10px;
+  background: #0c2029;
+  cursor: pointer;
+}
+.poker-rule-check input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: #95b18d;
+}
+.poker-rule-check strong {
+  font-size: 12px;
+}
+.poker-rule-check small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #8ea6aa;
+}
+.poker-age-check {
+  border-color: #53614f;
+  background: #1b2b27;
+}
+.activity-age-lock {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 340px;
+  padding: 28px;
+  color: #beced3;
+  text-align: center;
+}
+.activity-age-lock > strong {
+  font-size: 36px;
+  color: #ddc892;
+  border: 1px solid #675e40;
+  border-radius: 15px;
+  padding: 12px;
+}
+.activity-age-lock h3 {
+  margin: 0;
+  font-size: 19px;
+}
+.activity-age-lock p {
+  max-width: 440px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #96adb5;
+}
+.activity-age-lock button,
+.activity-age-catalog button {
+  border: 1px solid #516a6a;
+  border-radius: 9px;
+  background: #223d40;
+  color: #d0e4df;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.activity-age-catalog {
+  padding: 13px;
+  margin-bottom: 20px;
+  border: 1px solid #53604a;
+  border-radius: 11px;
+  background: #1b2b27;
+  max-width: 440px;
+}
+.activity-age-catalog p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #9db1ae;
+}
+@container activity-tablet (max-width:680px) {
+  .poker-modes {
+    grid-template-columns: 1fr;
+  }
+  .poker-modes > button {
+    min-height: 0;
+    padding: 12px;
+    gap: 5px;
+  }
+  .table-bot-actions > button {
+    min-height: 42px;
+  }
+  .table-bot-controls {
+    padding: 11px;
+  }
+  .poker-rule-check {
+    padding: 11px;
+  }
+}
 .activity-table-surface {
   min-height: 100%;
   min-width: 0;

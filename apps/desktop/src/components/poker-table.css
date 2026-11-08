@@ -363,12 +363,7 @@
   gap: 7px;
   pointer-events: auto;
 }
-.pkr-seat-number {
-  font-size: 9px;
-  color: #6e8989;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
+
 .pkr-player {
   display: flex;
   align-items: center;
@@ -602,6 +597,65 @@
   background: #142c2b;
   font-size: 8px;
   font-weight: 700;
+}
+.pkr-marker {
+  display: inline-flex;
+}
+.pkr-blind-big {
+  color: #fff4f5;
+  background: #ad344c;
+  border: 2px dashed #ed9bac;
+  box-shadow:
+    inset 0 0 0 2px #84263b,
+    0 2px 5px #0005;
+}
+.pkr-blind-small {
+  color: #f2f7ff;
+  background: #315d9a;
+  border: 2px dashed #a1c3ef;
+  box-shadow:
+    inset 0 0 0 2px #23456f,
+    0 2px 5px #0005;
+}
+.pkr .pkr-marker > .pkr-blind-big:is(:hover, :focus-visible) {
+  background: #bc3b56;
+  color: #fff4f5;
+}
+.pkr .pkr-marker > .pkr-blind-small:is(:hover, :focus-visible) {
+  background: #3d6ead;
+  color: #f2f7ff;
+}
+:is(.pkr-seat-small, .pkr-seat-big) .pkr-player::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 2px 0 0 #75a6ed;
+  opacity: 0.78;
+  pointer-events: none;
+}
+.pkr-seat-big .pkr-player::after {
+  box-shadow: inset 2px 0 0 #ed758e;
+}
+.pkr-marker > button {
+  padding: 0;
+  min-height: 0;
+  cursor: help;
+  flex-shrink: 0;
+}
+.pkr-marker-tip {
+  position: fixed;
+  z-index: 10020;
+  width: 190px;
+  padding: 11px 12px;
+  color: #edf6f3;
+  background: #13282b;
+  border: 1px solid #587570;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px #0006;
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
 }
 .pkr-allin {
   position: relative;
@@ -1850,9 +1904,6 @@
   }
 }
 @media (max-width: 430px) {
-  .pkr-own .pkr-seat-number {
-    visibility: hidden;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .pkr *,
@@ -2210,11 +2261,7 @@
   .pkr-eight .pkr-stack svg {
     width: 10px;
   }
-  .pkr-eight .pkr-seat-number {
-    justify-self: start;
-    font-size: 7px;
-    letter-spacing: 0.02em;
-  }
+
   .pkr-eight .pkr-hole {
     gap: 3px;
   }
@@ -2279,9 +2326,7 @@
     grid-column: 2;
     grid-row: 1;
   }
-  .pkr-eight .pkr-own .pkr-seat-number {
-    display: none;
-  }
+
   .pkr-eight .pkr-own .pkr-hole .pkr-card {
     width: 46px;
     height: 65px;
@@ -2506,5 +2551,336 @@
   }
   .pkr-between-hands {
     padding: 10px;
+  }
+}
+
+/* Actions have their own flow row. They can never cover the player's cards. */
+.pkr-decisions,
+.pkr-between-hands {
+  position: relative;
+  bottom: auto;
+  z-index: 4;
+}
+.pkr-decisions {
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #38534f;
+  border-radius: 16px;
+  background: #0e2028;
+  box-shadow:
+    0 8px 22px #0002,
+    inset 0 1px #d8e8dc08;
+}
+.pkr-decision-heading {
+  grid-column: 1/-1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #29423f;
+}
+.pkr-decision-heading strong {
+  font-size: 12px;
+  color: #cdd9d2;
+}
+.pkr-decision-heading span {
+  font-size: 10px;
+  color: #91aaa4;
+}
+.pkr-decisions > .pkr-action-buttons,
+.pkr-decisions > .pkr-bet-builder,
+.pkr-decisions > .pkr-raise {
+  grid-row: 2;
+}
+.pkr-decisions > .pkr-bet-builder {
+  padding: 9px 12px;
+  background: #10272d;
+  border: 1px solid #2c4747;
+  border-radius: 11px;
+}
+.pkr-decisions > .pkr-raise {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  border: 1px solid #829d80;
+  background: #60846a;
+  color: #f1f6ed;
+  box-shadow: inset 0 1px #eef7dd1c;
+}
+.pkr-decisions > .pkr-raise > b {
+  font-size: 21px;
+}
+.pkr-action-buttons > button {
+  min-height: 54px;
+}
+.pkr-action-buttons > .pkr-fold {
+  background: #c92e4d;
+  border-color: #f05c77;
+  color: #fff;
+}
+.pkr-action-buttons > button:not(.pkr-fold) {
+  background: #243b3e;
+  color: #f3fff9;
+  border-color: #48625d;
+}
+.pkr-action-buttons > .pkr-fold:hover:not(:disabled) {
+  background: #e13b5b;
+  border-color: #ff92a6;
+}
+.pkr-decisions button,
+.pkr-bet-presets > button {
+  color: #f7fbff;
+}
+.pkr-decisions button:disabled {
+  opacity: 0.64;
+  color: #f2f5f8;
+}
+.pkr-decisions > .pkr-raise,
+.pkr-decisions > .pkr-raise:disabled {
+  color: #071b14;
+}
+.pkr-bet-presets > button {
+  border-radius: 7px;
+  min-height: 28px;
+}
+.pkr-seat {
+  isolation: isolate;
+}
+.pkr-seat-turn::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  left: 50%;
+  top: 27%;
+  transform: translate(-50%, -50%);
+  width: 230px;
+  height: 190px;
+  background: radial-gradient(
+    ellipse at center,
+    #f1fff224 0%,
+    #edffef18 21%,
+    #ffffff08 48%,
+    transparent 72%
+  );
+  opacity: 0.75;
+  filter: blur(10px);
+}
+.pkr-board-frame {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  --board-step: 71px;
+  --deck-distance: 76px;
+}
+.pkr-draw-pile {
+  position: relative;
+  width: 62px;
+  height: 88px;
+  flex-shrink: 0;
+  transition: opacity 0.25s;
+}
+.pkr-pile-wait .pkr-draw-pile {
+  opacity: 0;
+}
+.pkr-draw-pile > i {
+  position: absolute;
+  inset: 0;
+  border: 2px solid #cad6cf;
+  border-radius: 8px;
+  background: #1c404a;
+  transform: translate(-4px, 4px);
+  box-shadow: 0 3px 8px #0005;
+}
+.pkr-draw-pile > i + i {
+  transform: translate(-2px, 2px);
+}
+.pkr-from-deck {
+  --deal-x: calc(0px - var(--deck-distance) - var(--board-index) * var(--board-step));
+  --deal-y: 0px;
+}
+.pkr-from-deck.pkr-card-arrive {
+  animation-duration: 650ms;
+}
+@media (min-height: 901px) and (min-width: 951px) {
+  .pkr-eight .pkr-arena {
+    height: clamp(420px, calc(100dvh - 460px), 580px);
+  }
+  .pkr-eight .pkr-pos-2 {
+    top: calc(39% - 32px);
+  }
+  .pkr-eight .pkr-pos-6 {
+    top: calc(39% - 32px);
+  }
+}
+@media (max-width: 950px) {
+  .pkr-board-frame {
+    --board-step: 61px;
+    --deck-distance: 68px;
+  }
+  .pkr-draw-pile {
+    width: 54px;
+    height: 77px;
+  }
+}
+@container activity-tablet (max-width:680px) {
+  .pkr-decisions {
+    padding: 10px;
+    gap: 8px;
+  }
+  .pkr-decision-heading {
+    grid-row: 1;
+    align-items: flex-start;
+    gap: 4px;
+    padding-bottom: 7px;
+    flex-direction: column;
+  }
+  .pkr-decision-heading strong {
+    font-size: 11px;
+  }
+  .pkr-decision-heading span {
+    font-size: 9px;
+  }
+  .pkr-decisions > .pkr-bet-builder {
+    grid-column: 1/-1;
+    grid-row: 2;
+    padding: 7px 9px;
+  }
+  .pkr-decisions > .pkr-action-buttons,
+  .pkr-decisions > .pkr-raise {
+    grid-row: 3;
+    min-height: 46px;
+  }
+  .pkr-decisions > .pkr-action-buttons > button {
+    min-height: 46px;
+  }
+  .pkr-board-frame {
+    gap: 8px;
+    --board-step: 49px;
+    --deck-distance: 36px;
+  }
+  .pkr-eight .pkr-board-frame {
+    --board-step: 48px;
+  }
+  .pkr-draw-pile {
+    width: 28px;
+    height: 40px;
+  }
+  .pkr-draw-pile > .pkr-card {
+    width: 28px;
+    height: 40px;
+    border-width: 2px;
+    border-radius: 5px;
+  }
+  .pkr-draw-pile > .pkr-card > svg {
+    width: 13px;
+    height: 13px;
+  }
+  .pkr-draw-pile > .pkr-card > small {
+    display: none;
+  }
+  .pkr-seat-turn::before {
+    width: 150px;
+    height: 130px;
+    opacity: 0.5;
+  }
+}
+@container activity-tablet (max-width:360px) {
+  .pkr-eight .pkr-board-frame {
+    --board-step: 43px;
+  }
+  .pkr-decisions > .pkr-raise {
+    gap: 6px;
+  }
+  .pkr-decisions > .pkr-raise > b {
+    font-size: 18px;
+  }
+}
+
+@container activity-tablet (max-width:680px) {
+  .pkr-eight .pkr-arena {
+    height: 390px;
+  }
+  .pkr-decision-heading {
+    flex-direction: row;
+    padding-bottom: 7px;
+  }
+  .pkr-decision-heading > span {
+    display: none;
+  }
+}
+
+/* Seat number follows its player card at every table size. */
+.pkr-player {
+  position: relative;
+  padding-right: 27px;
+}
+.pkr-place {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 0 0 3px 4px;
+  border-left: 1px solid #b7cecf45;
+  border-bottom: 1px solid #b7cecf45;
+  border-radius: 0 12px 0 24px;
+  background: #263d45;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+@container activity-tablet (max-width:680px) {
+  .pkr-player,
+  .pkr-eight .pkr-player {
+    padding-right: 16px;
+  }
+  .pkr-place {
+    width: 17px;
+    height: 17px;
+    border-radius: 0 11px 0 17px;
+    font-size: 10px;
+    padding: 0 0 2px 3px;
+  }
+  .pkr-eight .pkr-player-copy > strong {
+    max-width: 37px;
+  }
+  .pkr-eight .pkr-own .pkr-player-copy > strong {
+    max-width: 49px;
+  }
+  .pkr-eight .pkr-seat:not(.pkr-own) .pkr-seat-tokens {
+    left: 2px;
+    right: auto;
+    top: 44px;
+    bottom: auto;
+  }
+  .pkr-eight .pkr-marker > .pkr-blind {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    font-size: 7px;
+  }
+  .pkr-eight .pkr-marker {
+    position: absolute;
+    left: 2px;
+    top: 44px;
+    z-index: 4;
+  }
+  .pkr-eight .pkr-marker + .pkr-marker {
+    left: 25px;
+  }
+  .pkr-eight .pkr-own .pkr-marker {
+    top: auto;
+    bottom: -20px;
+  }
+  .pkr-eight .pkr-marker > :is(.pkr-dealer, .pkr-blind) {
+    position: static;
   }
 }

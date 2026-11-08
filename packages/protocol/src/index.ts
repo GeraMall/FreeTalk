@@ -1,8 +1,14 @@
+export {
+  POKER_BOARD_DELAY,
+  POKER_BOARD_STEP,
+  POKER_BOARD_FLIGHT,
+  pokerBoardDuration,
+} from './poker-timing.js';
 import { roomActivityActionSchema, roomActivitySchema } from './room-activity.js';
 export { Chess } from 'chess.js';
 import { activityPointerSchema } from './activity-table.js';
 export type { ActivityTable, TableKind, TableOf, TableAction } from './activity-table.js';
-export { tableSchema } from './activity-table.js';
+export { tableSchema, tableCountsForStatistics } from './activity-table.js';
 export { randomFleet, validFleet } from './activity-table-session.js';
 export { propertyBoard, housePrice } from './activity-property.js';
 export { quizPrizes } from './activity-quiz.js';
@@ -164,6 +170,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('create-room'),
     activityVersion: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
+    tabletVersion: z.literal(3).optional(),
     roomId,
     clientId,
     sessionId,
@@ -177,6 +184,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('join-room'),
     activityVersion: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
+    tabletVersion: z.literal(3).optional(),
     roomId,
     clientId,
     sessionId,

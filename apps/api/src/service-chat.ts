@@ -8,6 +8,7 @@ import { env } from './env.js';
 import { chatRealtimeHub } from './chat-realtime.js';
 import { sendSupportReport } from './mailer.js';
 import { serviceCommand, type SupportKind } from './service-chat-commands.js';
+import { parseBirthDate, adultBirthDate } from './birth-date.js';
 
 type RequireUser = (
   request: FastifyRequest,
@@ -24,6 +25,8 @@ const HELP =
   'Я служебный бот TRLKA. Здесь появляются уведомления о звонках и обращения в поддержку.\n\n/bug — сообщить об ошибке\n/idea — предложить улучшение\n/subscription — подписка\n/cancel — отменить ввод обращения';
 const PROMPT =
   'Опишите, что произошло или что вы хотите улучшить. Для ошибки укажите шаги и ожидаемый результат. Не отправляйте пароли, коды входа и личные переписки.\n\nТекст обращения и имя аккаунта будут переданы команде TRLKA по почте. /cancel — отмена.';
+const BIRTH_DATE_PROMPT =
+  'В вашем аккаунте не указана дата рождения. Укажите настоящую дату в формате ДД.ММ.ГГГГ, например 25.12.2000, прямо в этом чате. Бот сохранит её в вашем профиле. Она нужна для возрастных ограничений: покер доступен только с 18 лет. Дата не публикуется друзьям. Уже указанную дату через чат изменить нельзя.';
 
 async function append(
   client: PoolClient,
@@ -70,11 +73,22 @@ export async function addServiceNotice(userId: string, kind: string, body: strin
   });
   if (entry) publish(userId, [entry]);
 }
+export async function ensureBirthDateNotice(userId: string) {
+  const result = await db.query<Entry>(
+    `INSERT INTO service_chat_messages(user_id,author,kind,body,event_key)
+    SELECT id,'bot','birth-date-request',$2,'birth-date-required-v1' FROM users
+    WHERE id=$1 AND birth_date IS NULL AND deleted_at IS NULL
+    ON CONFLICT(user_id,event_key) DO NOTHING RETURNING *`,
+    [userId, BIRTH_DATE_PROMPT],
+  );
+  if (result.rows.length) publish(userId, result.rows);
+}
 
 export function registerServiceChat(app: FastifyInstance, requireUser: RequireUser) {
   app.get('/v1/service-chat/messages', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
+    await ensureBirthDateNotice(user.id);
     const { search } = z
       .object({ search: z.string().trim().max(200).default('') })
       .parse(request.query);
@@ -118,6 +132,58 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
           [user.id, `input:${input.requestId}`, input.requestId],
         );
         if (existing.rowCount) return { duplicate: true, entries: [] as Entry[] };
+        const dateInput =
+          /^\/birthdate(?:\s|$)/i.test(input.body) ||
+          /^\d{1,2}[.\s/-]\d{1,2}[.\s/-]\d{4}$/.test(input.body);
+        if (dateInput) {
+          const profile = await client.query<{ birth_date: string | null }>(
+            'SELECT birth_date FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',
+            [user.id],
+          );
+          const date = parseBirthDate(input.body);
+          let response = 'Не удалось проверить профиль. Попробуйте позже.';
+          let saved = false;
+          if (profile.rows[0]?.birth_date)
+            response =
+              'Дата рождения уже указана. Для исправления ошибки обратитесь в поддержку: /bug. Через сообщение изменить возраст нельзя.';
+          else if (profile.rows[0]) {
+            if (!date)
+              response =
+                'Проверьте дату: нужен существующий день в формате ДД.ММ.ГГГГ, не раньше 1900 года и не в будущем. Например: 25.12.2000.';
+            else {
+              const updated = await client.query(
+                'UPDATE users SET birth_date=$2::date,updated_at=now() WHERE id=$1 AND birth_date IS NULL AND deleted_at IS NULL RETURNING id',
+                [user.id, date],
+              );
+              saved = Boolean(updated.rowCount);
+              response = saved
+                ? adultBirthDate(date)
+                  ? 'Дата рождения сохранена. Возрастной доступ к покеру открыт. Вернитесь в планшет и нажмите «Обновить доступ».'
+                  : 'Дата рождения сохранена. Покер и просмотр покерного стола доступны с 18 лет. Остальные функции TRLKA остаются доступны.'
+                : 'Дата рождения уже сохранена. Повторное изменение через чат недоступно.';
+            }
+          }
+          const entries: Entry[] = [];
+          const own = await append(
+            client,
+            user.id,
+            'user',
+            'text',
+            input.body,
+            `input:${input.requestId}`,
+          );
+          const answer = await append(
+            client,
+            user.id,
+            'bot',
+            'birth-date-response',
+            response,
+            `reply:${input.requestId}`,
+          );
+          if (own) entries.push(own);
+          if (answer) entries.push(answer);
+          return { entries, birthDateSaved: saved };
+        }
         const command = serviceCommand(input.body, state.rows[0]?.pending_kind);
         let response = HELP;
         let kind = 'help';
@@ -200,6 +266,8 @@ export function registerServiceChat(app: FastifyInstance, requireUser: RequireUs
                 : 'Отправка обращений временно недоступна. Текст не отправлен.',
         });
       publish(user.id, result.entries);
+      if ('birthDateSaved' in result && result.birthDateSaved)
+        chatRealtimeHub.publish([user.id], { type: 'profile-updated', userId: user.id });
       return { ok: true };
     },
   );

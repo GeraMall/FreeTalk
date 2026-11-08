@@ -1,3 +1,4 @@
+import { configureBot, tickBots } from './activity-bots.js';
 import { Chess } from 'chess.js';
 import type { ActivityTable, TableKind, TableAction } from './activity-table.js';
 import {
@@ -105,6 +106,7 @@ export function createTable(
   context: TableContext,
   pokerRules?: 2,
   pokerSeats?: 8,
+  edition?: 3,
 ): TableSession {
   const maximum =
     kind === 'poker' && pokerSeats === 8
@@ -115,6 +117,7 @@ export function createTable(
           ? 1
           : 6;
   const base = {
+    edition,
     id: crypto.randomUUID(),
     hostId: context.actorId,
     phase: 'lobby' as const,
@@ -227,6 +230,10 @@ export function tableView(session: TableSession, viewerId?: string): ActivityTab
   return v;
 }
 export function tickTable(session: TableSession, now: number): TableSession {
+  const timed = tickTableClock(session, now);
+  return timed === session ? tickBots(session, now, reduceTable, randomFleet) : timed;
+}
+function tickTableClock(session: TableSession, now: number): TableSession {
   const v = session.view;
   if (v.kind === 'poker') return tickPoker(session, now);
   if (v.kind !== 'chess' || v.phase !== 'playing' || v.preset === 'unlimited') return session;
@@ -248,20 +255,60 @@ export function reduceTable(
   context: TableContext,
 ): TableSession {
   if (!context.members.includes(context.actorId)) return session;
-  const timed = tickTable(session, context.now);
+  const timed = session.secret.botActing ? session : tickTableClock(session, context.now);
   if (timed !== session) return timed;
   let v = session.view;
+  if (v.bots?.some((bot) => bot.id === context.actorId) && !session.secret.botActing)
+    return session;
+  if (
+    v.kind === 'poker' &&
+    v.edition === 3 &&
+    !session.secret.botActing &&
+    !context.adultIds?.includes(context.actorId)
+  )
+    return session;
+  if (action.kind === 'table-bot') return configureBot(session, action, context);
+  if (action.kind === 'poker-config') {
+    if (
+      v.kind !== 'poker' ||
+      v.edition !== 3 ||
+      v.phase !== 'lobby' ||
+      v.hostId !== context.actorId
+    )
+      return session;
+    return {
+      ...session,
+      view: {
+        ...v,
+        pokerMode: action.mode,
+        pokerAnte: action.ante,
+        ageConfirmed: action.ageConfirmed ?? v.ageConfirmed,
+      },
+    };
+  }
   const seat = v.seats.indexOf(context.actorId);
-  if (action.kind === 'table-reset')
-    return context.actorId === v.hostId
-      ? createTable(
-          v.kind,
-          context,
-          v.kind === 'poker' ? v.pokerRules : undefined,
-          v.kind === 'poker' ? v.pokerSeats : undefined,
-        )
-      : session;
+  if (action.kind === 'table-reset') {
+    if (context.actorId !== v.hostId) return session;
+    const fresh = createTable(
+      v.kind,
+      context,
+      v.kind === 'poker' ? v.pokerRules : undefined,
+      v.kind === 'poker' ? v.pokerSeats : undefined,
+      v.edition,
+    );
+    fresh.view.training = v.training;
+    fresh.view.bots = v.bots;
+    v.seats.forEach((id, i) => {
+      if (v.bots?.some((b) => b.id === id)) fresh.view.seats[i] = id;
+    });
+    if (fresh.view.kind === 'poker' && v.kind === 'poker') {
+      fresh.view.pokerMode = v.pokerMode;
+      fresh.view.pokerAnte = v.pokerAnte;
+    }
+    return fresh;
+  }
   if (action.kind === 'table-seat' && v.phase === 'lobby') {
+    if (v.kind === 'poker' && v.edition === 3) v = { ...v, ageConfirmed: false };
     if (action.seat !== null && (action.seat >= v.seats.length || v.seats[action.seat]))
       return session;
     const seats = v.seats.map((id) => (id === context.actorId ? null : id));
@@ -289,10 +336,19 @@ export function reduceTable(
     return { ...session, view: { ...v, preset: action.preset } };
   }
   if (action.kind === 'table-start' && v.phase === 'lobby' && v.hostId === context.actorId) {
+    if (
+      v.kind === 'poker' &&
+      v.edition === 3 &&
+      (!v.ageConfirmed ||
+        v.seats.some(
+          (id) => id && !v.bots?.some((b) => b.id === id) && !context.adultIds?.includes(id),
+        ))
+    )
+      return session;
     const seated = v.seats.filter(Boolean);
     if (
       seated.length < (v.kind === 'millionaire' ? 1 : 2) ||
-      seated.some((id) => !context.members.includes(id!))
+      seated.some((id) => !context.members.includes(id!) && !v.bots?.some((b) => b.id === id))
     )
       return session;
     if (v.kind === 'chess') {
@@ -410,7 +466,10 @@ export function reduceTable(
       ) {
         const ready = [...v.ready, context.actorId];
         const start =
-          ready.length === 2 && v.seats.every((id) => id && context.members.includes(id));
+          ready.length === 2 &&
+          v.seats.every(
+            (id) => id && (context.members.includes(id) || v.bots?.some((b) => b.id === id)),
+          );
         return {
           ...session,
           view: {
