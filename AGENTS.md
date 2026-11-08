@@ -1,5 +1,15 @@
 # Проверка изменений дизайна
 
+08.11.2026 Android native224 PRIVATE APK готов: sourcee36609bcfecf,
+outputs/android/beta224-preview/Trlka_0.4.0-beta.224_android.apk, 55748972bytes,
+SHA256af1fd480682b94fa65764a6fbbb58b26f0afdff89609660d48f828d20c2af8ab.
+Finalpackage14: JVM31/6emulatorUI/lint0errors/R8success; полныйpnpmcheck565pass.
+Подпись совпала с native18; прямое18→release224 и roundtrip проверки preferences
+прошли, release coldlaunch безcrash. Authdark/lightstatusbarcontrast проверены.
+Детали/ограничения docs/ANDROID_NATIVE_BETA224.md. Физический звонок не проверен.
+Mac224 PRIVATE DMG готов, CI42510597827 полностьюsuccess (Windows тоже),
+публичный feed/сайт223 не менялись. ФизическийMac результат ещёНЕподтверждён.
+
 08.11.2026 Mac224 PRIVATE preview собран из4ca2613, CI42510597827 Mac job success,
 RPATH проверен, arm64/Info.plist224/updater signature проверены. DMG:
 outputs/desktop/beta224-private/macos/Trlka_0.4.0-beta.224_aarch64.dmg,

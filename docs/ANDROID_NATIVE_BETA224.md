@@ -57,3 +57,25 @@ message; this work does not promise seamless call migration between servers.
 Mac source capture correction is documented separately in
 `MAC_SCREEN_CAPTURE_BETA224.md`; no API/signaling restart is required for either
 client preview.
+
+## Final artifact verification
+
+Packaged from source `e36609bcfecf`; `android224-package14.log` completed
+successfully: 31 JVM tests, six emulator screen tests, release lint (0 errors;
+36 warnings/6 hints), R8 and release packaging. The full workspace check also
+passed (`android224-full-check-final.log`, desktop565).
+
+APK: `outputs/android/beta224-preview/Trlka_0.4.0-beta.224_android.apk`,
+55,748,972 bytes, SHA256
+`af1fd480682b94fa65764a6fbbb58b26f0afdff89609660d48f828d20c2af8ab`.
+Package/version/SDK29–36/four ABIs and APK v2 signature were checked. Bundled
+tablet HTML, JS,25 sound assets and translation catalog are present; the debug
+preview activity is absent from release dex.
+
+On the dedicated Android16 emulator: installed the old18 APK, seeded harmless
+theme/text-size preferences, upgraded directly to the release224 APK and cold
+launched it successfully. A same-key debug224 reinstall confirmed those exact
+preferences survived; final release224 was reinstalled and cold launched again.
+No crash-buffer entries. Authentication stays dark despite a saved light theme;
+light chat system icons have dark contrast. This validates local preference
+preservation, not a real user's signed-in session or a physical call.
