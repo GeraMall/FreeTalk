@@ -98,3 +98,6 @@ NSIS/portable собраны с последними правками. ProductVe
 Журнал — `outputs/doc-review/chat221-windows-build.log`, размеры/SHA256 —
 `outputs/doc-review/chat221-artifacts.json`.
 Общий выпуск не выполнялся.
+
+После этого владелец явно разрешил общий выпуск: опубликованы Windows, Mac ARM
+и веб beta.221. Окончательный публичный статус — [RELEASE_BETA_221.md](RELEASE_BETA_221.md).
