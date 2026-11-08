@@ -204,7 +204,7 @@ export function ActivityPoker({
                   {t('Турнир')} ·{' '}
                   {table.pokerMode === 'tournament-fixed'
                     ? t('Постоянные блайнды')
-                    : `${t('Уровень')} ${(table.blindLevel ?? 0) + 1} · ${(table.blindLevel ?? 0) >= 10 ? t('Максимальный уровень') : table.pokerBreak ? t('Перерыв') : nextLevel === 0 ? t(table.pokerFlow === 2 ? 'Перерыв после этой раздачи' : 'повышение со следующей раздачи') : `${t('повышение через')} ${Math.floor((nextLevel ?? 0) / 60000)}:${String(Math.floor(((nextLevel ?? 0) % 60000) / 1000)).padStart(2, '0')}`}`}
+                    : `${t('Уровень')} ${(table.blindLevel ?? 0) + 1} · ${(table.blindLevel ?? 0) >= 10 ? t('Максимальный уровень') : table.pokerBreak ? t('Перерыв') : nextLevel === 0 ? t(table.pokerFlow === 2 ? 'Перерыв после этой раздачи' : 'повышение со следующей раздачи') : `${t(table.pokerFlow === 2 ? 'перерыв через' : 'повышение через')} ${Math.floor((nextLevel ?? 0) / 60000)}:${String(Math.floor(((nextLevel ?? 0) % 60000) / 1000)).padStart(2, '0')}`}`}
                 </span>
               )}
             </p>
