@@ -18,10 +18,11 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 224
-        versionName = "0.4.0-beta.224"
+        versionCode = 225
+        versionName = "0.4.0-beta.225"
         buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = providers.gradleProperty("callProbeRunner")
+            .orElse("androidx.test.runner.AndroidJUnitRunner").get()
     }
 
     buildTypes {
