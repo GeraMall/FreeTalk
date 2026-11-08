@@ -4,6 +4,7 @@ export const tableKindSchema = z.enum(['chess', 'fleet', 'monopoly', 'millionair
 const id = z.string().uuid();
 const count = z.number().int().nonnegative();
 export const diceMotionSchema = z.object({
+  automatic: z.literal(true).optional(),
   id: z.string().uuid(),
   seq: count,
   poses: z.tuple([

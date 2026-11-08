@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createTable, reduceTable } from './activity-table-session.js';
+import { createTable, reduceTable, tickTable } from './activity-table-session.js';
 import { tableSchema, type TableOf } from './activity-table.js';
 import {
   propertyBuildingStock,
@@ -26,6 +26,23 @@ function dice(a: number, b: number) {
 }
 afterEach(() => vi.restoreAllMocks());
 describe('new monopoly rules, stock and insolvency', () => {
+  it('lets a bot prepare during the animation and act at its end without an extra thinking window', () => {
+    let s = createTable('monopoly', context(), undefined, undefined, 3, undefined, 2);
+    s = reduceTable(s, { kind: 'table-bot', seat: 1 }, context());
+    s = reduceTable(s, { kind: 'table-start' }, context());
+    view(s).turn = 1;
+    dice(1, 3);
+    expect(tickTable(s, 11000)).toBe(s);
+    s = tickTable(s, 12000);
+    const until = view(s).lastMove!.until;
+    expect(view(s).lastMove?.rollMs).toBe(2200);
+    expect(view(s).step).toBe('end');
+    expect(tickTable(s, until - 1)).toBe(s);
+    const next = tickTable(s, until);
+    expect(next).not.toBe(s);
+    expect(view(next).turn).toBe(0);
+    expect(view(next).step).toBe('roll');
+  });
   it('negotiates the longer throw without changing old client timing or dice outcomes', () => {
     const s = started();
     dice(2, 3);

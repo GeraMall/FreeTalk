@@ -76,21 +76,24 @@ export function tickBots(
   } else if (v.phase !== 'playing') return session;
   else if (v.kind === 'chess') seat = v.fen.split(' ')[1] === 'w' ? 0 : 1;
   else if (v.kind === 'fleet') seat = v.turn;
-  else if (v.kind === 'monopoly' && now < (v.lastMove?.until ?? 0)) return session;
   else if (v.kind === 'monopoly') seat = v.trade ? v.trade.to : (v.auction?.turn ?? v.turn);
   else if (v.kind === 'poker' && v.stage !== 'showdown' && now >= (v.turnAt ?? 0)) seat = v.turn;
   if (seat < 0 || !v.bots.some((b) => b.id === v.seats[seat])) return session;
   const signature = `${v.id}:${v.kind}:${seat}:${v.log.at(-1)}:${v.kind === 'poker' ? v.turnDeadline : v.kind === 'chess' ? v.moves.length : v.phase}`;
   if (session.secret.botSignature !== signature) {
     session.secret.botSignature = signature;
-    session.secret.botNextAt = now + 900;
-    return session;
+    session.secret.botNextAt =
+      v.kind === 'monopoly'
+        ? Math.max(v.lastMove?.until ?? 0, session.secret.botNextAt || now + 600)
+        : now + 900;
+    if (v.kind !== 'monopoly') return session;
   }
   if (!session.secret.botNextAt) {
     session.secret.botNextAt = now + 900;
     return session;
   }
-  if (now < session.secret.botNextAt) return session;
+  if (now < session.secret.botNextAt || (v.kind === 'monopoly' && now < (v.lastMove?.until ?? 0)))
+    return session;
   if (!action && v.kind === 'chess') {
     const chess = new Chess(v.fen),
       values: Record<string, number> = { p: 1, n: 3, b: 3.2, r: 5, q: 9, k: 0 };
@@ -181,9 +184,10 @@ export function tickBots(
     actorId: v.seats[seat]!,
     members: v.seats.filter((id): id is string => Boolean(id)),
     now,
+    propertyRoll: v.kind === 'monopoly' && v.propertyRules === 2 ? 2 : undefined,
   });
   if (result === input) return session;
   result.secret.botActing = false;
-  result.secret.botNextAt = now + 1100;
+  result.secret.botNextAt = now + (v.kind === 'monopoly' ? 500 : 1100);
   return result;
 }

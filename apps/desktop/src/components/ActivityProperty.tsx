@@ -16,7 +16,7 @@ import { playerName, type TableUiProps } from './activity-table-ui';
 import { PokerAvatar } from './PokerVisuals';
 import { PropertyBoard } from './PropertyBoard';
 import { propertyBoard, propertyLog, propertyColors, playerColors } from '../lib/monopoly-layout';
-import { PropertyDice } from './PropertyDice';
+import { PropertyDice, type PropertyDiceControls } from './PropertyDice';
 import { PropertyDeed, PropertyModal, PropertyTrade } from './PropertyCards';
 import { useSharedDice } from '../lib/use-shared-dice';
 import { MonopolySounds } from '../lib/monopoly-sounds';
@@ -49,6 +49,7 @@ export function ActivityProperty({
     previous = useRef(table),
     waitingWin = useRef(false);
   const shared = useSharedDice(table, selfId, send);
+  const diceControls = useRef<PropertyDiceControls>(null);
   const move = table.lastMove,
     rollMs = move?.rollMs ?? 900,
     busy = now < (move?.until ?? 0),
@@ -90,7 +91,8 @@ export function ActivityProperty({
   }, [move]);
   useEffect(() => {
     setPending(0);
-  }, [move?.sequence]);
+    // A resync can reject a stale throw without changing the move sequence.
+  }, [table]);
   useEffect(() => {
     if (!pending) return;
     const timer = setTimeout(() => setPending(0), 3500);
@@ -214,6 +216,7 @@ export function ActivityProperty({
             <Landmark size={23} /> TRLKA
           </span>
           <PropertyDice
+            controls={diceControls}
             dice={table.dice}
             rolling={rolling}
             sequence={move?.sequence ?? 0}
@@ -290,7 +293,12 @@ export function ActivityProperty({
             <div className="mono-actions">
               {table.step === 'roll' && (
                 <>
-                  <button type="button" className="mono-primary" disabled={!canRoll} onClick={roll}>
+                  <button
+                    type="button"
+                    className="mono-primary"
+                    disabled={!canRoll}
+                    onClick={() => diceControls.current?.roll()}
+                  >
                     <Dices size={19} />
                     {t(rolling ? 'Бросаем…' : 'Бросить кубики')}
                   </button>

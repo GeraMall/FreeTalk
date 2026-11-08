@@ -56,6 +56,42 @@ function table(): TableOf<'monopoly'> {
   };
 }
 describe('monopoly table controls', () => {
+  it('clears a rejected throw spinner when the server resends the unchanged table', () => {
+    const initial = table(),
+      send = vi.fn();
+    const page = render(
+      <ActivityProperty table={initial} selfId="a" participants={[]} send={send} />,
+    );
+    fireEvent.click(page.getByRole('button', { name: 'Бросить кубики' }));
+    expect(page.getByRole('button', { name: 'Бросаем…' }).hasAttribute('disabled')).toBe(true);
+    page.rerender(
+      <ActivityProperty table={{ ...initial }} selfId="a" participants={[]} send={send} />,
+    );
+    expect(page.getByRole('button', { name: 'Бросить кубики' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+  });
+  it('sends one automatic shared shake before a button throw', () => {
+    const send = vi.fn();
+    const page = render(
+      <ActivityProperty table={table()} selfId="a" participants={[]} send={send} />,
+    );
+    fireEvent.click(page.getByRole('button', { name: 'Бросить кубики' }));
+    expect(send.mock.calls.map(([action]) => action.kind)).toEqual([
+      'tablet-pointer',
+      'tablet-pointer',
+      'property',
+    ]);
+    expect(send.mock.calls[0]![0].dice).toMatchObject({ phase: 'hold', automatic: true, seq: 1 });
+    expect(send.mock.calls[1]![0].dice).toMatchObject({
+      phase: 'release',
+      automatic: true,
+      seq: 2,
+    });
+    expect(send.mock.calls[0]![0].dice.id).toBe(send.mock.calls[1]![0].dice.id);
+    fireEvent.click(page.getByRole('button', { name: 'Бросаем…' }));
+    expect(send).toHaveBeenCalledTimes(3);
+  });
   it('shows all title deeds and routes property management without changing the camera stream', () => {
     const v = table(),
       send = vi.fn();

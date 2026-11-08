@@ -46,24 +46,47 @@ export function restDice(bounds: DiceBounds): DiceBody[] {
   }));
 }
 export function throwDice(bodies: DiceBody[], seed: number, velocity: { x: number; y: number }) {
+  const magnitude = Math.hypot(velocity.x, velocity.y),
+    angle = magnitude > 30 ? Math.atan2(velocity.y, velocity.x) : (seed * 2.399963) % (Math.PI * 2),
+    speed = clamp(145 + magnitude * 0.08, 145, 235),
+    dx = Math.cos(angle),
+    dy = Math.sin(angle);
   return bodies.map((b, i) => ({
     ...b,
-    vx: clamp(velocity.x * 0.65 + (i ? 1 : -1) * (370 + (seed % 5) * 28), -1000, 1000),
-    vy: clamp(velocity.y * 0.65 + (i ? -240 : 220), -850, 850),
+    vx: dx * speed - dy * (i ? 1 : -1) * (18 + (seed % 9)),
+    vy: dy * speed + dx * (i ? 1 : -1) * (18 + (seed % 9)),
     z: 2 + i * 2,
-    vz: 205 + i * 35,
+    vz: 100 + i * 12,
     rx: b.rx,
     ry: b.ry,
-    sx: (i ? -1 : 1) * (240 + (seed % 7) * 20),
-    sy: (i ? -1 : 1) * (210 + (seed % 3) * 30),
+    sx: (i ? -1 : 1) * (35 + (seed % 7) * 5),
+    sy: (i ? -1 : 1) * (30 + (seed % 3) * 8),
   }));
 }
 /** Semi-implicit 2D motion with height, wall restitution and equal-mass die collisions. */
 export function stepDice(bodies: DiceBody[], bounds: DiceBounds, dt: number) {
   const l = diceLimits(bounds);
   let impact = false;
+  const first = bodies[0],
+    second = bodies[1];
+  if (first && second) {
+    const dx = second.x - first.x,
+      dy = second.y - first.y,
+      d = Math.hypot(dx, dy),
+      reach = bounds.size * 3.2;
+    if (d > reach) {
+      const nx = dx / d,
+        ny = dy / d,
+        away = (second.vx - first.vx) * nx + (second.vy - first.vy) * ny;
+      const impulse = Math.max(0, (d - reach) * 12 + away * 2.5) * dt;
+      first.vx += nx * impulse;
+      first.vy += ny * impulse;
+      second.vx -= nx * impulse;
+      second.vy -= ny * impulse;
+    }
+  }
   for (const b of bodies) {
-    b.vz -= 1200 * dt;
+    b.vz -= 950 * dt;
     b.z += b.vz * dt;
     if (b.z < 0) {
       if (b.vz < -55) {
@@ -72,7 +95,7 @@ export function stepDice(bodies: DiceBody[], bounds: DiceBounds, dt: number) {
       } else b.vz = 0;
       b.z = 0;
     }
-    const friction = Math.exp(-(b.z > 2 ? 0.8 : 1.9) * dt);
+    const friction = Math.exp(-(b.z > 2 ? 0.9 : 1.65) * dt);
     b.vx *= friction;
     b.vy *= friction;
     const ox = b.x,
@@ -148,6 +171,7 @@ export function settleDice(bodies: DiceBody[], values: [number, number], progres
 }
 
 export const DICE_ROLL_MS = 2200;
+export const DICE_SHAKE_MS = 300;
 const canonical: DiceBounds = { width: 800, height: 500, size: 44 };
 export function diceRollFrames(
   values: [number, number],
@@ -164,14 +188,31 @@ export function diceRollFrames(
       rx: motion.poses[i]!.rx,
       ry: motion.poses[i]!.ry,
     }));
-  bodies = throwDice(bodies, sequence * 37 + values[0] * 7 + values[1], {
-    x: (motion?.vx ?? 0.13) * canonical.width,
-    y: (motion?.vy ?? -0.1) * canonical.height,
-  });
   const frames: DiceBody[][] = [bodies.map((b) => ({ ...b }))];
   const ticks = Math.round(durationMs * 0.12),
-    settleAt = Math.max(1, ticks - 66);
+    shakeTicks = !motion || motion.automatic ? Math.min(36, Math.floor(ticks / 4)) : 0,
+    settleAt = Math.max(shakeTicks + 1, ticks - 72);
   for (let i = 1; i <= ticks; i++) {
+    if (i <= shakeTicks) {
+      const p = i / shakeTicks,
+        envelope = Math.sin(Math.PI * p) ** 2;
+      frames.push(
+        bodies.map((b, j) => ({
+          ...b,
+          x: b.x + Math.sin(p * Math.PI * 4) * 7 * envelope,
+          y: b.y + Math.cos(p * Math.PI * 4) * 5 * envelope,
+          z: 3 * envelope,
+          rx: b.rx + Math.sin(p * Math.PI * 4 + (j ? 1 : 0)) * 18 * envelope,
+          ry: b.ry + Math.cos(p * Math.PI * 4 + (j ? 1 : 0)) * 16 * envelope,
+        })),
+      );
+      continue;
+    }
+    if (i === shakeTicks + 1)
+      bodies = throwDice(bodies, sequence * 37 + values[0] * 7 + values[1], {
+        x: (motion?.vx ?? 0) * canonical.width,
+        y: (motion?.vy ?? 0) * canonical.height,
+      });
     stepDice(bodies, canonical, 1 / 120);
     frames.push(bodies.map((b) => ({ ...b })));
   }

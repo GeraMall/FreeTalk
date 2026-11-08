@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Ref,
+} from 'react';
 import type { DiceGesture, DiceMotion } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import {
@@ -8,12 +16,17 @@ import {
   diceRollFrames,
   sampleDiceRoll,
   DICE_ROLL_MS,
+  DICE_SHAKE_MS,
   type DiceBody,
   type DiceBounds,
 } from '../lib/monopoly-dice';
 const faces = [[4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+export interface PropertyDiceControls {
+  roll(): void;
+}
 export function PropertyDice({
+  controls,
   dice,
   rolling,
   sequence,
@@ -29,6 +42,7 @@ export function PropertyDice({
   onThrowSound,
   onStopped,
 }: {
+  controls?: Ref<PropertyDiceControls>;
   dice: [number, number];
   rolling: boolean;
   sequence: number;
@@ -62,6 +76,7 @@ export function PropertyDice({
           lastX: number;
           lastY: number;
           at: number;
+          moved: boolean;
         }
       | undefined
     >(undefined),
@@ -113,11 +128,27 @@ export function PropertyDice({
       id: g.id,
       seq: ++g.seq,
       phase,
+      automatic: phase === 'release' && !g.moved ? true : undefined,
       poses,
       vx: clamp(velocity.current.x / bounds.current.width, -3, 3),
       vy: clamp(velocity.current.y / bounds.current.height, -3, 3),
     });
   }, []);
+  const automaticRoll = () => {
+    if (!canRoll || rolling || grab.current) return;
+    const id = crypto.randomUUID();
+    const poses = bodies.current.map((b) => ({
+      x: clamp(b.x / bounds.current.width, 0, 1),
+      y: clamp(b.y / bounds.current.height, 0, 1),
+      rx: ((b.rx % 720) + 720) % 720,
+      ry: ((b.ry % 720) + 720) % 720,
+    })) as DiceMotion['poses'];
+    const packet = { id, poses, vx: 0, vy: 0, automatic: true as const };
+    callbacks.current.onGesture?.({ ...packet, phase: 'hold', seq: 1 });
+    callbacks.current.onGesture?.({ ...packet, phase: 'release', seq: 2 });
+    callbacks.current.onRoll();
+  };
+  useImperativeHandle(controls, () => ({ roll: automaticRoll }));
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -166,7 +197,8 @@ export function PropertyDice({
       return;
     }
     if (startAt === undefined) return;
-    const frames = diceRollFrames(values.current, sequence, rollMotion.current, durationMs),
+    const initial = bodies.current.map((b) => ({ ...b })),
+      frames = diceRollFrames(values.current, sequence, rollMotion.current, durationMs),
       reduce =
         typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const elapsed = Math.max(0, Date.now() - startAt);
@@ -175,6 +207,17 @@ export function PropertyDice({
     const animate = () => {
       const elapsed = reduce ? durationMs : Math.max(0, Date.now() - startAt);
       bodies.current = sampleDiceRoll(frames, elapsed, bounds.current);
+      if (!rollMotion.current && elapsed < DICE_SHAKE_MS && !reduce) {
+        const p = elapsed / DICE_SHAKE_MS,
+          s = p * p * p * (10 - 15 * p + 6 * p * p);
+        bodies.current = bodies.current.map((b, i) => ({
+          ...b,
+          x: initial[i]!.x + (b.x - initial[i]!.x) * s,
+          y: initial[i]!.y + (b.y - initial[i]!.y) * s,
+          rx: initial[i]!.rx + (((((b.rx - initial[i]!.rx + 180) % 360) + 360) % 360) - 180) * s,
+          ry: initial[i]!.ry + (((((b.ry - initial[i]!.ry + 180) % 360) + 360) % 360) - 180) * s,
+        }));
+      }
       paint();
       if (elapsed < durationMs) raf = requestAnimationFrame(animate);
       else callbacks.current.onStopped?.();
@@ -270,6 +313,7 @@ export function PropertyDice({
           lastX: e.clientX,
           lastY: e.clientY,
           at: Date.now(),
+          moved: false,
         };
         velocity.current = { x: 0, y: 0, at: Date.now() };
         setHeld(true);
@@ -294,12 +338,13 @@ export function PropertyDice({
           x: clamp(b.x + dx, l.left, l.right),
           y: clamp(b.y + dy, l.top, l.bottom),
           z: 3,
-          rx: b.rx + dy * (i ? -2.4 : 2.8) + dx * 0.6,
-          ry: b.ry + dx * (i ? 2.8 : -2.4) + dy * 0.5,
+          rx: b.rx + dy * (i ? -1.2 : 1.35) + dx * 0.3,
+          ry: b.ry + dx * (i ? 1.35 : -1.2) + dy * 0.25,
         }));
         g.lastX = e.clientX;
         g.lastY = e.clientY;
         g.at = now;
+        if (Math.hypot(dx, dy) > 4) g.moved = true;
         paint();
         if (changed) callbacks.current.onShake();
         publish('move');
@@ -314,7 +359,7 @@ export function PropertyDice({
         if (e.pointerId === grab.current?.pointerId) release(true);
       }}
       onClick={(e) => {
-        if (e.detail === 0 && canRoll && !grab.current) callbacks.current.onRoll();
+        if (e.detail === 0) automaticRoll();
       }}
     >
       <span className="mono-dice-stage" aria-hidden="true">

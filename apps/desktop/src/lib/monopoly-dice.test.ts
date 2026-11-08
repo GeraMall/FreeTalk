@@ -79,6 +79,33 @@ it('replays the same continuous roll for every viewer and settles on the server 
   const middle = sampleDiceRoll(frames, 450, bounds);
   expect(
     Math.abs(middle[0]!.rx - frames[0]![0]!.rx) + Math.abs(middle[0]!.ry - frames[0]![0]!.ry),
-  ).toBeGreaterThan(180);
-  expect(Math.hypot(middle[0]!.x - middle[1]!.x, middle[0]!.y - middle[1]!.y)).toBeGreaterThan(160);
+  ).toBeGreaterThan(30);
+  expect(Math.hypot(middle[0]!.x - middle[1]!.x, middle[0]!.y - middle[1]!.y)).toBeLessThan(180);
+});
+
+it('keeps an extreme shared gesture together and gives button rolls a gentle shake before launch', () => {
+  const bounds = { width: 800, height: 500, size: 44 };
+  for (let seed = 1; seed <= 24; seed++) {
+    const frames = diceRollFrames([(seed % 6) + 1, ((seed + 2) % 6) + 1], seed, {
+      id: '00000000-0000-4000-8000-000000000001',
+      seq: 1,
+      poses: [
+        { x: 0.44, y: 0.5, rx: -18, ry: 22 },
+        { x: 0.56, y: 0.5, rx: -18, ry: 22 },
+      ],
+      vx: seed % 2 ? 3 : -3,
+      vy: seed % 3 ? 3 : -3,
+    });
+    for (let at = 0; at <= DICE_ROLL_MS; at += 20) {
+      const [a, b] = sampleDiceRoll(frames, at, bounds);
+      expect(Math.hypot(a!.x - b!.x, a!.y - b!.y)).toBeLessThan(180);
+    }
+  }
+  const frames = diceRollFrames([3, 5], 12),
+    start = sampleDiceRoll(frames, 0, bounds)[0]!,
+    shake = sampleDiceRoll(frames, 90, bounds)[0]!,
+    launched = sampleDiceRoll(frames, 700, bounds)[0]!;
+  expect(Math.abs(shake.rx - start.rx) + Math.abs(shake.ry - start.ry)).toBeGreaterThan(2);
+  expect(Math.hypot(shake.x - start.x, shake.y - start.y)).toBeLessThan(12);
+  expect(Math.hypot(launched.x - start.x, launched.y - start.y)).toBeGreaterThan(20);
 });

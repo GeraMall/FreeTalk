@@ -7,7 +7,7 @@ from pathlib import Path
 
 rate = 24000
 out = Path(__file__).resolve().parents[2] / 'apps/desktop/public/sounds/monopoly'
-rng = random.Random(216)
+rng = random.Random(217)
 
 def write(name, duration, impacts):
     samples = [0.0] * round(duration * rate)
@@ -28,7 +28,7 @@ def write(name, duration, impacts):
 
 write('shake', .22, [(0, .36, 710), (.045, .3, 840), (.095, .27, 640)])
 write('roll', 2.2, [(at, gain, pitch) for at, gain, pitch in [
-    (0, .65, 390), (.07, .52, 580), (.16, .5, 430), (.29, .46, 640),
-    (.44, .42, 410), (.62, .36, 570), (.83, .3, 480), (1.07, .25, 620),
-    (1.33, .19, 430), (1.61, .12, 540), (1.91, .06, 610),
+    (0, .22, 710), (.08, .2, 840), (.16, .18, 640), (.34, .45, 390),
+    (.49, .36, 580), (.68, .3, 430), (.9, .25, 640), (1.15, .2, 410),
+    (1.42, .14, 570), (1.7, .09, 480), (1.97, .04, 620),
 ]])
