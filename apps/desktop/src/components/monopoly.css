@@ -344,8 +344,8 @@
 }
 .mono-token {
   position: absolute;
-  width: 25px;
-  height: 28px;
+  width: 28px;
+  height: 31px;
   display: grid;
   place-items: center;
   transform: translate(calc(-50% + (var(--token-n) - 1) * 6px), calc(-45% + var(--token-n) * 2px));
@@ -356,28 +356,32 @@
 }
 .mono-token-piece > svg {
   position: relative;
-  width: 22px;
-  height: 24px;
+  width: 25px;
+  height: 27px;
   z-index: 1;
-  color: #f1ece0;
-  fill: #87938a;
+  color: #202c36;
   stroke-width: 1.5;
-  filter: drop-shadow(1px 1px #53655c);
+  filter: drop-shadow(0 -0.7px 0 #d5dfe5) drop-shadow(0.8px 1.2px 0 #0f1b24);
 }
 .mono-token-piece > i {
   position: absolute;
   bottom: 0;
-  width: 23px;
-  height: 8px;
+  width: 26px;
+  height: 9px;
   border-radius: 50%;
-  border: 2px solid #cad0c1;
-  background: var(--seat-color);
-  box-shadow: 0 2px #334d47;
+  border: 2px solid #8f9da9;
+  border-bottom-color: var(--seat-color);
+  background: linear-gradient(180deg, #8393a0, #364451 45%, #19242e);
+  box-shadow: 0 2px #14212b;
 }
 .mono-token.is-turn > .mono-token-piece > i {
   box-shadow:
-    0 2px #334d47,
+    0 2px #14212b,
     0 0 0 2px #f8edbd9c;
+}
+.mono-token-material {
+  position: absolute;
+  pointer-events: none;
 }
 .mono-control-panel {
   display: flex;

@@ -1,5 +1,5 @@
 import type { TableOf } from '@freetalk/protocol';
-import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import { usePropertyTypography } from '../lib/use-property-typography';
 import {
   propertyBoard,
@@ -29,6 +29,7 @@ export function PropertyBoard({
   children: ReactNode;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
+  const metalId = `mono-metal-${useId().replace(/:/g, '')}`;
   usePropertyTypography(boardRef);
   return (
     <div
@@ -38,6 +39,24 @@ export function PropertyBoard({
       aria-label={t('Поле Монополии')}
       data-activity-surface="property"
     >
+      <svg
+        className="mono-token-material"
+        width="0"
+        height="0"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <defs>
+          <linearGradient id={metalId} x1="0%" y1="0%" x2="90%" y2="100%">
+            <stop offset="0%" stopColor="#9ba8b4" />
+            <stop offset="24%" stopColor="#52616e" />
+            <stop offset="46%" stopColor="#26323d" />
+            <stop offset="61%" stopColor="#71808c" />
+            <stop offset="82%" stopColor="#34414d" />
+            <stop offset="100%" stopColor="#18232c" />
+          </linearGradient>
+        </defs>
+      </svg>
       <div className="mono-board-center">{children}</div>
       {propertyBoard.map(([name, price, group], i) => {
         const p = propertyPosition(i),
@@ -117,7 +136,7 @@ export function PropertyBoard({
                 key={motion?.seat === i ? `${motion.sequence}:${motion.step}` : 'rest'}
                 className={`mono-token-piece ${motion?.seat === i ? 'is-hopping' : ''}`}
               >
-                <Icon />
+                <Icon style={{ fill: `url(#${metalId})` }} />
                 <i />
               </span>
             </span>
