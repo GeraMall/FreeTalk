@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { requireApi } from './common.mjs';
 
 const { build } = requireApi('esbuild');
@@ -16,7 +17,8 @@ for (const entry of ['server', 'migrate']) {
     target: 'node22',
     external,
     banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      js: "import { createRequire as __capacityCreateRequire } from 'node:module'; var require = __capacityCreateRequire(import.meta.url);",
     },
   });
+  execFileSync(process.execPath, ['--check', `apps/api/dist/capacity-${entry}.mjs`]);
 }
