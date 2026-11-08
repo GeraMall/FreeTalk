@@ -637,18 +637,35 @@
 }
 
 :root[data-ui-theme='light'] .activity-catalog {
-  color: #eef3fa;
+  color: var(--ui-text-100);
 }
 :root[data-ui-theme='light'] .activity-catalog :is(h3, strong) {
-  color: #eef3fa;
+  color: var(--ui-text-100);
 }
-:root[data-ui-theme='light'] .activity-catalog :is(p, small) {
-  color: #b8c9e2;
+:root[data-ui-theme='light'] .activity-catalog :is(p, small, .tablet-viewer-count) {
+  color: var(--ui-muted-100);
 }
 :root[data-ui-theme='light'] .activity-catalog button {
+  color: var(--ui-text-100);
+  background: var(--ui-surface1-100);
+  border-color: var(--ui-line-100);
+}
+:root[data-ui-theme='light'] .activity-catalog button:hover:not(:disabled) {
+  background: var(--ui-surface2-100);
+}
+/* Game skins have their own contrast and felt; only the tablet chrome follows the app theme. */
+:root[data-ui-theme='light'] .activity-playing:not(:has(.mono-lobby)) {
+  --ft-text: #eef3fa;
+  --ft-text-secondary: #ccd7e3;
+  --ft-text-muted: #91a3b7;
+  --ui-text-100: #eef3fa;
+  --ui-muted-100: #aabbd2;
+  --ui-line-100: #30415c;
+  --ui-surface0-100: #070f1c;
+  --ui-surface1-100: #19273a;
+  --ui-surface2-100: #22334b;
   color: #eef3fa;
-  background: #142239;
-  border-color: #465c7b;
+  background: radial-gradient(ellipse at 90% 0, #25335155, transparent 65%), #070f1c;
 }
 .settings-sidebar .settings-logout {
   color: var(--ft-error);

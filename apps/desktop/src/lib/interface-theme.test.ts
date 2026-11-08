@@ -140,3 +140,20 @@ it('does not let a stale poll undo an explicit sync choice', async () => {
   await reading;
   expect(store.snapshot().syncEnabled).toBe(true);
 });
+
+it('does not offer a working sync toggle when the server endpoint is unavailable', async () => {
+  const request = vi.spyOn(accountClient, 'request').mockRejectedValue({ status: 404 });
+  const store = new ThemeController();
+  cleanups.push(store.connect('self'));
+  await tick();
+  store.choose('light');
+  store.toggleSync(true);
+  await tick();
+  expect(store.snapshot()).toMatchObject({
+    theme: 'light',
+    syncEnabled: false,
+    available: false,
+    ready: true,
+  });
+  expect(request.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(0);
+});

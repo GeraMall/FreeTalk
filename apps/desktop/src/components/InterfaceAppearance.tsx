@@ -51,18 +51,20 @@ export function InterfaceAppearance() {
         <input
           type="checkbox"
           checked={state.syncEnabled}
-          disabled={!state.account || !state.ready || state.busy}
+          disabled={!state.account || !state.ready || !state.available || state.busy}
           onChange={(event) => interfaceTheme.toggleSync(event.target.checked)}
         />
       </label>
       <p className="theme-storage-note" role="status">
         {state.busy
           ? t('Сохраняем тему…')
-          : state.error
-            ? t('Не удалось синхронизировать тему. Локальный выбор сохранён.')
-            : state.syncEnabled
-              ? t('Тема синхронизируется с вашим аккаунтом.')
-              : t('Тема сохраняется только на этом устройстве.')}
+          : !state.available && state.ready && state.account
+            ? t('Синхронизация пока недоступна. Тема сохраняется на этом устройстве.')
+            : state.error
+              ? t('Не удалось синхронизировать тему. Локальный выбор сохранён.')
+              : state.syncEnabled
+                ? t('Тема синхронизируется с вашим аккаунтом.')
+                : t('Тема сохраняется только на этом устройстве.')}
       </p>
     </div>
   );

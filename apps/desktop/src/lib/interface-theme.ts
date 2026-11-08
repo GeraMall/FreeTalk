@@ -17,7 +17,13 @@ export function applyInterfaceTheme(theme = storedInterfaceTheme()) {
     document.documentElement.dataset.authScreen === 'true' ? 'default' : theme;
 }
 type Preference = { theme: InterfaceTheme; syncEnabled: boolean };
-type ThemeState = Preference & { ready: boolean; busy: boolean; error: boolean; account: boolean };
+type ThemeState = Preference & {
+  ready: boolean;
+  busy: boolean;
+  error: boolean;
+  account: boolean;
+  available: boolean;
+};
 export class ThemeController {
   private state: ThemeState = {
     theme: storedInterfaceTheme(),
@@ -26,6 +32,7 @@ export class ThemeController {
     busy: false,
     error: false,
     account: false,
+    available: false,
   };
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -66,7 +73,8 @@ export class ThemeController {
     }
   };
   toggleSync = (syncEnabled: boolean) => {
-    if (!this.state.account || !this.state.ready || this.state.busy) return;
+    if (!this.state.account || !this.state.ready || !this.state.available || this.state.busy)
+      return;
     this.edits++;
     this.queue({ theme: this.state.theme, syncEnabled });
   };
@@ -126,7 +134,7 @@ export class ThemeController {
         return;
       const preference = result.appearance;
       this.confirmedSync = preference.syncEnabled;
-      this.update({ syncEnabled: preference.syncEnabled, error: false });
+      this.update({ syncEnabled: preference.syncEnabled, error: false, available: true });
       if (preference.syncEnabled) {
         if (edits === this.edits && !this.unsavedTheme) this.local(preference.theme);
         else this.queue({ theme: this.state.theme, syncEnabled: true });
@@ -146,6 +154,7 @@ export class ThemeController {
     this.unsavedTheme = false;
     this.update({
       account: Boolean(accountId),
+      available: false,
       syncEnabled: false,
       ready: !accountId,
       busy: false,
