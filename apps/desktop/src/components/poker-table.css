@@ -2318,6 +2318,32 @@
     height: 30px;
     font-size: 6px;
   }
+  .pkr-eight .pkr-seat-tokens {
+    display: contents;
+  }
+  .pkr-eight :is(.pkr-dealer, .pkr-blind) {
+    position: absolute;
+    right: 0;
+    top: -1px;
+    width: 12px;
+    height: 12px;
+    font-size: 6px;
+    border-width: 1px;
+  }
+  .pkr-eight .pkr-allin {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 2px);
+  }
+  .pkr-eight .pkr-own :is(.pkr-dealer, .pkr-blind) {
+    right: auto;
+    left: 0;
+    top: -14px;
+  }
+  .pkr-eight .pkr-own .pkr-allin {
+    left: -36px;
+    top: 0;
+  }
   .pkr-eight .pkr-center {
     transform: translate(-50%, -50%);
     top: 51%;
@@ -2385,6 +2411,16 @@
     left: -48px;
     top: auto;
     bottom: 10px;
+  }
+  .pkr-eight .pkr-seat:has(.pkr-allin) .pkr-wager {
+    inset: calc(100% + 32px) auto auto 0;
+    width: 30px;
+  }
+  .pkr-eight .pkr-seat:has(.pkr-allin) .pkr-wager .pkr-chips {
+    display: none;
+  }
+  .pkr-eight .pkr-own:has(.pkr-allin) .pkr-wager {
+    inset: 32px auto auto -36px;
   }
   .pkr-eight .pkr-chips-compact {
     scale: 0.6;
