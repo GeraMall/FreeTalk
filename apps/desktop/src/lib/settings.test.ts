@@ -30,6 +30,15 @@ describe('platform-specific settings defaults', () => {
     expect(loadSettings().chatTextScale).toBe(1.1);
   });
 
+  it('enables automatic updates for a new profile and preserves an explicit opt-out', () => {
+    expect(defaultSettings().autoUpdate).toBe(true);
+    expect(loadSettings().autoUpdate).toBe(true);
+    saveSettings({ ...loadSettings(), autoUpdate: false });
+    expect(loadSettings().autoUpdate).toBe(false);
+    localStorage.setItem('freetalk.settings.v1', JSON.stringify({ autoUpdate: 'invalid' }));
+    expect(loadSettings().autoUpdate).toBe(true);
+  });
+
   it('keeps screen audio enabled by default on Windows', () => {
     usePlatform('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     expect(defaultSettings()).toMatchObject({

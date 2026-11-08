@@ -1,4 +1,5 @@
 import { Crown, Eye, Spade, UserPlus, Users, Play, Coins } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 import type { TableOf } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import { type TableUiProps, playerName } from './activity-table-ui';
@@ -7,6 +8,9 @@ import { PokerRulesPicker } from './PokerRulesPicker';
 import { TableBotControls } from './TableBotControls';
 
 export function PokerLobby({ table, selfId, participants, send }: TableUiProps<TableOf<'poker'>>) {
+  const [attempted, setAttempted] = useState(false);
+  const ageInput = useRef<HTMLInputElement>(null);
+  const errorId = useId();
   const host = table.hostId === selfId,
     seated = table.seats.includes(selfId ?? ''),
     count = table.seats.filter(Boolean).length;
@@ -29,7 +33,14 @@ export function PokerLobby({ table, selfId, participants, send }: TableUiProps<T
       <div className="poker-lobby-columns">
         <section className="poker-lobby-settings">
           <h4>{t('Настройки партии')}</h4>
-          <PokerRulesPicker table={table} host={host} send={send} />
+          <PokerRulesPicker
+            table={table}
+            host={host}
+            send={send}
+            ageError={attempted && !table.ageConfirmed}
+            ageInputRef={ageInput}
+            ageErrorId={errorId}
+          />
         </section>
         <section className="poker-lobby-players">
           <header>
@@ -82,22 +93,34 @@ export function PokerLobby({ table, selfId, participants, send }: TableUiProps<T
       <footer className="poker-lobby-start">
         <span>
           <strong>{t('Всё готово?')}</strong>
-          <small>
+          <small
+            id={errorId}
+            role={attempted && (!table.ageConfirmed || count < 2) ? 'alert' : undefined}
+          >
             {host
               ? t(
-                  count < 2
-                    ? 'Нужны минимум два игрока. Можно добавить бота.'
-                    : !table.ageConfirmed
-                      ? 'Подтвердите возраст участников перед стартом.'
-                      : 'Участники на местах. Можно начинать.',
+                  !table.ageConfirmed && attempted
+                    ? 'Подтвердите возраст участников перед стартом.'
+                    : count < 2
+                      ? 'Нужны минимум два игрока. Можно добавить бота.'
+                      : !table.ageConfirmed
+                        ? 'Подтвердите возраст участников перед стартом.'
+                        : 'Участники на местах. Можно начинать.',
                 )
               : `${t('Стол запускает')} ${playerName(table.hostId, participants)}`}
           </small>
         </span>
         <button
           type="button"
-          disabled={!host || !table.ageConfirmed || count < 2}
-          onClick={() => send({ kind: 'table-start' })}
+          disabled={!host}
+          onClick={() => {
+            setAttempted(true);
+            if (!table.ageConfirmed) {
+              ageInput.current?.focus({ preventScroll: true });
+              return;
+            }
+            if (count >= 2) send({ kind: 'table-start' });
+          }}
         >
           <Play size={17} />
           {t(host ? 'Начать игру' : 'Ожидаем ведущего')}

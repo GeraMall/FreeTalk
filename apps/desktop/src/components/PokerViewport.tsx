@@ -5,7 +5,13 @@ import './poker-fit.css';
 export function PokerViewport({ children }: { children: ReactNode }) {
   const frame = useRef<HTMLDivElement>(null),
     content = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState({ width: 1000, arena: 430, scale: 1, tight: false });
+  const [layout, setLayout] = useState({
+    width: 1000,
+    height: 700,
+    arena: 430,
+    scale: 1,
+    tight: false,
+  });
   useLayoutEffect(() => {
     const outer = frame.current,
       inner = content.current;
@@ -17,20 +23,22 @@ export function PokerViewport({ children }: { children: ReactNode }) {
         const width = outer.clientWidth,
           height = outer.clientHeight;
         if (!width || !height) return;
-        const arena = Math.max(
-          width <= 680 ? 390 : 430,
-          Math.min(580, height - (width <= 680 ? 242 : 224)),
-        );
-        const naturalHeight = inner.scrollHeight;
+        // Measure the controls separately: tall tablets should use their remaining
+        // space for the felt, while short ones retain the compact side panel.
+        const felt = inner.querySelector<HTMLElement>('.pkr-arena');
+        const naturalHeight = inner.offsetHeight;
+        const overhead = felt ? naturalHeight - felt.offsetHeight : 0;
+        const arena = Math.max(width <= 680 ? 390 : 430, height - overhead - 4);
         const scale = Math.min(1, height / Math.max(1, naturalHeight));
         const tight = width > 680 && height < 600;
         setLayout((old) =>
           Math.abs(old.width - width) < 1 &&
+          Math.abs(old.height - height) < 1 &&
           Math.abs(old.arena - arena) < 1 &&
           Math.abs(old.scale - scale) < 0.002 &&
           old.tight === tight
             ? old
-            : { width, arena, scale, tight },
+            : { width, height, arena, scale, tight },
         );
       });
     };
@@ -52,6 +60,7 @@ export function PokerViewport({ children }: { children: ReactNode }) {
           {
             width: layout.width,
             transform: `translateX(-50%) scale(${layout.scale})`,
+            '--poker-fit-height': `${layout.height}px`,
             '--poker-fit-arena': `${layout.arena}px`,
           } as CSSProperties
         }

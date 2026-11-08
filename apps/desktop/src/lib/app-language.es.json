@@ -1014,5 +1014,7 @@
   "От 5 до 24 символов: латинские буквы, цифры и подчёркивание.": "De 5 a 24 caracteres: letras latinas, números y guiones bajos.",
   "От 10 символов, хотя бы одна буква и цифра.": "Al menos 10 caracteres, con una letra y un número.",
   "Введите тот же пароль ещё раз.": "Vuelve a introducir la misma contraseña.",
-  "Проверьте введённые данные.": "Comprueba los datos que introdujiste."
+  "Проверьте введённые данные.": "Comprueba los datos que introdujiste.",
+  "Автоматически обновлять Trlka": "Actualizar Trlka automáticamente",
+  "Проверять и устанавливать обновления автоматически, когда нет звонка или записи.": "Buscar e instalar actualizaciones automáticamente fuera de llamadas y grabaciones."
 }

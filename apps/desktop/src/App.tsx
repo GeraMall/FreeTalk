@@ -279,6 +279,15 @@ export function App() {
   const incomingCallRingtone = useRef(new IncomingCallRingtone());
   const incomingCallRef = useRef<IncomingCallInvitation | undefined>(undefined);
   const settingsRef = useRef(settings);
+  const updateCallBusy = useRef(false);
+  updateCallBusy.current = Boolean(
+    roomId ||
+    joining ||
+    incomingCall ||
+    pendingInviteRoom ||
+    callExiting ||
+    screenRecording.phase !== 'idle',
+  );
   const participantNotifications = useRef(new ParticipantNotificationTracker());
   const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const moderationPending = useRef<{ id: string; name: string } | undefined>(undefined);
@@ -565,16 +574,54 @@ export function App() {
 
   useEffect(() => {
     void currentVersion().then((version) => setAppVersion(version));
-    const timer = window.setTimeout(() => {
-      void checkForUpdate().then((status) => {
-        if (status.kind === 'available') {
-          setUpdateStatus(status);
-          setNotice(`Доступно обновление Trlka ${status.version}`);
-        }
-      });
-    }, 2500);
-    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!settings.autoUpdate) return;
+    let disposed = false,
+      busy = false,
+      nextCheck = 0;
+    let candidate: UpdateStatus | undefined;
+    const poll = async () => {
+      if (disposed || busy || updateCallBusy.current || pendingRoomId.current) return;
+      busy = true;
+      try {
+        if (Date.now() >= nextCheck) {
+          nextCheck = Date.now() + 30 * 60 * 1000;
+          candidate = await checkForUpdate();
+          if (disposed) return;
+          setUpdateStatus(candidate);
+        }
+        if (candidate?.kind === 'available' && !disposed) {
+          const installed = await installPendingUpdate(
+            (status) => {
+              candidate = status;
+              if (!disposed) setUpdateStatus(status);
+            },
+            () =>
+              !disposed &&
+              settingsRef.current.autoUpdate &&
+              !updateCallBusy.current &&
+              !pendingRoomId.current,
+          );
+          if (installed) candidate = undefined;
+        }
+      } catch {
+        candidate = undefined;
+        if (!disposed)
+          setUpdateStatus({ kind: 'error', message: 'Не удалось установить обновление.' });
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setTimeout(() => void poll(), 2500);
+    const interval = window.setInterval(() => void poll(), 15000);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
+  }, [settings.autoUpdate]);
 
   useEffect(() => {
     const leave = () => {
@@ -1791,7 +1838,12 @@ export function App() {
 
   const installUpdate = async () => {
     try {
-      await installPendingUpdate(setUpdateStatus);
+      const installed = await installPendingUpdate(
+        setUpdateStatus,
+        () => !updateCallBusy.current && !pendingRoomId.current,
+      );
+      if (!installed)
+        setNotice('Обновление загружено. Установите его после завершения звонка или записи.');
     } catch (caught) {
       setUpdateStatus({
         kind: 'error',

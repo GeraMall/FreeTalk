@@ -6,6 +6,7 @@ import {
 import type { ParticipantCardDecoration, ParticipantCardStyle } from '@freetalk/protocol';
 
 export interface LocalSettings extends VideoPreferences {
+  autoUpdate: boolean;
   displayName: string;
   avatarDataUrl: string;
   participantCardStyle: ParticipantCardStyle;
@@ -52,6 +53,7 @@ export interface LocalSettings extends VideoPreferences {
 const KEY = 'freetalk.settings.v1';
 const MAC_SCREEN_AUDIO_DEFAULT_OFF_MIGRATION = 'freetalk.migration.mac-screen-audio-default-off.v1';
 const defaults: LocalSettings = {
+  autoUpdate: true,
   displayName: '',
   avatarDataUrl: '',
   participantCardStyle: 'avatar-glass',
@@ -133,6 +135,7 @@ export function loadSettings(): LocalSettings {
       ...defaults,
       ...value,
       ...video,
+      autoUpdate: value.autoUpdate !== false,
       screenAudioByDefault:
         macOS && (migrateMacScreenAudio || typeof value.screenAudioByDefault !== 'boolean')
           ? false

@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
+import * as autostart from '../lib/autostart';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
 import { t } from '../lib/app-language';
@@ -101,6 +102,21 @@ function renderProfile(
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('offers automatic updates and native autostart in About, both independently switchable', async () => {
+    vi.spyOn(autostart, 'autostartSupported').mockReturnValue(true);
+    vi.spyOn(autostart, 'getAutostartEnabled').mockResolvedValue(true);
+    const nativeToggle = vi.spyOn(autostart, 'setAutostartEnabled').mockResolvedValue(undefined);
+    const { getByRole, onSetting } = renderProfile();
+    fireEvent.click(getByRole('button', { name: 'О приложении' }));
+    const updates = getByRole('switch', { name: 'Автоматически обновлять Trlka' });
+    expect(updates.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(updates);
+    expect(onSetting).toHaveBeenCalledWith({ autoUpdate: false }, false);
+    const startup = getByRole('switch', { name: 'Запускать Trlka при включении компьютера' });
+    await waitFor(() => expect(startup.getAttribute('aria-checked')).toBe('true'));
+    fireEvent.click(startup);
+    await waitFor(() => expect(nativeToggle).toHaveBeenCalledWith(false));
+  });
   it('shows the profile summary before revealing editable fields with the pencil', () => {
     const { getByRole, queryByRole, container } = renderProfile();
     expect(queryByRole('textbox', { name: /О себе/ })).toBeNull();

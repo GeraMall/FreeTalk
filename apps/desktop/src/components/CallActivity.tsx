@@ -12,6 +12,7 @@ import {
   Spade,
   Mic,
   Headphones,
+  Square,
 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ActivityGame, RoomActivity, RoomActivityAction, TableKind } from '@freetalk/protocol';
@@ -30,6 +31,7 @@ import { ActivityProperty } from './ActivityProperty';
 import { TableBotControls } from './TableBotControls';
 import { ActivityPointers } from './ActivityPointers';
 import { DeviceControlIcon } from './CallDock';
+import { CachedMediaImage } from './CachedMedia';
 const games = {
   chess: 'Шахматы',
   mines: 'Сапёр',
@@ -213,21 +215,37 @@ export function CallActivity({
           )}
           <h2>{!catalog && activeKind ? t(games[activeKind]) : t('Общий планшет')}</h2>
           <div className="tablet-viewers" aria-label={t('Участники планшета')}>
-            {(activity.viewers ?? []).slice(0, 5).map((id) => {
+            {(activity.viewers ?? []).slice(0, 3).map((id) => {
               const participant = participants.find((p) => p.id === id);
               return participant ? (
                 <span key={id} title={participant.name}>
-                  {participant.name.slice(0, 1)}
+                  <span aria-hidden="true">{participant.name.slice(0, 1)}</span>
+                  {participant.avatar && (
+                    <CachedMediaImage
+                      src={participant.avatar}
+                      alt={participant.name}
+                      onError={(event) => {
+                        event.currentTarget.style.visibility = 'hidden';
+                      }}
+                    />
+                  )}
                 </span>
               ) : null;
             })}
-            {(activity.viewers?.length ?? 0) > 5 && <small>+{activity.viewers!.length - 5}</small>}
+            {(activity.viewers?.length ?? 0) > 3 && <small>+{activity.viewers!.length - 3}</small>}
           </div>
         </div>
         <div>
           {onEnd && !activity.restrictedGame && (!table || table.hostId === selfId) && (
-            <button type="button" onClick={onEnd}>
-              {t('Завершить для всех')}
+            <button
+              type="button"
+              className="tablet-end-session"
+              aria-label={t('Завершить для всех')}
+              title={t('Завершить для всех')}
+              onClick={onEnd}
+            >
+              <Square size={13} aria-hidden="true" />
+              <span>{t('Завершить для всех')}</span>
             </button>
           )}
           <button type="button" aria-label={t('Свернуть планшет')} onClick={onClose}>
@@ -517,7 +535,6 @@ export function CallActivity({
             <DeviceControlIcon icon={Headphones} off={deafened} />
           </button>
         </div>
-        <span>{!catalog && activeKind ? t(games[activeKind]) : t('Игры')}</span>
         <div className="tablet-game-shortcuts">
           {(Object.keys(games) as (ActivityGame | TableKind)[]).map((kind) => {
             const Icon = gameIcons[kind];
@@ -531,6 +548,7 @@ export function CallActivity({
                     : 'tablet-desktop-game'
                 }
                 aria-label={`${t('Открыть')} ${t(games[kind])}`}
+                title={t(games[kind])}
                 aria-pressed={!catalog && activeKind === kind}
                 disabled={!onAction || (kind === 'poker' && activity.canPlayPoker === false)}
                 onClick={() => {
@@ -541,7 +559,6 @@ export function CallActivity({
                 <span className={`activity-game-mark game-mark-${kind}`}>
                   <Icon size={15} />
                 </span>
-                <span>{t(games[kind])}</span>
               </button>
             );
           })}

@@ -518,6 +518,8 @@ export function SettingsPanel({
               )}
               {tab === 'about' && (
                 <AboutTab
+                  settings={settings}
+                  onSetting={onSetting}
                   appVersion={appVersion}
                   updateStatus={updateStatus}
                   turnAvailable={turnAvailable}
@@ -1990,6 +1992,8 @@ function DevicesTab({
 }
 
 function AboutTab({
+  settings,
+  onSetting,
   appVersion,
   updateStatus,
   turnAvailable,
@@ -2002,6 +2006,8 @@ function AboutTab({
   appVersion: string;
   updateStatus: UpdateStatus;
   turnAvailable: boolean;
+  settings: LocalSettings;
+  onSetting(patch: Partial<LocalSettings>, restart: boolean): void;
   onCheckUpdate(): void;
   onInstallUpdate(): void;
   diagnosticPath: string;
@@ -2114,6 +2120,21 @@ function AboutTab({
         <button className="secondary compact settings-action-button" onClick={onSaveDiagnostics}>
           <Save size={16} /> {t('Сохранить на рабочий стол')}
         </button>
+      </div>
+      <div className="about-autostart">
+        <Toggle
+          label={t('Автоматически обновлять Trlka')}
+          description={
+            supported
+              ? t(
+                  'Проверять и устанавливать обновления автоматически, когда нет звонка или записи.',
+                )
+              : t('Настройка доступна в установленной версии Trlka.')
+          }
+          checked={settings.autoUpdate}
+          disabled={!supported}
+          onChange={(enabled) => onSetting({ autoUpdate: enabled }, false)}
+        />
       </div>
       <div className="about-autostart">
         <Toggle

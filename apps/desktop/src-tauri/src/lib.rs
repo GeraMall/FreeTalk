@@ -524,6 +524,14 @@ pub fn run() {
                 .app_config_dir()?
                 .join("window-state-initialized");
             let first_launch = !first_launch_marker.exists();
+            // Only a new desktop profile gets this default. Never overwrite an
+            // existing user's OS autostart choice during an application update.
+            if first_launch {
+                use tauri_plugin_autostart::ManagerExt;
+                if let Err(error) = app.autolaunch().enable() {
+                    eprintln!("Could not enable first-launch autostart: {error}");
+                }
+            }
             let mut window = internal_webview(
                 app,
                 "main",

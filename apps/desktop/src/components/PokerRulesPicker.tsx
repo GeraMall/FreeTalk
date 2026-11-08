@@ -1,4 +1,5 @@
 import type { TableOf, RoomActivityAction } from '@freetalk/protocol';
+import type { Ref } from 'react';
 import { t } from '../lib/app-language';
 const modes = [
   ['classic', 'Обычный стол', 'Блайнды 10 / 20. Три докупки по 1000.'],
@@ -13,10 +14,16 @@ export function PokerRulesPicker({
   table,
   host,
   send,
+  ageError = false,
+  ageInputRef,
+  ageErrorId,
 }: {
   table: TableOf<'poker'>;
   host: boolean;
   send: (action: RoomActivityAction) => void;
+  ageError?: boolean;
+  ageInputRef?: Ref<HTMLInputElement>;
+  ageErrorId?: string;
 }) {
   if (table.edition !== 3) return null;
   const description = (mode: string, text: string) =>
@@ -64,9 +71,12 @@ export function PokerRulesPicker({
           <small>{t('10% большого блайнда с каждого перед раздачей, сверх блайндов.')}</small>
         </span>
       </label>
-      <label className="poker-rule-check poker-age-check">
+      <label className={`poker-rule-check poker-age-check ${ageError ? 'has-error' : ''}`}>
         <input
+          ref={ageInputRef}
           type="checkbox"
+          aria-invalid={ageError || undefined}
+          aria-describedby={ageError ? ageErrorId : undefined}
           disabled={!host}
           checked={Boolean(table.ageConfirmed)}
           onChange={(e) =>

@@ -1194,6 +1194,11 @@ const translations: Record<string, readonly [string, string]> = {
   ],
   'Сохранено:': ['Retained:', '保留:'],
   'Сохранить на рабочий стол': ['Save it to the desktop.', '保存到桌面上 。'],
+  'Автоматически обновлять Trlka': ['Update Trlka automatically', '自动更新 Trlka'],
+  'Проверять и устанавливать обновления автоматически, когда нет звонка или записи.': [
+    'Check for and install updates automatically outside calls and recordings.',
+    '在未通话或录制时自动检查并安装更新。',
+  ],
   'Запускать Trlka при включении компьютера': [
     'Start Trlka when you turn on your computer',
     '打开电脑时启动Trlka',

@@ -4,14 +4,15 @@ export type UpdateStatus =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'current'; version: string }
-  | { kind: 'available'; version: string; notes?: string }
+  | { kind: 'available'; version: string; notes?: string; downloaded?: boolean }
   | { kind: 'downloading'; version: string; progress: number }
   | { kind: 'error'; message: string }
   | { kind: 'unavailable' };
 
 let pendingUpdate: Update | null = null;
 let checking: Promise<UpdateStatus> | undefined;
-let installing: Promise<void> | undefined;
+let installing: Promise<boolean> | undefined;
+let preparedUpdate: Update | null = null;
 let downloadStatus: UpdateStatus | undefined;
 const progressListeners = new Set<(status: UpdateStatus) => void>();
 
@@ -40,6 +41,13 @@ async function performUpdateCheck(): Promise<UpdateStatus> {
       import('@tauri-apps/plugin-updater'),
       currentVersion(),
     ]);
+    if (preparedUpdate)
+      return {
+        kind: 'available',
+        version: preparedUpdate.version,
+        notes: preparedUpdate.body,
+        downloaded: true,
+      };
     if (pendingUpdate) await pendingUpdate.close();
     pendingUpdate = await check({ timeout: 12_000 });
     if (!pendingUpdate) return { kind: 'current', version };
@@ -59,7 +67,8 @@ async function performUpdateCheck(): Promise<UpdateStatus> {
 
 export async function installPendingUpdate(
   onProgress: (status: UpdateStatus) => void,
-): Promise<void> {
+  canInstall: () => boolean = () => true,
+): Promise<boolean> {
   progressListeners.add(onProgress);
   try {
     if (installing) {
@@ -67,16 +76,16 @@ export async function installPendingUpdate(
       return await installing;
     }
     if (checking) await checking;
-    installing ??= downloadPendingUpdate().finally(() => {
+    installing ??= downloadPendingUpdate(canInstall).finally(() => {
       installing = undefined;
     });
-    await installing;
+    return await installing;
   } finally {
     progressListeners.delete(onProgress);
   }
 }
 
-async function downloadPendingUpdate(): Promise<void> {
+async function downloadPendingUpdate(canInstall: () => boolean): Promise<boolean> {
   if (!pendingUpdate) throw new Error('Сначала проверьте наличие обновлений.');
   const update = pendingUpdate;
   const version = update.version;
@@ -93,16 +102,29 @@ async function downloadPendingUpdate(): Promise<void> {
     downloadStatus = { kind: 'downloading', version, progress };
     for (const listener of progressListeners) listener(downloadStatus);
   };
-  publish(0);
-  await update.downloadAndInstall((event) => {
-    if (event.event === 'Started') total = event.data.contentLength ?? 0;
-    if (event.event === 'Progress') downloaded += event.data.chunkLength;
-    const finished = event.event === 'Finished';
-    publish(finished ? 100 : total > 0 ? (downloaded / total) * 100 : 0, finished);
-  });
-  publish(100, true);
+  if (preparedUpdate !== update) {
+    publish(0);
+    await update.download((event) => {
+      if (event.event === 'Started') total = event.data.contentLength ?? 0;
+      if (event.event === 'Progress') downloaded += event.data.chunkLength;
+      const finished = event.event === 'Finished';
+      publish(finished ? 100 : total > 0 ? (downloaded / total) * 100 : 0, finished);
+    });
+    publish(100, true);
+    preparedUpdate = update;
+  }
+  // A call may have started while the installer was downloading. Downloading
+  // and applying are separate so neither Windows nor macOS can interrupt it.
+  if (!canInstall()) {
+    downloadStatus = { kind: 'available', version, notes: update.body, downloaded: true };
+    for (const listener of progressListeners) listener(downloadStatus);
+    return false;
+  }
+  await update.install();
+  preparedUpdate = null;
   if (navigator.userAgent.includes('Mac')) {
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
   }
+  return true;
 }

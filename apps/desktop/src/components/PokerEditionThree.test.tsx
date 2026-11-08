@@ -8,6 +8,7 @@ import { PokerRulesPicker } from './PokerRulesPicker';
 import { TableBotControls } from './TableBotControls';
 import { ActivitySwitchVote } from './ActivitySwitchVote';
 import { CallActivity } from './CallActivity';
+import { PokerLobby } from './PokerLobby';
 import { ActivityPoker } from './ActivityPoker';
 vi.mock('../lib/app-language', () => ({ t: (text: string) => text }));
 vi.mock('../lib/settings', () => ({
@@ -46,6 +47,48 @@ const table = (): TableOf<'poker'> => ({
   turnDeadline: 42040,
 });
 describe('staged poker rendering and shared controls', () => {
+  it('highlights and focuses the missing age confirmation without starting; starts only after server confirmation and enough seats', () => {
+    const send = vi.fn(),
+      v = { ...table(), phase: 'lobby' as const, seats: ['a', null] };
+    const screen = render(<PokerLobby table={v} selfId="a" participants={[]} send={send} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Начать игру' }));
+    const age = screen.getByRole('checkbox', { name: /Подтверждаю/ });
+    expect(age.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(age);
+    expect(screen.getByRole('alert').textContent).toContain('Подтвердите возраст');
+    expect(send).not.toHaveBeenCalled();
+    screen.rerender(
+      <PokerLobby table={{ ...v, ageConfirmed: true }} selfId="a" participants={[]} send={send} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Начать игру' }));
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('минимум два');
+    screen.rerender(
+      <PokerLobby
+        table={{ ...v, ageConfirmed: true, seats: ['a', 'b'] }}
+        selfId="a"
+        participants={[]}
+        send={send}
+      />,
+    );
+    expect(age.getAttribute('aria-invalid')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Начать игру' }));
+    expect(send).toHaveBeenCalledExactlyOnceWith({ kind: 'table-start' });
+  });
+  it('uses the joined participant avatar in the header and preserves the end-session action', () => {
+    const end = vi.fn();
+    const screen = render(
+      <CallActivity
+        activity={{ open: true, revision: 1, region: 'RU', table: table(), viewers: ['a'] }}
+        selfId="a"
+        participants={[{ id: 'a', name: 'Алексей', avatar: 'https://trlka.com/avatar.jpg' }]}
+        onEnd={end}
+      />,
+    );
+    expect(screen.getByLabelText('Участники планшета').querySelector('img')?.alt).toBe('Алексей');
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить для всех' }));
+    expect(end).toHaveBeenCalledOnce();
+  });
   it('routes the mobile tablet audio controls to the existing call handlers and reflects their shared state', () => {
     const mute = vi.fn(),
       deafen = vi.fn(),

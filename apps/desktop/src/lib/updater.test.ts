@@ -5,6 +5,7 @@ const native = vi.hoisted(() => ({
   check: vi.fn(),
   download: vi.fn(),
   close: vi.fn(),
+  install: vi.fn(),
   relaunch: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: native.check }));
@@ -19,7 +20,8 @@ beforeEach(() => {
     version: '0.4.0-beta.194',
     body: '',
     close: native.close,
-    downloadAndInstall: native.download,
+    download: native.download,
+    install: native.install,
   });
 });
 afterEach(() => {
@@ -69,6 +71,38 @@ describe('updater request and progress coordination', () => {
     expect(second.mock.calls.map(([status]) => status.progress)).toEqual([0, 60, 100]);
   });
 
+  it('finishes downloading but defers installation if a call starts; reuses the verified download afterwards', async () => {
+    let busy = false;
+    native.download.mockImplementation(async () => {
+      busy = true;
+    });
+    const updater = await import('./updater');
+    await updater.checkForUpdate();
+    const progress = vi.fn();
+    expect(await updater.installPendingUpdate(progress, () => !busy)).toBe(false);
+    expect(native.install).not.toHaveBeenCalled();
+    expect(progress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'available', downloaded: true }),
+    );
+    expect(await updater.checkForUpdate()).toMatchObject({ kind: 'available', downloaded: true });
+    expect(native.check).toHaveBeenCalledOnce();
+    expect(native.close).not.toHaveBeenCalled();
+    busy = false;
+    expect(await updater.installPendingUpdate(progress, () => !busy)).toBe(true);
+    expect(native.download).toHaveBeenCalledOnce();
+    expect(native.install).toHaveBeenCalledOnce();
+  });
+  it('does not apply or relaunch an automatic update after its setting is disabled during download', async () => {
+    let enabled = true;
+    native.download.mockImplementation(async () => {
+      enabled = false;
+    });
+    const updater = await import('./updater');
+    await updater.checkForUpdate();
+    expect(await updater.installPendingUpdate(vi.fn(), () => enabled)).toBe(false);
+    expect(native.install).not.toHaveBeenCalled();
+    expect(native.relaunch).not.toHaveBeenCalled();
+  });
   it('releases the install lock after a download error so a retry can succeed', async () => {
     native.download.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
     const updater = await import('./updater');
