@@ -18,6 +18,7 @@ export function PropertyDice({
   rolling,
   sequence,
   startAt,
+  durationMs = DICE_ROLL_MS,
   motion,
   remote,
   actorName,
@@ -32,6 +33,7 @@ export function PropertyDice({
   rolling: boolean;
   sequence: number;
   startAt?: number;
+  durationMs?: number;
   motion?: DiceMotion;
   remote?: DiceGesture;
   actorName?: string;
@@ -164,23 +166,23 @@ export function PropertyDice({
       return;
     }
     if (startAt === undefined) return;
-    const frames = diceRollFrames(values.current, sequence, rollMotion.current),
+    const frames = diceRollFrames(values.current, sequence, rollMotion.current, durationMs),
       reduce =
         typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const elapsed = Math.max(0, Date.now() - startAt);
-    if (elapsed < DICE_ROLL_MS && !reduce) callbacks.current.onThrowSound?.(elapsed);
+    if (elapsed < durationMs && !reduce) callbacks.current.onThrowSound?.(elapsed);
     let raf = 0;
     const animate = () => {
-      const elapsed = reduce ? DICE_ROLL_MS : Math.max(0, Date.now() - startAt);
+      const elapsed = reduce ? durationMs : Math.max(0, Date.now() - startAt);
       bodies.current = sampleDiceRoll(frames, elapsed, bounds.current);
       paint();
-      if (elapsed < DICE_ROLL_MS) raf = requestAnimationFrame(animate);
+      if (elapsed < durationMs) raf = requestAnimationFrame(animate);
       else callbacks.current.onStopped?.();
     };
     animate();
     return () => cancelAnimationFrame(raf);
     // Each accepted throw has its own server sequence; gesture packets never restart it.
-  }, [rolling, sequence, startAt, align, paint]);
+  }, [rolling, sequence, startAt, durationMs, align, paint]);
   useEffect(() => {
     const previous = lastRemote.current;
     lastRemote.current = remote;
@@ -292,8 +294,8 @@ export function PropertyDice({
           x: clamp(b.x + dx, l.left, l.right),
           y: clamp(b.y + dy, l.top, l.bottom),
           z: 3,
-          rx: b.rx + dy * 0.8 + (i ? 5 : 0),
-          ry: b.ry + dx * 0.8,
+          rx: b.rx + dy * (i ? -2.4 : 2.8) + dx * 0.6,
+          ry: b.ry + dx * (i ? 2.8 : -2.4) + dy * 0.5,
         }));
         g.lastX = e.clientX;
         g.lastY = e.clientY;

@@ -102,6 +102,21 @@ function renderProfile(
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('moves language from Chats to Interface directly below Profile', () => {
+    const view = renderProfile();
+    fireEvent.click(view.getByRole('button', { name: 'Интерфейс' }));
+    expect(view.getByRole('heading', { name: 'Язык программы' })).toBeTruthy();
+    const labels = [...view.container.querySelectorAll('.settings-sidebar nav button')].map(
+      (button) => button.textContent,
+    );
+    expect(labels.indexOf('Интерфейс')).toBe(labels.indexOf('Профиль') + 1);
+    fireEvent.click(view.getByRole('button', { name: 'Чаты' }));
+    expect(view.queryByRole('heading', { name: 'Язык программы' })).toBeNull();
+    const sidebar = view.container.querySelector('.settings-sidebar')!;
+    expect(sidebar.querySelector('.reset-settings')?.nextElementSibling?.textContent).toContain(
+      'Выйти из аккаунта',
+    );
+  });
   it('offers automatic updates and native autostart in About, both independently switchable', async () => {
     vi.spyOn(autostart, 'autostartSupported').mockReturnValue(true);
     vi.spyOn(autostart, 'getAutostartEnabled').mockResolvedValue(true);

@@ -89,12 +89,25 @@ const displayName = z.string().trim().regex(DISPLAY_NAME_PATTERN);
 const avatar = participantSchema.shape.avatar;
 export const reactionSchema = z.enum(['👍', '❤️', '😂', '🎉', '🔥']);
 export const roomChatTextSchema = z.string().trim().min(1).max(2_000);
+export const roomChatAttachmentSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(180),
+  size: z
+    .number()
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024),
+  mime: z.string().max(100),
+  image: z.boolean(),
+});
+export type RoomChatAttachment = z.infer<typeof roomChatAttachmentSchema>;
 export const roomChatMessageSchema = z.object({
   id: z.string().uuid(),
   participantId: clientId,
   senderName: displayName,
   senderAvatar: avatar,
   text: roomChatTextSchema,
+  attachment: roomChatAttachmentSchema.optional(),
   timestamp: z.number().int().nonnegative(),
 });
 const sessionId = z.string().min(16).max(128);
@@ -182,6 +195,7 @@ export const telemetryReportSchema = z.object({
 export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create-room'),
+    propertyRoll: z.literal(2).optional(),
     activityVersion: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
     tabletVersion: z.literal(3).optional(),
@@ -198,6 +212,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('join-room'),
+    propertyRoll: z.literal(2).optional(),
     activityVersion: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
     tabletVersion: z.literal(3).optional(),
@@ -232,6 +247,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('room-chat-message'),
     id: z.string().uuid(),
     text: roomChatTextSchema,
+    attachmentId: z.string().uuid().optional(),
   }),
   z.object({ type: z.literal('recording-started') }),
   z.object({
@@ -261,6 +277,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     roomStartedAt: z.number().int().nonnegative().optional(),
     participants: z.array(participantSchema),
     roomChatMessages: z.array(roomChatMessageSchema).max(200).optional(),
+    roomChatToken: z.string().uuid().optional(),
     activity: roomActivitySchema.optional(),
   }),
   z.object({ type: z.literal('activity-state'), activity: roomActivitySchema }),

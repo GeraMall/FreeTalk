@@ -26,6 +26,23 @@ function dice(a: number, b: number) {
 }
 afterEach(() => vi.restoreAllMocks());
 describe('new monopoly rules, stock and insolvency', () => {
+  it('negotiates the longer throw without changing old client timing or dice outcomes', () => {
+    const s = started();
+    dice(2, 3);
+    const legacy = reduceTable(s, { kind: 'property', action: 'roll' }, context());
+    dice(2, 3);
+    const modern = reduceTable(
+      s,
+      { kind: 'property', action: 'roll' },
+      { ...context(), propertyRoll: 2 },
+    );
+    expect(view(legacy).lastMove?.rollMs).toBe(900);
+    expect(view(modern).lastMove?.rollMs).toBe(2200);
+    expect(view(modern).lastMove!.until - view(legacy).lastMove!.until).toBe(1300);
+    expect(view(modern).dice).toEqual(view(legacy).dice);
+    expect(view(modern).positions).toEqual(view(legacy).positions);
+    expect(view(modern).money).toEqual(view(legacy).money);
+  });
   it('keeps rules on reset while legacy tables retain their original behavior', () => {
     const s = started();
     expect(view(s).propertyRules).toBe(2);

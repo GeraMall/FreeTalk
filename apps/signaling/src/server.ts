@@ -9,6 +9,7 @@ import {
 import { parseClientMessage, type ServerMessage } from '@freetalk/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomError, RoomManager, type PeerConnection } from './room-manager.js';
+import { RoomChatFiles } from './room-chat-files.js';
 import { getIceConfig } from './turn.js';
 import {
   assertAuthorizationConfigured,
@@ -24,6 +25,12 @@ assertAuthorizationConfigured();
 const port = Number(process.env.PORT ?? 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? '*';
 const manager = new RoomManager();
+const roomFiles = new RoomChatFiles(
+  (token) => manager.roomChatAccess(token),
+  (room) => manager.roomSize(room) > 0,
+);
+const fileCleanup = setInterval(() => roomFiles.prune(), 30_000);
+fileCleanup.unref();
 const metadata = new WeakMap<
   WebSocket,
   {
@@ -45,6 +52,7 @@ const upgradeMetadata = new WeakMap<
 >();
 
 export const httpServer = createServer(async (request, response) => {
+  if (await roomFiles.handle(request, response, allowedOrigin)) return;
   if (request.url === '/internal/active-rooms') {
     const supplied = request.headers['x-freetalk-internal-secret'];
     const expected = process.env.INTERNAL_SIGNALING_SECRET;
@@ -70,7 +78,7 @@ export const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.17' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.18' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -242,6 +250,7 @@ sockets.on('connection', (socket, request) => {
           connection.tabletVersion = message.tabletVersion;
           connection.pokerFlow = message.pokerFlow;
           connection.propertyRules = message.propertyRules;
+          connection.propertyRoll = message.propertyRoll;
           connection.isAdult =
             authorization.kind === 'development' ||
             ('isAdult' in authorization && authorization.isAdult === true);
@@ -394,7 +403,20 @@ sockets.on('connection', (socket, request) => {
           manager.react(meta.roomId, meta.clientId, message.id, message.reaction);
           break;
         case 'room-chat-message':
-          manager.chat(meta.roomId, meta.clientId, message.id, message.text);
+          {
+            const attachment = message.attachmentId
+              ? roomFiles.attachment(message.attachmentId, meta.roomId, meta.clientId)
+              : undefined;
+            if (message.attachmentId && !attachment) break;
+            manager.chat(
+              meta.roomId,
+              meta.clientId,
+              message.id,
+              message.text,
+              Date.now(),
+              attachment,
+            );
+          }
           break;
         case 'recording-started': {
           const result = manager.recordingStarted(meta.roomId, meta.clientId);

@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Mic2,
   MonitorSpeaker,
+  PanelsTopLeft,
   Phone,
   QrCode,
   RefreshCw,
@@ -77,7 +78,7 @@ import { getAccountMediaCacheStats } from '../lib/account-media-cache';
 import { useCachedMediaUrl } from '../lib/use-cached-media';
 
 export type SettingsTab =
-  'audio' | 'profile' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
+  'audio' | 'profile' | 'interface' | 'video' | 'devices' | 'recording' | 'chats' | 'about';
 
 interface SettingsPanelProps {
   initialTab?: SettingsTab;
@@ -357,6 +358,12 @@ export function SettingsPanel({
               onClick={() => setTab('profile')}
             />
             <TabButton
+              active={tab === 'interface'}
+              icon={<PanelsTopLeft />}
+              label={t('Интерфейс')}
+              onClick={() => setTab('interface')}
+            />
+            <TabButton
               active={tab === 'video'}
               icon={<Video />}
               label={t('Видео и звуки')}
@@ -396,6 +403,11 @@ export function SettingsPanel({
             <RotateCcw size={16} />
             {t('Сбросить настройки')}
           </button>
+          {accountUser && (
+            <button className="settings-logout" onClick={onAccountLogout}>
+              <LogOut size={16} /> {t('Выйти из аккаунта')}
+            </button>
+          )}
         </aside>
 
         {(!mobileLayout || tab) && (
@@ -424,7 +436,9 @@ export function SettingsPanel({
                             ? t('ЗАПИСЬ')
                             : tab === 'chats'
                               ? t('ЧАТЫ')
-                              : 'TRLKA'}
+                              : tab === 'interface'
+                                ? t('Интерфейс')
+                                : 'TRLKA'}
                 </p>
                 <h2 id="settings-title">
                   {tab === 'audio'
@@ -439,7 +453,9 @@ export function SettingsPanel({
                             ? t('Локальная запись')
                             : tab === 'chats'
                               ? t('Оформление чатов')
-                              : t('О приложении')}
+                              : tab === 'interface'
+                                ? t('Интерфейс')
+                                : t('О приложении')}
                 </h2>
               </div>
               <button
@@ -452,6 +468,24 @@ export function SettingsPanel({
             </header>
 
             <div className={`settings-content${tab === 'profile' ? ' profile-content' : ''}`}>
+              {tab === 'interface' && (
+                <section className="settings-section chat-settings-section">
+                  <div className="chat-settings-group language-settings-card">
+                    <div className="video-section-heading">
+                      <span className="profile-zone-icon" aria-hidden="true">
+                        <Languages />
+                      </span>
+                      <div>
+                        <h3>{t('Язык программы')}</h3>
+                        <p className="settings-section-description">
+                          {t('Язык изменится после перезапуска.')}
+                        </p>
+                      </div>
+                    </div>
+                    <LanguagePicker />
+                  </div>
+                </section>
+              )}
               {tab === 'audio' && (
                 <AudioTab
                   settings={settings}
@@ -2358,18 +2392,6 @@ function ChatsSettingsTab({
 
   return (
     <section className="settings-section chat-settings-section">
-      <div className="chat-settings-group language-settings-card">
-        <div className="video-section-heading">
-          <span className="profile-zone-icon" aria-hidden="true">
-            <Languages />
-          </span>
-          <div>
-            <h3>{t('Язык программы')}</h3>
-            <p className="settings-section-description">{t('Язык изменится после перезапуска.')}</p>
-          </div>
-        </div>
-        <LanguagePicker />
-      </div>
       <div className="chat-settings-group">
         <div className="video-section-heading">
           <span className="profile-zone-icon">

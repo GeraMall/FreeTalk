@@ -125,6 +125,70 @@ describe('sidebar chat collections', () => {
 afterEach(cleanup);
 
 describe('AccountSidebar in an active room', () => {
+  it('offers pin, notification mute, deletion and block without acting on destructive selection until confirmed', async () => {
+    const manage = vi.fn().mockResolvedValue(undefined);
+    const view = render(
+      <AccountSidebar
+        user={user}
+        activePage="chats"
+        chats={[
+          {
+            id: 'chat',
+            type: 'direct',
+            title: null,
+            members: [{ id: 'other', displayName: 'Друг', username: 'friend' }],
+          },
+        ]}
+        onNavigate={vi.fn()}
+        onOpenChat={vi.fn()}
+        onCreateGroup={vi.fn()}
+        onArchiveChat={vi.fn()}
+        onManageChat={manage}
+        onSettings={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(view.getByRole('button', { name: 'Друг' }));
+    expect(view.getByRole('menuitem', { name: 'Закрепить чат' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Отключить уведомления' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Удалить чат' })).toBeTruthy();
+    fireEvent.click(view.getByRole('menuitem', { name: 'Заблокировать' }));
+    expect(manage).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole('button', { name: 'Заблокировать' }));
+    await waitFor(() => expect(manage).toHaveBeenCalledWith('chat', 'block'));
+  });
+  it.each([{ muted: true }, { archived: true }])(
+    'suppresses background notifications for personal preference %j',
+    (preference) => {
+      overlayHarness.foreground = false;
+      render(
+        <AccountSidebar
+          user={user}
+          activePage="room"
+          chats={[{ id: 'quiet', type: 'direct', title: null, members: [], ...preference }]}
+          onNavigate={vi.fn()}
+          onSettings={vi.fn()}
+          onLogout={vi.fn()}
+        />,
+      );
+      act(() =>
+        realtimeHarness.onEvent?.({
+          type: 'message-created',
+          chatId: 'quiet',
+          message: {
+            id: 'message',
+            kind: 'text',
+            body: 'Тихо',
+            sender_id: 'other',
+            display_name: 'Друг',
+            created_at: new Date().toISOString(),
+          },
+        }),
+      );
+      expect(overlayHarness.show).not.toHaveBeenCalled();
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    },
+  );
   it('returns to the current call after navigating to another section', () => {
     const onNavigate = vi.fn();
     const { getByRole } = render(

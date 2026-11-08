@@ -50,8 +50,9 @@ export function ActivityProperty({
     waitingWin = useRef(false);
   const shared = useSharedDice(table, selfId, send);
   const move = table.lastMove,
+    rollMs = move?.rollMs ?? 900,
     busy = now < (move?.until ?? 0),
-    rolling = pending > 0 || (!!move && move.roll !== false && now < move.at + 900);
+    rolling = pending > 0 || (!!move && move.roll !== false && now < move.at + rollMs);
   const canRoll =
     active &&
     mine &&
@@ -65,7 +66,7 @@ export function ActivityProperty({
         0,
         Math.min(
           move.path.length,
-          Math.floor((now - move.at - (move.roll === false ? 0 : 900)) / 110) + 1,
+          Math.floor((now - move.at - (move.roll === false ? 0 : rollMs)) / 110) + 1,
         ),
       )
     : 0;
@@ -217,6 +218,7 @@ export function ActivityProperty({
             rolling={rolling}
             sequence={move?.sequence ?? 0}
             startAt={pending ? undefined : move?.at}
+            durationMs={rollMs}
             motion={move?.motion}
             remote={shared.remote}
             onGesture={shared.onGesture}
@@ -231,7 +233,7 @@ export function ActivityProperty({
               const key = `${table.id}:${move?.sequence}:roll`;
               if (!heard.has(key)) {
                 heard.add(key);
-                void audio.play('roll', { offsetMs: elapsed, remainingMs: 900 - elapsed });
+                void audio.play('roll', { offsetMs: elapsed, remainingMs: rollMs - elapsed });
               }
             }}
             onStopped={() => audio.stopDice()}

@@ -122,7 +122,8 @@ export function startAndroidPush(app: FastifyInstance) {
            JOIN chat_members c ON c.chat_id=m.chat_id AND c.user_id=s.user_id
            LEFT JOIN users u ON u.id=m.sender_id
            WHERE d.session_id=$2 AND s.revoked_at IS NULL AND s.refresh_expires_at>now()
-             AND c.left_at IS NULL AND s.user_id IS DISTINCT FROM m.sender_id
+             AND c.left_at IS NULL AND c.muted_at IS NULL AND c.archived_at IS NULL
+             AND s.user_id IS DISTINCT FROM m.sender_id
              AND (m.expires_at IS NULL OR m.expires_at>now())
              AND NOT EXISTS(SELECT 1 FROM blocks b WHERE
                (b.blocker_id=s.user_id AND b.blocked_id=m.sender_id) OR

@@ -86,6 +86,7 @@ export interface HomeSidebarState {
   openChat(chatId: string): Promise<void>;
   openSavedChat(): Promise<void>;
   archiveChat(chatId: string, archived: boolean): Promise<void>;
+  manageChat(chatId: string, action: 'mute' | 'pin' | 'delete' | 'block'): Promise<void>;
   createGroup(title: string, memberIds: string[]): Promise<boolean>;
 }
 
@@ -827,6 +828,42 @@ export function HomeView({
   }, [chats, navigatePage, openChat]);
 
   const archiveRequests = useRef(new Set<string>());
+  const manageChat = useCallback(
+    async (chatId: string, action: 'mute' | 'pin' | 'delete' | 'block') => {
+      const chat = chats.find((item) => item.id === chatId);
+      if (!chat || chat.isSaved || chatId === SERVICE_CHAT_ID) return;
+      if (action === 'mute' || action === 'pin') {
+        const key = action === 'mute' ? 'muted' : 'pinned';
+        const value = !chat[key];
+        await accountClient.request(`/v1/chats/${chatId}/preferences`, {
+          method: 'PATCH',
+          body: JSON.stringify({ [key]: value }),
+        });
+        setChats((current) =>
+          current.map((item) => (item.id === chatId ? { ...item, [key]: value } : item)),
+        );
+        return;
+      }
+      if (action === 'block') {
+        const other = chat.members.find((member) => member.id !== user.id);
+        if (chat.type !== 'direct' || !other) return;
+        await accountClient.request(`/v1/blocks/${other.id}`, { method: 'POST' });
+      } else if (chat.type === 'group') {
+        await accountClient.request(`/v1/chats/${chatId}/members/me`, { method: 'DELETE' });
+      } else await accountClient.request(`/v1/chats/${chatId}`, { method: 'DELETE' });
+      messageSnapshots.current.delete(chatId);
+      setChats((current) => current.filter((item) => item.id !== chatId));
+      if (activeChatRef.current === chatId) {
+        activeChatRef.current = undefined;
+        messagesRequestIdRef.current += 1;
+        setActiveChat(undefined);
+        setMessages([]);
+        setPinnedMessage(undefined);
+        setHasMoreMessages(false);
+      }
+    },
+    [chats, user.id],
+  );
   const archiveChat = useCallback(async (chatId: string, archived: boolean) => {
     if (archiveRequests.current.has(chatId) || chatId === SERVICE_CHAT_ID) return;
     archiveRequests.current.add(chatId);
@@ -1286,6 +1323,7 @@ export function HomeView({
       openChat,
       openSavedChat,
       archiveChat,
+      manageChat,
       createGroup,
     });
   }, [
@@ -1297,6 +1335,7 @@ export function HomeView({
     openChat,
     openSavedChat,
     archiveChat,
+    manageChat,
   ]);
 
   const createInvite = async () => {
@@ -1557,6 +1596,7 @@ export function HomeView({
           onOpenChat={openChat}
           onOpenSavedChat={openSavedChat}
           onArchiveChat={archiveChat}
+          onManageChat={manageChat}
           onCreateGroup={createGroup}
           onLeaveGroup={leaveGroup}
           onInstallUpdate={onInstallUpdate}

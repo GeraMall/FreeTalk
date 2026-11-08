@@ -28,6 +28,7 @@ export type TableContext = {
   pokerFlow?: 2;
   propertyRules?: 2;
   diceMotion?: DiceMotion;
+  propertyRoll?: 2;
 };
 export type TableReducer = (
   session: TableSession,

@@ -48,14 +48,14 @@ export function restDice(bounds: DiceBounds): DiceBody[] {
 export function throwDice(bodies: DiceBody[], seed: number, velocity: { x: number; y: number }) {
   return bodies.map((b, i) => ({
     ...b,
-    vx: clamp(velocity.x * 0.5 + (i ? -1 : 1) * (180 + (seed % 5) * 12), -850, 850),
-    vy: clamp(velocity.y * 0.5 + (i ? 120 : -100), -700, 700),
+    vx: clamp(velocity.x * 0.65 + (i ? 1 : -1) * (370 + (seed % 5) * 28), -1000, 1000),
+    vy: clamp(velocity.y * 0.65 + (i ? -240 : 220), -850, 850),
     z: 2 + i * 2,
-    vz: 95 + i * 18,
+    vz: 205 + i * 35,
     rx: b.rx,
     ry: b.ry,
-    sx: 20 + (seed % 7) * 4,
-    sy: (i ? -1 : 1) * (25 + (seed % 3) * 8),
+    sx: (i ? -1 : 1) * (240 + (seed % 7) * 20),
+    sy: (i ? -1 : 1) * (210 + (seed % 3) * 30),
   }));
 }
 /** Semi-implicit 2D motion with height, wall restitution and equal-mass die collisions. */
@@ -63,7 +63,7 @@ export function stepDice(bodies: DiceBody[], bounds: DiceBounds, dt: number) {
   const l = diceLimits(bounds);
   let impact = false;
   for (const b of bodies) {
-    b.vz -= 1650 * dt;
+    b.vz -= 1200 * dt;
     b.z += b.vz * dt;
     if (b.z < 0) {
       if (b.vz < -55) {
@@ -72,7 +72,7 @@ export function stepDice(bodies: DiceBody[], bounds: DiceBounds, dt: number) {
       } else b.vz = 0;
       b.z = 0;
     }
-    const friction = Math.exp(-(b.z > 2 ? 1.3 : 4.2) * dt);
+    const friction = Math.exp(-(b.z > 2 ? 0.8 : 1.9) * dt);
     b.vx *= friction;
     b.vy *= friction;
     const ox = b.x,
@@ -147,9 +147,14 @@ export function settleDice(bodies: DiceBody[], values: [number, number], progres
   });
 }
 
-export const DICE_ROLL_MS = 900;
+export const DICE_ROLL_MS = 2200;
 const canonical: DiceBounds = { width: 800, height: 500, size: 44 };
-export function diceRollFrames(values: [number, number], sequence: number, motion?: DiceMotion) {
+export function diceRollFrames(
+  values: [number, number],
+  sequence: number,
+  motion?: DiceMotion,
+  durationMs = DICE_ROLL_MS,
+) {
   let bodies = restDice(canonical);
   if (motion)
     bodies = bodies.map((b, i) => ({
@@ -159,18 +164,20 @@ export function diceRollFrames(values: [number, number], sequence: number, motio
       rx: motion.poses[i]!.rx,
       ry: motion.poses[i]!.ry,
     }));
-  bodies = throwDice(bodies, sequence, {
+  bodies = throwDice(bodies, sequence * 37 + values[0] * 7 + values[1], {
     x: (motion?.vx ?? 0.13) * canonical.width,
     y: (motion?.vy ?? -0.1) * canonical.height,
   });
   const frames: DiceBody[][] = [bodies.map((b) => ({ ...b }))];
-  for (let i = 1; i <= 108; i++) {
+  const ticks = Math.round(durationMs * 0.12),
+    settleAt = Math.max(1, ticks - 66);
+  for (let i = 1; i <= ticks; i++) {
     stepDice(bodies, canonical, 1 / 120);
     frames.push(bodies.map((b) => ({ ...b })));
   }
   const end = frames.at(-1)!;
-  for (let frame = 72; frame < frames.length; frame++) {
-    const p = (frame - 72) / (108 - 72),
+  for (let frame = settleAt; frame < frames.length; frame++) {
+    const p = (frame - settleAt) / (ticks - settleAt),
       ease = p * p * p * (10 - 15 * p + 6 * p * p);
     frames[frame] = frames[frame]!.map((b, i) => {
       const r = diceRotations[values[i]! - 1] ?? diceRotations[0],
@@ -187,8 +194,8 @@ export function diceRollFrames(values: [number, number], sequence: number, motio
   return frames;
 }
 export function sampleDiceRoll(frames: DiceBody[][], elapsed: number, bounds: DiceBounds) {
-  const tick = clamp(elapsed, 0, DICE_ROLL_MS) * 0.12,
-    index = Math.min(107, Math.floor(tick)),
+  const tick = clamp(elapsed * 0.12, 0, frames.length - 1),
+    index = Math.min(frames.length - 2, Math.floor(tick)),
     p = tick - index,
     l = diceLimits(bounds);
   const result = frames[index]!.map((a, i) => {

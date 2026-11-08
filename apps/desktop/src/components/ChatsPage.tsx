@@ -164,6 +164,8 @@ export interface ChatItem {
   type: 'direct' | 'group';
   isSaved?: boolean;
   archived?: boolean;
+  muted?: boolean;
+  pinned?: boolean;
   title: string | null;
   members: ChatMember[];
   lastMessage?: string | null;
@@ -625,14 +627,16 @@ export function ChatsPage({
   }, [profileRevision, profileTargetId, userId]);
   const visibleChats = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
-    return chats.filter(
-      (chat) =>
-        !chat.isSaved &&
-        (chat.id === SERVICE_CHAT_ID
-          ? !showArchived
-          : (chat.archived ?? archivedChatIds.has(chat.id)) === showArchived) &&
-        (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
-    );
+    return chats
+      .filter(
+        (chat) =>
+          !chat.isSaved &&
+          (chat.id === SERVICE_CHAT_ID
+            ? !showArchived
+            : (chat.archived ?? archivedChatIds.has(chat.id)) === showArchived) &&
+          (!query || chatName(chat, userId).toLocaleLowerCase('ru-RU').includes(query)),
+      )
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
   }, [archivedChatIds, chats, search, showArchived, userId]);
   const archivedCount = chats.filter(
     (chat) => !chat.isSaved && (chat.archived ?? archivedChatIds.has(chat.id)),
@@ -2607,10 +2611,11 @@ export function MessageList({
   const scrollToBottom = useCallback((smooth = false) => {
     const container = scrollRef.current;
     if (!container) return;
-    const top = container.scrollHeight;
-    if (smooth && typeof container.scrollTo === 'function') {
+    const top = Math.max(0, container.scrollHeight - container.clientHeight);
+    const alreadyAtBottom = Math.abs(container.scrollTop - top) < 1;
+    if (!alreadyAtBottom && smooth && typeof container.scrollTo === 'function') {
       container.scrollTo({ top, behavior: 'smooth' });
-    } else {
+    } else if (!alreadyAtBottom) {
       container.scrollTop = top;
     }
     nearBottomRef.current = true;
@@ -2721,6 +2726,7 @@ export function MessageList({
       ) : null}
       <div
         className="message-scroll-container"
+        data-at-bottom={!viewingOlderMessages}
         ref={scrollRef}
         tabIndex={0}
         aria-label={t('История сообщений')}

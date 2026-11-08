@@ -58,6 +58,7 @@ export class SignalingClient {
       tabletVersion: 3,
       pokerFlow: 2,
       propertyRules: 2,
+      propertyRoll: 2,
     };
     this.roomJoined = false;
     this.stableCallJoined = false;

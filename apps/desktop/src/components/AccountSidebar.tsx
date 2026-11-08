@@ -6,6 +6,8 @@ import {
   Archive,
   ArrowLeft,
   Bookmark,
+  Pin,
+  BellOff,
   ChevronRight,
   Circle,
   Download,
@@ -76,6 +78,7 @@ export function AccountSidebar({
   onOpenChat,
   onOpenSavedChat,
   onArchiveChat,
+  onManageChat,
   onCreateGroup,
   onLeaveGroup,
   onInstallUpdate,
@@ -100,6 +103,7 @@ export function AccountSidebar({
   onOpenChat?(chatId: string): Promise<void> | void;
   onOpenSavedChat?(): Promise<void> | void;
   onArchiveChat?(chatId: string, archived: boolean): Promise<void> | void;
+  onManageChat?(chatId: string, action: 'mute' | 'pin' | 'delete' | 'block'): Promise<void> | void;
   onCreateGroup?(title: string, memberIds: string[]): Promise<boolean>;
   onLeaveGroup?(chatId: string): Promise<void>;
   onInstallUpdate?(): void;
@@ -115,6 +119,14 @@ export function AccountSidebar({
   const [groupFormOpen, setGroupFormOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archiveMenu, setArchiveMenu] = useState<ChatArchiveMenuTarget>();
+  const [chatAction, setChatAction] = useState<{
+    target: ChatArchiveMenuTarget;
+    action: 'delete' | 'block';
+  }>();
+  const [chatActionBusy, setChatActionBusy] = useState(false);
+  const [chatActionError, setChatActionError] = useState('');
+  const latestChats = useRef(chats);
+  latestChats.current = chats;
   const [leaveTarget, setLeaveTarget] = useState<ChatItem>();
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [leaveError, setLeaveError] = useState('');
@@ -152,7 +164,8 @@ export function AccountSidebar({
         [event.chatId]: Math.min(99, (current[event.chatId] ?? 0) + 1),
       }));
 
-      if (getPresenceMode() === 'dnd') return;
+      const preference = latestChats.current?.find((chat) => chat.id === event.chatId);
+      if (getPresenceMode() === 'dnd' || preference?.archived || preference?.muted) return;
       const senderName = event.message.display_name || event.message.username || 'Новое сообщение';
       const previewBody =
         event.message.kind === 'image'
@@ -252,12 +265,14 @@ export function AccountSidebar({
   const deferredChatSearch = useDeferredValue(chatSearch);
   const sidebarChats = useMemo(() => {
     const query = deferredChatSearch.trim().toLocaleLowerCase('ru-RU');
-    return (chats ?? []).filter(
-      (chat) =>
-        !chat.isSaved &&
-        Boolean(chat.archived) === showArchived &&
-        (!query || sidebarChatName(chat, user.id).toLocaleLowerCase('ru-RU').includes(query)),
-    );
+    return (chats ?? [])
+      .filter(
+        (chat) =>
+          !chat.isSaved &&
+          Boolean(chat.archived) === showArchived &&
+          (!query || sidebarChatName(chat, user.id).toLocaleLowerCase('ru-RU').includes(query)),
+      )
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
   }, [chats, deferredChatSearch, user.id, showArchived]);
   const savedChat = chats?.find((chat) => chat.isSaved);
   const chatNavigationEnabled = chats !== undefined && Boolean(onOpenChat && onCreateGroup);
@@ -451,6 +466,9 @@ export function AccountSidebar({
                           chatId: chat.id,
                           name,
                           archived: Boolean(chat.archived),
+                          muted: chat.muted,
+                          pinned: chat.pinned,
+                          group: chat.type === 'group',
                           x: event.clientX,
                           y: event.clientY,
                           trigger: event.currentTarget,
@@ -469,6 +487,9 @@ export function AccountSidebar({
                           chatId: chat.id,
                           name,
                           archived: Boolean(chat.archived),
+                          muted: chat.muted,
+                          pinned: chat.pinned,
+                          group: chat.type === 'group',
                           x: bounds.left,
                           y: bounds.bottom,
                           trigger: event.currentTarget,
@@ -487,7 +508,11 @@ export function AccountSidebar({
                         scale={chat.avatarScale}
                       />
                       <span>
-                        <strong>{name}</strong>
+                        <strong>
+                          {name}
+                          {chat.pinned && <Pin size={11} className="sidebar-preference-icon" />}
+                          {chat.muted && <BellOff size={11} className="sidebar-preference-icon" />}
+                        </strong>
                         <small>
                           {(chat.lastMessage &&
                             formatChatCallLabel(chat.lastMessageKind, chat.lastMessage)) ||
@@ -712,8 +737,58 @@ export function AccountSidebar({
           target={archiveMenu}
           onClose={() => setArchiveMenu(undefined)}
           onArchive={onArchiveChat}
+          onManage={onManageChat}
+          onDestructive={
+            onManageChat
+              ? (action) => {
+                  setChatAction({ target: archiveMenu, action });
+                  setChatActionError('');
+                  setArchiveMenu(undefined);
+                }
+              : undefined
+          }
         />
       ) : null}
+      {chatAction && onManageChat && (
+        <ChatActionConfirmDialog
+          title={t(
+            chatAction.action === 'block'
+              ? 'Заблокировать пользователя?'
+              : chatAction.target.group
+                ? 'Покинуть группу?'
+                : 'Удалить чат?',
+          )}
+          description={t(
+            chatAction.action === 'block'
+              ? 'Вы перестанете получать сообщения и звонки от этого пользователя.'
+              : chatAction.target.group
+                ? 'Группа исчезнет из вашего списка. Вернуться можно по приглашению.'
+                : 'Чат будет удалён из вашего списка.',
+          )}
+          confirmLabel={t(
+            chatAction.action === 'block'
+              ? 'Заблокировать'
+              : chatAction.target.group
+                ? 'Покинуть'
+                : 'Удалить',
+          )}
+          busy={chatActionBusy}
+          error={chatActionError}
+          onCancel={() => {
+            if (!chatActionBusy) setChatAction(undefined);
+          }}
+          onConfirm={() => {
+            if (chatActionBusy) return;
+            setChatActionBusy(true);
+            void Promise.resolve(onManageChat(chatAction.target.chatId, chatAction.action))
+              .then(() => setChatAction(undefined))
+              .catch(() =>
+                setChatActionError(t('Не удалось выполнить действие. Попробуйте ещё раз.')),
+              )
+              .finally(() => setChatActionBusy(false));
+          }}
+        />
+      )}
     </aside>
   );
 }

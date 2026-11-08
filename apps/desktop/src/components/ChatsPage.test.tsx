@@ -189,14 +189,42 @@ describe('Message links and selection', () => {
 });
 
 describe('MessageList scrolling', () => {
+  it('does not write the same bottom offset again on repeated content resize', () => {
+    const callbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback);
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    const page = render(view('chat-stable', [message('1', 'friend')]));
+    const scroller = page.container.querySelector<HTMLElement>('.message-scroll-container')!;
+    let top = scroller.scrollTop;
+    const writes = vi.fn((next: number) => {
+      top = next;
+    });
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: writes,
+    });
+    for (let i = 0; i < 12; i++)
+      for (const callback of callbacks) callback([], {} as ResizeObserver);
+    expect(writes).not.toHaveBeenCalled();
+  });
   it('opens each chat at the newest message', () => {
     const { container, rerender } = render(view('chat-a', [message('1', 'friend')]));
     const scroller = container.querySelector<HTMLElement>('.message-scroll-container')!;
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight);
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
 
     scroller.scrollTop = 120;
     rerender(view('chat-b', [message('2', 'friend')]));
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight);
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
   });
 
   it('does not interrupt reading old messages and offers an immediate return to the end', () => {
@@ -210,7 +238,7 @@ describe('MessageList scrolling', () => {
     expect(scroller.scrollTop).toBe(200);
     expect(getByRole('status').textContent).toContain('Вы просматриваете старые сообщения');
     fireEvent.click(getByRole('button', { name: /Вернуться к последним сообщениям/ }));
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight);
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
   });
 
   it('shows the old-message notice before any new message arrives', () => {
@@ -243,7 +271,7 @@ describe('MessageList scrolling', () => {
     fireEvent.scroll(scroller);
 
     rerender(view('chat-a', [...initial, message('2', 'self')], 1));
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight);
+    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight);
   });
 
   it('preserves the visible position when older messages are prepended', () => {

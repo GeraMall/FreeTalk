@@ -13,6 +13,7 @@ import type {
   ParticipantCardDecoration,
   ParticipantCardStyle,
   RoomChatMessage,
+  RoomChatAttachment,
   ServerMessage,
 } from '@freetalk/protocol';
 
@@ -23,6 +24,7 @@ export interface PeerConnection {
   tabletVersion?: 3;
   pokerFlow?: 2;
   propertyRules?: 2;
+  propertyRoll?: 2;
   isAdult?: boolean;
   lastAgeCheckAt?: number;
   send(message: ServerMessage): void;
@@ -30,6 +32,7 @@ export interface PeerConnection {
 }
 
 interface Peer {
+  roomChatToken: string;
   participant: Participant;
   sessionId: string;
   connection: PeerConnection;
@@ -168,6 +171,7 @@ export class RoomManager {
     participant.cardStyle = cardStyle;
     participant.cardDecoration = 'none';
     const peer: Peer = {
+      roomChatToken: crypto.randomUUID(),
       participant,
       sessionId,
       connection,
@@ -196,6 +200,7 @@ export class RoomManager {
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
       roomChatMessages: room.chatMessages,
+      roomChatToken: peer.roomChatToken,
       activity: roomActivityView(
         room.activity,
         clientId,
@@ -499,6 +504,7 @@ export class RoomManager {
             actorId: clientId,
             pokerFlow: peer.connection.pokerFlow,
             propertyRules: peer.connection.propertyRules,
+            propertyRoll: peer.connection.propertyRoll,
             diceMotion:
               room.dice?.clientId === clientId &&
               room.dice.tableId === room.activity.table?.view.id &&
@@ -586,7 +592,14 @@ export class RoomManager {
     return true;
   }
 
-  chat(roomId: string, clientId: string, id: string, text: string, now = Date.now()) {
+  chat(
+    roomId: string,
+    clientId: string,
+    id: string,
+    text: string,
+    now = Date.now(),
+    attachment?: RoomChatAttachment,
+  ) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return false;
@@ -596,12 +609,21 @@ export class RoomManager {
       participantId: clientId,
       senderName: peer.participant.name,
       text,
+      attachment,
       timestamp: now,
     };
     room.chatMessages.push(message);
     if (room.chatMessages.length > 200) room.chatMessages.splice(0, room.chatMessages.length - 200);
     this.broadcast(room, { type: 'room-chat-message', message });
     return true;
+  }
+
+  roomChatAccess(token: string) {
+    if (!/^[a-f0-9-]{36}$/i.test(token)) return undefined;
+    for (const room of this.rooms.values())
+      for (const [clientId, peer] of room.peers)
+        if (peer.roomChatToken === token) return { roomId: room.id, clientId };
+    return undefined;
   }
 
   recordingStarted(roomId: string, clientId: string, now = Date.now()) {

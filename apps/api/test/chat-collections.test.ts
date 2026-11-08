@@ -24,6 +24,23 @@ afterEach(async () => {
 });
 
 describe('personal chat collections', () => {
+  it('persists only the current member mute/pin preference and does not notify others', async () => {
+    query.mockResolvedValue(result([{ chat_id: chatId }]));
+    const publish = vi.spyOn(chatRealtimeHub, 'publish');
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/v1/chats/${chatId}/preferences`,
+      payload: { muted: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('self.user_id=$2'), [
+      chatId,
+      userId,
+      true,
+      null,
+    ]);
+    expect(publish).toHaveBeenCalledExactlyOnceWith([userId], { type: 'chat-updated', chatId });
+  });
   it.each([undefined, '1'])(
     'keeps saved chats out of legacy client lists: capability %s',
     async (capability) => {

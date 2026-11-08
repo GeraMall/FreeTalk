@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   diceRollFrames,
+  DICE_ROLL_MS,
   sampleDiceRoll,
   diceLimits,
   diceRotations,
@@ -62,7 +63,7 @@ it('replays the same continuous roll for every viewer and settles on the server 
     bounds = { width: 800, height: 500, size: 44 };
   expect(copy).toEqual(frames);
   let previous = sampleDiceRoll(frames, 0, bounds);
-  for (let time = 1; time <= 900; time++) {
+  for (let time = 1; time <= DICE_ROLL_MS; time++) {
     const next = sampleDiceRoll(frames, time, bounds);
     for (let i = 0; i < 2; i++) {
       expect(Math.hypot(next[i]!.x - previous[i]!.x, next[i]!.y - previous[i]!.y)).toBeLessThan(4);
@@ -75,4 +76,9 @@ it('replays the same continuous roll for every viewer and settles on the server 
   expect((((previous[0]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(270);
   expect((((previous[1]!.ry - 22) % 360) + 360) % 360).toBeCloseTo(180);
   expect(previous.every((p) => p.z === 0)).toBe(true);
+  const middle = sampleDiceRoll(frames, 450, bounds);
+  expect(
+    Math.abs(middle[0]!.rx - frames[0]![0]!.rx) + Math.abs(middle[0]!.ry - frames[0]![0]!.ry),
+  ).toBeGreaterThan(180);
+  expect(Math.hypot(middle[0]!.x - middle[1]!.x, middle[0]!.y - middle[1]!.y)).toBeGreaterThan(160);
 });

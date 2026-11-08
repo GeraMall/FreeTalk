@@ -921,6 +921,7 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
     const chats = await db.query(
       `SELECT c.id,c.type,c.title,c.created_at,c.retention_hours AS "retentionHours",
        c.is_saved AS "isSaved",(self.archived_at IS NOT NULL) AS archived,
+       (self.muted_at IS NOT NULL) AS muted,(self.pinned_at IS NOT NULL) AS pinned,
        c.avatar_position_x AS "avatarPositionX",c.avatar_position_y AS "avatarPositionY",
        c.avatar_scale AS "avatarScale",
        CASE WHEN c.avatar_data IS NOT NULL THEN $2::text || '/v1/chats/' || c.id ||
@@ -955,8 +956,8 @@ export function registerSocialRoutes(app: FastifyInstance, requireUser: RequireU
          OR (b.blocker_id=other.user_id AND b.blocked_id=$1)
          WHERE other.chat_id=c.id AND other.left_at IS NULL AND other.user_id<>$1
        ))
-       GROUP BY c.id,self.role,self.archived_at,latest.body,latest.created_at,latest.kind
-       ORDER BY COALESCE(latest.created_at,c.created_at) DESC`,
+       GROUP BY c.id,self.role,self.archived_at,self.muted_at,self.pinned_at,latest.body,latest.created_at,latest.kind
+       ORDER BY self.pinned_at DESC NULLS LAST, COALESCE(latest.created_at,c.created_at) DESC`,
       [
         user.id,
         publicApiUrl('').replace(/\/$/, ''),

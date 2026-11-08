@@ -80,6 +80,7 @@ import { playRecordingStartNotification } from './lib/recording-start-sound';
 import { publishActivityPointer } from './lib/activity-pointers';
 import { ScreenRecorder, type ScreenRecordingState } from './lib/screen-recorder';
 import { calculateSignalStrength } from './lib/network-quality';
+import { uploadRoomChatFile } from './lib/room-chat-files';
 import type { CallDockState } from './components/CallDock';
 import type { ChatCallContext } from './components/ChatCallWaiting';
 import { BrowserNotificationPrompt } from './components/BrowserNotificationPrompt';
@@ -240,6 +241,7 @@ export function App() {
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
+  const [roomChatToken, setRoomChatToken] = useState<string>();
   const [roomActivity, setRoomActivity] = useState<RoomActivity>();
   const [screenFocusMode, setScreenFocusMode] = useState(false);
   const [screenRecording, setScreenRecording] = useState<ScreenRecordingState>({ phase: 'idle' });
@@ -544,6 +546,7 @@ export function App() {
     setRoomStartedAt(0);
     setReactions([]);
     setRoomChatMessages([]);
+    setRoomChatToken(undefined);
     setDismissedWaitingParticipantIds(new Set());
     setScreenFocusMode(false);
     setRecordingBannerMessage('');
@@ -834,6 +837,7 @@ export function App() {
         if (message.participants.some((participant) => participant.id !== selfId.current))
           conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
+        setRoomChatToken(message.roomChatToken);
         setRoomActivity(message.activity);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
         if (accountUser && pendingRoomId.current) {
@@ -1171,6 +1175,10 @@ export function App() {
       ? roomSidebarState?.chats.find((chat) => chat.id === options.chatId)
       : undefined;
     pendingRoomId.current = code;
+    // Render the first call frame as connecting, before microphone/authorization work.
+    setSignalState('connecting');
+    setSignalStrength(0);
+    setSignalPing(0);
     setRoomId(code);
     setRoomStartedAt(bufferStartedAt);
     setRoomDestination(options.chatId ? 'chats' : 'room');
@@ -1512,6 +1520,20 @@ export function App() {
     });
     if (!sent) setError('Не удалось отправить сообщение в комнату');
     return Boolean(sent);
+  };
+  const sendRoomChatFile = async (file: File, caption: string) => {
+    if (!roomChatToken) throw new Error('Переподключитесь к комнате для отправки файлов');
+    const generation = callGeneration.current;
+    const attachment = await uploadRoomChatFile(file, roomChatToken);
+    if (callGeneration.current !== generation || !joinedRoom.current) return false;
+    return Boolean(
+      signaling.current?.send({
+        type: 'room-chat-message',
+        id: crypto.randomUUID(),
+        text: caption.trim() || attachment.name,
+        attachmentId: attachment.id,
+      }),
+    );
   };
 
   const runVideoAction = async (action: 'camera' | 'screen') => {
@@ -2279,6 +2301,8 @@ export function App() {
       roomStartedAt={roomStartedAt}
       reactions={reactions}
       roomChatMessages={roomChatMessages}
+      roomChatToken={roomChatToken}
+      onRoomChatFile={sendRoomChatFile}
       activity={roomActivity}
       onTabletVisibilityChange={setActivityTabletVisible}
       activityUnlocked={Boolean(accountUser)}
@@ -2352,6 +2376,7 @@ export function App() {
             onOpenChat={(chatId) => roomSidebarState?.openChat(chatId)}
             onOpenSavedChat={() => roomSidebarState?.openSavedChat()}
             onArchiveChat={(chatId, archived) => roomSidebarState?.archiveChat(chatId, archived)}
+            onManageChat={(chatId, action) => roomSidebarState?.manageChat(chatId, action)}
             onCreateGroup={(title, memberIds) =>
               roomSidebarState?.createGroup(title, memberIds) ?? Promise.resolve(false)
             }

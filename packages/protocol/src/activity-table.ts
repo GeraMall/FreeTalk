@@ -89,6 +89,7 @@ export const tableSchema = z.discriminatedUnion('kind', [
       .object({
         sequence: count,
         motion: diceMotionSchema.optional(),
+        rollMs: count.min(900).max(3000).optional(),
         roll: z.boolean().optional(),
         seat: count,
         from: count,

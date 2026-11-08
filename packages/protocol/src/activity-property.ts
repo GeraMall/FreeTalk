@@ -488,12 +488,17 @@ function finishPropertyAction(
     v.lastMove = {
       sequence: (old.lastMove?.sequence ?? 0) + 1,
       motion: rolling ? context.diceMotion : undefined,
+      rollMs: rolling ? (context.propertyRoll === 2 ? 2200 : 900) : undefined,
       roll: !resumed,
       seat: roller,
       from,
       path,
       at: context.now,
-      until: context.now + (resumed ? 0 : 900) + path.length * 110 + 180,
+      until:
+        context.now +
+        (resumed ? 0 : context.propertyRoll === 2 ? 2200 : 900) +
+        path.length * 110 +
+        180,
     };
   }
   return { ...session, view: v };

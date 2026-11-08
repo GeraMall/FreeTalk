@@ -122,6 +122,8 @@ interface RoomViewProps {
   roomStartedAt: number;
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   roomChatMessages: RoomChatMessage[];
+  roomChatToken?: string;
+  onRoomChatFile?(file: File, caption: string): Promise<boolean>;
   activity?: RoomActivity;
   activityUnlocked?: boolean;
   onActivity?(action: RoomActivityAction): void;
@@ -215,6 +217,8 @@ export function RoomView({
   onScreen,
   onReaction,
   onRoomChatSend,
+  roomChatToken,
+  onRoomChatFile,
   onScreenFocusChange,
   onSettings,
   onRecording,
@@ -1035,6 +1039,8 @@ export function RoomView({
                   ?.avatar ?? message.senderAvatar,
             }))}
             selfId={selfId}
+            fileToken={roomChatToken}
+            onSendFile={onRoomChatFile}
             closing={chatClosing}
             onClose={closeRoomChat}
             onClosed={() => {

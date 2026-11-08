@@ -10,6 +10,26 @@ type RequireUser = (
 ) => Promise<AuthenticatedUser | null>;
 
 export function registerChatCollections(app: FastifyInstance, requireUser: RequireUser) {
+  app.patch('/v1/chats/:chatId/preferences', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    const { chatId } = z.object({ chatId: z.string().uuid() }).parse(request.params);
+    const patch = z
+      .object({ muted: z.boolean().optional(), pinned: z.boolean().optional() })
+      .refine((value) => value.muted !== undefined || value.pinned !== undefined)
+      .parse(request.body);
+    const updated = await db.query(
+      `UPDATE chat_members self SET
+       muted_at=CASE WHEN $3::boolean IS NULL THEN muted_at WHEN $3 THEN now() ELSE NULL END,
+       pinned_at=CASE WHEN $4::boolean IS NULL THEN pinned_at WHEN $4 THEN COALESCE(pinned_at,now()) ELSE NULL END
+       FROM chats chat WHERE self.chat_id=$1 AND self.user_id=$2 AND self.left_at IS NULL
+       AND chat.id=self.chat_id AND NOT chat.is_saved RETURNING self.chat_id`,
+      [chatId, user.id, patch.muted ?? null, patch.pinned ?? null],
+    );
+    if (!updated.rowCount) return reply.code(404).send({ code: 'CHAT_NOT_FOUND' });
+    chatRealtimeHub.publish([user.id], { type: 'chat-updated', chatId });
+    return patch;
+  });
   // A saved chat has exactly one member. Upsert plus the unique owner index
   // makes repeated clicks and concurrent sessions return the same notebook.
   app.post('/v1/chats/saved', async (request, reply) => {

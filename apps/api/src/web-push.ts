@@ -206,6 +206,7 @@ export function startWebPush(app: FastifyInstance) {
              WHERE subscription.id=$2
                AND session.revoked_at IS NULL AND session.refresh_expires_at>now()
                AND member.left_at IS NULL
+                AND member.muted_at IS NULL AND member.archived_at IS NULL
                AND session.user_id IS DISTINCT FROM message.sender_id
                AND (message.expires_at IS NULL OR message.expires_at>now())
                AND NOT EXISTS(SELECT 1 FROM blocks block WHERE
