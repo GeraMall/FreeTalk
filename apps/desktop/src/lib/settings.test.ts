@@ -109,6 +109,49 @@ describe('platform-specific settings defaults', () => {
     expect(loadSettings().screenAudioByDefault).toBe(false);
   });
 
+  it('starts the Mac desktop with its detail-first Full HD 30 FPS profile', () => {
+    usePlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1)');
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+    for (const settings of [defaultSettings(), loadSettings()]) {
+      expect(settings).toMatchObject({
+        screenContentMode: 'text',
+        screenResolution: '1080p',
+        screenFrameRate: 30,
+        screenAdaptiveQuality: true,
+        screenAudioByDefault: false,
+      });
+    }
+  });
+
+  it('preserves an explicit Mac screen profile across launches', () => {
+    usePlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1)');
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+    saveSettings({
+      ...defaultSettings(),
+      screenContentMode: 'video',
+      screenResolution: '1440p',
+      screenFrameRate: 60,
+      screenAdaptiveQuality: false,
+    });
+    expect(loadSettings()).toMatchObject({
+      screenContentMode: 'video',
+      screenResolution: '1440p',
+      screenFrameRate: 60,
+      screenAdaptiveQuality: false,
+    });
+  });
+
+  it('keeps the universal default on the Windows desktop', () => {
+    usePlatform('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+    expect(loadSettings()).toMatchObject({
+      screenContentMode: 'balanced',
+      screenResolution: '1080p',
+      screenFrameRate: 30,
+      screenAudioByDefault: true,
+    });
+  });
+
   it('disables an old macOS default once but preserves a later explicit choice', () => {
     usePlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1)');
     localStorage.setItem('freetalk.settings.v1', JSON.stringify({ screenAudioByDefault: true }));

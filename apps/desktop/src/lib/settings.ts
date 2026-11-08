@@ -1,5 +1,6 @@
 import {
   DEFAULT_VIDEO_PREFERENCES,
+  defaultVideoPreferences,
   normalizeVideoPreferences,
   type VideoPreferences,
 } from './video-quality';
@@ -105,6 +106,7 @@ function isMacOS() {
 export function defaultSettings(): LocalSettings {
   return {
     ...defaults,
+    ...defaultVideoPreferences(),
     screenAudioByDefault: isMacOS() ? false : defaults.screenAudioByDefault,
     peerVolumes: {},
     screenVolumes: {},

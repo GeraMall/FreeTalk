@@ -1,6 +1,7 @@
 import { connectionDiagnostics } from './connection-diagnostics';
+import { configureMacScreenCapture } from './macos-screen-quality';
 import {
-  DEFAULT_VIDEO_PREFERENCES,
+  defaultVideoPreferences,
   normalizeVideoPreferences,
   screenCaptureConstraints,
   screenSenderPreferences,
@@ -69,7 +70,7 @@ export class VideoManager {
     private readonly onState: (state: LocalVideoState) => void,
     private readonly onError: (message: string) => void = () => undefined,
     private readonly onNotice: (message: string) => void = () => undefined,
-    preferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
+    preferences: VideoPreferences = defaultVideoPreferences(),
     cameraBackground: CameraBackgroundSettings = { mode: 'none', dataUrl: '' },
     private readonly onScreenQuality: (quality: ScreenQuality) => void = () => undefined,
   ) {
@@ -320,6 +321,11 @@ export class VideoManager {
         item.stop();
         stream.removeTrack(item);
       });
+    }
+    await configureMacScreenCapture(track, this.preferences);
+    if (this.disposed) {
+      stream.getTracks().forEach((item) => item.stop());
+      return;
     }
     this.screenTrack = track;
     this.screenStream = stream;

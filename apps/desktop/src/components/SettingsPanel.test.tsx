@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accountClient, ApiError, type AccountUser } from '../lib/api-client';
 import * as autostart from '../lib/autostart';
+import * as windowChrome from '../lib/window-chrome';
 import { defaultSettings } from '../lib/settings';
 import { SettingsPanel } from './SettingsPanel';
 import { t } from '../lib/app-language';
@@ -102,6 +103,25 @@ function renderProfile(
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('can restore the Mac screen preset without changing the camera or sound choices', () => {
+    vi.spyOn(windowChrome, 'usesMacDesktop').mockReturnValue(true);
+    const view = renderProfile();
+    fireEvent.click(view.getByRole('button', { name: 'Видео и звуки' }));
+    fireEvent.click(view.getByRole('button', { name: 'Применить профиль' }));
+    expect(view.onVideoSetting).toHaveBeenCalledWith({
+      screenContentMode: 'text',
+      screenResolution: '1080p',
+      screenFrameRate: 30,
+      screenAdaptiveQuality: true,
+    });
+  });
+
+  it('does not offer a Mac-only preset on other platforms', () => {
+    vi.spyOn(windowChrome, 'usesMacDesktop').mockReturnValue(false);
+    const view = renderProfile();
+    fireEvent.click(view.getByRole('button', { name: 'Видео и звуки' }));
+    expect(view.queryByRole('button', { name: 'Применить профиль' })).toBeNull();
+  });
   it('moves language from Chats to Interface directly below Profile', () => {
     const view = renderProfile();
     fireEvent.click(view.getByRole('button', { name: 'Интерфейс' }));

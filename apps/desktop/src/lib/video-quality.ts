@@ -39,11 +39,24 @@ export const DEFAULT_VIDEO_PREFERENCES: VideoPreferences = {
   screenAdaptiveQuality: true,
 };
 
+export const MAC_SCREEN_QUALITY: ScreenQuality = {
+  screenContentMode: 'text',
+  screenResolution: '1080p',
+  screenFrameRate: 30,
+};
+
+export function defaultVideoPreferences(): VideoPreferences {
+  return usesMacDesktop()
+    ? { ...DEFAULT_VIDEO_PREFERENCES, ...MAC_SCREEN_QUALITY, screenAudioByDefault: false }
+    : { ...DEFAULT_VIDEO_PREFERENCES };
+}
+
 const RESOLUTIONS: Record<ScreenResolution, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
   '1440p': { width: 2560, height: 1440 },
 };
+export const screenResolutionSize = (resolution: ScreenResolution) => RESOLUTIONS[resolution];
 
 const BASE_BITRATES: Record<ScreenResolution, Record<ScreenFrameRate, number>> = {
   '720p': { 15: 1_800_000, 30: 3_000_000, 60: 5_000_000 },
@@ -137,6 +150,7 @@ export function nextAdaptiveQualityLevel(
 }
 
 export function normalizeVideoPreferences(value: Partial<VideoPreferences>): VideoPreferences {
+  const defaults = defaultVideoPreferences();
   return {
     cameraDeviceId: typeof value.cameraDeviceId === 'string' ? value.cameraDeviceId : '',
     screenResolution:
@@ -144,24 +158,24 @@ export function normalizeVideoPreferences(value: Partial<VideoPreferences>): Vid
       value.screenResolution === '1080p' ||
       value.screenResolution === '1440p'
         ? value.screenResolution
-        : DEFAULT_VIDEO_PREFERENCES.screenResolution,
+        : defaults.screenResolution,
     screenFrameRate:
       value.screenFrameRate === 15 || value.screenFrameRate === 30 || value.screenFrameRate === 60
         ? value.screenFrameRate
-        : DEFAULT_VIDEO_PREFERENCES.screenFrameRate,
+        : defaults.screenFrameRate,
     screenContentMode:
       value.screenContentMode === 'text' ||
       value.screenContentMode === 'balanced' ||
       value.screenContentMode === 'video'
         ? value.screenContentMode
-        : DEFAULT_VIDEO_PREFERENCES.screenContentMode,
+        : defaults.screenContentMode,
     screenAudioByDefault:
       typeof value.screenAudioByDefault === 'boolean'
         ? value.screenAudioByDefault
-        : DEFAULT_VIDEO_PREFERENCES.screenAudioByDefault,
+        : defaults.screenAudioByDefault,
     screenAdaptiveQuality:
       typeof value.screenAdaptiveQuality === 'boolean'
         ? value.screenAdaptiveQuality
-        : DEFAULT_VIDEO_PREFERENCES.screenAdaptiveQuality,
+        : defaults.screenAdaptiveQuality,
   };
 }

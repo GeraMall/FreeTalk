@@ -1,5 +1,6 @@
 import type { ServerMessage, TelemetryConnectionSample } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
+import { captureCapabilities } from './macos-screen-quality';
 import { usesMacDesktop } from './window-chrome';
 import type { VideoMediaSource } from './video-manager';
 import {
@@ -10,7 +11,7 @@ import {
   updateNativeScreenIceServers,
 } from './windows-screen';
 import {
-  DEFAULT_VIDEO_PREFERENCES,
+  defaultVideoPreferences,
   nextAdaptiveQualityLevel,
   normalizeVideoPreferences,
   screenEncodingProfile,
@@ -136,7 +137,7 @@ export class PeerManager {
       },
     ) => void,
     private readonly events: PeerEvents,
-    videoPreferences: VideoPreferences = DEFAULT_VIDEO_PREFERENCES,
+    videoPreferences: VideoPreferences = defaultVideoPreferences(),
   ) {
     this.videoPreferences = normalizeVideoPreferences(videoPreferences);
   }
@@ -1120,6 +1121,7 @@ export class PeerManager {
       context.screenStatsSnapshot = { bytesSent, timestamp };
       const codec = outboundReport?.codecId ? stats.get(String(outboundReport.codecId)) : undefined;
       const trackSettings = screenSender.sender.track.getSettings();
+      const capabilities = captureCapabilities(screenSender.sender.track);
       connectionDiagnostics.record('screen-quality:sample', peerId, {
         mode: this.videoPreferences.screenContentMode,
         adaptive: this.videoPreferences.screenAdaptiveQuality,
@@ -1128,6 +1130,10 @@ export class PeerManager {
         height: Number(outboundReport?.frameHeight ?? trackSettings.height ?? 0),
         captureWidth: Number(trackSettings.width ?? 0),
         captureHeight: Number(trackSettings.height ?? 0),
+        captureMaxWidth: Number(capabilities.width?.max ?? 0),
+        captureMaxHeight: Number(capabilities.height?.max ?? 0),
+        requestedResolution: this.videoPreferences.screenResolution,
+        requestedFps: this.videoPreferences.screenFrameRate,
         framesPerSecond: Number(outboundReport?.framesPerSecond ?? trackSettings.frameRate ?? 0),
         bitrate,
         availableOutgoingBitrate: availableOutgoingBitrate ?? 0,

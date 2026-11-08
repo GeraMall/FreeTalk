@@ -1,5 +1,28 @@
 # Проверка изменений дизайна
 
+08.11.2026 ПОЛУЧЕН актуальный Mac-лог Trlka-diagnostics-1794161679.json:
+beta.223/source32893df1390b, все707samples capture640×414=outbound640×414,
+Text/adaptivefalse/level0. Не путать со старым присланным beta.37 от29августа.
+Подготовлена source-правка224: applyConstraints после выбора источника Mac,
+aspect-fit/capabilities, fallback/2.5sec deadline, диагностические поля;
+отдельный default Mac text1080p30 + кнопка применения, без сброса ручного выбора.
+Целевые63видеотеста прошли. Подробности docs/MAC_SCREEN_CAPTURE_BETA224.md.
+На физическом Mac ещё не проверено, новая версия пока не опубликована;
+не обещать исправление чёрного повторного старта/системного звука.
+Android224 параллельно в работе: native18 baseline перенесён, сеть primary/reserve,
+session-preserving offline restore, DOB/auth validation, чаты/избранное/архив,
+локальные темы/sync, isolated shared React tablet. Последние JVM28тестов прошли,
+но APK/интерактивная QA ещё НЕ завершены. Эмулятор trlka_android_224 запущен,
+adb emulator-5554. Изменения Android пока не закоммичены.
+
+08.11.2026 новое подтверждение владельца: Mac beta.223 показывает плохое качество
+демонстрации СРАЗУ, даже Text/30FPS, где раньше улучшалось. Качество223 не считать
+исправленным. Запрошен файл About/Connection diagnostics с Mac после воспроизведения;
+без него причина (capture/encode/network) неизвестна. Проверен diff221→223: Text
+уже был maintain-resolution; не объявлять причиной только новый Video preference.
+Android APK остаётся активной задачей; transplant native18 в текущей ветке
+preview/android-features-beta224 пока не закоммичен/не собран.
+
 08.11.2026 ОБЩИЙ ВЫПУСК beta.223 ЗАВЕРШЁН: Windows x64, Mac Apple Silicon, веб.
 Тег `v0.4.0-beta.223`, исходники установщиков `32893df`, CI42503453212 success.
 GitHub latest/public и оба зеркала manifest223, подписи Windows/Mac проверены,

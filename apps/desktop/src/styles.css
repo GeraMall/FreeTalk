@@ -7802,6 +7802,30 @@ input[type='range']:hover::-webkit-slider-thumb {
   color: var(--ui-text-100, #cbd1df);
   font-size: 10px;
 }
+.mac-screen-preset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mac-screen-preset > div {
+  display: grid;
+  gap: 4px;
+}
+.mac-screen-preset strong {
+  font-size: 13px;
+}
+.mac-screen-preset small {
+  font-size: 12px;
+}
+.mac-screen-preset button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 13px;
+}
 .adaptive-quality-note small,
 .video-apply-note {
   color: var(--ui-muted-100, #708198);

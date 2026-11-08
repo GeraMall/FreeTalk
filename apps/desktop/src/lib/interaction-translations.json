@@ -1,4 +1,28 @@
 {
+  "Стандарт для Mac": {
+    "en": "Mac default",
+    "zh-CN": "Mac 默认设置",
+    "kk": "Mac үшін әдепкі профиль",
+    "be": "Стандарт для Mac",
+    "ka": "Mac-ის ნაგულისხმევი პროფილი",
+    "es": "Perfil predeterminado para Mac"
+  },
+  "Чёткость текста · Full HD · 30 FPS": {
+    "en": "Text clarity · Full HD · 30 FPS",
+    "zh-CN": "文字清晰度 · Full HD · 30 FPS",
+    "kk": "Анық мәтін · Full HD · 30 FPS",
+    "be": "Выразны тэкст · Full HD · 30 FPS",
+    "ka": "მკაფიო ტექსტი · Full HD · 30 FPS",
+    "es": "Texto nítido · Full HD · 30 FPS"
+  },
+  "Применить профиль": {
+    "en": "Apply preset",
+    "zh-CN": "应用预设",
+    "kk": "Профильді қолдану",
+    "be": "Ужыць профіль",
+    "ka": "პროფილის გამოყენება",
+    "es": "Aplicar perfil"
+  },
   "{name} печатает…": {
     "en": "{name} is typing…",
     "zh-CN": "{name} 正在输入…",

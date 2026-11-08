@@ -49,6 +49,8 @@ import {
 } from '../lib/profile';
 import { autostartSupported, getAutostartEnabled, setAutostartEnabled } from '../lib/autostart';
 import { ScreenQualityFields } from './ScreenQualityFields';
+import { MAC_SCREEN_QUALITY } from '../lib/video-quality';
+import { usesMacDesktop } from '../lib/window-chrome';
 import type { UpdateStatus } from '../lib/updater';
 import { accountClient, ApiError, type AccountSession, type AccountUser } from '../lib/api-client';
 import {
@@ -1338,6 +1340,21 @@ function VideoTab({
           </span>
         </div>
         <ScreenQualityFields value={settings} onChange={onVideoSetting} />
+        {usesMacDesktop() && (
+          <div className="adaptive-quality-note mac-screen-preset">
+            <div>
+              <strong>{t('Стандарт для Mac')}</strong>
+              <small>{t('Чёткость текста · Full HD · 30 FPS')}</small>
+            </div>
+            <button
+              className="secondary"
+              onClick={() => onVideoSetting({ ...MAC_SCREEN_QUALITY, screenAdaptiveQuality: true })}
+            >
+              <RotateCcw size={16} />
+              {t('Применить профиль')}
+            </button>
+          </div>
+        )}
         <div className="video-toggle-list">
           <Toggle
             label={t('Передавать звук по умолчанию')}
