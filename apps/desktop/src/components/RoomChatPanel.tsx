@@ -16,7 +16,6 @@ import {
   Download,
   FileText,
   LoaderCircle,
-  Pin,
 } from 'lucide-react';
 import { loadRoomChatFile } from '../lib/room-chat-files';
 import { createPortal } from 'react-dom';
@@ -343,7 +342,6 @@ export function RoomChatPanel({
                       })}
                     </time>
                   </span>
-                  {message.pinned && <Pin size={12} aria-label={t('Закреплено')} />}
                   {message.replyTo && (
                     <button
                       className="room-chat-reply-preview"
@@ -374,24 +372,27 @@ export function RoomChatPanel({
                       )}
                     </span>
                   )}
-                  {!message.deleted && !!message.reactions?.length && (
-                    <span className="message-reactions">
-                      {message.reactions.map((r) => (
-                        <button
-                          key={r.emoji}
-                          className={r.userIds.includes(selfId) ? 'mine' : ''}
-                          aria-label={`${r.emoji}: ${r.userIds.length}`}
-                          onClick={() =>
-                            onAction?.({ kind: 'react', id: message.id, emoji: r.emoji })
-                          }
-                        >
-                          <span>{r.emoji}</span>
-                          <b>{r.userIds.length}</b>
-                        </button>
-                      ))}
-                    </span>
-                  )}
                 </span>
+                {!message.deleted && !!message.reactions?.length && (
+                  <span
+                    className="message-reactions room-chat-message-reactions"
+                    aria-label={t('Реакции на сообщение')}
+                  >
+                    {message.reactions.map((r) => (
+                      <button
+                        key={r.emoji}
+                        className={r.userIds.includes(selfId) ? 'mine' : ''}
+                        aria-label={`${r.emoji}: ${r.userIds.length}`}
+                        onClick={() =>
+                          onAction?.({ kind: 'react', id: message.id, emoji: r.emoji })
+                        }
+                      >
+                        <span>{r.emoji}</span>
+                        <b>{r.userIds.length}</b>
+                      </button>
+                    ))}
+                  </span>
+                )}
               </article>
             );
           })

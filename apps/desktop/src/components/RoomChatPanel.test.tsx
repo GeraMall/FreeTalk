@@ -103,3 +103,36 @@ it('never offers editing, deletion, or private readers on another participant’
   for (const name of ['Изменить', 'Удалить', '0 просмотров'])
     expect(view.queryByRole('menuitem', { name })).toBeNull();
 });
+
+it('keeps own and received reactions below, outside their respective message bubbles', () => {
+  const action = vi.fn();
+  const view = render(
+    <RoomChatPanel
+      messages={[
+        { ...sample, reactions: [{ emoji: '❤️', userIds: ['other'] }] },
+        {
+          ...sample,
+          id: '00000000-0000-4000-8000-000000000012',
+          participantId: 'other',
+          text: 'Received',
+          reactions: [{ emoji: '👍', userIds: ['me'] }],
+        },
+      ]}
+      selfId="me"
+      onSend={vi.fn()}
+      onAction={action}
+      onClose={vi.fn()}
+    />,
+  );
+  for (const name of ['❤️: 1', '👍: 1']) {
+    const reaction = view.getByRole('button', { name });
+    expect(reaction.closest('.room-chat-bubble')).toBeNull();
+    expect(reaction.closest('.room-chat-message')?.querySelector('.room-chat-bubble')).toBeTruthy();
+  }
+  fireEvent.click(view.getByRole('button', { name: '👍: 1' }));
+  expect(action).toHaveBeenCalledWith({
+    kind: 'react',
+    id: '00000000-0000-4000-8000-000000000012',
+    emoji: '👍',
+  });
+});
