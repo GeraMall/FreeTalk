@@ -1,4 +1,5 @@
 import { registerAppearance } from './appearance.js';
+import { registerChatInteractions } from './chat-interactions.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
@@ -484,6 +485,7 @@ app.post(
 registerPasswordResetRoutes(app);
 
 registerAppearance(app, requireUser);
+registerChatInteractions(app, requireUser);
 
 app.get('/v1/me', async (request, reply) => {
   const user = await requireUser(request, reply);

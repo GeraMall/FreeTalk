@@ -23,6 +23,7 @@ import type {
   RoomActivity,
   RoomActivityAction,
   RoomChatMessage,
+  RoomChatAction,
   ServerMessage,
 } from '@freetalk/protocol';
 import { AudioManager } from './lib/audio-manager';
@@ -44,6 +45,7 @@ import {
 import { nextProfileChangeHistory } from './lib/profile';
 import { SignalingClient, type SignalingState } from './lib/signaling-client';
 import { ChatRealtimeClient } from './lib/chat-realtime';
+import { emitChatInteraction } from './lib/chat-interactions';
 import { markVoiceActivity, setCallActive } from './lib/presence-activity';
 import { queueCallTimeoutNotice, startServiceDelivery } from './lib/service-chat';
 import { IncomingCallRingtone } from './lib/incoming-call-ringtone';
@@ -262,6 +264,7 @@ export function App() {
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoUiState>({});
   const [videoBusy, setVideoBusy] = useState(false);
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatMessage[]>([]);
+  const [roomChatEnhanced, setRoomChatEnhanced] = useState(false);
   const [roomChatToken, setRoomChatToken] = useState<string>();
   const [roomActivity, setRoomActivity] = useState<RoomActivity>();
   const [screenFocusMode, setScreenFocusMode] = useState(false);
@@ -858,6 +861,7 @@ export function App() {
         if (message.participants.some((participant) => participant.id !== selfId.current))
           conversationPeerJoined.current = true;
         setRoomChatMessages(message.roomChatMessages ?? []);
+        setRoomChatEnhanced(message.roomChatVersion === 2);
         setRoomChatToken(message.roomChatToken);
         setRoomActivity(message.activity);
         setRoomStartedAt(message.roomStartedAt ?? Date.now());
@@ -1049,9 +1053,32 @@ export function App() {
         return;
       }
       if (message.type === 'room-chat-message') {
+        emitChatInteraction({
+          type: 'chat-typing',
+          chatId: 'room',
+          userId: message.message.participantId,
+          name: '',
+          expiresAt: 0,
+        });
         setRoomChatMessages((old) =>
           [...old.filter((item) => item.id !== message.message.id), message.message].slice(-200),
         );
+        return;
+      }
+      if (message.type === 'room-chat-updated') {
+        setRoomChatMessages((old) =>
+          old.map((item) => (item.id === message.message.id ? message.message : item)),
+        );
+        return;
+      }
+      if (message.type === 'room-chat-typing') {
+        emitChatInteraction({
+          type: 'chat-typing',
+          chatId: 'room',
+          userId: message.participantId,
+          name: message.name,
+          expiresAt: message.expiresAt,
+        });
         return;
       }
       if (message.type === 'recording-started') {
@@ -1065,6 +1092,13 @@ export function App() {
         return;
       }
       if (message.type === 'participant-left') {
+        emitChatInteraction({
+          type: 'chat-typing',
+          chatId: 'room',
+          userId: message.participantId,
+          name: '',
+          expiresAt: 0,
+        });
         const shouldNotify = participantNotifications.current.disconnected(
           message.participantId,
           selfId.current,
@@ -1539,18 +1573,19 @@ export function App() {
     setDeafened(!deafened);
   };
 
-  const sendRoomChatMessage = (text: string) => {
+  const sendRoomChatMessage = (text: string, replyTo?: string) => {
     const cleanText = text.trim();
     if (!cleanText || cleanText.length > 2_000) return false;
     const sent = signaling.current?.send({
       type: 'room-chat-message',
       id: crypto.randomUUID(),
       text: cleanText,
+      replyTo,
     });
     if (!sent) setError('Не удалось отправить сообщение в комнату');
     return Boolean(sent);
   };
-  const sendRoomChatFile = async (file: File, caption: string) => {
+  const sendRoomChatFile = async (file: File, caption: string, replyTo?: string) => {
     if (!roomChatToken) throw new Error('Переподключитесь к комнате для отправки файлов');
     const generation = callGeneration.current;
     const attachment = await uploadRoomChatFile(file, roomChatToken);
@@ -1561,6 +1596,7 @@ export function App() {
         id: crypto.randomUUID(),
         text: caption.trim() || attachment.name,
         attachmentId: attachment.id,
+        replyTo,
       }),
     );
   };
@@ -2334,6 +2370,13 @@ export function App() {
       roomChatMessages={roomChatMessages}
       roomChatToken={roomChatToken}
       onRoomChatFile={sendRoomChatFile}
+      onRoomChatAction={
+        roomChatEnhanced
+          ? (action: RoomChatAction) => {
+              signaling.current?.send({ type: 'room-chat-action', action });
+            }
+          : undefined
+      }
       activity={roomActivity}
       onTabletVisibilityChange={setActivityTabletVisible}
       activityUnlocked={Boolean(accountUser)}

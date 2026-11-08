@@ -4,15 +4,11 @@ export function installInteractionGuards(target: Document = document) {
   };
   const useKeyboardFocus = (event: KeyboardEvent) => {
     if (event.key === 'Tab') target.documentElement.dataset.focusInput = 'keyboard';
+    else if (event.key === 'Escape') target.documentElement.dataset.focusInput = 'pointer';
   };
   const blockNativeContextMenu = (event: MouseEvent) => {
     const element = event.target instanceof Element ? event.target : null;
-    if (
-      element?.closest(
-        "input, textarea, [contenteditable='true'], .message-scroll-container, .room-chat-messages",
-      )
-    )
-      return;
+    if (element?.closest("input, textarea, [contenteditable='true']")) return;
     event.preventDefault();
   };
 

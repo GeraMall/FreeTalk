@@ -1,4 +1,8 @@
+import { clipboardPng } from '../lib/clipboard-image';
 import { appLanguage, formatChatCallLabel, t } from '../lib/app-language';
+import { useTypingSender, useVisibleMessageReads } from '../lib/chat-interactions';
+import { TypingIndicator } from './TypingIndicator';
+import { MessageReadersDialog } from './MessageReadersDialog';
 import { CHAT_MESSAGE_MAX_LENGTH, SERVICE_CHAT_ID } from '@freetalk/config';
 import { ServiceBotAvatar, SERVICE_BOT_AVATAR_URL } from './ServiceBotAvatar';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -57,6 +61,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  Eye,
   Volume2,
   X,
 } from 'lucide-react';
@@ -1054,16 +1059,23 @@ export function ChatsPage({
               searchQuery={messageSearch}
               focusedMessageId={focusedMessageId}
             />
-            <MessageComposer
-              key={activeChat.id}
-              disabled={messagesLoading || slowModeRemainingSeconds > 0}
-              onSend={onSendMessage}
-              onSendImage={onSendImage}
-              onSendFile={onSendFile}
-              onSendGif={onSendGif}
-              replyTarget={replyTarget}
-              onCancelReply={() => setReplyTarget(undefined)}
-            />
+            <div className="composer-with-typing">
+              <TypingIndicator
+                scope={activeChat.isSaved ? undefined : activeChat.id}
+                selfId={userId}
+              />
+              <MessageComposer
+                key={activeChat.id}
+                chatId={activeChat.isSaved ? undefined : activeChat.id}
+                disabled={messagesLoading || slowModeRemainingSeconds > 0}
+                onSend={onSendMessage}
+                onSendImage={onSendImage}
+                onSendFile={onSendFile}
+                onSendGif={onSendGif}
+                replyTarget={replyTarget}
+                onCancelReply={() => setReplyTarget(undefined)}
+              />
+            </div>
           </>
         ) : (
           <ChatEmptyState />
@@ -2260,7 +2272,7 @@ const MESSAGE_REACTION_PALETTE = [
   '🎮',
 ];
 
-interface MessageContextState {
+export interface MessageContextState {
   message: MessageItem;
   x: number;
   y: number;
@@ -2315,27 +2327,6 @@ function isPhotoMessage(message: MessageItem) {
     !message.deleted_at &&
     !message.metadata?.deleted
   );
-}
-
-async function clipboardPng(blob: Blob): Promise<Blob> {
-  if (blob.type === 'image/png') return blob;
-  const bitmap = await createImageBitmap(blob);
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Image conversion is unavailable');
-    context.drawImage(bitmap, 0, 0);
-    return await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (png) => (png ? resolve(png) : reject(new Error('PNG conversion failed'))),
-        'image/png',
-      ),
-    );
-  } finally {
-    bitmap.close();
-  }
 }
 
 export function MessageList({
@@ -2399,6 +2390,17 @@ export function MessageList({
 }) {
   const visibleMessages = useMemo(() => collapseDuplicateCallMessages(messages), [messages]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [readersMessage, setReadersMessage] = useState<string>();
+  useVisibleMessageReads(
+    scrollRef,
+    !loading && !savedChat ? chatId : undefined,
+    messages.map((m) => m.id).join(','),
+    (ids) =>
+      accountClient.request(`/v1/chats/${chatId}/reads`, {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const previousRef = useRef({
@@ -2476,6 +2478,7 @@ export function MessageList({
     setForwardingError('');
     setDeletingMessage(undefined);
     setEditingMessage(undefined);
+    setReadersMessage(undefined);
     setSelectedIds(new Set());
   }, [chatId]);
 
@@ -2880,6 +2883,12 @@ export function MessageList({
                 <div
                   className={`message-entry${selectedIds.has(message.id) ? ' selected' : ''}${searchMatch ? ' search-match' : ''}${message.id === focusedMessageId ? ' search-current' : ''}`}
                   data-message-id={message.id}
+                  data-read-eligible={
+                    !!message.sender_id &&
+                    message.sender_id !== userId &&
+                    !message.metadata?.deleted &&
+                    !message.deleted_at
+                  }
                   key={message.id}
                 >
                   {showDate && <DateSeparator date={message.created_at} />}
@@ -3031,10 +3040,28 @@ export function MessageList({
                 toggleSelected(contextMenu.message.id);
                 setContextMenu(undefined);
               }}
+              onReaders={
+                contextMenu.message.sender_id === userId && !savedChat
+                  ? () => {
+                      setReadersMessage(contextMenu.message.id);
+                      setContextMenu(undefined);
+                    }
+                  : undefined
+              }
             />,
             document.body,
           )
         : null}
+      {readersMessage && (
+        <MessageReadersDialog
+          key={`${chatId}:${readersMessage}`}
+          messageId={readersMessage}
+          load={() =>
+            accountClient.request(`/v1/chats/${chatId}/messages/${readersMessage}/readers`)
+          }
+          onClose={() => setReadersMessage(undefined)}
+        />
+      )}
       {selectedIds.size > 0 ? (
         <div className="message-selection-bar" role="toolbar" aria-label={t('Выбранные сообщения')}>
           <strong>{selectedIds.size}</strong>
@@ -3573,7 +3600,7 @@ function GifMessage({
   );
 }
 
-function MessageContextMenu({
+export function MessageContextMenu({
   menuRef,
   state,
   accountId,
@@ -3589,6 +3616,7 @@ function MessageContextMenu({
   onForward,
   onDelete,
   onSelect,
+  onReaders,
 }: {
   menuRef: { current: HTMLDivElement | null };
   state: MessageContextState;
@@ -3602,9 +3630,10 @@ function MessageContextMenu({
   onEdit(): void;
   onPin(): void;
   onCopy(): void;
-  onForward(): void;
+  onForward?(): void;
   onDelete(): void;
   onSelect(): void;
+  onReaders?(): void;
 }) {
   const [customReaction, setCustomReaction] = useState('');
   const reactionsAllowed = state.message.kind !== 'system' && state.message.kind !== 'call';
@@ -3727,10 +3756,12 @@ function MessageContextMenu({
           <button type="button" role="menuitem" onClick={onCopy}>
             <Copy /> {isPhotoMessage(state.message) ? t('Копировать фото') : t('Копировать текст')}
           </button>
-          <button type="button" role="menuitem" onClick={onForward}>
-            <Forward />
-            {t('Переслать')}
-          </button>
+          {onForward && (
+            <button type="button" role="menuitem" onClick={onForward}>
+              <Forward />
+              {t('Переслать')}
+            </button>
+          )}
           {canDelete ? (
             <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
               <Trash2 />
@@ -3741,6 +3772,12 @@ function MessageContextMenu({
           <button type="button" role="menuitem" onClick={onSelect}>
             <CheckCircle2 /> {t('Выделить')}
           </button>
+          {own && onReaders && (
+            <button type="button" role="menuitem" onClick={onReaders}>
+              <Eye />
+              {t('Кто просмотрел')}
+            </button>
+          )}
         </div>
       ) : null}
     </div>
@@ -4676,6 +4713,7 @@ const longSendFlightKeyframes = [
 ];
 
 function MessageComposer({
+  chatId,
   disabled,
   onSend,
   onSendImage,
@@ -4684,6 +4722,7 @@ function MessageComposer({
   replyTarget,
   onCancelReply,
 }: {
+  chatId?: string;
   disabled: boolean;
   onSend(body: string, replyToMessageId?: string): Promise<boolean>;
   onSendImage(
@@ -4698,7 +4737,11 @@ function MessageComposer({
   onCancelReply(): void;
 }) {
   const [value, setValue] = useState('');
+  const typing = useTypingSender(chatId);
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (disabled || sending || !value.trim()) typing(false);
+  }, [disabled, sending, value, typing]);
   const [processingImage, setProcessingImage] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState('');
@@ -5003,7 +5046,11 @@ function MessageComposer({
           lang={composerLanguage === 'auto' ? undefined : composerLanguage}
           placeholder={t('Написать сообщение…')}
           aria-label={t('Сообщение')}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            setValue(event.target.value);
+            typing(!!event.target.value.trim());
+          }}
+          onBlur={() => typing(false)}
           onKeyDown={onKeyDown}
           onContextMenu={(event) => {
             event.preventDefault();

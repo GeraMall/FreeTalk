@@ -108,8 +108,38 @@ export const roomChatMessageSchema = z.object({
   senderAvatar: avatar,
   text: roomChatTextSchema,
   attachment: roomChatAttachmentSchema.optional(),
+  replyTo: z.string().uuid().optional(),
+  editedAt: z.number().int().nonnegative().optional(),
+  deleted: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+  reactions: z
+    .array(
+      z.object({
+        emoji: z.string().refine(isSingleEmojiGrapheme),
+        userIds: z.array(clientId).max(8),
+      }),
+    )
+    .max(20)
+    .optional(),
+  readers: z
+    .array(z.object({ id: clientId, name: displayName, readAt: z.number().int().nonnegative() }))
+    .max(8)
+    .optional(),
   timestamp: z.number().int().nonnegative(),
 });
+export const roomChatActionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('typing'), active: z.boolean() }),
+  z.object({ kind: z.literal('read'), ids: z.array(z.string().uuid()).min(1).max(50) }),
+  z.object({ kind: z.literal('edit'), id: z.string().uuid(), text: roomChatTextSchema }),
+  z.object({ kind: z.literal('delete'), id: z.string().uuid() }),
+  z.object({ kind: z.literal('pin'), id: z.string().uuid(), pinned: z.boolean() }),
+  z.object({
+    kind: z.literal('react'),
+    id: z.string().uuid(),
+    emoji: z.string().refine(isSingleEmojiGrapheme),
+  }),
+]);
+export type RoomChatAction = z.infer<typeof roomChatActionSchema>;
 const sessionId = z.string().min(16).max(128);
 const sdp = z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().min(1).max(24_000) });
 const ice = z.object({
@@ -248,7 +278,9 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     id: z.string().uuid(),
     text: roomChatTextSchema,
     attachmentId: z.string().uuid().optional(),
+    replyTo: z.string().uuid().optional(),
   }),
+  z.object({ type: z.literal('room-chat-action'), action: roomChatActionSchema }),
   z.object({ type: z.literal('recording-started') }),
   z.object({
     type: z.literal('activity-action'),
@@ -278,6 +310,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     participants: z.array(participantSchema),
     roomChatMessages: z.array(roomChatMessageSchema).max(200).optional(),
     roomChatToken: z.string().uuid().optional(),
+    roomChatVersion: z.literal(2).optional(),
     activity: roomActivitySchema.optional(),
   }),
   z.object({ type: z.literal('activity-state'), activity: roomActivitySchema }),
@@ -291,6 +324,13 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     reaction: reactionSchema,
   }),
   z.object({ type: z.literal('room-chat-message'), message: roomChatMessageSchema }),
+  z.object({ type: z.literal('room-chat-updated'), message: roomChatMessageSchema }),
+  z.object({
+    type: z.literal('room-chat-typing'),
+    participantId: clientId,
+    name: displayName,
+    expiresAt: z.number().int().nonnegative(),
+  }),
   z.object({
     type: z.literal('recording-started'),
     participantId: clientId,
@@ -501,6 +541,18 @@ export type ChatMessageReply = z.infer<typeof chatMessageReplySchema>;
 export type ChatMessageReactionSummary = z.infer<typeof chatMessageReactionSummarySchema>;
 
 export const chatRealtimeServerMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('chat-typing'),
+    chatId: z.string().uuid(),
+    userId: z.string().uuid(),
+    name: displayName,
+    expiresAt: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal('chat-reads'),
+    chatId: z.string().uuid(),
+    messageIds: z.array(z.string().uuid()).max(50),
+  }),
   z.object({ type: z.literal('ready') }),
   z.object({
     type: z.literal('incoming-call'),

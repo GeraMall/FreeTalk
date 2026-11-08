@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { RoomChatPanel } from './RoomChatPanel';
 afterEach(cleanup);
@@ -36,4 +36,74 @@ it('keeps a failed file draft for retry and prevents duplicate submissions while
   expect((view.getByLabelText('Сообщение в чат комнаты') as HTMLTextAreaElement).value).toBe(
     'Подпись',
   );
+});
+
+const sample = {
+  id: '00000000-0000-4000-8000-000000000011',
+  participantId: 'me',
+  senderName: 'Me',
+  text: 'Original',
+  timestamp: Date.now(),
+};
+it('uses the shared menu for replies, edits, reactions, selection, and confirmed deletion', () => {
+  const action = vi.fn(),
+    send = vi.fn().mockReturnValue(true);
+  const view = render(
+    <RoomChatPanel
+      messages={[sample]}
+      selfId="me"
+      onSend={send}
+      onAction={action}
+      onClose={vi.fn()}
+    />,
+  );
+  const open = () =>
+    fireEvent.contextMenu(view.getByText('Original'), { clientX: 100, clientY: 100 });
+  open();
+  const menu = view.getByRole('menu');
+  expect(
+    within(menu)
+      .getAllByRole('menuitem')
+      .map((el) => el.textContent?.trim())
+      .slice(-2),
+  ).toEqual(['Выделить', 'Кто просмотрел']);
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ответить' }));
+  fireEvent.change(view.getByLabelText('Сообщение в чат комнаты'), { target: { value: 'Reply' } });
+  fireEvent.click(view.getByRole('button', { name: 'Отправить сообщение' }));
+  expect(send).toHaveBeenCalledWith('Reply', sample.id);
+  open();
+  fireEvent.click(view.getByRole('menuitem', { name: 'Изменить' }));
+  fireEvent.change(view.getByLabelText('Сообщение в чат комнаты'), {
+    target: { value: 'Updated' },
+  });
+  fireEvent.click(view.getByRole('button', { name: 'Отправить сообщение' }));
+  expect(action).toHaveBeenCalledWith({ kind: 'edit', id: sample.id, text: 'Updated' });
+  open();
+  fireEvent.click(view.getByRole('button', { name: 'Поставить реакцию ❤️' }));
+  expect(action).toHaveBeenCalledWith({ kind: 'react', id: sample.id, emoji: '❤️' });
+  open();
+  fireEvent.click(view.getByRole('menuitem', { name: 'Выделить' }));
+  expect(view.getByRole('checkbox').getAttribute('aria-checked')).toBe('true');
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(view.queryByRole('checkbox')).toBeNull();
+  open();
+  fireEvent.click(view.getByRole('menuitem', { name: 'Удалить' }));
+  expect(action).not.toHaveBeenCalledWith({ kind: 'delete', id: sample.id });
+  fireEvent.click(view.getByRole('button', { name: 'Удалить' }));
+  expect(action).toHaveBeenCalledWith({ kind: 'delete', id: sample.id });
+});
+it('never offers editing, deletion, or private readers on another participant’s message', () => {
+  const view = render(
+    <RoomChatPanel
+      messages={[sample]}
+      selfId="other"
+      onSend={vi.fn()}
+      onAction={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  fireEvent.contextMenu(view.getByText('Original'));
+  expect(view.getByRole('menuitem', { name: 'Ответить' })).toBeTruthy();
+  for (const name of ['Изменить', 'Удалить', 'Кто просмотрел'])
+    expect(view.queryByRole('menuitem', { name })).toBeNull();
 });

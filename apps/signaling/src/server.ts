@@ -78,7 +78,7 @@ export const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.19' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.20' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -415,8 +415,12 @@ sockets.on('connection', (socket, request) => {
               message.text,
               Date.now(),
               attachment,
+              message.replyTo,
             );
           }
+          break;
+        case 'room-chat-action':
+          manager.chatAction(meta.roomId, meta.clientId, message.action);
           break;
         case 'recording-started': {
           const result = manager.recordingStarted(meta.roomId, meta.clientId);

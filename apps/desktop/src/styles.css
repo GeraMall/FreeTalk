@@ -17590,8 +17590,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   transition:
     border-color 150ms var(--ft-ease),
     color 150ms var(--ft-ease),
-    background 150ms var(--ft-ease),
-    transform 150ms var(--ft-ease);
+    background 150ms var(--ft-ease);
 }
 
 .message-reactions > button:hover {
@@ -17599,7 +17598,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   color: var(--ft-text);
   background: var(--ui-surface2-96, rgba(34, 42, 60, 0.96));
   box-shadow: none;
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .message-reactions > button.mine {
@@ -22089,8 +22088,8 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
   outline-offset: -2px;
 }
 
-[data-focus-input='pointer'] #root :focus {
-  outline: none;
+[data-focus-input='pointer'] :focus {
+  outline: none !important;
 }
 
 .profile-redesign .password-change-form > .primary {

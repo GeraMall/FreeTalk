@@ -14,6 +14,7 @@ import type {
   ParticipantCardStyle,
   RoomChatMessage,
   RoomChatAttachment,
+  RoomChatAction,
   ServerMessage,
 } from '@freetalk/protocol';
 
@@ -43,6 +44,7 @@ interface Peer {
   lastPointerAt: number;
   lastDiceAt: number;
   lastActivityResyncAt: number;
+  lastChatTypingAt: number;
 }
 
 interface Room {
@@ -182,6 +184,7 @@ export class RoomManager {
       lastPointerAt: 0,
       lastDiceAt: 0,
       lastActivityResyncAt: 0,
+      lastChatTypingAt: 0,
     };
     room.peers.set(clientId, peer);
     if (room.identities.size >= 64 && !room.identities.has(clientId)) {
@@ -195,11 +198,14 @@ export class RoomManager {
 
     connection.send({
       type: 'joined-room',
+      roomChatVersion: 2,
       roomId,
       selfId: clientId,
       roomStartedAt: room.createdAt,
       participants: [...room.peers.values()].map((entry) => entry.participant),
-      roomChatMessages: room.chatMessages,
+      roomChatMessages: room.chatMessages.map((message) =>
+        message.participantId === clientId ? message : { ...message, readers: undefined },
+      ),
       roomChatToken: peer.roomChatToken,
       activity: roomActivityView(
         room.activity,
@@ -599,6 +605,7 @@ export class RoomManager {
     text: string,
     now = Date.now(),
     attachment?: RoomChatAttachment,
+    replyTo?: string,
   ) {
     const room = this.rooms.get(roomId);
     const peer = room?.peers.get(clientId);
@@ -610,11 +617,96 @@ export class RoomManager {
       senderName: peer.participant.name,
       text,
       attachment,
+      replyTo: room.chatMessages.some((m) => m.id === replyTo && !m.deleted) ? replyTo : undefined,
       timestamp: now,
     };
     room.chatMessages.push(message);
     if (room.chatMessages.length > 200) room.chatMessages.splice(0, room.chatMessages.length - 200);
     this.broadcast(room, { type: 'room-chat-message', message });
+    return true;
+  }
+
+  chatAction(roomId: string, clientId: string, action: RoomChatAction, now = Date.now()) {
+    const room = this.rooms.get(roomId),
+      peer = room?.peers.get(clientId);
+    if (!room || !peer) return false;
+    if (action.kind === 'typing') {
+      if (action.active && now - peer.lastChatTypingAt < 1000) return false;
+      peer.lastChatTypingAt = now;
+      this.broadcast(room, {
+        type: 'room-chat-typing',
+        participantId: clientId,
+        name: peer.participant.name,
+        expiresAt: action.active ? now + 5000 : 0,
+      });
+      return true;
+    }
+    const notify = (message: RoomChatMessage) => {
+      for (const [id, target] of room.peers)
+        target.connection.send({
+          type: 'room-chat-updated',
+          message: id === message.participantId ? message : { ...message, readers: undefined },
+        });
+    };
+    if (action.kind === 'read') {
+      for (const message of room.chatMessages) {
+        if (
+          !action.ids.includes(message.id) ||
+          message.participantId === clientId ||
+          message.deleted ||
+          message.readers?.some((r) => r.id === clientId)
+        )
+          continue;
+        message.readers = [
+          ...(message.readers ?? []),
+          { id: clientId, name: peer.participant.name, readAt: now },
+        ].slice(-8);
+        room.peers
+          .get(message.participantId)
+          ?.connection.send({ type: 'room-chat-updated', message });
+      }
+      return true;
+    }
+    const message = room.chatMessages.find((m) => m.id === action.id);
+    if (!message || message.deleted) return false;
+    const own = message.participantId === clientId;
+    if (action.kind === 'edit') {
+      if (!own || message.attachment) return false;
+      message.text = action.text;
+      message.editedAt = now;
+    }
+    if (action.kind === 'delete') {
+      if (!own && room.ownerId !== clientId) return false;
+      message.deleted = true;
+      message.text = 'Сообщение удалено';
+      message.attachment = undefined;
+      message.reactions = [];
+      message.pinned = false;
+      message.readers = [];
+    }
+    if (action.kind === 'pin') {
+      if (!own && room.ownerId !== clientId) return false;
+      for (const previous of room.chatMessages)
+        if (previous.id !== message.id && previous.pinned) {
+          previous.pinned = false;
+          notify(previous);
+        }
+      message.pinned = action.pinned;
+    }
+    if (action.kind === 'react') {
+      const reactions = message.reactions ?? [],
+        existing = reactions.find((r) => r.emoji === action.emoji);
+      if (existing) {
+        existing.userIds = existing.userIds.includes(clientId)
+          ? existing.userIds.filter((id) => id !== clientId)
+          : [...existing.userIds, clientId];
+      } else {
+        if (reactions.length >= 20) return false;
+        reactions.push({ emoji: action.emoji, userIds: [clientId] });
+      }
+      message.reactions = reactions.filter((r) => r.userIds.length);
+    }
+    notify(message);
     return true;
   }
 

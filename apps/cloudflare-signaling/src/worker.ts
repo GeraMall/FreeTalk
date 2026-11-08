@@ -437,6 +437,9 @@ export class VoiceRoom implements DurableObject {
         }
         return;
       }
+      // Legacy worker does not advertise roomChatVersion=2; enhanced room actions
+      // are handled by the VPS signaling implementation only.
+      if (message.type === 'room-chat-action') return;
       const target = this.find(message.to);
       if (!target) {
         this.send(socket, {

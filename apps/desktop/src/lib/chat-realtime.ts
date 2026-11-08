@@ -5,6 +5,7 @@ import {
 } from '@freetalk/protocol';
 import { accountClient, accountRealtimeUrl } from './api-client';
 import { selfPresence } from './self-presence';
+import { emitChatInteraction } from './chat-interactions';
 import {
   createAccountSocket,
   type SignalSocket,
@@ -121,6 +122,16 @@ export class ChatRealtimeClient {
           if (message.type === 'presence-updated')
             window.dispatchEvent(new CustomEvent(ACCOUNT_PRESENCE_EVENT, { detail: message }));
           this.onEvent(message);
+          if (message.type === 'chat-typing' || message.type === 'chat-reads')
+            emitChatInteraction(message);
+          else if (message.type === 'message-created' && message.message.sender_id)
+            emitChatInteraction({
+              type: 'chat-typing',
+              chatId: message.chatId,
+              userId: message.message.sender_id,
+              name: '',
+              expiresAt: 0,
+            });
         } catch {
           // Ignore malformed server data without breaking subsequent realtime events.
         }

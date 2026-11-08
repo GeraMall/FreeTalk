@@ -19,6 +19,7 @@ import type {
   RoomActivity,
   RoomActivityAction,
   RoomChatMessage,
+  RoomChatAction,
 } from '@freetalk/protocol';
 import { useRoomPresence } from '../lib/use-room-presence';
 import { AWAY_AFTER_MS } from '../lib/chat-realtime';
@@ -123,7 +124,8 @@ interface RoomViewProps {
   reactions: Array<{ id: string; participantId: string; reaction: Reaction }>;
   roomChatMessages: RoomChatMessage[];
   roomChatToken?: string;
-  onRoomChatFile?(file: File, caption: string): Promise<boolean>;
+  onRoomChatFile?(file: File, caption: string, replyTo?: string): Promise<boolean>;
+  onRoomChatAction?(action: RoomChatAction): void;
   activity?: RoomActivity;
   activityUnlocked?: boolean;
   onActivity?(action: RoomActivityAction): void;
@@ -155,7 +157,7 @@ interface RoomViewProps {
   ): void;
   onScreen(): void;
   onReaction(reaction: Reaction): void;
-  onRoomChatSend(text: string): boolean;
+  onRoomChatSend(text: string, replyTo?: string): boolean;
   onScreenFocusChange(active: boolean): void;
   onSettings(): void;
   onRecording(): void;
@@ -219,6 +221,7 @@ export function RoomView({
   onRoomChatSend,
   roomChatToken,
   onRoomChatFile,
+  onRoomChatAction,
   onScreenFocusChange,
   onSettings,
   onRecording,
@@ -1041,6 +1044,7 @@ export function RoomView({
             selfId={selfId}
             fileToken={roomChatToken}
             onSendFile={onRoomChatFile}
+            onAction={onRoomChatAction}
             closing={chatClosing}
             onClose={closeRoomChat}
             onClosed={() => {

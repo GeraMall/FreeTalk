@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { installInteractionGuards } from './interaction-guards';
 
 describe('interaction guards', () => {
-  it('keeps the native context menu in chats and text fields only', () => {
+  it('keeps the native context menu only in editable fields, including room chats', () => {
     const cleanup = installInteractionGuards(document);
     const surface = document.createElement('div');
     const input = document.createElement('input');
@@ -24,7 +24,7 @@ describe('interaction guards', () => {
 
     const messageMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
     message.dispatchEvent(messageMenu);
-    expect(messageMenu.defaultPrevented).toBe(false);
+    expect(messageMenu.defaultPrevented).toBe(true);
 
     cleanup();
     const restored = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
@@ -39,6 +39,10 @@ describe('interaction guards', () => {
     const cleanup = installInteractionGuards(document);
     const root = document.documentElement;
     try {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+      expect(root.dataset.focusInput).toBe('keyboard');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(root.dataset.focusInput).toBe('pointer');
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
       expect(root.dataset.focusInput).toBe('keyboard');
 

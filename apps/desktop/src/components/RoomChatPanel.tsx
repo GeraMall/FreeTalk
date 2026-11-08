@@ -1,6 +1,13 @@
+import { clipboardPng } from '../lib/clipboard-image';
 import { appLanguage, t } from '../lib/app-language';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { RoomChatMessage, RoomChatAttachment } from '@freetalk/protocol';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ChatActionConfirmDialog } from './ChatActionConfirmDialog';
+import type { RoomChatMessage, RoomChatAttachment, RoomChatAction } from '@freetalk/protocol';
+import { MessageContextMenu, type MessageContextState, type MessageItem } from './ChatsPage';
+import { TypingIndicator } from './TypingIndicator';
+import { MessageReadersDialog } from './MessageReadersDialog';
+import { AppToast } from './AppToast';
+import { useTypingSender, useVisibleMessageReads } from '../lib/chat-interactions';
 import {
   ArrowDown,
   MessageCircle,
@@ -10,6 +17,9 @@ import {
   Download,
   FileText,
   LoaderCircle,
+  Copy,
+  CheckCircle2,
+  Pin,
 } from 'lucide-react';
 import { loadRoomChatFile } from '../lib/room-chat-files';
 import { createPortal } from 'react-dom';
@@ -22,9 +32,10 @@ interface RoomChatPanelProps {
   closing?: boolean;
   onClosed?(): void;
   onClose(): void;
-  onSend(text: string): boolean;
+  onSend(text: string, replyTo?: string): boolean;
   fileToken?: string;
-  onSendFile?(file: File, caption: string): Promise<boolean>;
+  onSendFile?(file: File, caption: string, replyTo?: string): Promise<boolean>;
+  onAction?(action: RoomChatAction): void;
 }
 
 function fileSize(bytes: number) {
@@ -45,12 +56,118 @@ export function RoomChatPanel({
   onSend,
   fileToken,
   onSendFile,
+  onAction,
 }: RoomChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [file, setFile] = useState<File>();
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<string>();
+  const [menu, setMenu] = useState<MessageContextState>(),
+    [reply, setReply] = useState<RoomChatMessage>(),
+    [editing, setEditing] = useState<string>(),
+    [selection, setSelection] = useState(new Set<string>()),
+    [readersId, setReadersId] = useState<string>(),
+    [notice, setNotice] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const hold = useRef<{ timer: number; x: number; y: number } | undefined>(undefined);
+  const suppressClick = useRef(false);
+  const cancelHold = () => {
+    if (hold.current) window.clearTimeout(hold.current.timer);
+    hold.current = undefined;
+  };
+  useEffect(
+    () => () => {
+      if (hold.current) window.clearTimeout(hold.current.timer);
+    },
+    [],
+  );
+  const typing = useTypingSender(onAction ? 'room' : undefined, (active) =>
+    onAction?.({ kind: 'typing', active }),
+  );
+  const asMessage = useCallback(
+    (m: RoomChatMessage): MessageItem => ({
+      id: m.id,
+      sender_id: m.participantId,
+      display_name: m.senderName,
+      body: m.deleted ? t('Сообщение удалено') : m.text,
+      kind:
+        !onAction || m.deleted
+          ? 'system'
+          : m.attachment?.image
+            ? 'image'
+            : m.attachment
+              ? 'file'
+              : 'text',
+      created_at: new Date(m.timestamp).toISOString(),
+      expires_at: null,
+      pinned_at: m.pinned ? new Date(m.timestamp).toISOString() : null,
+      reactions: m.reactions?.map((r) => ({
+        emoji: r.emoji,
+        count: r.userIds.length,
+        userIds: r.userIds,
+      })),
+    }),
+    [onAction],
+  );
+  const showMenu = (m: RoomChatMessage, x: number, y: number) =>
+    setMenu({
+      message: asMessage(m),
+      x: Math.max(8, Math.min(x, window.innerWidth - 294)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 430)),
+      expanded: false,
+    });
+  const menuId = menu?.message.id;
+  useEffect(() => {
+    if (!menuId) return;
+    const close = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(undefined);
+    };
+    document.addEventListener('pointerdown', close, true);
+    const frame = requestAnimationFrame(() =>
+      menuRef.current?.querySelector<HTMLElement>('button')?.focus(),
+    );
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      cancelAnimationFrame(frame);
+    };
+  }, [menuId]);
+  useEffect(() => {
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMenu(undefined);
+      setSelection(new Set());
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, []);
+  useEffect(() => {
+    setMenu((old) => {
+      if (!old) return old;
+      const latest = messages.find((m) => m.id === old.message.id);
+      return latest && !latest.deleted ? { ...old, message: asMessage(latest) } : undefined;
+    });
+  }, [messages, asMessage]);
+  const toggle = (id: string) =>
+    setSelection((old) => {
+      const next = new Set(old);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const copy = async (items: RoomChatMessage[]) => {
+    try {
+      if (items.length === 1 && items[0]!.attachment?.image && fileToken) {
+        const image = loadRoomChatFile(items[0]!.attachment!.id, fileToken).then(clipboardPng);
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })]);
+      } else await navigator.clipboard.writeText(items.map((m) => m.text).join('\n'));
+      setNotice(t('Скопировано'));
+    } catch {
+      setError(t('Не удалось скопировать сообщение'));
+    }
+  };
   const input = useRef<HTMLInputElement>(null);
   const chooseFile = (next?: File) => {
     if (!next || sendingRef.current) return;
@@ -63,6 +180,12 @@ export function RoomChatPanel({
   };
   const [showNewMessages, setShowNewMessages] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  useVisibleMessageReads(
+    listRef,
+    onAction ? 'room' : undefined,
+    messages.map((m) => m.id).join(','),
+    (ids) => onAction?.({ kind: 'read', ids }),
+  );
   const stickToBottom = useRef(true);
   const previousCount = useRef(messages.length);
 
@@ -92,15 +215,26 @@ export function RoomChatPanel({
 
   const submit = () => {
     const text = draft.trim();
+    if (editing) {
+      if (text && onAction) {
+        onAction({ kind: 'edit', id: editing, text });
+        setEditing(undefined);
+        setDraft('');
+        typing(false);
+      }
+      return;
+    }
     if (file && onSendFile && !sendingRef.current) {
       sendingRef.current = true;
       setSending(true);
       setError('');
-      void onSendFile(file, text)
+      void (reply ? onSendFile(file, text, reply.id) : onSendFile(file, text))
         .then((sent) => {
           if (!sent) throw new Error('Не удалось отправить файл');
           setFile(undefined);
           setDraft('');
+          setReply(undefined);
+          typing(false);
           stickToBottom.current = true;
         })
         .catch((caught) =>
@@ -113,8 +247,10 @@ export function RoomChatPanel({
       return;
     }
     if (sendingRef.current) return;
-    if (!text || !onSend(text)) return;
+    if (!text || !(reply ? onSend(text, reply.id) : onSend(text))) return;
     setDraft('');
+    setReply(undefined);
+    typing(false);
     stickToBottom.current = true;
   };
 
@@ -157,7 +293,58 @@ export function RoomChatPanel({
           messages.map((message) => {
             const own = message.participantId === selfId;
             return (
-              <article className={`room-chat-message ${own ? 'own' : ''}`} key={message.id}>
+              <article
+                className={`room-chat-message ${own ? 'own' : ''}${selection.has(message.id) ? ' selected' : ''}`}
+                key={message.id}
+                data-message-id={message.id}
+                data-read-eligible={!own && !message.deleted}
+                tabIndex={0}
+                onPointerDown={(event) => {
+                  cancelHold();
+                  if (
+                    event.pointerType === 'mouse' ||
+                    (event.target as HTMLElement).closest('button,input,textarea,a')
+                  )
+                    return;
+                  const { clientX: x, clientY: y } = event;
+                  hold.current = {
+                    x,
+                    y,
+                    timer: window.setTimeout(() => {
+                      suppressClick.current = true;
+                      showMenu(message, x, y);
+                      hold.current = undefined;
+                    }, 480),
+                  };
+                }}
+                onPointerMove={(event) => {
+                  if (
+                    hold.current &&
+                    Math.hypot(event.clientX - hold.current.x, event.clientY - hold.current.y) > 8
+                  )
+                    cancelHold();
+                }}
+                onPointerUp={cancelHold}
+                onPointerCancel={cancelHold}
+                onClickCapture={(event) => {
+                  if (suppressClick.current) {
+                    suppressClick.current = false;
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  showMenu(message, event.clientX, event.clientY);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                    event.preventDefault();
+                    const box = event.currentTarget.getBoundingClientRect();
+                    showMenu(message, box.left + 40, box.top + 20);
+                  }
+                }}
+              >
                 <span className="room-chat-avatar" aria-hidden="true">
                   {message.senderAvatar ? (
                     <CachedMediaImage src={message.senderAvatar} alt="" />
@@ -169,19 +356,72 @@ export function RoomChatPanel({
                   <span className="room-chat-message-meta">
                     <strong>{own ? t('Вы') : message.senderName}</strong>
                     <time dateTime={new Date(message.timestamp).toISOString()}>
-                      {new Date(message.timestamp).toLocaleTimeString('ru-RU', {
+                      {new Date(message.timestamp).toLocaleTimeString(appLanguage(), {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
                     </time>
                   </span>
-                  {message.attachment && fileToken && (
+                  {message.pinned && <Pin size={12} aria-label={t('Закреплено')} />}
+                  {message.replyTo && (
+                    <button
+                      className="room-chat-reply-preview"
+                      onClick={() =>
+                        listRef.current
+                          ?.querySelector<HTMLElement>(`[data-message-id="${message.replyTo}"]`)
+                          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                      }
+                    >
+                      {(() => {
+                        const original = messages.find((m) => m.id === message.replyTo);
+                        return original?.deleted
+                          ? t('Сообщение удалено')
+                          : original
+                            ? `${original.senderName}: ${original.text}`
+                            : t('Сообщение');
+                      })()}
+                    </button>
+                  )}
+                  {!message.deleted && message.attachment && fileToken && (
                     <RoomAttachment attachment={message.attachment} token={fileToken} />
                   )}
                   {(!message.attachment || message.text !== message.attachment.name) && (
-                    <span className="room-chat-message-text">{message.text}</span>
+                    <span className="room-chat-message-text">
+                      {message.deleted ? t('Сообщение удалено') : message.text}
+                      {message.editedAt && (
+                        <small className="room-chat-edited">{t('изменено')}</small>
+                      )}
+                    </span>
+                  )}
+                  {!message.deleted && !!message.reactions?.length && (
+                    <span className="message-reactions">
+                      {message.reactions.map((r) => (
+                        <button
+                          key={r.emoji}
+                          className={r.userIds.includes(selfId) ? 'mine' : ''}
+                          aria-label={`${r.emoji}: ${r.userIds.length}`}
+                          onClick={() =>
+                            onAction?.({ kind: 'react', id: message.id, emoji: r.emoji })
+                          }
+                        >
+                          <span>{r.emoji}</span>
+                          <b>{r.userIds.length}</b>
+                        </button>
+                      ))}
+                    </span>
                   )}
                 </span>
+                {selection.size > 0 && (
+                  <button
+                    className="room-chat-selection-check"
+                    role="checkbox"
+                    aria-checked={selection.has(message.id)}
+                    aria-label={t('Выбрать сообщение')}
+                    onClick={() => toggle(message.id)}
+                  >
+                    <CheckCircle2 size={19} />
+                  </button>
+                )}
               </article>
             );
           })
@@ -195,6 +435,40 @@ export function RoomChatPanel({
       )}
 
       <div className="room-chat-footer">
+        <TypingIndicator scope={onAction ? 'room' : undefined} selfId={selfId} />
+        {(reply || editing) && (
+          <div className="room-chat-reply-draft">
+            <span>
+              {editing ? t('Изменить') : reply ? `${reply.senderName}: ${reply.text}` : ''}
+            </span>
+            <button
+              aria-label={t('Отмена')}
+              onClick={() => {
+                setReply(undefined);
+                if (editing) setDraft('');
+                setEditing(undefined);
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
+        {selection.size > 0 && (
+          <div className="room-chat-selection-bar">
+            <span>
+              {selection.size} {t('выбрано')}
+            </span>
+            <button
+              aria-label={t('Копировать выбранные сообщения')}
+              onClick={() => void copy(messages.filter((m) => selection.has(m.id)))}
+            >
+              <Copy size={17} />
+            </button>
+            <button aria-label={t('Снять выделение')} onClick={() => setSelection(new Set())}>
+              <X size={17} />
+            </button>
+          </div>
+        )}
         {file && (
           <div className="room-chat-file-draft">
             <FileText size={17} />
@@ -250,6 +524,7 @@ export function RoomChatPanel({
             </>
           )}
           <textarea
+            ref={composerRef}
             aria-label={t('Сообщение в чат комнаты')}
             placeholder={t('Написать сообщение…')}
             maxLength={2_000}
@@ -263,7 +538,11 @@ export function RoomChatPanel({
                 chooseFile(pasted);
               }
             }}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              typing(!!event.target.value.trim());
+            }}
+            onBlur={() => typing(false)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' || event.shiftKey) return;
               event.preventDefault();
@@ -283,6 +562,82 @@ export function RoomChatPanel({
           </button>
         </div>
       </div>
+      {menu &&
+        createPortal(
+          <MessageContextMenu
+            menuRef={menuRef}
+            state={menu}
+            accountId={selfId}
+            own={menu.message.sender_id === selfId}
+            canDelete={!!onAction && menu.message.sender_id === selfId}
+            canPin={!!onAction && menu.message.sender_id === selfId}
+            onExpand={() => setMenu((old) => (old ? { ...old, expanded: !old.expanded } : old))}
+            onReact={(emoji) => {
+              onAction?.({ kind: 'react', id: menu.message.id, emoji });
+              setMenu(undefined);
+            }}
+            onReply={() => {
+              setEditing(undefined);
+              setReply(messages.find((m) => m.id === menu.message.id));
+              setMenu(undefined);
+              composerRef.current?.focus();
+            }}
+            onEdit={() => {
+              setReply(undefined);
+              setEditing(menu.message.id);
+              setDraft(menu.message.body);
+              setMenu(undefined);
+              composerRef.current?.focus();
+            }}
+            onPin={() => {
+              onAction?.({ kind: 'pin', id: menu.message.id, pinned: !menu.message.pinned_at });
+              setMenu(undefined);
+            }}
+            onCopy={() => {
+              void copy(messages.filter((m) => m.id === menu.message.id));
+              setMenu(undefined);
+            }}
+            onDelete={() => {
+              setDeleting(menu.message.id);
+              setMenu(undefined);
+            }}
+            onSelect={() => {
+              toggle(menu.message.id);
+              setMenu(undefined);
+            }}
+            onReaders={
+              menu.message.sender_id === selfId && onAction
+                ? () => {
+                    setReadersId(menu.message.id);
+                    setMenu(undefined);
+                  }
+                : undefined
+            }
+          />,
+          document.body,
+        )}
+      {readersId && (
+        <MessageReadersDialog
+          messageId={readersId}
+          readers={messages.find((m) => m.id === readersId)?.readers ?? []}
+          onClose={() => setReadersId(undefined)}
+        />
+      )}
+      {deleting && (
+        <ChatActionConfirmDialog
+          title={t('Удалить сообщение?')}
+          description={t('Сообщение исчезнет у всех участников этого чата.')}
+          confirmLabel="Удалить"
+          busy={false}
+          error=""
+          onCancel={() => setDeleting(undefined)}
+          onConfirm={() => {
+            onAction?.({ kind: 'delete', id: deleting });
+            setDeleting(undefined);
+          }}
+        />
+      )}
+      <AppToast message={notice} onClose={() => setNotice('')} />
     </aside>
   );
 }
