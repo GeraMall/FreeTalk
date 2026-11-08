@@ -58,6 +58,28 @@ export const tableSchema = z.discriminatedUnion('kind', [
   z.object({
     ...base,
     kind: z.literal('monopoly'),
+    propertyRules: z.literal(2).optional(),
+    pendingJailDice: z.tuple([count, count]).optional(),
+    lastMove: z
+      .object({
+        sequence: count,
+        roll: z.boolean().optional(),
+        seat: count,
+        from: count,
+        path: z.array(count.max(39)).max(14),
+        at: count,
+        until: count,
+      })
+      .optional(),
+    lastCard: z
+      .object({
+        sequence: count,
+        kind: z.enum(['chance', 'event']),
+        title: z.string().max(80),
+        text: z.string().max(400),
+        at: count,
+      })
+      .optional(),
     turn: count,
     positions: z.array(count).max(6),
     money: z.array(z.number().int()).max(6),
@@ -169,6 +191,7 @@ export function tableCountsForStatistics(table: ActivityTable) {
 export const tableActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('table-open'),
+    propertyRules: z.literal(2).optional(),
     edition: z.literal(3).optional(),
     pokerFlow: z.literal(2).optional(),
     game: tableKindSchema,
@@ -230,6 +253,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
       'bid',
       'auction-pass',
       'jail-pay',
+      'liquidate-group',
     ]),
     index: z.number().int().min(0).max(39).optional(),
   }),

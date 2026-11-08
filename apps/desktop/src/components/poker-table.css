@@ -2888,3 +2888,62 @@
 .pkr-hole > .pkr-card-arrive {
   animation-duration: var(--hole-flight, 280ms);
 }
+
+.pkr-feedback-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  background: #2d6b5cf2;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  pointer-events: none;
+  animation: pkr-avatar-feedback 1.7s ease both;
+}
+.pkr-feedback-fold,
+.pkr-feedback-timeout {
+  background: #993b50f2;
+}
+.pkr-feedback-raise {
+  background: #816a32f5;
+}
+@keyframes pkr-avatar-feedback {
+  0% {
+    opacity: 0;
+    scale: 0.9;
+  }
+  12%,
+  65% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.04;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pkr-feedback-layer {
+    animation-name: pkr-avatar-feedback-still;
+  }
+}
+@keyframes pkr-avatar-feedback-still {
+  0%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.pkr-feedback-layer {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+}

@@ -194,6 +194,7 @@ export function applyRoomActivity(
       action.pokerSeats,
       action.edition,
       action.pokerFlow,
+      action.propertyRules,
     );
     return { table, view: { ...view, game: undefined, table: tableView(table) } };
   }
@@ -303,6 +304,7 @@ function completeSwitch(
         vote.game === 'poker' ? 8 : undefined,
         3,
         vote.pokerFlow,
+        vote.propertyRules,
       );
       next = {
         ...session,
@@ -357,6 +359,7 @@ function reduceSwitchVote(
       from: session.table?.view.kind ?? session.view.game?.kind,
       requestedBy: context.actorId,
       pokerFlow: action.game === 'poker' ? context.pokerFlow : undefined,
+      propertyRules: action.game === 'monopoly' ? context.propertyRules : undefined,
       electorate,
       yes: [context.actorId],
       no: [],

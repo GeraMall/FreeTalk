@@ -1,0 +1,2152 @@
+.activity-content.activity-monopoly-fit {
+  display: block;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+.activity-monopoly-fit > .activity-table-surface {
+  height: 100%;
+  min-height: 0;
+}
+.call-activity:has(.mono-viewport) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mono-viewport {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  position: relative;
+  container: monopoly / size;
+  color: #e6eef4;
+  overflow: hidden;
+}
+.mono-viewport *,
+.mono-viewport *::before,
+.mono-viewport *::after {
+  box-sizing: border-box;
+}
+.mono-viewport button {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid #365064;
+  border-radius: 9px;
+  background: #142533;
+  color: #e6edf4;
+  padding: 7px 11px;
+  transition:
+    background 160ms,
+    border-color 160ms;
+}
+.mono-viewport button:hover:not(:disabled) {
+  background: #203847;
+  border-color: #7d9caa;
+}
+.mono-viewport button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+.mono-viewport button:focus-visible {
+  outline: 2px solid #adbfdf;
+  outline-offset: 2px;
+}
+.mono-viewport button.mono-primary {
+  background: #aac3af;
+  color: #14291f;
+  border-color: #c0d2ba;
+  font-weight: 750;
+}
+.mono-viewport button.mono-primary:hover:not(:disabled) {
+  background: #c2d8c4;
+}
+.mono-viewport button.mono-danger {
+  color: #ffd6dd;
+  border-color: #894757;
+  background: #512b38;
+}
+.mono-brand {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 42px;
+  border: 1px solid #657162;
+  border-radius: 12px;
+  background: #1c302f;
+  color: #dbc69a;
+}
+.mono-game {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) 100px;
+  gap: 9px;
+  height: 100%;
+  min-height: 0;
+  padding: 4px;
+}
+.mono-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mono-heading h3 {
+  font-size: 20px;
+  margin: 0 0 3px;
+}
+.mono-heading small {
+  font-size: 11px;
+  color: #9aafb9;
+}
+.mono-turn-label {
+  margin-left: auto;
+  font-size: 12px;
+  color: #a6b9c5;
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mono-turn-label b {
+  color: #e4ddd0;
+}
+.mono-heading-buttons {
+  display: flex;
+  gap: 6px;
+}
+.mono-heading-buttons button {
+  width: 36px;
+  padding: 6px;
+}
+.mono-players {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+.mono-players > button {
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 56px;
+  padding: 7px;
+  border-bottom: 3px solid var(--seat-color);
+  background: #0e202d;
+}
+.mono-players > button.is-turn {
+  background: #223b38;
+  border-color: #9db697;
+  border-bottom-color: var(--seat-color);
+}
+.mono-players > button.is-bankrupt {
+  opacity: 0.45;
+}
+.mono-players .pkr-avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+.mono-players .pkr-voice {
+  scale: 0.7;
+  transform-origin: bottom right;
+}
+.mono-players > button > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+.mono-players strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mono-players b {
+  font-size: 12px;
+  color: #e3d4ac;
+}
+.mono-players small {
+  font-size: 9px;
+  margin-left: auto;
+}
+.mono-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 244px;
+  gap: 12px;
+  min-height: 0;
+}
+.mono-board {
+  isolation: isolate;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-rows: repeat(11, minmax(0, 1fr));
+  min-height: 0;
+  overflow: hidden;
+  border: 5px solid #415c58;
+  border-radius: 12px;
+  background: #a5bdb4;
+  box-shadow: inset 0 0 0 2px #d0dfcc;
+}
+.mono-board-center {
+  grid-column: 2/11;
+  grid-row: 2/11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 1.1cqh, 10px);
+  background: radial-gradient(ellipse at 50% 35%, #285044, #142e2a 74%);
+  border: 1px solid #6d8b74;
+  min-height: 0;
+  min-width: 0;
+  padding: 8px;
+  text-align: center;
+}
+.mono-center-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #d9cfac;
+  opacity: 0.7;
+}
+.mono-center-caption {
+  margin: 0;
+  color: #b0c8b9;
+  font-size: 12px;
+}
+.mono-viewport button.mono-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  min-width: 0;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid #718f81;
+  border-radius: 0;
+  padding: 8px 3px 4px;
+  background: #d6dfcf;
+  color: #263b36;
+  overflow: hidden;
+}
+.mono-viewport button.mono-cell:hover {
+  background: #f1eedc;
+  border-color: #324b44;
+  z-index: 2;
+}
+.mono-cell-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: var(--group-color);
+  border-bottom: 1px solid #34493850;
+}
+.mono-cell.is-special {
+  background: #c3d1c4;
+}
+.mono-cell.is-special .mono-cell-band {
+  background: #9bad9a;
+}
+.mono-cell-name {
+  font-size: clamp(7px, 1.03cqw, 12px);
+  font-weight: 700;
+  line-height: 1.13;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.mono-cell > small {
+  font-size: clamp(7px, 0.88cqw, 10px);
+  font-weight: 600;
+}
+.mono-cell.is-mortgaged {
+  background: #a2b1aa;
+}
+.mono-cell.is-mortgaged .mono-cell-name {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.mono-cell-owner {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height: 4px;
+  background: var(--owner-color);
+  box-shadow: 0 -1px #fff4;
+}
+.mono-buildings {
+  position: absolute;
+  top: 1px;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  height: 9px;
+  z-index: 2;
+}
+.mono-house,
+.mono-hotel {
+  position: relative;
+  display: block;
+  width: 7px;
+  height: 6px;
+  margin-top: 3px;
+  background: #23784b;
+  box-shadow:
+    2px 1px #12452c,
+    0 2px 2px #0005;
+  transform: skewY(-7deg);
+}
+.mono-house::before,
+.mono-hotel::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -1px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 4px solid #3f9f66;
+}
+.mono-hotel {
+  background: #bd3445;
+  width: 13px;
+  height: 8px;
+}
+.mono-hotel::before {
+  border-left-width: 7px;
+  border-right-width: 7px;
+  border-bottom-color: #e95b67;
+}
+.mono-token-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.mono-token {
+  position: absolute;
+  width: 25px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  transform: translate(calc(-50% + (var(--token-n) - 1) * 6px), calc(-45% + var(--token-n) * 2px));
+  transition:
+    left 110ms linear,
+    top 110ms linear;
+  filter: drop-shadow(1px 3px 1px #001b17a0);
+}
+.mono-token > svg {
+  position: relative;
+  width: 22px;
+  height: 24px;
+  z-index: 1;
+  color: #f1ece0;
+  fill: #87938a;
+  stroke-width: 1.5;
+  filter: drop-shadow(1px 1px #53655c);
+}
+.mono-token > i {
+  position: absolute;
+  bottom: 0;
+  width: 23px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid #cad0c1;
+  background: var(--seat-color);
+  box-shadow: 0 2px #334d47;
+}
+.mono-token.is-turn > i {
+  box-shadow:
+    0 2px #334d47,
+    0 0 0 2px #f8edbd9c;
+}
+.mono-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px;
+  background: #0c1b28;
+  border: 1px solid #2d4352;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.mono-current-player {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2b4249;
+}
+.mono-current-player small {
+  color: #9bb5bc;
+  font-size: 11px;
+}
+.mono-current-player strong {
+  font-size: 17px;
+  color: #f2e8c9;
+}
+.mono-actions {
+  display: grid;
+  gap: 8px;
+}
+.mono-actions > button {
+  min-height: 43px;
+}
+.mono-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.mono-management {
+  display: flex;
+  gap: 6px;
+}
+.mono-management > button {
+  flex: 1;
+  font-size: 11px;
+  min-width: 0;
+  padding: 7px;
+}
+.mono-viewport .mono-property-link {
+  background: transparent;
+  border-color: transparent;
+  color: #d5c9a5;
+  font-weight: 750;
+}
+.mono-auction {
+  display: grid;
+  gap: 5px;
+  text-align: center;
+}
+.mono-auction h4,
+.mono-auction p {
+  margin: 0;
+}
+.mono-auction > b {
+  font-size: 24px;
+  color: #e3d4ac;
+}
+.mono-waiting,
+.mono-debt {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a7bac3;
+  margin: 0;
+}
+.mono-debt strong {
+  color: #f1b1ba;
+}
+.mono-debt p {
+  margin: 4px 0;
+}
+.mono-debt small {
+  font-size: 11px;
+}
+.mono-bank-stock {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+  font-size: 11px;
+  color: #9eb9ad;
+  margin-top: auto;
+}
+.mono-last-log {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #93a9b5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mono-portfolio {
+  display: grid;
+  grid-template-rows: 18px minmax(0, 1fr);
+  gap: 5px;
+  min-height: 0;
+}
+.mono-portfolio > header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.mono-portfolio > header small {
+  color: #91aab5;
+  font-size: 11px;
+}
+.mono-property-rack {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: #516a71 transparent;
+  padding-bottom: 3px;
+}
+.mono-viewport .mono-property-rack > button {
+  display: grid;
+  grid-template-rows: 7px 1fr auto;
+  justify-content: stretch;
+  text-align: left;
+  align-items: center;
+  position: relative;
+  flex: 0 0 136px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 10px 7px;
+  border: 1px solid #b6c7bb;
+  border-radius: 8px;
+  background: #dce2d4;
+  color: #223c33;
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+.mono-property-rack > button > i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background: var(--group-color);
+}
+.mono-property-rack strong {
+  font-size: 12px;
+  grid-row: 2;
+  line-height: 1.1;
+}
+.mono-property-rack small {
+  font-size: 10px;
+  grid-row: 3;
+}
+.mono-property-rack .is-mortgaged {
+  filter: saturate(0.3);
+}
+.mono-property-rack > p {
+  margin: 0;
+  align-self: center;
+  color: #91aab5;
+  font-size: 12px;
+}
+.mono-dice-tray[class] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  justify-content: stretch;
+  align-items: center;
+  width: clamp(145px, 25cqw, 260px);
+  height: clamp(115px, 25cqh, 180px);
+  padding: 12px;
+  border: 2px solid #52644c;
+  border-radius: 16px;
+  background: #13362b;
+  box-shadow:
+    inset 0 3px 14px #001b18af,
+    0 3px #142b27;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.mono-dice-tray.is-held {
+  cursor: grabbing;
+  border-color: #c4be8b;
+}
+.mono-dice-tray[aria-disabled='true'] {
+  cursor: default;
+}
+.mono-dice-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  perspective: 500px;
+  --die-size: 42px;
+  --half: 21px;
+  min-height: 57px;
+}
+.mono-die {
+  position: relative;
+  width: var(--die-size);
+  height: var(--die-size);
+  transform-style: preserve-3d;
+  transform: rotateX(calc(var(--rx) - 18deg)) rotateY(calc(var(--ry) + 22deg));
+}
+.is-held .mono-die {
+  transform: translate(var(--tray-x), var(--tray-y))
+    rotateX(calc(var(--rx) + var(--shake-x) - 18deg))
+    rotateY(calc(var(--ry) + var(--shake-y) + 22deg));
+}
+.mono-die-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #a8b4aa;
+  border-radius: 5px;
+  background: #f0eddb;
+  backface-visibility: hidden;
+  box-shadow: inset 0 0 5px #52665344;
+}
+.mono-die-face > i {
+  border-radius: 50%;
+}
+.mono-die-face > i.is-pip {
+  background: #263f36;
+  box-shadow: inset 0 1px 1px #0008;
+}
+.face-1 {
+  transform: translateZ(var(--half));
+}
+.face-2 {
+  transform: rotateY(90deg) translateZ(var(--half));
+}
+.face-3 {
+  transform: rotateX(-90deg) translateZ(var(--half));
+}
+.face-4 {
+  transform: rotateX(90deg) translateZ(var(--half));
+}
+.face-5 {
+  transform: rotateY(-90deg) translateZ(var(--half));
+}
+.face-6 {
+  transform: rotateY(180deg) translateZ(var(--half));
+}
+.is-rolling .mono-die {
+  animation: mono-dice-throw 820ms cubic-bezier(0.17, 0.75, 0.26, 1) both;
+}
+.is-rolling .die-1 {
+  animation-delay: 65ms;
+}
+@keyframes mono-dice-throw {
+  0% {
+    transform: translate(-15px, -20px) rotateX(calc(var(--shake-x) + 180deg))
+      rotateY(calc(var(--shake-y) + 180deg));
+  }
+  35% {
+    transform: translate(18px, -15px) rotateX(500deg) rotateY(480deg);
+  }
+  65% {
+    transform: translate(-7px, 9px) rotateX(calc(var(--rx) + 320deg))
+      rotateY(calc(var(--ry) + 340deg));
+  }
+  82% {
+    transform: translate(3px, -4px) rotateX(calc(var(--rx) + 345deg))
+      rotateY(calc(var(--ry) + 390deg));
+  }
+  100% {
+    transform: rotateX(calc(var(--rx) + 342deg)) rotateY(calc(var(--ry) + 382deg));
+  }
+}
+.mono-dice-help {
+  font-size: 11px;
+  color: #b9cdb8;
+  line-height: 1.3;
+  margin-top: 8px;
+}
+.mono-dice-result {
+  font-size: 14px;
+  color: #ece2bb;
+  font-weight: 750;
+  margin-top: 5px;
+}
+.mono-last-card[class] {
+  background: #bdaf82;
+  color: #193a2e;
+  border-color: #d6cba3;
+  font-size: 11px;
+  min-height: 29px;
+  padding: 5px 9px;
+}
+.mono-overlay,
+.mono-win-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #030a13c9;
+  backdrop-filter: blur(5px);
+}
+.mono-modal {
+  position: relative;
+  width: min(550px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  padding: 15px;
+  border: 1px solid #4d666a;
+  border-radius: 17px;
+  background: #0b1a26;
+  box-shadow: 0 15px 40px #0007;
+  animation: mono-card-open 0.24s ease both;
+}
+.mono-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mono-modal > header h3 {
+  margin: 0;
+  font-size: 19px;
+}
+.mono-modal > header button {
+  width: 33px;
+  min-height: 33px;
+  padding: 5px;
+}
+.mono-deed {
+  border: 1px solid #b5bdad;
+  border-radius: 9px;
+  background: #ecebdc;
+  color: #263e33;
+  overflow: hidden;
+}
+.mono-deed-title {
+  padding: 12px 14px;
+  background: var(--group-color);
+  color: #182b26;
+  text-align: center;
+  border-bottom: 2px solid #3a4d3d;
+}
+.mono-deed-title small {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.mono-deed-title h2 {
+  font-size: 24px;
+  margin: 4px 0 0;
+}
+.mono-deed-owner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 12px 10px;
+}
+.mono-deed-owner > b {
+  color: #914152;
+  font-size: 10px;
+}
+.mono-deed dl {
+  margin: 0 16px;
+  display: grid;
+  gap: 2px;
+}
+.mono-deed dl > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 7px;
+  font-size: 14px;
+  border-bottom: 1px solid #8b9e8a50;
+}
+.mono-deed dl .is-current {
+  background: #c7d7c4;
+  border-radius: 5px;
+  font-weight: 750;
+}
+.mono-deed dd {
+  margin: 0;
+  font-weight: 700;
+}
+.mono-deed-note {
+  display: block;
+  text-align: center;
+  margin: 10px 16px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.mono-deed-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 12px 16px;
+  font-size: 11px;
+}
+.mono-deed-facts > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+.mono-deed-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.mono-deed-controls > button {
+  flex: 1 1 40%;
+  font-size: 12px;
+}
+.mono-card-copy,
+.mono-modal-copy {
+  font-size: 16px;
+  line-height: 1.6;
+  padding: 8px 14px;
+}
+.mono-chance-card {
+  padding: 22px;
+  text-align: center;
+  background: #e5ddbe;
+  color: #284133;
+  border: 1px solid #d0bb80;
+  border-radius: 10px;
+}
+.mono-chance-card > svg {
+  color: #766334;
+}
+.mono-chance-card small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  margin: 9px;
+}
+.mono-chance-card h2 {
+  font-size: 25px;
+}
+.mono-chance-card p {
+  font-size: 18px;
+  line-height: 1.55;
+  margin: 20px 0;
+}
+.mono-trade-form {
+  display: grid;
+  gap: 10px;
+}
+.mono-trade-form > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.mono-trade-form input[type='number'],
+.mono-trade-form select {
+  min-height: 36px;
+  border: 1px solid #405e6b;
+  border-radius: 7px;
+  padding: 6px;
+  background: #0b1a26;
+  color: #e8eff3;
+  max-width: 65%;
+}
+.mono-trade-form input[type='number'] {
+  width: 120px;
+}
+.mono-trade-choices {
+  padding: 9px;
+  border: 1px solid #304b55;
+  border-radius: 8px;
+}
+.mono-trade-choices > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.mono-trade-choices > header > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+}
+.mono-trade-choices > header button {
+  min-height: 24px;
+  padding: 0 7px;
+}
+.mono-trade-choices > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.mono-trade-choices label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.mono-trade-choices input[type='checkbox'] {
+  appearance: auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
+  margin: 0;
+  padding: 0;
+}
+.mono-trade-choices p {
+  font-size: 11px;
+  margin: 0;
+  color: #9bb1b9;
+}
+.mono-trade-review {
+  font-size: 15px;
+  line-height: 1.6;
+}
+.mono-trade-review .mono-buttons {
+  margin-top: 15px;
+}
+.mono-rules {
+  display: grid;
+  gap: 9px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mono-rules p {
+  margin: 0;
+}
+.mono-win {
+  width: min(460px, 100%);
+  padding: 30px;
+  border: 1px solid #8c9778;
+  border-radius: 20px;
+  background: #132c2b;
+  text-align: center;
+  box-shadow: 0 20px 50px #0007;
+  animation: mono-card-open 0.4s ease both;
+}
+.mono-win > .pkr-avatar {
+  width: 90px;
+  height: 90px;
+  margin: 12px auto;
+  border-color: #d3c28d;
+}
+.mono-win-crown {
+  color: #e2c281;
+  animation: mono-crown 1s ease both;
+}
+.mono-win > small {
+  color: #b9caad;
+}
+.mono-win h2 {
+  font-size: 30px;
+  margin: 6px 0;
+}
+.mono-win p {
+  font-size: 14px;
+  color: #a9c0b7;
+  line-height: 1.5;
+  margin: 12px 0 20px;
+}
+@keyframes mono-card-open {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes mono-crown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) rotate(-15deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mono-lobby {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: clamp(8px, 2cqh, 24px) clamp(8px, 3cqw, 35px);
+}
+.mono-lobby-heading {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #2c4350;
+}
+.mono-lobby-heading .mono-brand {
+  width: 56px;
+  height: 58px;
+}
+.mono-lobby-heading small {
+  font-size: 11px;
+  color: #b9c9b9;
+  letter-spacing: 0.08em;
+}
+.mono-lobby-heading h3 {
+  font-size: 28px;
+  margin: 6px 0;
+}
+.mono-lobby-heading p {
+  font-size: 14px;
+  color: #9eb4c2;
+  line-height: 1.4;
+  margin: 0;
+}
+.mono-lobby-heading > b {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 16px;
+  white-space: nowrap;
+  color: #cfdec9;
+}
+.mono-lobby-body {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 25px;
+  min-height: 0;
+  flex: 1;
+  align-content: center;
+}
+.mono-lobby h4 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+.mono-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.mono-modes > button {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-height: 100px;
+  padding: 15px;
+  text-align: left;
+  font-size: 14px;
+}
+.mono-modes > button[aria-pressed='true'] {
+  background: #223d35;
+  border-color: #a3bc9c;
+}
+.mono-modes b {
+  font-size: 20px;
+  color: #e7d7ac;
+}
+.mono-rule-note {
+  padding: 15px;
+  margin-top: 14px;
+  border: 1px solid #3b5452;
+  border-radius: 11px;
+  background: #132923;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mono-rule-note strong {
+  font-size: 14px;
+}
+.mono-rule-note p {
+  margin: 7px 0;
+  color: #a8bfb2;
+}
+.mono-rule-note small {
+  font-size: 11px;
+  color: #b4c3b7;
+}
+.mono-lobby .table-bot-controls {
+  padding: 12px;
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+.mono-lobby .table-bot-controls strong {
+  font-size: 13px;
+}
+.mono-lobby .table-bot-controls small {
+  font-size: 11px;
+}
+.mono-lobby .table-bot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.mono-lobby .table-bot-actions > button {
+  font-size: 11px;
+  min-height: 29px;
+  padding: 4px 7px;
+}
+.mono-seat-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.mono-seat-title h4 {
+  margin: 0;
+}
+.mono-seat-title > button {
+  font-size: 11px;
+  min-height: 25px;
+  padding: 0 6px;
+  background: none;
+  border: 0;
+}
+.mono-lobby-seats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.mono-lobby-seats > button {
+  position: relative;
+  min-height: 92px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px;
+  font-size: 14px;
+  text-align: left;
+}
+.mono-lobby-seats > button:disabled {
+  opacity: 1;
+}
+.mono-lobby-seats .is-self {
+  background: #203642;
+  border-color: #98adb7;
+}
+.mono-lobby-seats .pkr-avatar {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+}
+.mono-lobby-seats .pkr-voice {
+  display: none;
+}
+.mono-lobby-seats > button > span:not(.mono-seat-number) {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.mono-lobby-seats strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mono-lobby-seats small {
+  font-size: 11px;
+  color: #9eb2be;
+}
+.mono-seat-number {
+  position: absolute;
+  right: 9px;
+  top: 6px;
+}
+.mono-lobby-seats > button > svg:last-child:not(:first-child) {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  color: #d8c28e;
+  width: 14px;
+}
+.mono-lobby-start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #304650;
+}
+.mono-lobby-start p {
+  font-size: 13px;
+  color: #a8bac5;
+  margin: 0;
+}
+.mono-lobby-start > button {
+  min-height: 45px;
+  min-width: 165px;
+  font-size: 16px;
+}
+@container monopoly (max-width:760px) {
+  .mono-game {
+    grid-template-rows: auto auto minmax(0, 1fr) 76px;
+    gap: 6px;
+    padding: 2px;
+  }
+  .mono-heading h3 {
+    font-size: 16px;
+  }
+  .mono-heading small {
+    font-size: 9px;
+  }
+  .mono-turn-label {
+    display: none;
+  }
+  .mono-heading-buttons {
+    margin-left: auto;
+  }
+  .mono-brand {
+    width: 31px;
+    height: 33px;
+  }
+  .mono-heading-buttons button {
+    width: 31px;
+    min-height: 31px;
+    padding: 4px;
+  }
+  .mono-players {
+    gap: 3px;
+  }
+  .mono-players > button {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 57px;
+    padding: 4px 2px;
+  }
+  .mono-players .pkr-avatar {
+    width: 25px;
+    height: 25px;
+  }
+  .mono-players .pkr-voice {
+    scale: 0.55;
+  }
+  .mono-players > button > span {
+    text-align: center;
+    width: 100%;
+  }
+  .mono-players strong {
+    font-size: 8px;
+  }
+  .mono-players b {
+    font-size: 9px;
+  }
+  .mono-players small {
+    display: none;
+  }
+  .mono-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .mono-control-panel {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 6px;
+  }
+  .mono-current-player,
+  .mono-waiting,
+  .mono-bank-stock,
+  .mono-last-log {
+    display: none;
+  }
+  .mono-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    flex: 1;
+  }
+  .mono-actions > button {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 5px 8px;
+    flex: 1;
+  }
+  .mono-management {
+    margin-left: auto;
+  }
+  .mono-management > button {
+    font-size: 10px;
+    padding: 5px;
+    min-height: 33px;
+  }
+  .mono-auction {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .mono-auction h4 {
+    font-size: 12px;
+  }
+  .mono-auction > b {
+    font-size: 16px;
+  }
+  .mono-debt {
+    font-size: 10px;
+  }
+  .mono-debt small {
+    display: none;
+  }
+  .mono-debt p {
+    margin: 0;
+  }
+  .mono-board {
+    border-width: 3px;
+    border-radius: 8px;
+  }
+  .mono-cell-band {
+    height: 5px;
+  }
+  .mono-viewport button.mono-cell {
+    padding: 6px 1px 3px;
+    gap: 1px;
+  }
+  .mono-cell-name {
+    font-size: clamp(6px, 1.65cqw, 10px);
+  }
+  .mono-cell > small {
+    font-size: 7px;
+  }
+  .mono-buildings {
+    scale: 0.7;
+    transform-origin: top center;
+  }
+  .mono-token {
+    scale: 0.65;
+    transform-origin: 0 0;
+  }
+  .mono-center-mark {
+    font-size: 13px;
+  }
+  .mono-center-mark svg {
+    width: 17px;
+  }
+  .mono-center-caption {
+    font-size: 9px;
+  }
+  .mono-dice-stage {
+    --die-size: 32px;
+    --half: 16px;
+    gap: 25px;
+    min-height: 44px;
+  }
+  .mono-die-face {
+    padding: 4px;
+    gap: 2px;
+  }
+  .mono-dice-tray[class] {
+    width: 170px;
+    height: 125px;
+    padding: 9px;
+  }
+  .mono-dice-help {
+    font-size: 10px;
+    margin-top: 5px;
+  }
+  .mono-dice-result {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .mono-last-card[class] {
+    font-size: 9px;
+    min-height: 24px;
+    padding: 3px 6px;
+  }
+  .mono-portfolio {
+    grid-template-rows: 15px 1fr;
+    gap: 4px;
+  }
+  .mono-portfolio > header {
+    font-size: 10px;
+  }
+  .mono-viewport .mono-property-rack > button {
+    flex-basis: 124px;
+    padding: 0 8px 5px;
+  }
+  .mono-property-rack strong {
+    font-size: 11px;
+  }
+  .mono-property-rack small {
+    font-size: 9px;
+  }
+  .mono-property-rack > p {
+    font-size: 10px;
+  }
+  .mono-lobby {
+    padding: 8px;
+    gap: 12px;
+  }
+  .mono-lobby-heading {
+    gap: 9px;
+    padding-bottom: 10px;
+  }
+  .mono-lobby-heading .mono-brand {
+    width: 36px;
+    height: 40px;
+  }
+  .mono-lobby-heading h3 {
+    font-size: 20px;
+  }
+  .mono-lobby-heading small {
+    font-size: 9px;
+  }
+  .mono-lobby-heading p {
+    font-size: 11px;
+  }
+  .mono-lobby-heading > b {
+    font-size: 12px;
+  }
+  .mono-lobby-body {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-content: start;
+  }
+  .mono-lobby h4 {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .mono-modes > button {
+    min-height: 57px;
+    padding: 8px 10px;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    font-size: 11px;
+  }
+  .mono-modes b {
+    font-size: 14px;
+  }
+  .mono-modes svg {
+    display: none;
+  }
+  .mono-rule-note {
+    display: none;
+  }
+  .mono-lobby .table-bot-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    margin-top: 8px;
+    gap: 8px;
+  }
+  .mono-lobby .table-bot-controls strong {
+    font-size: 10px;
+  }
+  .mono-lobby .table-bot-controls small {
+    display: none;
+  }
+  .mono-lobby .table-bot-actions {
+    margin: 0;
+  }
+  .mono-lobby .table-bot-actions > button {
+    min-height: 25px;
+    font-size: 9px;
+  }
+  .mono-seat-title {
+    margin-bottom: 8px;
+  }
+  .mono-lobby-seats {
+    gap: 6px;
+  }
+  .mono-lobby-seats > button {
+    min-height: 55px;
+    padding: 8px;
+    gap: 8px;
+  }
+  .mono-lobby-seats strong {
+    font-size: 12px;
+  }
+  .mono-lobby-seats small {
+    font-size: 9px;
+  }
+  .mono-lobby-seats .pkr-avatar {
+    width: 30px;
+    height: 30px;
+  }
+  .mono-lobby-start {
+    padding-top: 9px;
+    gap: 10px;
+  }
+  .mono-lobby-start p {
+    font-size: 10px;
+  }
+  .mono-lobby-start > button {
+    font-size: 13px;
+    min-height: 38px;
+    min-width: 130px;
+  }
+  .mono-modal {
+    padding: 10px;
+    border-radius: 12px;
+  }
+  .mono-modal > header {
+    margin-bottom: 8px;
+  }
+  .mono-modal > header h3 {
+    font-size: 16px;
+  }
+  .mono-deed-title {
+    padding: 9px;
+  }
+  .mono-deed-title h2 {
+    font-size: 21px;
+  }
+  .mono-deed dl {
+    margin-inline: 9px;
+  }
+  .mono-deed dl > div {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+  .mono-deed-owner {
+    font-size: 11px;
+    margin: 8px;
+  }
+  .mono-deed-facts {
+    margin: 8px;
+    font-size: 10px;
+    gap: 5px;
+  }
+  .mono-deed-note {
+    font-size: 10px;
+    margin: 7px;
+  }
+  .mono-deed-controls {
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .mono-deed-controls > button {
+    font-size: 11px;
+    min-height: 32px;
+    padding: 5px;
+  }
+  .mono-chance-card {
+    padding: 18px;
+  }
+  .mono-chance-card h2 {
+    font-size: 22px;
+  }
+  .mono-chance-card p {
+    font-size: 16px;
+    margin: 15px 0;
+  }
+  .mono-rules {
+    font-size: 12px;
+    gap: 6px;
+  }
+  .mono-trade-form {
+    gap: 7px;
+  }
+  .mono-trade-choices {
+    padding: 7px;
+  }
+  .mono-trade-choices label {
+    font-size: 10px;
+  }
+  .mono-trade-choices > div {
+    gap: 5px;
+  }
+  .mono-win {
+    padding: 20px;
+  }
+  .mono-win h2 {
+    font-size: 25px;
+  }
+}
+@container monopoly (max-height:540px) {
+  .mono-game {
+    grid-template-rows: 34px 42px minmax(0, 1fr) 67px;
+    gap: 5px;
+  }
+  .mono-heading .mono-brand {
+    width: 29px;
+    height: 31px;
+  }
+  .mono-heading h3 {
+    font-size: 16px;
+  }
+  .mono-heading small {
+    font-size: 9px;
+  }
+  .mono-players > button {
+    min-height: 40px;
+    padding: 4px;
+    gap: 4px;
+    flex-direction: row;
+  }
+  .mono-players .pkr-avatar {
+    width: 25px;
+    height: 25px;
+  }
+  .mono-players strong {
+    font-size: 10px;
+  }
+  .mono-players b {
+    font-size: 10px;
+  }
+  .mono-control-panel {
+    padding: 8px;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .mono-current-player {
+    padding-bottom: 6px;
+    gap: 3px;
+  }
+  .mono-current-player strong {
+    font-size: 14px;
+  }
+  .mono-actions {
+    gap: 5px;
+  }
+  .mono-actions > button {
+    min-height: 34px;
+    font-size: 12px;
+    padding: 5px;
+  }
+  .mono-last-log {
+    display: none;
+  }
+  .mono-bank-stock {
+    font-size: 9px;
+  }
+  .mono-center-mark {
+    display: none;
+  }
+  .mono-center-caption {
+    font-size: 9px;
+  }
+  .mono-dice-tray[class] {
+    height: 115px;
+    padding: 8px;
+  }
+  .mono-property-rack strong {
+    font-size: 10px;
+  }
+  .mono-property-rack small {
+    font-size: 9px;
+  }
+  .mono-portfolio {
+    grid-template-rows: 14px 1fr;
+    gap: 3px;
+  }
+  .mono-portfolio > header {
+    font-size: 10px;
+  }
+  .mono-lobby {
+    padding: 6px 10px;
+    gap: 10px;
+  }
+  .mono-lobby-heading {
+    padding-bottom: 8px;
+  }
+  .mono-lobby-heading h3 {
+    font-size: 21px;
+    margin: 3px 0;
+  }
+  .mono-lobby-heading p {
+    font-size: 12px;
+  }
+  .mono-lobby-heading .mono-brand {
+    width: 36px;
+    height: 39px;
+  }
+  .mono-lobby h4 {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .mono-modes > button {
+    padding: 10px;
+    min-height: 67px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .mono-modes svg {
+    display: none;
+  }
+  .mono-modes b {
+    font-size: 17px;
+  }
+  .mono-rule-note {
+    padding: 9px;
+    margin-top: 9px;
+    font-size: 11px;
+  }
+  .mono-rule-note p {
+    margin: 4px 0;
+  }
+  .mono-rule-note small {
+    font-size: 10px;
+  }
+  .mono-lobby .table-bot-controls {
+    padding: 8px;
+    margin-top: 9px;
+  }
+  .mono-lobby .table-bot-controls small {
+    display: none;
+  }
+  .mono-lobby-seats > button {
+    min-height: 62px;
+    padding: 8px;
+    gap: 7px;
+  }
+  .mono-lobby-seats strong {
+    font-size: 12px;
+  }
+  .mono-lobby-seats small {
+    font-size: 10px;
+  }
+  .mono-lobby-seats .pkr-avatar {
+    width: 31px;
+    height: 31px;
+  }
+  .mono-lobby-start {
+    padding-top: 8px;
+  }
+  .mono-lobby-start > button {
+    min-height: 36px;
+    font-size: 14px;
+  }
+  .mono-lobby-start p {
+    font-size: 11px;
+  }
+  .mono-modal {
+    padding: 9px;
+  }
+  .mono-modal > header {
+    margin-bottom: 6px;
+  }
+  .mono-modal > header h3 {
+    font-size: 16px;
+  }
+  .mono-deed-title {
+    padding: 6px;
+  }
+  .mono-deed-title h2 {
+    font-size: 19px;
+  }
+  .mono-deed-owner {
+    margin: 5px;
+    font-size: 11px;
+  }
+  .mono-deed dl > div {
+    font-size: 11px;
+    padding: 3px 5px;
+  }
+  .mono-deed-note {
+    font-size: 9px;
+    margin: 5px;
+  }
+  .mono-deed-facts {
+    font-size: 10px;
+    margin: 7px;
+    gap: 4px;
+  }
+  .mono-deed-controls {
+    margin-top: 6px;
+  }
+  .mono-deed-controls > button {
+    min-height: 29px;
+    padding: 4px;
+    font-size: 10px;
+  }
+  .mono-card-copy,
+  .mono-modal-copy {
+    font-size: 13px;
+    margin: 6px 0;
+  }
+  .mono-chance-card {
+    padding: 13px;
+  }
+  .mono-chance-card h2 {
+    font-size: 21px;
+    margin: 8px;
+  }
+  .mono-chance-card p {
+    font-size: 15px;
+    line-height: 1.4;
+    margin: 12px 0;
+  }
+  .mono-trade-form {
+    gap: 5px;
+  }
+  .mono-trade-choices {
+    padding: 5px;
+  }
+  .mono-trade-choices > div {
+    margin-top: 5px;
+    gap: 4px;
+  }
+  .mono-trade-form > label {
+    font-size: 11px;
+  }
+  .mono-trade-form input[type='number'],
+  .mono-trade-form select {
+    min-height: 29px;
+  }
+  .mono-rules {
+    font-size: 11px;
+    gap: 5px;
+  }
+  .mono-win {
+    padding: 17px;
+  }
+  .mono-win > .pkr-avatar {
+    width: 65px;
+    height: 65px;
+    margin: 7px auto;
+  }
+  .mono-win-crown {
+    width: 32px;
+    height: 32px;
+  }
+  .mono-win h2 {
+    font-size: 23px;
+  }
+  .mono-win p {
+    margin: 8px 0 12px;
+    font-size: 12px;
+  }
+}
+@container monopoly (max-width:540px) and (max-height:540px) {
+  .mono-players > button {
+    flex-direction: column;
+    gap: 1px;
+    min-height: 0;
+  }
+  .mono-players .pkr-avatar {
+    display: none;
+  }
+  .mono-players strong {
+    font-size: 8px;
+  }
+  .mono-players b {
+    font-size: 9px;
+  }
+  .mono-heading > div > small {
+    display: none;
+  }
+  .mono-dice-tray[class] {
+    width: 140px;
+    height: 100px;
+  }
+  .mono-dice-stage {
+    --die-size: 27px;
+    --half: 13.5px;
+    gap: 23px;
+    min-height: 35px;
+  }
+  .mono-dice-help {
+    font-size: 9px;
+  }
+  .mono-control-panel {
+    padding: 5px;
+  }
+  .mono-center-caption {
+    display: none;
+  }
+  .mono-lobby-heading p {
+    display: none;
+  }
+  .mono-lobby-body {
+    gap: 7px;
+  }
+  .mono-lobby-seats > button {
+    min-height: 44px;
+    padding: 6px;
+  }
+  .mono-lobby-seats .pkr-avatar {
+    width: 26px;
+    height: 26px;
+  }
+  .mono-lobby-seats small {
+    font-size: 8px;
+  }
+  .mono-lobby-seats strong {
+    font-size: 10px;
+  }
+  .mono-modes > button {
+    min-height: 40px;
+    padding: 7px;
+  }
+  .mono-modes strong {
+    font-size: 10px;
+  }
+  .mono-lobby .table-bot-controls strong {
+    font-size: 9px;
+  }
+  .mono-lobby .table-bot-actions > button {
+    font-size: 8px;
+    padding: 3px 5px;
+    min-height: 23px;
+  }
+  .mono-lobby-start > button {
+    font-size: 11px;
+    min-height: 33px;
+    min-width: 115px;
+  }
+  .mono-lobby-start p {
+    font-size: 9px;
+  }
+  .mono-rule-note {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mono-viewport * {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition: none !important;
+  }
+}
+
+.mono-deed-tabs {
+  display: none;
+}
+@container monopoly (min-width:761px) and (min-height:541px) {
+  .mono-game {
+    grid-template-rows: auto auto minmax(0, 1fr) 114px;
+  }
+  .mono-players strong {
+    font-size: 13px;
+  }
+  .mono-players b {
+    font-size: 14px;
+  }
+  .mono-viewport .mono-property-rack > button {
+    flex-basis: 160px;
+  }
+  .mono-property-rack strong {
+    font-size: 14px;
+  }
+  .mono-property-rack small {
+    font-size: 12px;
+  }
+}
+@container monopoly (max-height:420px) {
+  .mono-deed-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 7px;
+  }
+  .mono-deed-tabs > button {
+    flex: 1;
+    min-height: 28px;
+    font-size: 11px;
+    padding: 4px;
+  }
+  .mono-deed-tabs > button[aria-pressed='true'] {
+    background: #29453c;
+    border-color: #9ab59e;
+  }
+  .mono-deed-hidden {
+    display: none;
+  }
+  .mono-deed-controls:not(.is-open) {
+    display: none;
+  }
+  .mono-deed-title {
+    padding: 5px;
+  }
+  .mono-deed-title small {
+    font-size: 8px;
+    line-height: 1.2;
+  }
+  .mono-deed-title h2 {
+    font-size: 18px;
+    line-height: 1.15;
+    margin: 3px;
+  }
+  .mono-deed-owner {
+    font-size: 10px;
+    line-height: 1.2;
+    margin: 4px;
+  }
+  .mono-deed dl > div {
+    font-size: 11px;
+    line-height: 1.2;
+    padding: 2px 5px;
+  }
+  .mono-deed-note {
+    font-size: 8px;
+    line-height: 1.2;
+    margin: 4px 8px;
+  }
+  .mono-deed-facts {
+    font-size: 9px;
+    line-height: 1.2;
+    gap: 3px;
+    margin: 5px 8px;
+  }
+  .mono-trade-form {
+    gap: 4px;
+  }
+  .mono-trade-choices {
+    padding: 4px;
+  }
+  .mono-trade-choices > div {
+    margin-top: 4px;
+  }
+  .mono-win {
+    padding: 12px;
+  }
+  .mono-win > .pkr-avatar {
+    width: 48px;
+    height: 48px;
+    margin: 5px auto;
+  }
+  .mono-win-crown {
+    width: 24px;
+    height: 24px;
+  }
+  .mono-win h2 {
+    font-size: 21px;
+  }
+  .mono-win p {
+    font-size: 11px;
+    margin: 6px 0 9px;
+  }
+  .mono-win .mono-buttons > button {
+    min-height: 31px;
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+}
+@container monopoly (max-width:540px) and (max-height:420px) {
+  .mono-lobby {
+    padding: 5px;
+    gap: 7px;
+  }
+  .mono-lobby-heading {
+    padding-bottom: 6px;
+  }
+  .mono-lobby-heading h3,
+  .mono-lobby-heading p {
+    display: none;
+  }
+  .mono-lobby-heading .mono-brand {
+    width: 30px;
+    height: 31px;
+  }
+  .mono-lobby-heading small {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .mono-lobby h4 {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .mono-modes > button {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    justify-items: start;
+    gap: 3px;
+    min-height: 49px;
+    padding: 6px;
+  }
+  .mono-modes strong {
+    font-size: 10px;
+    line-height: 1.1;
+  }
+  .mono-modes b {
+    font-size: 12px;
+  }
+  .mono-lobby-body {
+    gap: 7px;
+  }
+  .mono-lobby .table-bot-controls {
+    padding: 6px;
+    margin-top: 6px;
+  }
+  .mono-lobby .table-bot-actions > button[aria-label] {
+    display: none;
+  }
+  .mono-lobby .table-bot-controls:not(:has(.table-bot-actions > button:not([aria-label]))) {
+    display: none;
+  }
+  .mono-lobby-seats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .mono-lobby-seats > button {
+    min-height: 42px;
+    gap: 4px;
+    padding: 5px;
+  }
+  .mono-lobby-seats .pkr-avatar {
+    width: 23px;
+    height: 23px;
+  }
+  .mono-lobby-seats strong {
+    font-size: 9px;
+  }
+  .mono-lobby-seats > button > span:not(.mono-seat-number) small {
+    display: none;
+  }
+  .mono-seat-number {
+    font-size: 8px !important;
+    right: 4px;
+    top: 3px;
+  }
+  .mono-lobby-seats > button > svg {
+    width: 19px;
+  }
+  .mono-seat-title {
+    margin-bottom: 5px;
+  }
+  .mono-seat-title > button {
+    font-size: 9px;
+    padding: 0 2px;
+    min-height: 22px;
+  }
+  .mono-lobby-start {
+    padding-top: 6px;
+    gap: 6px;
+  }
+  .mono-lobby-start p {
+    font-size: 9px;
+    line-height: 1.3;
+  }
+  .mono-lobby-start > button {
+    min-width: 112px;
+    min-height: 31px;
+    font-size: 11px;
+  }
+  .mono-cell-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+@container monopoly (max-height:420px) {
+  .mono-modal > header {
+    min-height: 28px;
+  }
+  .mono-modal > header > button {
+    min-height: 26px;
+    width: 26px;
+    padding: 3px;
+  }
+  .mono-deed-tabs {
+    margin-bottom: 4px;
+  }
+  .mono-deed-title h2 {
+    font-size: 16px;
+  }
+  .mono-deed-facts {
+    grid-template-columns: 1fr 1fr;
+    font-size: 8px;
+    gap: 2px;
+    margin: 4px;
+  }
+  .mono-deed-note {
+    margin: 3px 5px;
+  }
+}
+
+.mono-modes b {
+  white-space: nowrap;
+}

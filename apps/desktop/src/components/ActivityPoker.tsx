@@ -332,6 +332,15 @@ export function ActivityPoker({
                   </span>
                   <PokerAvatar
                     person={person}
+                    feedback={
+                      table.lastAction?.seat === i && now - table.lastAction.at < 1700 && !dealing
+                        ? {
+                            kind: table.lastAction.kind,
+                            label: t(actions[table.lastAction.kind]),
+                            key: `${table.handNumber}:${table.lastAction.sequence}`,
+                          }
+                        : undefined
+                    }
                     moving={moving}
                     seconds={seconds}
                     self={i === seat}
@@ -407,12 +416,6 @@ export function ActivityPoker({
                     </span>
                   )}
                 </div>
-                {moving && seconds !== undefined && (
-                  <span className={`pkr-seat-clock ${seconds <= 8 ? 'pkr-urgent' : ''}`}>
-                    <Clock3 size={12} />
-                    {seconds} {t('сек')}
-                  </span>
-                )}
                 {(table.bets[i] ?? 0) > 0 && !settled && (
                   <div className="pkr-wager" key={`wager:${table.handNumber}:${table.bets[i]}`}>
                     <PokerChips amount={table.bets[i]!} compact />
@@ -421,15 +424,6 @@ export function ActivityPoker({
                       {fmt(table.bets[i]!)}
                     </span>
                   </div>
-                )}
-                {table.lastAction?.seat === i && now - table.lastAction.at < 2600 && !dealing && (
-                  <span
-                    className={`pkr-action-bubble pkr-action-${table.lastAction.kind}`}
-                    key={`${table.handNumber}:${table.lastAction.sequence}`}
-                  >
-                    {t(actions[table.lastAction.kind])}
-                    {table.lastAction.amount > 0 && ` · ${fmt(table.lastAction.amount)}`}
-                  </span>
                 )}
                 {winning && (
                   <span className="pkr-payout" key={`win:${table.handNumber}:${i}`}>

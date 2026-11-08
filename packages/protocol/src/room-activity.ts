@@ -36,6 +36,7 @@ export const gameSwitchVoteSchema = z.object({
   from: z.union([tableKindSchema, z.literal('mines')]).optional(),
   requestedBy: z.string().uuid(),
   pokerFlow: z.literal(2).optional(),
+  propertyRules: z.literal(2).optional(),
   electorate: z.array(z.string().uuid()).max(8),
   yes: z.array(z.string().uuid()).max(8),
   no: z.array(z.string().uuid()).max(8),

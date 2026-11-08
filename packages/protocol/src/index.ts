@@ -10,7 +10,14 @@ import { activityPointerSchema } from './activity-table.js';
 export type { ActivityTable, TableKind, TableOf, TableAction } from './activity-table.js';
 export { tableSchema, tableCountsForStatistics } from './activity-table.js';
 export { randomFleet, validFleet } from './activity-table-session.js';
-export { propertyBoard, housePrice } from './activity-property.js';
+export {
+  propertyBoard,
+  housePrice,
+  propertyRentSchedule,
+  propertyGroup,
+  propertyLiquidation,
+  propertyBuildingStock,
+} from './activity-property.js';
 export { quizPrizes } from './activity-quiz.js';
 export { canRaisePoker, evaluatePoker, comparePoker } from './activity-poker.js';
 export type {
@@ -172,6 +179,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     pokerSeats: z.literal(8).optional(),
     tabletVersion: z.literal(3).optional(),
     pokerFlow: z.literal(2).optional(),
+    propertyRules: z.literal(2).optional(),
     roomId,
     clientId,
     sessionId,
@@ -187,6 +195,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
     pokerSeats: z.literal(8).optional(),
     tabletVersion: z.literal(3).optional(),
     pokerFlow: z.literal(2).optional(),
+    propertyRules: z.literal(2).optional(),
     roomId,
     clientId,
     sessionId,

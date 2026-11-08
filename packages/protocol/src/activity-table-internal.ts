@@ -26,6 +26,7 @@ export type TableContext = {
   voters?: string[];
   adultIds?: string[];
   pokerFlow?: 2;
+  propertyRules?: 2;
 };
 export type TableReducer = (
   session: TableSession,

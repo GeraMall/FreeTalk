@@ -1,395 +1,553 @@
-import { propertyBoard, housePrice, type TableOf } from '@freetalk/protocol';
-import { useState } from 'react';
-import { Dices, House, Landmark, ArrowRightLeft } from 'lucide-react';
+import {
+  propertyBoard,
+  propertyBuildingStock,
+  propertyLiquidation,
+  type TableOf,
+} from '@freetalk/protocol';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  Landmark,
+  Dices,
+  ArrowRightLeft,
+  Volume2,
+  VolumeX,
+  BookOpen,
+  Crown,
+  X,
+  RotateCcw,
+} from 'lucide-react';
 import { t } from '../lib/app-language';
 import { playerName, type TableUiProps } from './activity-table-ui';
-const colors = [
-  '#ad7861',
-  '#8dc5df',
-  '#b878a6',
-  '#d09d6a',
-  '#d37d84',
-  '#dbcc79',
-  '#88b899',
-  '#7e9fd8',
-  '#aab7ca',
-  '#aab7ca',
-];
-const position = (i: number) =>
-  i <= 10
-    ? { gridRow: 11, gridColumn: 11 - i }
-    : i <= 20
-      ? { gridRow: 21 - i, gridColumn: 1 }
-      : i <= 30
-        ? { gridRow: 1, gridColumn: i - 19 }
-        : { gridRow: i - 29, gridColumn: 11 };
+import { PokerAvatar } from './PokerVisuals';
+import { PropertyBoard } from './PropertyBoard';
+import { propertyColors, playerColors } from '../lib/monopoly-layout';
+import { PropertyDice } from './PropertyDice';
+import { PropertyDeed, PropertyModal, PropertyTrade } from './PropertyCards';
+import { MonopolySounds } from '../lib/monopoly-sounds';
+import './monopoly.css';
+const heard = new Set<string>();
 export function ActivityProperty({
   table,
   selfId,
   participants,
   send,
-}: TableUiProps<TableOf<'monopoly'>>) {
+  onExit,
+}: TableUiProps<TableOf<'monopoly'>> & { onExit?(): void }) {
   const seat = table.seats.indexOf(selfId ?? ''),
     mine = seat === table.turn,
     active = table.phase === 'playing';
-  const [selected, setSelected] = useState(0),
-    [tradeTo, setTradeTo] = useState(seat === 0 ? 1 : 0),
-    [give, setGive] = useState<number[]>([]),
-    [want, setWant] = useState<number[]>([]),
-    [cash, setCash] = useState(0),
-    [showTrade, setShowTrade] = useState(false),
-    [confirmBankrupt, setConfirmBankrupt] = useState(false);
-  const tile = propertyBoard[selected]!,
-    owner = table.owners[selected]!,
-    auction = table.auction;
-  const own = table.owners.flatMap((o, i) => (o === seat ? [i] : [])),
-    other = table.owners.flatMap((o, i) => (o === tradeTo ? [i] : []));
-  const toggle = (values: number[], index: number) =>
-    values.includes(index) ? values.filter((i) => i !== index) : [...values, index];
+  const [now, setNow] = useState(Date.now),
+    [selected, setSelected] = useState(0),
+    [panel, setPanel] = useState<'deed' | 'trade' | 'card' | 'bankrupt' | 'rules'>(),
+    [portfolio, setPortfolio] = useState<number>(),
+    [pending, setPending] = useState(0),
+    [audioOn, setAudioOn] = useState(() => {
+      try {
+        return localStorage.getItem('trlka.monopoly.sounds') !== 'off';
+      } catch {
+        return true;
+      }
+    });
+  const [audio] = useState(() => new MonopolySounds()),
+    cardSeen = useRef(table.lastCard?.sequence ?? 0),
+    previous = useRef(table),
+    waitingWin = useRef(false);
+  const move = table.lastMove,
+    busy = now < (move?.until ?? 0),
+    rolling = pending > 0 || (!!move && move.roll !== false && now < move.at + 900);
+  const canRoll =
+    active &&
+    mine &&
+    table.step === 'roll' &&
+    !table.auction &&
+    !busy &&
+    !pending &&
+    !table.bankrupt.includes(seat);
+  const progress = move
+    ? Math.max(
+        0,
+        Math.min(
+          move.path.length,
+          Math.floor((now - move.at - (move.roll === false ? 0 : 900)) / 110) + 1,
+        ),
+      )
+    : 0;
+  const positions = table.positions.map((p, i) =>
+    move && i === move.seat && busy ? (progress ? move.path[progress - 1]! : move.from) : p,
+  );
+  const ownerToShow = portfolio ?? (seat >= 0 ? seat : table.turn),
+    own = table.owners.flatMap((owner, i) => (owner === ownerToShow ? [i] : [])),
+    stock = propertyBuildingStock(table);
+  useEffect(() => {
+    audio.enabled = audioOn && !participants.find((p) => p.id === selfId)?.deafened;
+    if (!audio.enabled) audio.stop();
+  }, [audio, audioOn, participants, selfId]);
+  useEffect(() => () => audio.stop(), [audio]);
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    refresh();
+    if (!move || Date.now() >= move.until) return;
+    const timer = setInterval(refresh, 80);
+    return () => clearInterval(timer);
+  }, [move]);
+  useEffect(() => {
+    setPending(0);
+  }, [move?.sequence]);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setPending(0), 3500);
+    return () => clearTimeout(timer);
+  }, [pending]);
+  useEffect(() => {
+    const once = (key: string, sound: Parameters<MonopolySounds['play']>[0]) => {
+      if (heard.has(key)) return;
+      heard.add(key);
+      if (heard.size > 512) heard.delete(heard.values().next().value!);
+      void audio.play(sound);
+    };
+    if (move && move.roll !== false && now - move.at < 900)
+      once(`${table.id}:${move.sequence}:roll`, 'roll');
+    if (move && progress > 0 && busy) once(`${table.id}:${move.sequence}:step:${progress}`, 'step');
+    if (previous.current.phase === 'playing' && table.phase === 'finished')
+      waitingWin.current = true;
+    if (waitingWin.current && !busy) {
+      once(`${table.id}:win`, 'win');
+      waitingWin.current = false;
+    }
+    if (
+      previous.current.id === table.id &&
+      (previous.current.owners.some((o, i) => o !== table.owners[i]) ||
+        previous.current.houses.some((o, i) => o !== table.houses[i]))
+    )
+      void audio.play('buy');
+    previous.current = table;
+  }, [table, move, now, progress, busy, audio]);
+  useEffect(() => {
+    if (table.lastCard && table.lastCard.sequence !== cardSeen.current && !busy) {
+      cardSeen.current = table.lastCard.sequence;
+      setPanel('card');
+      void audio.play('card');
+    }
+  }, [table.lastCard, busy, audio]);
+  const roll = () => {
+    if (!canRoll) return;
+    setPending(Date.now());
+    send({ kind: 'property', action: 'roll' });
+  };
+  const deed = (i: number) => {
+    setSelected(i);
+    setPanel('deed');
+  };
+  const action = (name: 'buy' | 'pass' | 'end' | 'bid' | 'auction-pass' | 'jail-pay') =>
+    send({ kind: 'property', action: name });
   return (
-    <div className="property-layout">
-      <div
-        className="property-board"
-        data-activity-surface="property"
-        role="group"
-        aria-label={t('Поле Монополии')}
-      >
-        <div className="property-center">
-          <Landmark size={38} />
+    <section className="mono-game" aria-label={t('Монополия')}>
+      <header className="mono-heading">
+        <span className="mono-brand">
+          <Landmark />
+        </span>
+        <div>
           <h3>{t('Монополия')}</h3>
-          <p>{t('Космическая недвижимость')}</p>
-          <div className="property-dice">
-            {table.dice.map((n, i) => (
-              <b key={i}>{n || '—'}</b>
-            ))}
-          </div>
-          <strong>
-            {table.phase === 'finished'
-              ? `${t('Победитель')}: ${playerName(table.winner, participants)}`
-              : `${t('Ход')}: ${playerName(table.seats[table.turn], participants)}`}
-          </strong>
           <small>
-            {table.extraRoll ? t('Дубль · ещё один бросок') : t('За прохождение старта: +200')}
+            {table.training ? t('Тренировка · без статистики') : t('Космическая недвижимость')}
           </small>
         </div>
-        {propertyBoard.map(([name, price, group], i) => (
+        <span className="mono-turn-label">
+          {t('Ход')}: <b>{playerName(table.seats[table.turn], participants)}</b>
+        </span>
+        <div className="mono-heading-buttons">
           <button
             type="button"
-            key={i}
-            className={`property-cell ${selected === i ? 'selected' : ''} ${table.mortgaged.includes(i) ? 'is-mortgaged' : ''}`}
-            style={{ ...position(i), borderTopColor: group >= 0 ? colors[group] : undefined }}
-            onClick={() => setSelected(i)}
-            aria-label={`${name}${price ? ' ' + price : ''}`}
+            aria-label={t(audioOn ? 'Выключить звуки игры' : 'Включить звуки игры')}
+            aria-pressed={audioOn}
+            onClick={() => {
+              setAudioOn(!audioOn);
+              try {
+                localStorage.setItem('trlka.monopoly.sounds', audioOn ? 'off' : 'on');
+              } catch {
+                /* Keep the current session preference. */
+              }
+            }}
           >
-            <span>{name}</span>
-            {table.houses[i]! > 0 ? (
-              <small>{table.houses[i] === 5 ? '▰' : '⌂'.repeat(table.houses[i]!)}</small>
-            ) : (
-              <small>{price || '◆'}</small>
-            )}
-            <div className="property-tokens">
-              {table.seats.map((id, seatIndex) =>
-                id && table.positions[seatIndex] === i && !table.bankrupt.includes(seatIndex) ? (
-                  <i
-                    key={id}
-                    className={`player-color-${seatIndex}`}
-                    title={playerName(id, participants)}
-                  >
-                    {seatIndex + 1}
-                  </i>
-                ) : null,
-              )}
-            </div>
-            {table.owners[i]! >= 0 && (
-              <b className={`property-owner player-color-${table.owners[i]}`} />
-            )}
+            {audioOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
+          <button
+            type="button"
+            aria-label={t('Правила Монополии')}
+            onClick={() => setPanel('rules')}
+          >
+            <BookOpen size={18} />
+          </button>
+        </div>
+      </header>
+      <div className="mono-players">
+        {table.seats.map((id, i) => (
+          <button
+            type="button"
+            key={id}
+            style={{ '--seat-color': playerColors[i] } as CSSProperties}
+            className={`${table.turn === i ? 'is-turn' : ''} ${table.bankrupt.includes(i) ? 'is-bankrupt' : ''}`}
+            onClick={() => setPortfolio(i)}
+            aria-label={`${playerName(id, participants)}: ${table.money[i]} ¤`}
+          >
+            <PokerAvatar
+              person={participants.find((p) => p.id === id)}
+              moving={false}
+              self={i === seat}
+            />
+            <span>
+              <strong>{playerName(id, participants)}</strong>
+              <b>{table.bankrupt.includes(i) ? t('Банкрот') : `${table.money[i]} ¤`}</b>
+            </span>
+            {table.jail[i]! > 0 && <small>{t('Тюрьма')}</small>}
           </button>
         ))}
       </div>
-      <aside className="property-sidebar">
-        <div className="property-players">
-          {table.seats.map((id, i) => (
-            <div
-              key={id}
-              className={`${table.turn === i ? 'is-moving' : ''} ${table.bankrupt.includes(i) ? 'is-folded' : ''}`}
+      <div className="mono-main">
+        <PropertyBoard
+          table={table}
+          positions={positions}
+          participants={participants}
+          onSelect={deed}
+        >
+          <span className="mono-center-mark">
+            <Landmark size={23} /> TRLKA
+          </span>
+          <PropertyDice
+            dice={table.dice}
+            rolling={rolling}
+            sequence={move?.sequence ?? 0}
+            canRoll={canRoll}
+            onRoll={roll}
+            onShake={() => void audio.play('shake')}
+          />
+          <p className="mono-center-caption">
+            {t(table.extraRoll ? 'Дубль · ещё один бросок' : 'За прохождение старта: +200')}
+          </p>
+          {table.lastCard && (
+            <button
+              type="button"
+              className="mono-last-card"
+              onClick={() => {
+                setPanel('card');
+                void audio.play('card');
+              }}
             >
-              <i className={`player-color-${i}`}>{i + 1}</i>
-              <strong>
-                {playerName(id, participants)}
-                <small>
-                  {table.jail[i]
-                    ? t('В тюрьме')
-                    : table.bankrupt.includes(i)
-                      ? t('Банкрот')
-                      : i === seat
-                        ? t('Вы')
-                        : ''}
-                </small>
-              </strong>
-              <b>{table.money[i]} ¤</b>
-            </div>
-          ))}
-        </div>
-        {auction ? (
-          <div className="property-auction">
-            <h4>
-              {t('Аукцион')}: {propertyBoard[auction.index]![0]}
-            </h4>
-            <p>
-              {t('Текущая ставка')}: {auction.bid} ¤
-            </p>
-            <p>
-              {t('Ход')}: {playerName(table.seats[auction.turn], participants)}
-            </p>
-            {auction.turn === seat && (
-              <div className="table-inline-controls">
-                <button
-                  type="button"
-                  disabled={table.money[seat]! < auction.bid + 10}
-                  onClick={() => send({ kind: 'property', action: 'bid' })}
-                >
-                  +10 ¤
-                </button>
-                <button
-                  type="button"
-                  onClick={() => send({ kind: 'property', action: 'auction-pass' })}
-                >
-                  {t('Пас')}
-                </button>
-              </div>
-            )}
+              {t(table.lastCard.kind === 'chance' ? 'Шанс' : 'Событие')} · {t('Прочитать карточку')}
+            </button>
+          )}
+        </PropertyBoard>
+        <aside className="mono-control-panel">
+          <div className="mono-current-player">
+            <small>{t(busy ? 'Фишка движется' : mine ? 'Ваш ход' : 'Сейчас ходит')}</small>
+            <strong>{playerName(table.seats[table.turn], participants)}</strong>
           </div>
-        ) : mine && active ? (
-          <div className="property-actions">
-            {table.step === 'roll' && (
-              <>
-                <button
-                  type="button"
-                  className="table-primary"
-                  onClick={() => send({ kind: 'property', action: 'roll' })}
-                >
-                  <Dices size={18} />
-                  {t('Бросить кубики')}
-                </button>
-                {table.jail[seat]! > 0 && (
+          {table.auction ? (
+            <section className="mono-auction">
+              <h4>{t('Аукцион')}</h4>
+              <button
+                type="button"
+                className="mono-property-link"
+                onClick={() => deed(table.auction!.index)}
+              >
+                {t(propertyBoard[table.auction.index]![0])}
+              </button>
+              <b>{table.auction.bid} ¤</b>
+              <p>{playerName(table.seats[table.auction.turn], participants)}</p>
+              {table.auction.turn === seat && (
+                <div className="mono-buttons">
                   <button
                     type="button"
-                    disabled={table.money[seat]! < 50}
-                    onClick={() => send({ kind: 'property', action: 'jail-pay' })}
+                    disabled={busy || table.money[seat]! < table.auction.bid + 10}
+                    onClick={() => action('bid')}
                   >
-                    {t('Выйти под залог')} · 50 ¤
+                    +10 ¤
                   </button>
-                )}
-              </>
-            )}
-            {table.step === 'buy' && (
-              <>
-                <strong>{propertyBoard[table.positions[seat]!]![0]}</strong>
+                  <button type="button" disabled={busy} onClick={() => action('auction-pass')}>
+                    {t('Пас')}
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : active && mine ? (
+            <div className="mono-actions">
+              {table.step === 'roll' && (
+                <>
+                  <button type="button" className="mono-primary" disabled={!canRoll} onClick={roll}>
+                    <Dices size={19} />
+                    {t(rolling ? 'Бросаем…' : 'Бросить кубики')}
+                  </button>
+                  {table.jail[seat]! > 0 && (
+                    <button
+                      type="button"
+                      disabled={busy || pending > 0 || table.money[seat]! < 50}
+                      onClick={() => action('jail-pay')}
+                    >
+                      {t('Выйти под залог')} · 50 ¤
+                    </button>
+                  )}
+                </>
+              )}
+              {table.step === 'buy' && (
+                <>
+                  <button
+                    type="button"
+                    className="mono-property-link"
+                    onClick={() => deed(table.positions[seat]!)}
+                  >
+                    {t(propertyBoard[table.positions[seat]!]![0])}
+                  </button>
+                  <button
+                    type="button"
+                    className="mono-primary"
+                    disabled={
+                      busy || table.money[seat]! < propertyBoard[table.positions[seat]!]![1]
+                    }
+                    onClick={() => action('buy')}
+                  >
+                    {t('Купить')} · {propertyBoard[table.positions[seat]!]![1]} ¤
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => action('pass')}>
+                    {t('Выставить на аукцион')}
+                  </button>
+                </>
+              )}
+              {table.step === 'end' && (
                 <button
                   type="button"
-                  className="table-primary"
-                  disabled={table.money[seat]! < propertyBoard[table.positions[seat]!]![1]}
-                  onClick={() => send({ kind: 'property', action: 'buy' })}
+                  className="mono-primary"
+                  disabled={busy}
+                  onClick={() => action('end')}
                 >
-                  {t('Купить')} · {propertyBoard[table.positions[seat]!]![1]} ¤
+                  {t(table.extraRoll ? 'Бросить ещё раз' : 'Завершить ход')}
                 </button>
-                <button type="button" onClick={() => send({ kind: 'property', action: 'pass' })}>
-                  {t('Выставить на аукцион')}
-                </button>
-              </>
-            )}
-            {table.step === 'end' && (
-              <button
-                type="button"
-                className="table-primary"
-                onClick={() => send({ kind: 'property', action: 'end' })}
-              >
-                {table.extraRoll ? t('Бросить ещё раз') : t('Завершить ход')}
-              </button>
-            )}
-            {table.step === 'debt' && (
-              <p className="table-danger">
-                {t(
-                  'Недостаточно средств. Продайте дома, заложите участки или объявите банкротство.',
-                )}
-              </p>
-            )}
-          </div>
-        ) : null}
-        <div
-          className="property-deed"
-          style={{ borderTopColor: tile[2] >= 0 ? colors[tile[2]] : undefined }}
-        >
-          <h4>{tile[0]}</h4>
-          <p>
-            {t('Стоимость')}: {tile[1]} ¤
-          </p>
-          <p>
-            {t('Владелец')}: {owner < 0 ? t('Банк') : playerName(table.seats[owner], participants)}
-          </p>
-          {table.houses[selected]! > 0 && (
-            <p>
-              {t('Постройки')}: {table.houses[selected]}
+              )}
+              {table.step === 'debt' && (
+                <div className="mono-debt">
+                  <strong>
+                    {t('Нужно погасить долг')}: {Math.abs(table.money[seat]!)} ¤
+                  </strong>
+                  <p>
+                    {t('Продажа построек и залог могут дать')}: {propertyLiquidation(table, seat)} ¤
+                  </p>
+                  <small>{t('Нажмите на карточку собственности внизу, чтобы управлять ею.')}</small>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mono-waiting">
+              {t(
+                table.phase === 'finished'
+                  ? 'Партия завершена'
+                  : 'Можно изучить улицы и собственность игроков, пока вы ждёте ход.',
+              )}
             </p>
           )}
-          {owner === seat && seat >= 0 && active && (
-            <div className="property-deed-actions">
+          {table.trade && (
+            <button type="button" className="mono-primary" onClick={() => setPanel('trade')}>
+              {t('Предложение обмена')}
+            </button>
+          )}
+          <div className="mono-management">
+            <button
+              type="button"
+              disabled={
+                !active ||
+                seat < 0 ||
+                table.bankrupt.includes(seat) ||
+                busy ||
+                !!table.trade ||
+                table.step === 'debt'
+              }
+              onClick={() => setPanel('trade')}
+            >
+              <ArrowRightLeft size={16} />
+              {t('Обмен')}
+            </button>
+            {mine && active && (
               <button
                 type="button"
-                disabled={tile[2] < 0 || tile[2] > 7}
-                onClick={() => send({ kind: 'property', action: 'build', index: selected })}
+                className="mono-danger"
+                disabled={busy}
+                onClick={() => setPanel('bankrupt')}
               >
-                <House size={14} />
-                {t('Построить')} · {housePrice(selected)} ¤
+                {t('Банкротство')}
               </button>
-              <button
-                type="button"
-                disabled={!table.houses[selected]}
-                onClick={() => send({ kind: 'property', action: 'sell-house', index: selected })}
-              >
-                {t('Продать постройку')}
-              </button>
-              <button
-                type="button"
-                onClick={() => send({ kind: 'property', action: 'mortgage', index: selected })}
-              >
-                {t(table.mortgaged.includes(selected) ? 'Выкупить залог' : 'Заложить')}
+            )}
+          </div>
+          <div className="mono-bank-stock">
+            <span>
+              {t('Дома')}: <b>{stock.houses}/32</b>
+            </span>
+            <span>
+              {t('Отели')}: <b>{stock.hotels}/12</b>
+            </span>
+          </div>
+          <p className="mono-last-log" title={table.log.at(-1)}>
+            {table.log.at(-1)}
+          </p>
+        </aside>
+      </div>
+      <footer className="mono-portfolio">
+        <header>
+          <strong>
+            {t(ownerToShow === seat ? 'Ваши улицы' : 'Собственность')}
+            {ownerToShow !== seat && ` · ${playerName(table.seats[ownerToShow], participants)}`}
+          </strong>
+          <small>{own.length} / 28</small>
+        </header>
+        <div className="mono-property-rack">
+          {own.map((i) => (
+            <button
+              type="button"
+              key={i}
+              className={table.mortgaged.includes(i) ? 'is-mortgaged' : ''}
+              style={{ '--group-color': propertyColors[propertyBoard[i]![2]] } as CSSProperties}
+              onClick={() => deed(i)}
+            >
+              <i />
+              <strong>{t(propertyBoard[i]![0])}</strong>
+              <small>
+                {table.mortgaged.includes(i)
+                  ? t('В залоге')
+                  : table.houses[i] === 5
+                    ? t('Отель')
+                    : table.houses[i]! > 0
+                      ? `${table.houses[i]} ${t('дома')}`
+                      : `${propertyBoard[i]![1]} ¤`}
+              </small>
+            </button>
+          ))}
+          {!own.length && (
+            <p>
+              {t(
+                'Здесь появятся купленные улицы. Нажмите на клетку поля, чтобы прочитать её карточку.',
+              )}
+            </p>
+          )}
+        </div>
+      </footer>
+      {panel === 'deed' && (
+        <PropertyDeed
+          table={table}
+          selfId={selfId}
+          participants={participants}
+          send={send}
+          index={selected}
+          onClose={() => setPanel(undefined)}
+        />
+      )}
+      {panel === 'trade' && (
+        <PropertyTrade
+          table={table}
+          selfId={selfId}
+          participants={participants}
+          send={send}
+          onClose={() => setPanel(undefined)}
+        />
+      )}
+      {panel === 'card' && table.lastCard && (
+        <PropertyModal
+          title={t(table.lastCard.kind === 'chance' ? 'Шанс' : 'Событие')}
+          onClose={() => setPanel(undefined)}
+        >
+          <article className="mono-chance-card">
+            <Landmark size={35} />
+            <small>TRLKA · {t('Карточка')}</small>
+            <h2>{t(table.lastCard.title)}</h2>
+            <p>{t(table.lastCard.text)}</p>
+            <button type="button" className="mono-primary" onClick={() => setPanel(undefined)}>
+              {t('Понятно')}
+            </button>
+          </article>
+        </PropertyModal>
+      )}
+      {panel === 'bankrupt' && (
+        <PropertyModal title={t('Объявить банкротство?')} onClose={() => setPanel(undefined)}>
+          <p className="mono-modal-copy">
+            {t(
+              'Вы выйдете из партии. Постройки будут проданы, а собственность получит кредитор или банк.',
+            )}
+          </p>
+          <div className="mono-buttons">
+            <button
+              type="button"
+              className="mono-danger"
+              onClick={() => {
+                send({ kind: 'property', action: 'bankrupt' });
+                setPanel(undefined);
+              }}
+            >
+              {t('Подтвердить банкротство')}
+            </button>
+            <button type="button" onClick={() => setPanel(undefined)}>
+              {t('Отмена')}
+            </button>
+          </div>
+        </PropertyModal>
+      )}
+      {panel === 'rules' && (
+        <PropertyModal title={t('Правила Монополии')} onClose={() => setPanel(undefined)}>
+          <div className="mono-rules">
+            <p>
+              {t(
+                'Соберите все улицы цвета, чтобы строить равномерно: максимум четыре дома, затем один отель на улице.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Запас банка: 32 дома и 12 отелей. Отель возвращает четыре дома в банк. Для продажи отеля обратно в четыре дома в банке должны быть свободные дома.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Постройки продаются за половину цены. Залог — половина цены улицы, выкуп залога — сумма залога плюс 10%.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Если даже продажа всех построек и залог всей собственности не покрывают долг, банкротство определяется автоматически.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Кубики бросает сервер. Встряхивание меняет анимацию, но не позволяет выбрать результат.',
+              )}
+            </p>
+          </div>
+        </PropertyModal>
+      )}
+      {table.phase === 'finished' && !busy && !panel && (
+        <div className="mono-win-overlay">
+          <section className="mono-win">
+            <Crown className="mono-win-crown" size={45} />
+            <PokerAvatar
+              person={participants.find((p) => p.id === table.winner)}
+              moving={false}
+              self={table.winner === selfId}
+            />
+            <small>{t('Победитель')}</small>
+            <h2>{playerName(table.winner, participants)}</h2>
+            <p>{t('Последний владелец империи. Отличная партия!')}</p>
+            <div className="mono-buttons">
+              {selfId === table.hostId && (
+                <button
+                  type="button"
+                  className="mono-primary"
+                  onClick={() => send({ kind: 'table-reset' })}
+                >
+                  <RotateCcw size={17} />
+                  {t('Новая партия')}
+                </button>
+              )}
+              <button type="button" onClick={onExit}>
+                <X size={17} />
+                {t('К играм')}
               </button>
             </div>
-          )}
+          </section>
         </div>
-        {seat >= 0 && active && !table.bankrupt.includes(seat) && (
-          <>
-            <button type="button" onClick={() => setShowTrade(!showTrade)}>
-              <ArrowRightLeft size={15} />
-              {t('Предложить обмен')}
-            </button>
-            {showTrade && (
-              <div className="property-trade">
-                <select
-                  aria-label={t('Кому предложить обмен')}
-                  value={tradeTo}
-                  onChange={(e) => {
-                    setTradeTo(Number(e.target.value));
-                    setWant([]);
-                  }}
-                >
-                  {table.seats.map((id, i) =>
-                    i !== seat && !table.bankrupt.includes(i) ? (
-                      <option key={id} value={i}>
-                        {playerName(id, participants)}
-                      </option>
-                    ) : null,
-                  )}
-                </select>
-                <small>{t('Вы отдаёте')}</small>
-                {own.map((i) => (
-                  <label key={i}>
-                    <input
-                      type="checkbox"
-                      checked={give.includes(i)}
-                      onChange={() => setGive(toggle(give, i))}
-                    />
-                    {propertyBoard[i]![0]}
-                  </label>
-                ))}
-                <small>{t('Вы получаете')}</small>
-                {other.map((i) => (
-                  <label key={i}>
-                    <input
-                      type="checkbox"
-                      checked={want.includes(i)}
-                      onChange={() => setWant(toggle(want, i))}
-                    />
-                    {propertyBoard[i]![0]}
-                  </label>
-                ))}
-                <label>
-                  {t('Доплата от вас / вам')}
-                  <input
-                    type="number"
-                    min={-10000}
-                    max={10000}
-                    value={cash}
-                    onChange={(e) => setCash(Number(e.target.value))}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={Boolean(table.trade) || tradeTo === seat}
-                  onClick={() => {
-                    send({ kind: 'property-trade', to: tradeTo, give, want, cash });
-                    setShowTrade(false);
-                  }}
-                >
-                  {t('Отправить предложение')}
-                </button>
-              </div>
-            )}
-            {mine && (
-              <button
-                type="button"
-                className="table-danger"
-                onClick={() =>
-                  confirmBankrupt
-                    ? send({ kind: 'property', action: 'bankrupt' })
-                    : setConfirmBankrupt(true)
-                }
-              >
-                {confirmBankrupt ? t('Подтвердить банкротство') : t('Объявить банкротство')}
-              </button>
-            )}
-          </>
-        )}
-        {table.trade && (
-          <div className="property-trade-offer">
-            <h4>{t('Предложение обмена')}</h4>
-            <p>
-              {playerName(table.seats[table.trade.from], participants)} →{' '}
-              {playerName(table.seats[table.trade.to], participants)}
-            </p>
-            <p>
-              {t('Отдаёт')}: {table.trade.give.map((i) => propertyBoard[i]![0]).join(', ') || '—'}
-            </p>
-            <p>
-              {t('Просит')}: {table.trade.want.map((i) => propertyBoard[i]![0]).join(', ') || '—'}
-            </p>
-            <p>
-              {t('Доплата')}: {table.trade.cash} ¤
-            </p>
-            {table.trade.to === seat && (
-              <div className="table-inline-controls">
-                <button
-                  type="button"
-                  onClick={() => send({ kind: 'property-trade-answer', accept: true })}
-                >
-                  {t('Принять')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => send({ kind: 'property-trade-answer', accept: false })}
-                >
-                  {t('Отклонить')}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        {table.phase === 'finished' && selfId === table.hostId && (
-          <button
-            type="button"
-            className="table-primary"
-            onClick={() => send({ kind: 'table-reset' })}
-          >
-            {t('Новая партия')}
-          </button>
-        )}
-        <div className="table-event-log">
-          {table.log.slice(-5).map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
-        </div>
-      </aside>
-    </div>
+      )}
+    </section>
   );
 }

@@ -67,6 +67,29 @@ const baseRents: Record<number, number[]> = {
 export const propertyGroup = (index: number) =>
   propertyBoard.flatMap((p, i) => (p[2] === propertyBoard[index]?.[2] ? [i] : []));
 export const housePrice = (index: number) => 50 * (Math.floor(propertyBoard[index]![2] / 2) + 1);
+export function propertyRentSchedule(index: number): number[] {
+  if (index === 3) return [4, 20, 60, 180, 320, 450];
+  return [...(baseRents[propertyBoard[index]?.[1] ?? 0] ?? [])];
+}
+export function propertyBuildingStock(v: TableOf<'monopoly'>) {
+  return {
+    houses: 32 - v.houses.reduce((n, h) => n + (h < 5 ? h : 0), 0),
+    hotels: 12 - v.houses.filter((h) => h === 5).length,
+  };
+}
+export function propertyLiquidation(v: TableOf<'monopoly'>, seat: number) {
+  return v.owners.reduce(
+    (sum, owner, i) =>
+      owner !== seat
+        ? sum
+        : sum +
+          (v.mortgaged.includes(i) ? 0 : propertyBoard[i]![1] / 2) +
+          (propertyBoard[i]![2] >= 0 && propertyBoard[i]![2] < 8
+            ? (v.houses[i]! * housePrice(i)) / 2
+            : 0),
+    0,
+  );
+}
 function finish(v: TableOf<'monopoly'>) {
   const alive = v.seats.flatMap((s, i) => (s && !v.bankrupt.includes(i) ? [i] : []));
   return alive.length === 1 ? { ...v, phase: 'finished' as const, winner: v.seats[alive[0]!]! } : v;
@@ -77,7 +100,7 @@ function transfer(v: TableOf<'monopoly'>, seat: number, amount: number, to = -1)
   v.debtTo = to;
   if (v.money[seat]! < 0) v.step = 'debt';
 }
-function landing(v: TableOf<'monopoly'>, seat: number) {
+function landing(v: TableOf<'monopoly'>, seat: number, now = 0) {
   const index = v.positions[seat]!,
     tile = propertyBoard[index]!;
   v.step = 'end';
@@ -93,6 +116,28 @@ function landing(v: TableOf<'monopoly'>, seat: number) {
   }
   if ([2, 7, 17, 22, 33, 36].includes(index)) {
     const event = randomInt(5);
+    if (v.propertyRules === 2) {
+      const descriptions = [
+        ['Научная премия', 'Ваше исследование получило награду. Получите 150 ¤ из банка.'],
+        ['Ремонт оборудования', 'Оплатите ремонт: 100 ¤ в банк.'],
+        ['Возвращение домой', 'Переместитесь на старт и получите 200 ¤.'],
+        [
+          'Проверка документов',
+          'Отправляйтесь в тюрьму. За прохождение старта выплата не положена.',
+        ],
+        [
+          'Обслуживание недвижимости',
+          'Оплатите 50 ¤, ещё по 25 ¤ за каждый дом и по 100 ¤ за каждый отель.',
+        ],
+      ];
+      v.lastCard = {
+        sequence: (v.lastCard?.sequence ?? 0) + 1,
+        kind: [7, 22, 36].includes(index) ? 'chance' : 'event',
+        title: descriptions[event]![0]!,
+        text: descriptions[event]![1]!,
+        at: now,
+      };
+    }
     if (event === 0) {
       v.money[seat]! += 150;
       return addLog(v, 'Премия за исследование: +150');
@@ -113,7 +158,13 @@ function landing(v: TableOf<'monopoly'>, seat: number) {
       return addLog(v, 'Проверка документов: пропустите рейс в тюрьме');
     }
     const repair = v.owners.reduce(
-      (n, owner, i) => n + (owner === seat ? v.houses[i]! * 25 : 0),
+      (n, owner, i) =>
+        n +
+        (owner === seat
+          ? v.propertyRules === 2 && v.houses[i] === 5
+            ? 100
+            : v.houses[i]! * 25
+          : 0),
       50,
     );
     transfer(v, seat, repair);
@@ -133,12 +184,13 @@ function landing(v: TableOf<'monopoly'>, seat: number) {
       ? 25 * 2 ** (owned - 1)
       : tile[2] === 9
         ? (v.dice[0] + v.dice[1]) * (owned === 2 ? 10 : 4)
-        : (baseRents[tile[1]]![v.houses[index]!] ?? 0) *
-          (v.houses[index] === 0 && owned === group.length ? 2 : 1);
+        : ((v.propertyRules === 2 ? propertyRentSchedule(index) : baseRents[tile[1]]!)[
+            v.houses[index]!
+          ] ?? 0) * (v.houses[index] === 0 && owned === group.length ? 2 : 1);
   transfer(v, seat, rent, owner);
   return addLog(v, `Игрок ${seat + 1} → игроку ${owner + 1}: аренда ${rent}`);
 }
-export function reduceProperty(
+function reducePropertyLegacy(
   session: TableSession,
   action: TableAction,
   context: TableContext,
@@ -313,6 +365,10 @@ export function reduceProperty(
           return { ...session, view: addLog(v, 'Без дубля: ожидание в тюрьме') };
         }
         transfer(v, seat, 50);
+        if (v.propertyRules === 2 && v.money[seat]! < 0) {
+          v.pendingJailDice = v.dice;
+          return { ...session, view: addLog(v, 'Для выхода из тюрьмы сначала погасите залог 50') };
+        }
       }
     } else {
       v.doubles = double ? v.doubles + 1 : 0;
@@ -328,7 +384,7 @@ export function reduceProperty(
     if (position >= 40) v.money[seat]! += 200;
     v.positions[seat] = position % 40;
     const debt = v.money[seat]! < 0;
-    v = landing(v, seat);
+    v = landing(v, seat, context.now);
     if (debt) v.step = 'debt';
     return {
       ...session,
@@ -361,4 +417,158 @@ export function reduceProperty(
     v.trade = undefined;
   } else return session;
   return { ...session, view: addLog(v, `Игрок ${seat + 1}: ${action.action}`) };
+}
+
+function eliminate(v: TableOf<'monopoly'>, seat: number, automatic: boolean) {
+  const creditor = v.step === 'debt' ? v.debtTo : -1;
+  // Buildings are sold to the bank; properties go to the creditor, never vanish.
+  for (let i = 0; i < v.owners.length; i++)
+    if (v.owners[i] === seat) {
+      if (v.houses[i]) v.money[seat]! += (v.houses[i]! * housePrice(i)) / 2;
+      v.houses[i] = 0;
+      v.owners[i] = creditor;
+      if (creditor < 0) v.mortgaged = v.mortgaged.filter((p) => p !== i);
+    }
+  if (creditor >= 0) v.money[creditor]! += v.money[seat]!;
+  v.pendingJailDice = undefined;
+  v.money[seat] = 0;
+  if (!v.bankrupt.includes(seat)) v.bankrupt.push(seat);
+  v.trade = undefined;
+  v.auction = undefined;
+  v.extraRoll = false;
+  v.doubles = 0;
+  v = finish(v);
+  if (v.phase !== 'finished') {
+    do {
+      v.turn = (v.turn + 1) % v.seats.length;
+    } while (!v.seats[v.turn] || v.bankrupt.includes(v.turn));
+    v.step = 'roll';
+  }
+  return addLog(
+    v,
+    `Игрок ${seat + 1}: ${automatic ? 'долг превышает стоимость всех активов — банкротство' : 'банкротство'}`,
+  );
+}
+function finishPropertyAction(
+  session: TableSession,
+  old: TableOf<'monopoly'>,
+  v: TableOf<'monopoly'>,
+  action: TableAction,
+  context: TableContext,
+): TableSession {
+  let resumed = false;
+  const waiting = Boolean(v.pendingJailDice),
+    roller = old.turn;
+  if (v.pendingJailDice && v.money[v.turn]! >= 0) {
+    const steps = v.pendingJailDice[0] + v.pendingJailDice[1];
+    v.pendingJailDice = undefined;
+    const position = v.positions[v.turn]! + steps;
+    if (position >= 40) v.money[v.turn]! += 200;
+    v.positions[v.turn] = position % 40;
+    v = landing(v, v.turn, context.now);
+    resumed = true;
+  }
+  if (v.step === 'debt' && v.money[v.turn]! + propertyLiquidation(v, v.turn) < 0)
+    v = eliminate(v, v.turn, true);
+  const rolling = action.kind === 'property' && action.action === 'roll';
+  if (rolling || resumed) {
+    const from = old.positions[roller]!,
+      steps = v.dice[0] + v.dice[1];
+    let path: number[] = [];
+    const jailStay =
+      (waiting && !resumed) ||
+      (old.jail[roller]! > 0 && v.positions[roller] === from && v.jail[roller]! > 0);
+    if (!jailStay) {
+      if (v.jail[roller]! > 0 && old.doubles >= 2) path = [10];
+      else {
+        path = Array.from({ length: steps }, (_, i) => (from + i + 1) % 40);
+        if (path.at(-1) !== v.positions[roller]) path.push(v.positions[roller]!);
+      }
+    }
+    v.lastMove = {
+      sequence: (old.lastMove?.sequence ?? 0) + 1,
+      roll: !resumed,
+      seat: roller,
+      from,
+      path,
+      at: context.now,
+      until: context.now + (resumed ? 0 : 900) + path.length * 110 + 180,
+    };
+  }
+  return { ...session, view: v };
+}
+export function reduceProperty(
+  session: TableSession,
+  action: TableAction,
+  context: TableContext,
+): TableSession {
+  if (session.view.kind !== 'monopoly' || session.view.propertyRules !== 2)
+    return reducePropertyLegacy(session, action, context);
+  const old = session.view,
+    seat = old.seats.indexOf(context.actorId);
+  if (
+    old.phase !== 'playing' ||
+    seat < 0 ||
+    old.bankrupt.includes(seat) ||
+    context.now < (old.lastMove?.until ?? 0)
+  )
+    return session;
+  if (action.kind === 'property' && action.action === 'bankrupt') {
+    return seat === old.turn
+      ? { ...session, view: eliminate(structuredClone(old), seat, false) }
+      : session;
+  }
+  if (action.kind === 'property' && action.action === 'liquidate-group') {
+    const index = action.index ?? -1,
+      group = propertyGroup(index);
+    if (
+      propertyBoard[index]?.[2] === undefined ||
+      propertyBoard[index]![2] < 0 ||
+      propertyBoard[index]![2] > 7 ||
+      !group.every((i) => old.owners[i] === seat) ||
+      !group.some((i) => old.houses[i]! > 0)
+    )
+      return session;
+    const v = structuredClone(old);
+    for (const i of group) {
+      v.money[seat]! += (v.houses[i]! * housePrice(i)) / 2;
+      v.houses[i] = 0;
+    }
+    if (v.step === 'debt' && v.money[v.turn]! >= 0) v.step = 'end';
+    return finishPropertyAction(
+      session,
+      old,
+      addLog(v, `Игрок ${seat + 1}: проданы все постройки цветовой группы`),
+      action,
+      context,
+    );
+  }
+  if (action.kind === 'property' && action.index !== undefined) {
+    const stock = propertyBuildingStock(old),
+      level = old.houses[action.index]!;
+    if (action.action === 'build' && (level === 4 ? stock.hotels < 1 : stock.houses < 1))
+      return session;
+    if (action.action === 'sell-house' && level === 5 && stock.houses < 4) return session;
+  }
+  if (action.kind === 'property-trade') {
+    if (
+      ![...action.give, ...action.want].every((i) =>
+        propertyGroup(i).every((j) => old.houses[j] === 0),
+      )
+    )
+      return session;
+  }
+  if (
+    action.kind === 'property-trade-answer' &&
+    action.accept &&
+    old.trade &&
+    ![...old.trade.give, ...old.trade.want].every((i) =>
+      propertyGroup(i).every((j) => old.houses[j] === 0),
+    )
+  ) {
+    return reducePropertyLegacy(session, { kind: 'property-trade-answer', accept: false }, context);
+  }
+  const next = reducePropertyLegacy(session, action, context);
+  if (next === session || next.view.kind !== 'monopoly') return next;
+  return finishPropertyAction(next, old, next.view, action, context);
 }

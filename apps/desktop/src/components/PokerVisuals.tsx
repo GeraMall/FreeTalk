@@ -175,11 +175,13 @@ export function PokerChips({ amount, compact = false }: { amount: number; compac
 }
 export function PokerAvatar({
   person,
+  feedback,
   seconds,
   moving,
   self,
 }: {
   person?: TableParticipant;
+  feedback?: { kind: string; label: string; key: string };
   seconds?: number;
   moving: boolean;
   self: boolean;
@@ -205,6 +207,16 @@ export function PokerAvatar({
         <CachedMediaImage src={person.avatar} alt="" />
       ) : (
         <span>{person?.name.slice(0, 2) ?? '?'}</span>
+      )}
+      {feedback && (
+        <span
+          key={feedback.key}
+          className={`pkr-feedback-layer pkr-feedback-${feedback.kind}`}
+          role="status"
+          aria-label={feedback.label}
+        >
+          {feedback.kind === 'timeout' ? t('Пас') : feedback.label}
+        </span>
       )}
       {moving && (
         <svg className="pkr-time-ring" viewBox="0 0 72 72" aria-hidden="true">

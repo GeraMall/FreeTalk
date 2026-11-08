@@ -25,6 +25,7 @@ import { ActivityFleet } from './ActivityFleet';
 import { ActivityMillionaire } from './ActivityMillionaire';
 import { ActivityPoker } from './ActivityPoker';
 import { PokerLobby } from './PokerLobby';
+import { PropertyLobby, PropertyViewport } from './PropertyLobby';
 import { PokerViewport } from './PokerViewport';
 import type { TableParticipant } from './activity-table-ui';
 import { ActivityProperty } from './ActivityProperty';
@@ -164,7 +165,12 @@ export function CallActivity({
     ...(table?.bots ?? []).map((b) => ({ ...b, bot: true })),
   ];
   const activeKind = table?.kind ?? game?.kind;
-  const TableFrame = table?.kind === 'poker' ? PokerViewport : Fragment;
+  const TableFrame =
+    table?.kind === 'poker'
+      ? PokerViewport
+      : table?.kind === 'monopoly'
+        ? PropertyViewport
+        : Fragment;
   const mobileGames: (ActivityGame | TableKind)[] = ['chess', 'mines', 'fleet', 'poker'];
   if (activity.canPlayPoker === false) mobileGames[3] = 'millionaire';
   if (activeKind && !mobileGames.includes(activeKind)) mobileGames[3] = activeKind;
@@ -196,6 +202,7 @@ export function CallActivity({
             kind: 'table-open',
             game: next,
             edition: 3,
+            ...(next === 'monopoly' ? { propertyRules: 2 as const } : {}),
             ...(next === 'poker'
               ? { pokerRules: 2 as const, pokerSeats: 8 as const, pokerFlow: 2 as const }
               : {}),
@@ -282,7 +289,7 @@ export function CallActivity({
             visible: false,
           })
         }
-        className={`activity-content ${catalog || (!activeKind && !activity.restrictedGame) ? 'activity-catalog' : 'activity-playing'} ${!catalog && table?.kind === 'poker' ? 'activity-poker-fit' : ''}`}
+        className={`activity-content ${catalog || (!activeKind && !activity.restrictedGame) ? 'activity-catalog' : 'activity-playing'} ${!catalog && table?.kind === 'poker' ? 'activity-poker-fit' : !catalog && table?.kind === 'monopoly' ? 'activity-monopoly-fit' : ''}`}
       >
         {catalog || (!activeKind && !activity.restrictedGame) ? (
           <>
@@ -355,12 +362,12 @@ export function CallActivity({
         {table && !catalog && (
           <div className="activity-table-surface" data-activity-surface="tablet">
             <TableFrame>
-              {table.training && table.kind !== 'poker' && (
+              {table.training && table.kind !== 'poker' && table.kind !== 'monopoly' && (
                 <div className="table-training-banner">
                   {t('Тренировка с ботами · статистика не учитывается')}
                 </div>
               )}
-              {table.phase === 'lobby' && table.kind !== 'poker' && (
+              {table.phase === 'lobby' && table.kind !== 'poker' && table.kind !== 'monopoly' && (
                 <TableBotControls
                   table={table}
                   selfId={selfId}
@@ -377,6 +384,13 @@ export function CallActivity({
                 />
               ) : table.phase === 'lobby' && table.kind === 'poker' ? (
                 <PokerLobby
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.phase === 'lobby' && table.kind === 'monopoly' ? (
+                <PropertyLobby
                   table={table}
                   selfId={selfId}
                   participants={participants}
@@ -416,6 +430,7 @@ export function CallActivity({
                 />
               ) : (
                 <ActivityProperty
+                  onExit={() => setCatalog(true)}
                   key={table.id}
                   table={table}
                   selfId={selfId}

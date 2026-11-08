@@ -76,6 +76,7 @@ export function tickBots(
   } else if (v.phase !== 'playing') return session;
   else if (v.kind === 'chess') seat = v.fen.split(' ')[1] === 'w' ? 0 : 1;
   else if (v.kind === 'fleet') seat = v.turn;
+  else if (v.kind === 'monopoly' && now < (v.lastMove?.until ?? 0)) return session;
   else if (v.kind === 'monopoly') seat = v.trade ? v.trade.to : (v.auction?.turn ?? v.turn);
   else if (v.kind === 'poker' && v.stage !== 'showdown' && now >= (v.turnAt ?? 0)) seat = v.turn;
   if (seat < 0 || !v.bots.some((b) => b.id === v.seats[seat])) return session;

@@ -22,6 +22,7 @@ export interface PeerConnection {
   pokerSeats?: 8;
   tabletVersion?: 3;
   pokerFlow?: 2;
+  propertyRules?: 2;
   isAdult?: boolean;
   lastAgeCheckAt?: number;
   send(message: ServerMessage): void;
@@ -439,6 +440,7 @@ export class RoomManager {
         ? {
             actorId: clientId,
             pokerFlow: peer.connection.pokerFlow,
+            propertyRules: peer.connection.propertyRules,
             members: [...room.peers.keys()],
             now,
             voters: [...room.peers]

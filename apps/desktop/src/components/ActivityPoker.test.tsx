@@ -33,6 +33,34 @@ const table = (): TableOf<'poker'> => ({
   handNumber: 1,
 });
 describe('poker raise controls', () => {
+  it('keeps the turn ring and betting controls while showing actions only inside the avatar', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(10000);
+    const state = {
+      ...table(),
+      turnDeadline: 40000,
+      lastAction: { seat: 1, kind: 'check' as const, amount: 0, at: 10000, sequence: 1 },
+    };
+    const screen = render(
+      <ActivityPoker table={state} selfId="a" participants={[]} send={vi.fn()} />,
+    );
+    expect(screen.container.querySelector('.pkr-time-ring')).toBeTruthy();
+    expect(screen.container.querySelector('.pkr-seat-clock')).toBeNull();
+    expect(screen.container.querySelector('.pkr-action-bubble')).toBeNull();
+    expect(screen.container.querySelector('.pkr-avatar .pkr-feedback-layer')?.textContent).toBe(
+      'Чек',
+    );
+    expect(screen.getByRole('button', { name: 'Пас' })).toBeTruthy();
+    screen.rerender(
+      <ActivityPoker
+        table={{ ...state, lastAction: { ...state.lastAction, at: 8000 } }}
+        selfId="a"
+        participants={[]}
+        send={vi.fn()}
+      />,
+    );
+    expect(screen.container.querySelector('.pkr-feedback-layer')).toBeNull();
+    vi.restoreAllMocks();
+  });
   it('uses the same vector suit in both mirrored corners and the middle, including tens', () => {
     const screen = render(<PokerCard value="Th" />);
     const paths = [...screen.container.querySelectorAll('path')].map((p) => p.getAttribute('d'));
