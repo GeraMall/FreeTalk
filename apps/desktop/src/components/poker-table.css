@@ -2413,14 +2413,7 @@
     bottom: 10px;
   }
   .pkr-eight .pkr-seat:has(.pkr-allin) .pkr-wager {
-    inset: calc(100% + 32px) auto auto 0;
-    width: 30px;
-  }
-  .pkr-eight .pkr-seat:has(.pkr-allin) .pkr-wager .pkr-chips {
     display: none;
-  }
-  .pkr-eight .pkr-own:has(.pkr-allin) .pkr-wager {
-    inset: 32px auto auto -36px;
   }
   .pkr-eight .pkr-chips-compact {
     scale: 0.6;
