@@ -2313,16 +2313,17 @@ export function App() {
             onRegister={registerAccount}
             onResendVerification={resendVerificationAccount}
             onVerifyEmail={verifyEmailAccount}
-            onForgotPassword={(email) =>
-              void accountClient
-                .forgotPassword(email)
-                .then((result) => setNotice(result.message))
-                .catch((caught: unknown) =>
-                  setError(
-                    caught instanceof Error ? caught.message : 'Не удалось отправить письмо',
-                  ),
-                )
-            }
+            onForgotPassword={async (email) => {
+              setError('');
+              try {
+                const result = await accountClient.forgotPassword(email);
+                setNotice(result.message);
+                return true;
+              } catch (caught) {
+                setError(caught instanceof Error ? caught.message : 'Не удалось отправить письмо');
+                return false;
+              }
+            }}
             onResetPassword={(token, password, email) =>
               void accountClient
                 .resetPassword(token, password, email)

@@ -56,7 +56,7 @@ interface WelcomeScreenProps {
   onRegister(input: RegistrationInput): Promise<boolean>;
   onResendVerification(email: string): Promise<boolean>;
   onVerifyEmail(email: string, code: string): Promise<boolean>;
-  onForgotPassword(email: string): void;
+  onForgotPassword(email: string): Promise<boolean>;
   onResetPassword(token: string, password: string, email: string): void;
   onSettings(): void;
 }
@@ -154,6 +154,8 @@ export function WelcomeScreen({
   const [verificationDeadline, setVerificationDeadline] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [resetMode, setResetMode] = useState(false);
+  const [requestResetCode, setRequestResetCode] = useState(false);
+  const [requestingResetCode, setRequestingResetCode] = useState(false);
   const [resetToken, setResetToken] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [openLegal, setOpenLegal] = useState<keyof typeof LEGAL_DOCUMENTS>();
@@ -171,6 +173,23 @@ export function WelcomeScreen({
   const usernameValid = isValidUsername(username);
   const loginFieldsMissing = !login.trim() || !password;
   const passwordsMismatch = Boolean(password && confirmation && password !== confirmation);
+  const resetEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login.trim());
+
+  const openPasswordReset = (requestCode: boolean) => {
+    if (!resetEmailValid) setLogin('');
+    setRequestResetCode(requestCode);
+    setResetMode(true);
+  };
+
+  const sendResetCode = async () => {
+    if (busy || requestingResetCode || !resetEmailValid) return;
+    setRequestingResetCode(true);
+    try {
+      if (await onForgotPassword(login.trim())) setRequestResetCode(false);
+    } finally {
+      setRequestingResetCode(false);
+    }
+  };
 
   const updateUsername = (rawValue: string) => {
     const candidate = rawValue.replace(/^@/, '').toLowerCase();
@@ -372,45 +391,63 @@ export function WelcomeScreen({
                         <input
                           type="email"
                           value={login}
+                          autoFocus={requestResetCode}
                           autoComplete="email"
-                          disabled={busy}
+                          disabled={busy || requestingResetCode}
                           onChange={(event) => setLogin(event.target.value)}
                         />
                       </label>
-                      <label className="field-label">
-                        {t('Код из письма')}
-                        <input
-                          autoFocus
-                          value={resetToken}
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={6}
-                          placeholder="000000"
-                          onChange={(event) =>
-                            setResetToken(event.target.value.replace(/\D/g, '').slice(0, 6))
-                          }
-                        />
-                      </label>
-                      <PasswordField
-                        id="reset-password"
-                        label={t('Новый пароль')}
-                        value={resetPassword}
-                        autoComplete="new-password"
-                        onChange={setResetPassword}
-                      />
+                      {requestResetCode ? (
+                        <button
+                          className="primary wide"
+                          disabled={busy || requestingResetCode || !resetEmailValid}
+                          onClick={() => void sendResetCode()}
+                        >
+                          <MailCheck size={18} />
+                          {requestingResetCode ? t('Отправляем…') : t('Получить код')}
+                        </button>
+                      ) : (
+                        <>
+                          <label className="field-label">
+                            {t('Код из письма')}
+                            <input
+                              autoFocus
+                              value={resetToken}
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              maxLength={6}
+                              placeholder="000000"
+                              onChange={(event) =>
+                                setResetToken(event.target.value.replace(/\D/g, '').slice(0, 6))
+                              }
+                            />
+                          </label>
+                          <PasswordField
+                            id="reset-password"
+                            label={t('Новый пароль')}
+                            value={resetPassword}
+                            autoComplete="new-password"
+                            onChange={setResetPassword}
+                          />
+                          <button
+                            className="primary wide"
+                            disabled={
+                              busy ||
+                              !/^\d{6}$/.test(resetToken) ||
+                              !resetPassword ||
+                              !resetEmailValid
+                            }
+                            onClick={() => onResetPassword(resetToken, resetPassword, login)}
+                          >
+                            {t('Сохранить новый пароль')}
+                          </button>
+                        </>
+                      )}
                       <button
-                        className="primary wide"
-                        disabled={
-                          busy ||
-                          !/^\d{6}$/.test(resetToken) ||
-                          !resetPassword ||
-                          !login.includes('@')
-                        }
-                        onClick={() => onResetPassword(resetToken, resetPassword, login)}
+                        className="text-action"
+                        disabled={busy || requestingResetCode}
+                        onClick={() => setResetMode(false)}
                       >
-                        {t('Сохранить новый пароль')}
-                      </button>
-                      <button className="text-action" onClick={() => setResetMode(false)}>
                         {t('Вернуться ко входу')}
                       </button>
                     </>
@@ -457,12 +494,16 @@ export function WelcomeScreen({
                         {' '}
                         <button
                           className="text-action"
-                          disabled={!login.includes('@')}
-                          onClick={() => onForgotPassword(login)}
+                          disabled={busy}
+                          onClick={() => openPasswordReset(true)}
                         >
                           {t('Забыли пароль?')}
                         </button>
-                        <button className="text-action" onClick={() => setResetMode(true)}>
+                        <button
+                          className="text-action"
+                          disabled={busy}
+                          onClick={() => openPasswordReset(false)}
+                        >
                           {t('У меня есть код сброса')}
                         </button>
                       </div>

@@ -23,13 +23,60 @@ function props() {
     onRegister: vi.fn().mockResolvedValue(true),
     onResendVerification: vi.fn().mockResolvedValue(true),
     onVerifyEmail: vi.fn().mockResolvedValue(true),
-    onForgotPassword: vi.fn(),
+    onForgotPassword: vi.fn().mockResolvedValue(true),
     onResetPassword: vi.fn(),
     onSettings: vi.fn(),
   };
 }
 
 describe('account-first welcome screen', () => {
+  it.each(['', 'neman', '@neman'])(
+    'opens password recovery with login %s without sending a username',
+    async (login) => {
+      const handlers = props();
+      const view = render(<WelcomeScreen {...handlers} />);
+      fireEvent.change(view.getByRole('textbox', { name: /Почта или @username/ }), {
+        target: { value: login },
+      });
+      const forgot = view.getByRole('button', { name: 'Забыли пароль?' }) as HTMLButtonElement;
+      expect(forgot.disabled).toBe(false);
+      fireEvent.click(forgot);
+      expect(handlers.onForgotPassword).not.toHaveBeenCalled();
+      expect((view.getByLabelText('Почта аккаунта') as HTMLInputElement).value).toBe('');
+      fireEvent.change(view.getByLabelText('Почта аккаунта'), {
+        target: { value: 'test@example.com' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Получить код' }));
+      await waitFor(() => expect(view.getByLabelText('Код из письма')).toBeTruthy());
+      expect(handlers.onForgotPassword).toHaveBeenCalledExactlyOnceWith('test@example.com');
+    },
+  );
+
+  it('keeps recovery on the email step after failure and prevents duplicate code requests', async () => {
+    const handlers = props();
+    let finish!: (ok: boolean) => void;
+    handlers.onForgotPassword.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<WelcomeScreen {...handlers} />);
+    fireEvent.click(view.getByRole('button', { name: 'Забыли пароль?' }));
+    fireEvent.change(view.getByLabelText('Почта аккаунта'), {
+      target: { value: 'test@example.com' },
+    });
+    const send = view.getByRole('button', { name: 'Получить код' });
+    fireEvent.click(send);
+    fireEvent.click(send);
+    expect(handlers.onForgotPassword).toHaveBeenCalledOnce();
+    finish(false);
+    await waitFor(() => expect(view.getByRole('button', { name: 'Получить код' })).toBeTruthy());
+    expect(view.queryByLabelText('Код из письма')).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: 'Получить код' }));
+    await waitFor(() => expect(view.getByLabelText('Код из письма')).toBeTruthy());
+    expect(handlers.onForgotPassword).toHaveBeenCalledTimes(2);
+  });
   it('does not create or display a login QR on a phone', () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) Mobile/15E148 Safari/604.1',
