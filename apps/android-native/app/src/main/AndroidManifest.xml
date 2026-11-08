@@ -34,7 +34,9 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask">
+            <!-- Insets and IME are handled by Compose, with a resizing window. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

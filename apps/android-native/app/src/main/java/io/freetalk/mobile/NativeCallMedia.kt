@@ -35,6 +35,8 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     @Volatile private var microphoneLevel = 0f
     var levels by mutableStateOf(emptyMap<String, Float>()); private set
     var muted by mutableStateOf(false); private set
+    var deafened by mutableStateOf(false); private set
+    private var mutedBeforeDeafen = false
     var camera by mutableStateOf(false); private set
     var sharing by mutableStateOf(false); private set
     var error by mutableStateOf(""); private set
@@ -121,6 +123,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             override fun onRenegotiationNeeded() = post { negotiate(id) }
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = post {
                 val track = receiver.track()
+                if (track is AudioTrack) track.setEnabled(!deafened)
                 if (track is VideoTrack) { peers[id]?.remoteTracks?.put(track.id(), track); refreshRemoteVideo(id) }
             }
         }) ?: error("Не удалось создать медиасоединение")
@@ -275,7 +278,24 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         )
         return SenderBinding(transceiver.sender, transceiver)
     }
-    fun changeMuted(value: Boolean) { audio.setEnabled(!value); muted = value; signal.send(JSONObject().put("type", "mute-changed").put("muted", value)) }
+    private fun publishAudioState() {
+        audio.setEnabled(!muted && !deafened)
+        peers.values.forEach { peer -> peer.pc.receivers.forEach { receiver ->
+            (receiver.track() as? AudioTrack)?.setEnabled(!deafened)
+        } }
+        signal.send(JSONObject().put("type", "mute-changed").put("muted", muted).put("deafened", deafened))
+    }
+    fun changeMuted(value: Boolean) {
+        if (!value && deafened) deafened = false
+        muted = value
+        publishAudioState()
+    }
+    fun changeDeafened(value: Boolean) {
+        if (value == deafened) return
+        if (value) { mutedBeforeDeafen = muted; muted = true } else muted = mutedBeforeDeafen
+        deafened = value
+        publishAudioState()
+    }
     fun startCamera() {
         runCatching {
             val enumerator = Camera2Enumerator(context)

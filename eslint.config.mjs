@@ -21,6 +21,7 @@ export default tseslint.config(
       '.npm-cache-playwright/**',
       '.toolchains/**',
       'apps/android-native/**/build/**',
+      'apps/android-native/app/src/main/assets/tablet/**',
       'apps/desktop/public/**/*.js',
     ],
   },

@@ -4,6 +4,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val repositoryRoot = rootDir.parentFile.parentFile
+val sourceCommit = providers.exec {
+    workingDir = repositoryRoot
+    commandLine("git", "rev-parse", "--short=12", "HEAD")
+}.standardOutput.asText.get().trim()
+
 android {
     namespace = "io.freetalk.mobile"
     compileSdk = 36
@@ -12,12 +18,16 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.2.0-beta-v2"
+        versionCode = 224
+        versionName = "0.4.0-beta.224"
+        buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
+            // Preserve upgrades from the native previews already installed by testers.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -26,7 +36,7 @@ android {
         }
     }
 
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
     kotlinOptions { jvmTarget = "17" }
     compileOptions {
@@ -34,6 +44,30 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+val bundleTablet by tasks.registering(Exec::class) {
+    workingDir = repositoryRoot
+    commandLine(if (System.getProperty("os.name").startsWith("Windows")) "pnpm.cmd" else "pnpm",
+        "--filter", "@freetalk/desktop", "exec", "vite", "build", "--config", "vite.android-tablet.config.ts", "--configLoader", "runner")
+    inputs.dir(File(repositoryRoot, "apps/desktop/src"))
+    inputs.dir(File(repositoryRoot, "apps/desktop/public/sounds"))
+    inputs.dir(File(repositoryRoot, "packages/protocol/src"))
+    inputs.file(File(repositoryRoot, "apps/desktop/vite.android-tablet.config.ts"))
+    inputs.file(File(repositoryRoot, "apps/desktop/vite.config.ts"))
+    inputs.file(File(repositoryRoot, "apps/desktop/android-tablet.html"))
+    inputs.file(File(repositoryRoot, "pnpm-lock.yaml"))
+    inputs.property("sourceCommit", sourceCommit)
+    outputs.dir("src/main/assets/tablet")
+}
+val bundleNativeTranslations by tasks.registering(Exec::class) {
+    workingDir = repositoryRoot
+    commandLine("node", "scripts/android/export-native-translations.mjs")
+    inputs.dir(File(repositoryRoot, "apps/desktop/src/lib"))
+    inputs.file(File(repositoryRoot, "apps/android-native/native-language-overrides.json"))
+    inputs.file(File(repositoryRoot, "scripts/android/export-native-translations.mjs"))
+    outputs.file("src/main/assets/native-translations.json")
+}
+tasks.named("preBuild") { dependsOn(bundleTablet, bundleNativeTranslations) }
 
 dependencies {
     implementation("io.github.webrtc-sdk:android:144.7559.09")
@@ -57,4 +91,10 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

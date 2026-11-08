@@ -29,4 +29,22 @@ class NativeRoomStateTest {
         room.accept(JSONObject("""{"type":"room-closed"}""")); assertTrue(room.closed)
         room.reset(); assertFalse(room.closed); assertTrue(room.peers.isEmpty()); assertEquals(0L, room.startedAt)
     }
+
+    private fun message(id: String, text: String) = JSONObject().put("id", id).put("text", text).put("participantId", "self").put("senderName", "Me")
+    @Test fun editingAndReactingDoNotMoveMessagesOrExposeRoomTokenInActivity() {
+        val state = NativeRoomState()
+        state.accept(JSONObject("""{"type":"joined-room","selfId":"self","participants":[],"roomChatToken":"secret","activity":{"revision":1}}"""))
+        for (id in listOf("one", "two")) state.accept(JSONObject().put("type", "room-chat-message").put("message", message(id, id)))
+        state.accept(JSONObject().put("type", "room-chat-updated").put("message", message("one", "edited").put("reactions", org.json.JSONArray("""[{"emoji":"❤️","userIds":["self"]}]"""))))
+        assertEquals(listOf("one", "two"), state.messages.map { it.id })
+        assertEquals("edited", state.messages[0].text)
+        assertTrue(state.messages[0].reactions.single().mine)
+        assertFalse(state.activity!!.contains("secret"))
+        state.reset()
+        assertNull(state.fileToken)
+    }
+    @Test fun fileClientRejectsUntrustedOriginAndInvalidToken() {
+        assertThrows(IllegalArgumentException::class.java) { RoomFiles("https://evil.invalid", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") }
+        assertThrows(IllegalArgumentException::class.java) { RoomFiles("https://freetalk.185-225-201-129.sslip.io", "bad") }
+    }
 }

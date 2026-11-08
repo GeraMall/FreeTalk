@@ -23,7 +23,7 @@ fun VoiceLevelIndicator(level: Float, speaking: Boolean, modifier: Modifier = Mo
         profile.forEachIndexed { index, scale ->
             val height = 2.dp.toPx() + (size.height - 2.dp.toPx()) * amplitude * scale
             val x = size.width * (index + 0.5f) / profile.size
-            drawLine(if (speaking) Color(0xFF4EF3F2) else Color(0xFF385568), Offset(x, (size.height - height) / 2), Offset(x, (size.height + height) / 2), strokeWidth = 1.4.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(if (speaking) MobileDesign.accent else MobileDesign.stroke, Offset(x, (size.height - height) / 2), Offset(x, (size.height + height) / 2), strokeWidth = 1.4.dp.toPx(), cap = StrokeCap.Round)
         }
     }
 }

@@ -18,7 +18,10 @@ class CallService : Service() {
         val notification = Notification.Builder(this, "active-call").setSmallIcon(R.drawable.notification_message)
             .setContentTitle("Trlka · текущий звонок").setContentText("Нажмите, чтобы вернуться")
             .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "Завершить", end).build()).build()
-        startForeground(80, notification, intent?.getIntExtra("types", ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) ?: ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        val defaultTypes = if (android.os.Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+        val requested = intent?.getIntExtra("types", defaultTypes) ?: defaultTypes
+        val supported = if (android.os.Build.VERSION.SDK_INT >= 30) requested else requested and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        startForeground(80, notification, supported)
         afterStart?.also { afterStart = null; it() }
         return START_NOT_STICKY
     }

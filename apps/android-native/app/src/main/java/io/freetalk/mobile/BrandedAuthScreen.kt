@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -23,10 +26,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val authCyan = Color(0xFF4EF3F2)
-private val authMuted = Color(0xFF7F91A8)
-private val authBorder = Color(0xFF183345)
-private val authGradient = Brush.linearGradient(listOf(authCyan, Color(0xFF59BEF9), Color(0xFF3D7BFF)))
+private val authCyan = Color(0xFF8DA6DC)
+private val authMuted = Color(0xFF9AABC1)
+private val authBorder = Color(0xFF29384E)
+private val authGradient = Brush.linearGradient(listOf(authCyan, Color(0xFF8DA6DC), Color(0xFF4B7FFF)))
 
 @Composable
 internal fun BrandedStartupScreen() {
@@ -42,7 +45,7 @@ internal fun BrandedStartupScreen() {
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.size(180.dp).graphicsLayer(alpha = pulse).background(
-            Brush.radialGradient(listOf(Color(0x224EF3F2), Color.Transparent)),
+            Brush.radialGradient(listOf(Color(0x228DA6DC), Color.Transparent)),
         ))
         Image(
             painterResource(R.drawable.freetalk_mascot), null,
@@ -65,15 +68,16 @@ internal fun BrandedAuthScreen(
     onRegister: (String, String, String, String, String) -> Unit,
     onVerify: (String, String) -> Unit,
     onResend: (String) -> Unit,
+    onRecovery: () -> Unit = {},
 ) {
     var login by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable(verificationEmail) { mutableStateOf(verificationEmail) }
     var username by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
-    var birthDate by remember { mutableStateOf("") }
-    val parsedBirthDate = runCatching { java.time.LocalDate.parse(birthDate) }.getOrNull()
-    val validBirthDate = parsedBirthDate != null && parsedBirthDate.year >= 1900 &&
-        parsedBirthDate <= java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+    var birthDay by rememberSaveable { mutableStateOf("") }
+    var birthMonth by rememberSaveable { mutableStateOf("") }
+    var birthYear by rememberSaveable { mutableStateOf("") }
+    val birthDate = AuthValidation.birthDate(birthDay, birthMonth, birthYear)
     // Passwords deliberately remain in memory, outside saved instance state.
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
@@ -87,14 +91,9 @@ internal fun BrandedAuthScreen(
 
     Column(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF071D29), Color(0xFF030A15))),
+            Brush.verticalGradient(listOf(Color(0xFF060C14), Color(0xFF060C14))),
         ).safeDrawingPadding().imePadding(),
     ) {
-        Row(Modifier.fillMaxWidth().background(Color(0xFF030B14)).padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            AuthBrand(34, 22)
-        }
-        HorizontalDivider(color = authBorder)
         Column(
             Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -107,7 +106,7 @@ internal fun BrandedAuthScreen(
                 Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Spacer(Modifier.height(12.dp))
                     AuthBrand(70, 38)
-                    Text(
+                    MobileText(
                         "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!",
                         color = authCyan, fontSize = 10.sp, letterSpacing = 1.5.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 22.dp),
@@ -123,7 +122,7 @@ internal fun BrandedAuthScreen(
                                 modifier = Modifier.weight(1f).heightIn(min = 44.dp)
                                     .background(if (selected) Color(0xFF09232E) else Color.Transparent, RoundedCornerShape(11.dp))
                                     .border(1.dp, if (selected) Color(0xFF32606C) else Color.Transparent, RoundedCornerShape(11.dp)),
-                            ) { Text(title, color = if (selected) Color(0xFFF6F7FA) else authMuted, fontSize = 16.sp) }
+                            ) { MobileText(title, color = if (selected) Color(0xFFF6F7FA) else authMuted, fontSize = 16.sp) }
                         }
                     }
                     Spacer(Modifier.height(20.dp))
@@ -134,6 +133,7 @@ internal fun BrandedAuthScreen(
                             AuthAction(if (busy) "Входим…" else "Войти", !busy && login.isNotBlank() && password.isNotBlank()) {
                                 onLogin(login.trim(), password)
                             }
+                            TextButton(onClick = onRecovery, enabled = !busy) { MobileText("Забыли пароль?") }
                         }
                         AuthPage.Register -> {
                             Surface(
@@ -141,42 +141,49 @@ internal fun BrandedAuthScreen(
                                 border = BorderStroke(1.dp, authBorder), modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(Modifier.padding(16.dp)) {
-                                    Text("Создайте аккаунт", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    Text("Один профиль для друзей, звонков и истории общения.",
+                                    MobileText("Создайте аккаунт", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    MobileText("Один профиль для друзей, звонков и истории общения.",
                                         color = authMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp, bottom = 18.dp))
                                     BrandedField(email, { email = it }, "Почта", "name@example.com", KeyboardType.Email)
                                     BrandedField(username, { username = it }, "Уникальный @username", "username")
                                     BrandedField(name, { name = it }, "Отображаемое имя", "Как вас увидят другие")
+                                    MobileText("Необязательно. Если оставить пустым, используется @username.", color = authMuted, fontSize = 12.sp)
                                     BrandedField(password, { password = it }, "Пароль", password = true)
+                                    MobileText("От 10 символов, хотя бы одна буква и цифра.", color = authMuted, fontSize = 12.sp)
                                     BrandedField(repeatedPassword, { repeatedPassword = it }, "Повторите пароль", password = true)
                                     if (repeatedPassword.isNotEmpty() && repeatedPassword != password) {
-                                        Text("Пароли не совпадают", color = Color(0xFFFF8096), fontSize = 12.sp)
+                                        MobileText("Пароли не совпадают", color = Color(0xFFFF8096), fontSize = 12.sp)
                                     }
-                                    BrandedField(birthDate, { birthDate = it.take(10) }, "Дата рождения *", "ГГГГ-ММ-ДД")
+                                    MobileText("Дата рождения", color = authMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        BrandedField(birthDay, { birthDay = it.filter { c -> c in '0'..'9' }.take(2) }, "День", "ДД", KeyboardType.Number, modifier = Modifier.weight(1f))
+                                        BrandedField(birthMonth, { birthMonth = it.filter { c -> c in '0'..'9' }.take(2) }, "Месяц", "ММ", KeyboardType.Number, modifier = Modifier.weight(1f))
+                                        BrandedField(birthYear, { birthYear = it.filter { c -> c in '0'..'9' }.take(4) }, "Год", "ГГГГ", KeyboardType.Number, modifier = Modifier.weight(1.3f))
+                                    }
                                     LegalAcceptance(terms, { terms = it }, "Пользовательское соглашение") { legal = "terms" }
                                     LegalAcceptance(privacy, { privacy = it }, "Политику конфиденциальности") { legal = "privacy" }
                                     Spacer(Modifier.height(14.dp))
                                     AuthAction(
                                         if (busy) "Создаём аккаунт…" else "Создать аккаунт",
-                                        !busy && terms && privacy && email.isNotBlank() && username.trim().length >= 3 &&
-                                            validBirthDate && password.length >= 8 && password == repeatedPassword,
-                                    ) { onRegister(email, username, name, password, birthDate) }
-                                    Text("После регистрации подтвердите почту кодом из письма",
+                                        !busy && terms && privacy && AuthValidation.email(email) && AuthValidation.username(username) &&
+                                            name.trim().length <= 64 && AuthValidation.password(password) && password == repeatedPassword && birthDate != null,
+                                    ) { birthDate?.let { onRegister(email, username, name, password, it) } }
+                                    MobileText("После регистрации подтвердите почту кодом из письма",
                                         color = authMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
                                 }
                             }
                         }
                         AuthPage.Verify -> {
-                            Text("Подтвердите почту", fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                            Text("Введите шестизначный код из письма", color = authMuted,
+                            MobileText("Подтвердите почту", fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                            MobileText("Введите шестизначный код из письма", color = authMuted,
                                 modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
                             BrandedField(email, { email = it }, "Почта", keyboardType = KeyboardType.Email)
                             BrandedField(code, { code = it.filter(Char::isDigit).take(6) }, "Код", keyboardType = KeyboardType.Number)
                             AuthAction("Подтвердить", !busy && email.isNotBlank() && code.length == 6) { onVerify(email, code) }
-                            TextButton(onClick = { onResend(email) }, enabled = !busy && email.isNotBlank()) { Text("Отправить ещё раз") }
+                            TextButton(onClick = { onResend(email) }, enabled = !busy && email.isNotBlank()) { MobileText("Отправить ещё раз") }
                         }
                     }
-                    if (status.isNotBlank()) Text(status,
+                    if (status.isNotBlank()) MobileText(status,
                         color = if (status.contains("отправ", true) || busy) authCyan else Color(0xFFFF8096),
                         modifier = Modifier.fillMaxWidth().padding(top = 14.dp), fontSize = 13.sp)
                     Spacer(Modifier.height(12.dp))
@@ -187,9 +194,9 @@ internal fun BrandedAuthScreen(
     legal?.let { key ->
         AlertDialog(
             onDismissRequest = { legal = null },
-            title = { Text(if (key == "terms") "Пользовательское соглашение Trlka" else "Политика конфиденциальности Trlka") },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(if (key == "terms") termsText else privacyText) } },
-            confirmButton = { TextButton(onClick = { legal = null }) { Text("Закрыть") } },
+            title = { MobileText(if (key == "terms") "Пользовательское соглашение Trlka" else "Политика конфиденциальности Trlka") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { MobileText(if (key == "terms") termsText else privacyText) } },
+            confirmButton = { TextButton(onClick = { legal = null }) { MobileText("Закрыть") } },
         )
     }
 }
@@ -198,7 +205,7 @@ internal fun BrandedAuthScreen(
 private fun AuthBrand(iconSize: Int, textSize: Int) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(iconSize.dp))
-        Text("Trlka", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
+        MobileText("TRLKA", fontSize = textSize.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp,
             modifier = Modifier.padding(start = 10.dp))
     }
 }
@@ -207,15 +214,18 @@ private fun AuthBrand(iconSize: Int, textSize: Int) {
 private fun BrandedField(
     value: String, onChange: (String) -> Unit, label: String, placeholder: String = "",
     keyboardType: KeyboardType = KeyboardType.Text, password: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-        Text(label, color = Color(0xFFC3CEDC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    var visible by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        MobileText(label, color = Color(0xFFC3CEDC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
-            value, onChange, singleLine = true, placeholder = { Text(placeholder, fontSize = 14.sp) },
+            value, onChange, singleLine = true, placeholder = { MobileText(placeholder, fontSize = 14.sp) },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType),
-            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            visualTransformation = if (password && !visible) PasswordVisualTransformation() else VisualTransformation.None,
+            trailingIcon = if (password) { { IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (visible) "Скрыть пароль" else "Показать пароль") } } } else null,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = authCyan, unfocusedBorderColor = authBorder,
                 focusedContainerColor = Color(0xFF030A15), unfocusedContainerColor = Color(0xFF030A15),
@@ -234,7 +244,7 @@ private fun AuthAction(label: String, enabled: Boolean, onClick: () -> Unit) {
         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent,
             disabledContainerColor = Color.Transparent, contentColor = Color(0xFF031018),
             disabledContentColor = Color(0xFF19323D)),
-    ) { Text(label, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+    ) { MobileText(label, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -242,9 +252,9 @@ private fun LegalAcceptance(checked: Boolean, onChecked: (Boolean) -> Unit, titl
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked, onChecked)
         Column(Modifier.weight(1f)) {
-            Text("Я принимаю", color = authMuted, fontSize = 13.sp)
+            MobileText("Я принимаю", color = authMuted, fontSize = 13.sp)
             TextButton(onClick = onOpen, contentPadding = PaddingValues(0.dp)) {
-                Text(title, color = Color(0xFFC3CEDC), fontSize = 13.sp)
+                MobileText(title, color = Color(0xFFC3CEDC), fontSize = 13.sp)
             }
         }
     }
@@ -252,4 +262,4 @@ private fun LegalAcceptance(checked: Boolean, onChecked: (Boolean) -> Unit, titl
 
 // Same beta documents shown by the desktop WelcomeScreen, not new legal terms.
 private const val termsText = "Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.\n\nTrlka предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.\n\nСервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером Trlka."
-private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, дату рождения, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."
+private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."

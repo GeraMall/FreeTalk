@@ -31,3 +31,5 @@ node_modules.corrupt-backup/
 # Python infrastructure checks
 **/__pycache__/
 *.pyc
+apps/android-native/app/src/main/assets/tablet/
+apps/android-native/app/src/main/assets/native-translations.json

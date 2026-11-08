@@ -18,7 +18,8 @@ internal fun chatLiveEvents(api: FreeTalkApi): Flow<JSONObject> = flow {
             var socket: WebSocket? = null
             try {
                 val token = api.realtimeToken()
-                socket = client.newWebSocket(Request.Builder().url("wss://freetalk.191-44-38-60.sslip.io/api/v1/chats/realtime").build(), object : WebSocketListener() {
+                val base = androidServers.current
+                socket = client.newWebSocket(Request.Builder().url(androidServers.socketUrl("/api/v1/chats/realtime")).build(), object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
                         webSocket.send(JSONObject().put("type", "authenticate").put("token", token).toString())
                     }
@@ -26,7 +27,7 @@ internal fun chatLiveEvents(api: FreeTalkApi): Flow<JSONObject> = flow {
                         val event = runCatching { JSONObject(text) }.getOrNull() ?: return
                         if (incoming.trySend(event).isFailure) { webSocket.cancel(); incoming.close() }
                     }
-                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { incoming.close() }
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { androidServers.failed(base); incoming.close() }
                     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, reason); incoming.close() }
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { incoming.close() }
                 })

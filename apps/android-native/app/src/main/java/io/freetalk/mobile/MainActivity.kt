@@ -1,5 +1,8 @@
 package io.freetalk.mobile
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,7 +65,11 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.VideocamOff
 import androidx.compose.material.icons.outlined.CallEnd
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -101,27 +109,27 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+        MobilePreferences.load(this)
         val api = FreeTalkApi(SessionStore(this))
         val cache = MediaCache(this).also { it.trim() }
         setContent { FreeTalkNativeApp(api, cache) }
     }
 }
 
-private val colors = darkColorScheme(
-    primary = Color(0xFF4EF3F2), background = Color(0xFF010811),
-    surface = Color(0xFF03101E), surfaceVariant = Color(0xFF071827),
+internal val colors = darkColorScheme(
+    primary = Color(0xFF8DA6DC), background = Color(0xFF040B14),
+    surface = Color(0xFF101E2E), surfaceVariant = Color(0xFF1A2C48),
+    outline = Color(0xFF29384E), secondary = Color(0xFF8DA6DC), onSurfaceVariant = Color(0xFF9AABC1),
     onPrimary = Color(0xFF02101A), onBackground = Color(0xFFF4F8FF), onSurface = Color(0xFFF4F8FF),
 )
-private val muted = Color(0xFF91A4B8)
+private val muted get() = MobileDesign.muted
 private val good = Color(0xFF55EFB7)
 private val danger = Color(0xFFFF8096)
 private val cyanBlueGradient = Brush.linearGradient(
-    listOf(Color(0xFF4EF3F2), Color(0xFF59BEF9), Color(0xFF3D7BFF)),
+    listOf(Color(0xFF8DA6DC), Color(0xFF8DA6DC), Color(0xFF4B7FFF)),
 )
-private val appBackground = Brush.radialGradient(
-    listOf(Color(0xFF0A3540), Color(0xFF07182B), Color(0xFF010811)), radius = 1350f,
-)
+private val appBackground get() = Brush.verticalGradient(listOf(MobileDesign.background, MobileDesign.background))
 
 internal enum class AuthPage { Login, Register, Verify }
 
@@ -130,25 +138,45 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
     val appContext = LocalContext.current.applicationContext
     var user by remember { mutableStateOf<SignedInUser?>(null) }
     var restoring by remember { mutableStateOf(true) }
+    var restoreError by remember { mutableStateOf<String?>(null) }
+    var restoreAttempt by remember { mutableStateOf(0) }
     var status by remember { mutableStateOf("") }
     var authPage by remember { mutableStateOf(AuthPage.Login) }
     var verificationEmail by remember { mutableStateOf("") }
+    var recovery by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        user = api.restore()
-        restoring = false
+    LaunchedEffect(restoreAttempt) {
+        restoring = true
+        restoreError = null
+        try { user = api.restore() }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { restoreError = "Не удалось подключиться к TRLKA. Ваш вход сохранён." }
+        finally { restoring = false }
     }
 
-    MaterialTheme(colorScheme = colors, typography = freeTalkTypography) {
-        Surface(Modifier.fillMaxSize(), color = colors.background) {
+    val activeColors = if (user == null) colors else mobileColorScheme()
+    MobileSystemBars(user == null || MobilePreferences.theme != "light")
+    MaterialTheme(colorScheme = activeColors, typography = freeTalkTypography) {
+        Surface(Modifier.fillMaxSize(), color = activeColors.background) {
             when {
                 restoring -> BrandedStartupScreen()
+                restoreError != null -> Column(
+                    Modifier.fillMaxSize().background(Color(0xFF060C14)).safeDrawingPadding().padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    MobileText(restoreError.orEmpty(), color = Color(0xFF9AABC1))
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { restoreAttempt++ }) { MobileText("Повторить") }
+                }
+                user == null && recovery -> PasswordRecoveryScreen(api) { recovery = false }
                 user == null -> BrandedAuthScreen(
                     page = authPage,
                     status = status,
                     verificationEmail = verificationEmail,
                     onPage = { authPage = it; status = "" },
+                    onRecovery = { recovery = true },
                     onLogin = { login, password ->
                         status = "Входим…"
                         scope.launch {
@@ -208,7 +236,7 @@ private fun LoadingScreen(label: String) {
     Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = colors.primary)
-            Text(label, color = muted, modifier = Modifier.padding(top = 16.dp))
+            MobileText(label, color = muted, modifier = Modifier.padding(top = 16.dp))
         }
     }
 }
@@ -216,7 +244,30 @@ private fun LoadingScreen(label: String) {
 
 @Composable
 private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser, onLogout: () -> Unit) {
-    var page by remember { mutableStateOf(0) }
+    val nativeContext = LocalContext.current
+    val appearance = remember(user.id) { NativeAppearance(nativeContext.applicationContext) }
+    val appearanceLifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(appearance) { onDispose { appearance.close() } }
+    LaunchedEffect(user.id, appearanceLifecycle) {
+        appearanceLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { appearance.refresh(api); delay(20_000) }
+        }
+    }
+    var page by rememberSaveable { mutableStateOf(0) }
+    var profile by remember(user) { mutableStateOf(user) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var serviceOpen by remember { mutableStateOf(false) }
+    var serviceUnread by remember { mutableStateOf(0) }
+    val botRead = remember(user.id) { nativeContext.getSharedPreferences("service-read", android.content.Context.MODE_PRIVATE) }
+    val markServiceRead: (List<ServiceEntry>) -> Unit = { entries ->
+        val latest = entries.filter { it.author == "bot" }.maxOfOrNull {
+            runCatching { java.time.Instant.parse(it.createdAt).toEpochMilli() }.getOrDefault(0)
+        } ?: 0
+        if (latest > botRead.getLong(user.id, 0)) botRead.edit().putLong(user.id, latest).apply()
+        serviceUnread = 0
+    }
+    var callExpanded by remember { mutableStateOf(true) }
+    var callQuality by remember { mutableStateOf("connecting") }
     var data by remember { mutableStateOf<AccountData?>(null) }
     var error by remember { mutableStateOf("") }
     var refreshing by remember { mutableStateOf(true) }
@@ -226,15 +277,21 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     var incomingCall by remember { mutableStateOf<IncomingCall?>(null) }
     var incomingCallBusy by remember { mutableStateOf(false) }
     var pendingCallInvitees by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadRunning by remember { mutableStateOf(false) }
+    var chatActionRunning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val load: () -> Unit = {
-        refreshing = true
-        scope.launch {
+        if (!loadRunning) {
+          loadRunning = true
+          if (data == null) refreshing = true
+          scope.launch {
             runCatching { api.loadAccountData() }
                 .onSuccess { data = it; error = "" }
                 .onFailure { error = it.message ?: "Не удалось загрузить данные" }
             refreshing = false
+            loadRunning = false
+          }
         }
         Unit
     }
@@ -245,6 +302,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                     RoomEvent.Connected -> roomStatus = "Сигналинг подключён"
                     is RoomEvent.Created -> {
                         roomId = event.roomId
+                        callExpanded = true
                         roomStatus = "Комната создана"
                         val invitees = pendingCallInvitees
                         pendingCallInvitees = emptyList()
@@ -286,22 +344,39 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
         }
     }
     val notifications = remember(user.id) { ChatNotifications(notificationContext) }
-    val latestChat by rememberUpdatedState(activeChat?.id)
+    val readingChatId = if (!settingsOpen && !serviceOpen && (roomId == null || !callExpanded)) activeChat?.id else null
+    val readingService = serviceOpen && !settingsOpen && (roomId == null || !callExpanded)
+    val latestChat by rememberUpdatedState(readingChatId)
     val latestLoad by rememberUpdatedState(load)
     val accountLifecycle = LocalLifecycleOwner.current.lifecycle
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(user.id) {
         if (android.os.Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
     }
-    LaunchedEffect(user.id, accountLifecycle) {
-        accountLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(user.id, accountLifecycle, roomId != null) {
+        accountLifecycle.repeatOnLifecycle(if (roomId != null) Lifecycle.State.CREATED else Lifecycle.State.STARTED) {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 if (PushRuntime.userId == user.id) PushRuntime.syncToken(notificationContext.applicationContext, token)
             }
             chatLiveEvents(api).collect { event ->
                 api.chatEvents.emit(event)
                 when (event.optString("type")) {
-                    "message-created" -> { notifications.show(event, user.id, latestChat); latestLoad() }
+                    "presence-updated" -> data = data?.copy(friends = data!!.friends.map {
+                        if (it.id == event.optString("userId")) it.copy(presence = event.optString("status", "offline")) else it
+                    })
+                    "message-created" -> {
+                        val chatId = event.optString("chatId")
+                        val target = data?.chats?.firstOrNull { it.id == chatId }
+                        if (target?.archived != true && target?.muted != true) notifications.show(event, user.id, latestChat)
+                        val message = event.optJSONObject("message")
+                        if (message != null && target != null) {
+                            val incoming = api.parseMessage(message)
+                            data = data?.copy(chats = data!!.chats.map { if (it.id != chatId) it else it.copy(
+                                lastMessage = incoming.body, lastMessageAt = incoming.createdAt,
+                                unreadCount = if (latestChat == chatId || incoming.senderId == user.id) 0 else it.unreadCount + 1,
+                            ) })
+                        } else latestLoad()
+                    }
                     "ready", "chat-updated", "history-cleared" -> latestLoad()
                     "incoming-call" -> {
                         val inviter = event.optJSONObject("inviter") ?: org.json.JSONObject()
@@ -319,47 +394,43 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             }
         }
     }
-    androidx.compose.runtime.DisposableEffect(activeChat?.id, accountLifecycle) {
+    LaunchedEffect(user.id, accountLifecycle, readingService) {
+        accountLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                runCatching { api.serviceMessages() }.onSuccess { entries ->
+                    if (readingService) markServiceRead(entries) else {
+                        val readAt = botRead.getLong(user.id, 0)
+                        serviceUnread = entries.count { it.author == "bot" && runCatching { java.time.Instant.parse(it.createdAt).toEpochMilli() }.getOrDefault(0) > readAt }
+                    }
+                }
+                delay(15_000)
+            }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(readingChatId, accountLifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            PushRuntime.visibleChatId = if (event == Lifecycle.Event.ON_START || accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) activeChat?.id else null
+            PushRuntime.visibleChatId = if (event == Lifecycle.Event.ON_START || accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) readingChatId else null
         }
         accountLifecycle.addObserver(observer)
-        PushRuntime.visibleChatId = if (accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) activeChat?.id else null
+        PushRuntime.visibleChatId = if (accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) readingChatId else null
         onDispose { accountLifecycle.removeObserver(observer); PushRuntime.visibleChatId = null }
     }
 
-    if (roomId != null) {
-        NativeRoomScreen(
-            signaling = signaling,
-            api = api,
-            chats = data?.chats.orEmpty(),
-            friends = data?.friends.orEmpty(),
-            user = user,
-            roomId = roomId!!,
-            status = roomStatus,
-            onLeave = {
-                signaling.close()
-                roomId = null
-                roomStatus = ""
-                load()
-            },
-        )
-        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
-            incomingCallBusy = true
-            scope.launch {
-                runCatching { api.respondToCall(call.invitationId, "accept") }
-                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
-                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
-                incomingCallBusy = false
+    Box(Modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxSize()) {
+        if (roomId != null && !callExpanded) {
+            val indicator = when (callQuality) { "good" -> MobileDesign.green; "weak" -> Color(0xFFE6BC62); "poor" -> MobileDesign.red; else -> MobileDesign.muted }
+            Row(Modifier.fillMaxWidth().background(indicator.copy(alpha = .15f)).statusBarsPadding()
+                .clickable { callExpanded = true }.padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Call, null, Modifier.size(18.dp), tint = indicator)
+                MobileText("Перейти к звонку", Modifier.padding(start = 8.dp), color = indicator, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
-        }, onDecline = {
-            incomingCallBusy = true
-            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
-        }) }
-        return
-    }
-
-    if (activeChat != null) {
+        }
+        Box(Modifier.weight(1f).then(if (roomId != null && !callExpanded) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
+    if (settingsOpen) AccountSettingsScreen(api, cache, profile, data?.devices.orEmpty(), { settingsOpen = false }, { profile = it }, onLogout, appearance)
+    else if (serviceOpen) ServiceBotScreen(api, { serviceOpen = false }, onRead = { if (readingService && accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) markServiceRead(it) })
+    else if (activeChat != null) {
         val chat = activeChat!!
         NativeChatScreen(
             api, cache, user, chat,
@@ -383,56 +454,23 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 }
             },
             onJoinCall = { code -> roomStatus = "Подключаемся…"; api.accessToken?.let { signaling.join(code, user, it) } },
+            reading = readingChatId == chat.id,
         )
-        incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
-            incomingCallBusy = true
-            scope.launch {
-                runCatching { api.respondToCall(call.invitationId, "accept") }
-                    .onSuccess { acceptedRoom -> incomingCall = null; api.accessToken?.let { signaling.join(acceptedRoom, user, it) } }
-                    .onFailure { error = it.message ?: "Звонок уже недоступен"; incomingCall = null }
-                incomingCallBusy = false
-            }
-        }, onDecline = {
-            incomingCallBusy = true
-            scope.launch { runCatching { api.respondToCall(call.invitationId, "decline") }; incomingCall = null; incomingCallBusy = false }
-        }) }
-        return
     }
-
-    Scaffold(
+    else Scaffold(
         modifier = Modifier.background(appBackground),
         containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar(containerColor = Color(0xF7061321), tonalElevation = 0.dp) {
-                listOf("Главная", "Чаты", "Друзья", "История").forEachIndexed { index, title ->
-                    NavigationBarItem(
-                        selected = page == index, onClick = { page = index },
-                        icon = {
-                            Icon(
-                                listOf(Icons.Outlined.Home, Icons.Outlined.ChatBubbleOutline, Icons.Outlined.PeopleOutline, Icons.Outlined.History)[index],
-                                contentDescription = title,
-                            )
-                        },
-                        label = { Text(title, maxLines = 1, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
-                        colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                            selectedIconColor = colors.primary,
-                            selectedTextColor = colors.primary,
-                            indicatorColor = Color(0xFF09242F),
-                            unselectedIconColor = Color(0xFF6E849B),
-                            unselectedTextColor = Color(0xFF6E849B),
-                        ),
-                    )
-                }
-            }
+            MobileBottomNavigation(page) { page = it }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
-            AppHeader(user, data?.devices?.size ?: 0, onLogout)
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            AppHeader(profile) { settingsOpen = true }
             if (error.isNotBlank()) ErrorCard(error, load)
             when {
                 refreshing && data == null -> LoadingScreen("Загружаем Trlka…")
                 page == 0 -> HomePage(
-                    user = user, data = data, roomId = roomId, status = roomStatus,
+                    user = profile, data = data, roomId = roomId, status = roomStatus,
                     onCreateRoom = {
                         val code = generateRoomCode(); roomStatus = "Создаём комнату…"
                         api.accessToken?.let { signaling.create(code, user, it) }
@@ -443,11 +481,38 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                         api.accessToken?.let { signaling.join(code, user, it) }
                     },
                 )
-                page == 1 -> ChatsPage(user, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load)
-                page == 2 -> FriendsPage(api, user, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load)
+                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true }, friends = data?.friends.orEmpty(), onNewChat = { id -> scope.launch { runCatching { api.directChat(id) }.onSuccess { activeChat = it; load() }.onFailure { error = it.message ?: "Не удалось открыть чат" } } }, onJoinLink = { link -> api.accessToken?.let { signaling.join(normalizeRoomCode(link), profile, it) } },
+                    serviceUnread = serviceUnread,
+                    onSaved = { if (!chatActionRunning) {
+                        chatActionRunning = true
+                        scope.launch {
+                            try { activeChat = data?.chats?.firstOrNull { it.isSaved } ?: api.savedChat(); load() }
+                            catch (e: Exception) { error = e.message ?: "Не удалось открыть избранное" }
+                            finally { chatActionRunning = false }
+                        }
+                    } },
+                    onChatAction = { chat, action -> if (!chatActionRunning) {
+                        chatActionRunning = true
+                        scope.launch {
+                            try {
+                                api.manageChat(chat, action, user.id)
+                                data = data?.copy(chats = api.loadChats())
+                                if (action in listOf("delete", "block") && activeChat?.id == chat.id) activeChat = null
+                            } catch (e: Exception) { error = e.message ?: "Не удалось выполнить действие" }
+                            finally { chatActionRunning = false }
+                        }
+                    } },
+                )
+                page == 2 -> FriendsPage(api, profile, data?.friends.orEmpty(), data?.pendingFriends.orEmpty(), load, onChat = { activeChat = it })
                 else -> HistoryPage(data?.calls.orEmpty(), data?.devices.orEmpty(), cache)
             }
         }
+    }
+        }
+      }
+      if (roomId != null) NativeRoomScreen(profile, roomId!!, roomStatus, signaling, api, data?.chats.orEmpty(), data?.friends.orEmpty(),
+        onLeave = { signaling.close(); roomId = null; roomStatus = ""; load() },
+        expanded = callExpanded, onMinimize = { callExpanded = false }, onQuality = { callQuality = it })
     }
     incomingCall?.let { call -> IncomingCallDialog(call, incomingCallBusy, onAccept = {
         incomingCallBusy = true
@@ -467,64 +532,32 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
 private fun IncomingCallDialog(call: IncomingCall, busy: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
     AlertDialog(
         onDismissRequest = {},
-        containerColor = Color(0xFF071827),
-        title = { Text("Входящий звонок") },
+        containerColor = Color(0xFF101E2E),
+        title = { MobileText("Входящий звонок") },
         text = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF2C416D)), contentAlignment = Alignment.Center) {
                     if (call.inviterAvatarUrl != null) AsyncImage(call.inviterAvatarUrl, call.inviterName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    else Text(call.inviterName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
+                    else MobileText(call.inviterName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.padding(start = 14.dp)) {
-                    Text(call.inviterName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("приглашает вас в разговор", color = muted, fontSize = 13.sp)
+                    MobileText(call.inviterName, localize = false, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    MobileText("приглашает вас в разговор", color = muted, fontSize = 13.sp)
                 }
             }
         },
-        confirmButton = { Button(onClick = onAccept, enabled = !busy) { Text("Принять") } },
-        dismissButton = { OutlinedButton(onClick = onDecline, enabled = !busy) { Text("Отклонить") } },
+        confirmButton = { Button(onClick = onAccept, enabled = !busy) { MobileText("Принять") } },
+        dismissButton = { OutlinedButton(onClick = onDecline, enabled = !busy) { MobileText("Отклонить") } },
     )
 }
 
 
 @Composable
-private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.freetalk_mascot),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(36.dp),
-                )
-                Text("Trlka", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, modifier = Modifier.padding(start = 9.dp))
-            }
-            Box(
-                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF10354A))
-                    .border(1.dp, Color(0x664EF3F2), CircleShape).clickable { open = !open },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (user.avatarUrl != null) {
-                    AsyncImage(
-                        model = user.avatarUrl, contentDescription = user.displayName,
-                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                    )
-                } else Text(user.displayName.take(1).uppercase(), color = colors.primary, fontWeight = FontWeight.Bold)
-            }
-        }
-        if (open) {
-            Surface(Modifier.fillMaxWidth().padding(top = 12.dp), color = colors.surface, shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(user.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("@${user.username}", color = muted)
-                    Text("Подключено устройств: $deviceCount", color = colors.primary, modifier = Modifier.padding(top = 10.dp))
-                    OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("Выйти из аккаунта", color = danger) }
-                }
-            }
-        }
-        HorizontalDivider(color = Color(0xFF102537), modifier = Modifier.padding(top = if (open) 12.dp else 6.dp))
+internal fun AppHeader(user: SignedInUser, onSettings: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(MobileDesign.background).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(28.dp))
+        MobileText("TRLKA", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        Box(Modifier.size(44.dp).clickable(onClickLabel = "Настройки", onClick = onSettings), contentAlignment = Alignment.Center) { MobileAvatar(user.displayName, user.avatarUrl, 36.dp) }
     }
 }
 
@@ -532,14 +565,14 @@ private fun AppHeader(user: SignedInUser, deviceCount: Int, onLogout: () -> Unit
 private fun ErrorCard(message: String, retry: () -> Unit) {
     Surface(Modifier.fillMaxWidth().padding(bottom = 12.dp), color = Color(0xFF35141E), shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(message, color = danger, modifier = Modifier.weight(1f))
-            TextButton(onClick = retry) { Text("Повторить") }
+            MobileText(message, color = danger, modifier = Modifier.weight(1f))
+            TextButton(onClick = retry) { MobileText("Повторить") }
         }
     }
 }
 
 @Composable
-private fun HomePage(
+internal fun HomePage(
     user: SignedInUser,
     data: AccountData?,
     roomId: String?,
@@ -549,7 +582,7 @@ private fun HomePage(
 ) {
     var roomCode by remember { mutableStateOf("") }
     val recentCalls = data?.calls.orEmpty().take(4)
-    LazyColumn(contentPadding = PaddingValues(top = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
@@ -562,18 +595,18 @@ private fun HomePage(
                     contentScale = ContentScale.Fit,
                 )
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
-                    Text(
+                    MobileText(
                         "СТАБИЛЬНАЯ СВЯЗЬ И РАБОТА БЕЗ VPN!", color = colors.primary,
                         fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp,
                     )
-                    Text(
-                        "Добрый вечер,\n${user.displayName}", fontSize = 34.sp, lineHeight = 35.4.sp,
+                    MobileText(
+                        "Добрый вечер,\n${user.displayName}", fontSize = 30.sp, lineHeight = 35.4.sp,
                         fontWeight = FontWeight.Bold, letterSpacing = (-1.53).sp, modifier = Modifier.padding(top = 24.dp),
                     )
-                    Text(
+                    MobileText(
                         "Создайте приватную комнату или войдите по приглашению.",
                         color = Color(0xFFAEBCCE), fontSize = 14.sp, lineHeight = 21.sp,
-                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 34.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 24.dp),
                     )
                     Box(
                         Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(11.dp))
@@ -582,16 +615,16 @@ private fun HomePage(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.MeetingRoom, null, tint = Color(0xFF031018), modifier = Modifier.size(27.dp))
-                            Text("Создать комнату", color = Color(0xFF031018), fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.padding(start = 10.dp))
+                            MobileText("Создать комнату", color = Color(0xFF031018), fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.padding(start = 10.dp))
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
-                            roomCode, { roomCode = it }, placeholder = { Text("Код или ссылка комнаты", color = Color(0xFF61758D)) },
+                            roomCode, { roomCode = it }, placeholder = { MobileText("Код или ссылка комнаты", color = Color(0xFF61758D)) },
                             singleLine = true, modifier = Modifier.weight(1f).height(58.dp),
                             shape = RoundedCornerShape(12.dp),
                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = Color(0xFF193345), focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = Color(0xFF29384E), focusedBorderColor = colors.primary,
                                 unfocusedContainerColor = Color(0xFF030C18), focusedContainerColor = Color(0xFF030C18),
                             ),
                         )
@@ -602,18 +635,18 @@ private fun HomePage(
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.AutoMirrored.Outlined.ArrowForward, "Войти", tint = if (roomCode.isBlank()) muted else colors.primary) }
                     }
-                    if (roomId != null) Text("Комната: $roomId", color = good, modifier = Modifier.padding(top = 12.dp))
-                    if (status.isNotBlank()) Text(status, color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 5.dp))
+                    if (roomId != null) MobileText("Комната: $roomId", color = good, modifier = Modifier.padding(top = 12.dp))
+                    if (status.isNotBlank()) MobileText(status, color = muted, fontSize = 13.sp, modifier = Modifier.padding(top = 5.dp))
                 }
             }
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column {
-                    Text("ВАШИ ЗВОНКИ", color = colors.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                    Text("Недавние комнаты", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp, modifier = Modifier.padding(top = 5.dp))
+                    MobileText("ВАШИ ЗВОНКИ", color = colors.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    MobileText("Недавние комнаты", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp, modifier = Modifier.padding(top = 5.dp))
                 }
-                Text("Последние ${recentCalls.size}", color = muted, fontSize = 11.sp)
+                MobileText("Последние ${recentCalls.size}", color = muted, fontSize = 11.sp)
             }
         }
         if (recentCalls.isEmpty()) {
@@ -648,7 +681,7 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
                     visible.forEachIndexed { index, participant ->
                         Box(
                             Modifier.offset(x = (index * 22).dp).size(34.dp).clip(CircleShape)
-                                .background(Color(0xFF10354A)),
+                                .background(Color(0xFF2C416D)),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (participant.avatarUrl != null) {
@@ -656,64 +689,125 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
                                     model = participant.avatarUrl, contentDescription = participant.displayName,
                                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                 )
-                            } else Text(participant.displayName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                            } else MobileText(participant.displayName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
                 Column(Modifier.weight(1f).padding(start = 13.dp)) {
-                    Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 11.sp)
+                    MobileText(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MobileText("${formatCallDate(call.startedAt)} · ${formatDuration(call.durationSeconds)}", color = muted, fontSize = 11.sp)
                 }
             }
             OutlinedButton(
                 onClick = onCreateAgain, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(36.dp),
                 shape = RoundedCornerShape(11.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x664EF3F2)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x668DA6DC)),
             ) {
                 Icon(Icons.Outlined.Call, null, modifier = Modifier.size(19.dp))
-                Text("Создать снова", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = muted, modifier = Modifier.padding(start = 8.dp))
+                MobileText("Создать снова", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = muted, modifier = Modifier.padding(start = 8.dp))
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit) {
+internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit, onService: () -> Unit,
+    friends: List<FriendSummary> = emptyList(), onNewChat: (String) -> Unit = {}, onJoinLink: (String) -> Unit = {},
+    onSaved: () -> Unit = {}, onChatAction: (ChatSummary, String) -> Unit = { _, _ -> }, serviceUnread: Int = 0) {
     var query by remember { mutableStateOf("") }
-    val shown = chats.filter { it.displayTitle(user.id).contains(query, true) }
-    Column {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Чаты и группы", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onRefresh) { Text("Обновить") }
+    var create by remember { mutableStateOf(false) }
+    var invite by remember { mutableStateOf(false) }
+    var inviteCode by remember { mutableStateOf("") }
+    var archived by remember { mutableStateOf(false) }
+    var target by remember { mutableStateOf<ChatSummary?>(null) }
+    var confirm by remember { mutableStateOf<Pair<ChatSummary, String>?>(null) }
+    val shown = chats.filter { !it.isSaved && it.archived == archived && it.displayTitle(user.id).contains(query, true) }
+        .sortedWith(compareByDescending<ChatSummary> { it.pinned }.thenByDescending { it.lastMessageAt.orEmpty() })
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            MobileText(if (archived) "Архив" else "Чаты", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            IconButton(onClick = { archived = !archived }) { Icon(Icons.Outlined.Archive, "Архив", tint = if (archived) MobileDesign.accent else MobileDesign.muted) }
+            IconButton(onClick = onSaved) { Icon(Icons.Outlined.Bookmark, "Избранное", tint = Color(0xFFE4C778)) }
+            IconButton(onClick = { create = true }) { Icon(Icons.Outlined.Add, "Новый чат") }
         }
-        OutlinedTextField(query, { query = it }, placeholder = { Text("Поиск по чатам") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        LazyColumn(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (shown.isEmpty()) item { EmptyState("Чатов пока нет", "Новые личные и групповые чаты появятся здесь") }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MobileSearch(query, { query = it }, "Поиск по чатам", Modifier.weight(1f))
+            IconButton(onClick = { invite = true }, modifier = Modifier.background(MobileDesign.incoming, RoundedCornerShape(12.dp))) { Icon(Icons.Outlined.Link, "Войти по приглашению") }
+        }
+        LazyColumn(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!archived && "TRLKA".contains(query, true)) item {
+                Row(Modifier.fillMaxWidth().clickable(onClick = onService).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MobileAvatar("TRLKA", null, 44.dp, bot = true)
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) { MobileText("TRLKA", fontWeight = FontWeight.SemiBold); MobileText("Уведомления и помощь", fontSize = 12.sp, color = muted) }
+                    if (serviceUnread > 0) androidx.compose.material3.Badge { MobileText(serviceUnread.coerceAtMost(99).toString(), localize = false) }
+                }
+            }
             items(shown, key = { it.id }) { chat ->
-                ListCard(
-                    chat.displayTitle(user.id), chat.lastMessage ?: "Сообщений пока нет",
-                    chat.displayTitle(user.id).take(1),
-                    imageUrl = chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl,
-                ) { activeChat(chat) }
+                Row(Modifier.fillMaxWidth().combinedClickable(onClick = { activeChat(chat) }, onLongClick = { target = chat }).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MobileAvatar(chat.displayTitle(user.id), chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl, 44.dp)
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        MobileText(chat.displayTitle(user.id), localize = chat.isSaved, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        MobileText(chat.lastMessage ?: "Сообщений пока нет", fontSize = 12.sp, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MobileText(mobileMessageTime(chat.lastMessageAt.orEmpty()), fontSize = 10.sp, color = muted)
+                        if (chat.unreadCount > 0) androidx.compose.material3.Badge { MobileText(chat.unreadCount.coerceAtMost(99).toString()) }
+                        else if (chat.pinned) Icon(Icons.Outlined.PushPin, "Закреплён", Modifier.size(13.dp), tint = MobileDesign.muted)
+                    }
+                }
             }
         }
     }
+    target?.let { chat -> ModalBottomSheet(onDismissRequest = { target = null }, containerColor = MobileDesign.canvas) {
+        Column(Modifier.fillMaxWidth().padding(20.dp)) {
+            MobileText(chat.displayTitle(user.id), localize = chat.isSaved, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            listOf("archive" to if (chat.archived) "Вернуть из архива" else "В архив",
+                "pin" to if (chat.pinned) "Открепить" else "Закрепить",
+                "mute" to if (chat.muted) "Включить уведомления" else "Отключить уведомления",
+                "delete" to if (chat.type == "group") "Покинуть группу" else "Удалить чат",
+            ).plus(if (chat.type == "direct") listOf("block" to "Заблокировать") else emptyList()).forEach { (action, label) ->
+                TextButton(onClick = {
+                    target = null
+                    if (action in listOf("delete", "block")) confirm = chat to action else onChatAction(chat, action)
+                }, modifier = Modifier.fillMaxWidth()) { MobileText(label, color = if (action in listOf("delete", "block")) MobileDesign.red else MobileDesign.accent) }
+            }
+        }
+    } }
+    confirm?.let { (chat, action) -> AlertDialog(onDismissRequest = { confirm = null },
+        title = { MobileText(if (action == "block") "Заблокировать пользователя?" else if (chat.type == "group") "Покинуть группу?" else "Удалить чат?") },
+        text = { MobileText(chat.displayTitle(user.id)) },
+        confirmButton = { TextButton(onClick = { confirm = null; onChatAction(chat, action) }) { MobileText("Подтвердить", color = MobileDesign.red) } },
+        dismissButton = { TextButton(onClick = { confirm = null }) { MobileText("Отмена") } },
+    ) }
+    if (create) ModalBottomSheet(onDismissRequest = { create = false }, containerColor = MobileDesign.canvas) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MobileText("Новый чат", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (friends.isEmpty()) MobileText("Добавьте друзей, чтобы начать переписку.", color = MobileDesign.muted)
+            friends.forEach { friend -> TextButton(onClick = { create = false; onNewChat(friend.id) }) { MobileAvatar(friend.displayName, friend.avatarUrl); MobileText(friend.displayName, localize = false, modifier = Modifier.padding(start = 12.dp)) } }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+    if (invite) AlertDialog(onDismissRequest = { invite = false }, title = { MobileText("Войти по приглашению") },
+        text = { OutlinedTextField(inviteCode, { inviteCode = it }, label = { MobileText("Код или ссылка комнаты") }) },
+        confirmButton = { TextButton(enabled = inviteCode.isNotBlank(), onClick = { invite = false; onJoinLink(inviteCode) }) { MobileText("Войти") } },
+        dismissButton = { TextButton(onClick = { invite = false }) { MobileText("Отмена") } })
 }
 
 @Composable
-private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<FriendSummary>, pending: List<FriendRequestSummary>, onRefresh: () -> Unit) {
+internal fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<FriendSummary>, pending: List<FriendRequestSummary>, onRefresh: () -> Unit, onChat: (ChatSummary) -> Unit) {
     var username by remember { mutableStateOf("") }
     var busyId by remember { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val incoming = pending.filter { it.recipientId == user.id }
-    Column {
+    Column(Modifier.padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Друзья", fontSize = 26.sp, fontWeight = FontWeight.Bold); if (incoming.isNotEmpty()) Text("Новых запросов: ${incoming.size}", color = colors.primary) }
-            TextButton(onClick = onRefresh) { Text("Обновить") }
+            Column(Modifier.weight(1f)) { MobileText("Друзья", fontSize = 26.sp, fontWeight = FontWeight.Bold); if (incoming.isNotEmpty()) MobileText("Новых запросов: ${incoming.size}", color = colors.primary) }
+            TextButton(onClick = onRefresh) { MobileText("Обновить") }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(username, { username = it.take(32) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("Ник пользователя") }, prefix = { Text("@") })
+            OutlinedTextField(username, { username = it.take(32) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { MobileText("Ник пользователя") }, prefix = { MobileText("@") })
             Button(onClick = {
                 val value = username
                 busyId = "send"
@@ -723,22 +817,22 @@ private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<Frie
                 }
             }, enabled = username.isNotBlank() && busyId == null, modifier = Modifier.padding(start = 8.dp)) { Icon(Icons.Outlined.PersonAdd, null) }
         }
-        if (feedback.isNotBlank()) Text(feedback, color = colors.primary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+        if (feedback.isNotBlank()) MobileText(feedback, color = colors.primary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
             if (incoming.isNotEmpty()) item { SectionTitle("Входящие заявки") }
             items(incoming, key = { "request:${it.id}" }) { request ->
-                Surface(Modifier.fillMaxWidth(), color = Color(0xFF071827), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF174052))) {
+                Surface(Modifier.fillMaxWidth(), color = Color(0xFF101E2E), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF174052))) {
                     Column(Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF12364A)), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF2C416D)), contentAlignment = Alignment.Center) {
                                 if (request.avatarUrl != null) AsyncImage(request.avatarUrl, request.displayName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                else Text(request.displayName.take(1).uppercase(), color = colors.primary)
+                                else MobileText(request.displayName.take(1).uppercase(), color = colors.primary)
                             }
-                            Column(Modifier.padding(start = 12.dp)) { Text(request.displayName, fontWeight = FontWeight.Bold); Text("@${request.username}", color = muted, fontSize = 12.sp) }
+                            Column(Modifier.padding(start = 12.dp)) { MobileText(request.displayName, localize = false, fontWeight = FontWeight.Bold); MobileText("@${request.username}", color = muted, fontSize = 12.sp) }
                         }
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "accept") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { Text("Принять") }
-                            OutlinedButton(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "decline") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { Text("Отклонить") }
+                            Button(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "accept") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { MobileText("Принять") }
+                            OutlinedButton(onClick = { busyId = request.id; scope.launch { runCatching { api.respondFriendRequest(request.id, "decline") }.onSuccess { onRefresh() }.onFailure { feedback = it.message ?: "Заявка недоступна" }; busyId = null } }, enabled = busyId == null, modifier = Modifier.weight(1f)) { MobileText("Отклонить") }
                         }
                     }
                 }
@@ -750,19 +844,19 @@ private fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<Frie
                 ListCard(
                     friend.displayName, "@${friend.username} · ${if (online) "В сети" else "Не в сети"}",
                     friend.displayName.take(1), imageUrl = friend.avatarUrl, online = online,
-                )
+                ) { scope.launch { runCatching { api.directChat(friend.id) }.onSuccess(onChat).onFailure { feedback = it.message ?: "Не удалось открыть чат" } } }
             }
         }
     }
 }
 
 @Composable
-private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, cache: MediaCache) {
+internal fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, cache: MediaCache) {
     var cacheBytes by remember { mutableLongStateOf(0) }
     val cacheScope = rememberCoroutineScope()
     LaunchedEffect(cache) { cacheBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.sizeBytes() } }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("История", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { MobileText("История", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
         if (calls.isEmpty()) item { EmptyState("Звонков пока нет", "Завершённые разговоры появятся здесь") }
         items(calls, key = { it.id }) { call ->
             ListCard(
@@ -779,9 +873,9 @@ private fun HistoryPage(calls: List<CallSummary>, devices: List<AccountDevice>, 
             SectionTitle("Хранилище")
             Surface(Modifier.fillMaxWidth(), color = colors.surface, shape = RoundedCornerShape(16.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Кэш изображений: ${formatBytes(cacheBytes)}", fontWeight = FontWeight.SemiBold)
-                    Text("Лимит 384 МБ. Старые файлы удаляются автоматически.", color = muted, fontSize = 13.sp)
-                    OutlinedButton(onClick = { cacheScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.clear() }; cacheBytes = 0 } }, modifier = Modifier.padding(top = 10.dp)) { Text("Очистить кэш") }
+                    MobileText("Кэш изображений: ${formatBytes(cacheBytes)}", fontWeight = FontWeight.SemiBold)
+                    MobileText("Лимит 384 МБ. Старые файлы удаляются автоматически.", color = muted, fontSize = 13.sp)
+                    OutlinedButton(onClick = { cacheScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { cache.clear() }; cacheBytes = 0 } }, modifier = Modifier.padding(top = 10.dp)) { MobileText("Очистить кэш") }
                 }
             }
         }
@@ -802,17 +896,17 @@ private fun ListCard(
     Surface(modifier, color = colors.surface, shape = RoundedCornerShape(16.dp)) {
         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF123046))
+                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFF2C416D))
                     .border(1.dp, Color(0x553D9CAB), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 if (imageUrl != null) {
                     AsyncImage(model = imageUrl, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                } else Text(initial, color = colors.primary, fontWeight = FontWeight.Bold)
+                } else MobileText(initial, color = colors.primary, fontWeight = FontWeight.Bold)
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, color = if (online) good else muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MobileText(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MobileText(subtitle, color = if (online) good else muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -821,13 +915,13 @@ private fun ListCard(
 @Composable
 private fun EmptyState(title: String, subtitle: String) {
     Box(Modifier.fillMaxWidth().padding(vertical = 30.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, color = muted, fontSize = 13.sp) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) { MobileText(title, fontWeight = FontWeight.Bold); MobileText(subtitle, color = muted, fontSize = 13.sp) }
     }
 }
 
 @Composable
 private fun SectionTitle(title: String) {
-    Text(title.uppercase(), color = muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp))
+    MobileText(title.uppercase(), color = muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp))
     HorizontalDivider(color = Color(0xFF112638))
 }
 
@@ -837,8 +931,7 @@ private fun generateRoomCode(): String {
     return buildString { repeat(12) { append(alphabet[random.nextInt(alphabet.length)]) } }
 }
 
-private fun normalizeRoomCode(value: String): String = value.trim()
-    .substringBefore('?').substringBefore('#').trimEnd('/').substringAfterLast('/').uppercase()
+private fun normalizeRoomCode(value: String): String = roomCodeFromLink(value) ?: value.trim().uppercase()
 
 private fun formatCallDate(value: String): String = runCatching {
     OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern("dd MMM", Locale.forLanguageTag("ru"))).trimEnd('.')

@@ -1,5 +1,16 @@
 # Проверка изменений дизайна
 
+08.11.2026 Mac224 PRIVATE preview собран из4ca2613, CI42510597827 Mac job success,
+RPATH проверен, arm64/Info.plist224/updater signature проверены. DMG:
+outputs/desktop/beta224-private/macos/Trlka_0.4.0-beta.224_aarch64.dmg,
+SHA2564e1bb7fad0c1c002439ba62fa678a63ca8353a7378ab19346c1d04e205aeba7b.
+Публичный выпуск остаётся223; результат на физическом Mac ещё НЕ подтверждён.
+Android native224: полный pnpm check565, JVM31 и6 emulator UI проверок прошли;
+release R8/lint ранее прошли, теперь финальная упаковка после source commit.
+Добавлены room chat/file token isolation, обложки ссылок, bot unread/cache,
+темы/синхронизация, native deafen, bundled games. Подробности/ограничения —
+docs/ANDROID_NATIVE_BETA224.md. Не объявлять100%parity/физическую QA выполненной.
+
 08.11.2026 ПОЛУЧЕН актуальный Mac-лог Trlka-diagnostics-1794161679.json:
 beta.223/source32893df1390b, все707samples capture640×414=outbound640×414,
 Text/adaptivefalse/level0. Не путать со старым присланным beta.37 от29августа.

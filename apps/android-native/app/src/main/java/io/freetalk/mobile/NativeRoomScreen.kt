@@ -1,5 +1,7 @@
 package io.freetalk.mobile
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
@@ -44,23 +46,37 @@ import java.util.UUID
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signaling: RoomSignaling, api: FreeTalkApi,
-    chats: List<ChatSummary>, friends: List<FriendSummary>, onLeave: () -> Unit) {
+    chats: List<ChatSummary>, friends: List<FriendSummary>, onLeave: () -> Unit, expanded: Boolean = true, onMinimize: () -> Unit = {}, onQuality: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = signaling.room
     var media by remember { mutableStateOf<NativeCallMedia?>(null) }
     var sheet by remember { mutableStateOf<String?>(null) }
+    var tabletVisible by remember(roomId) { mutableStateOf(false) }
     var feedback by remember { mutableStateOf("") }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var pendingInvite by remember { mutableStateOf(false) }
-    val cyan = Color(0xFF4EF3F2)
-    val secondary = Color(0xFF8D9FB3)
-    val link = "https://freetalk.191-44-38-60.sslip.io/join/$roomId"
+    var focused by remember { mutableStateOf<String?>(null) }
+    var videoMode by remember { mutableStateOf(false) }
+    val hasVideo = media?.videos?.isNotEmpty() == true
+    LaunchedEffect(state.activity) {
+        if (state.activity?.let { JSONObject(it).optBoolean("open") } == false) tabletVisible = false
+    }
+    LaunchedEffect(media?.sharing) { if (media?.sharing == true) tabletVisible = false }
+    LaunchedEffect(media?.videos?.keys?.toSet()) {
+        if (media?.videos?.keys?.any { it.endsWith(":screen") } == true) tabletVisible = false
+    }
+    LaunchedEffect(hasVideo) { if (hasVideo) videoMode = true else { delay(550); videoMode = false; focused = null } }
+    LaunchedEffect(state.peers.map { it.id }) { if (focused != null && state.peers.none { it.id == focused }) focused = null }
+    LaunchedEffect(media?.connections?.toMap()) { onQuality(when { media?.connections?.values?.any { it.contains("Ошибка") } == true -> "poor"; media?.connections?.values?.any { it.contains("потер", ignoreCase = true) } == true -> "weak"; media?.connections?.values?.any { it == "Подключён" } == true -> "good"; else -> "connecting" }) }
+    BackHandler(enabled = expanded) { if (focused != null) focused = null else { sheet = null; onMinimize() } }
+    val secondary = MobileDesign.muted
+    val link = "https://trlka.com/join/$roomId"
     val latestLeave by rememberUpdatedState(onLeave)
     fun startService(extraTypes: Int = 0, action: () -> Unit) {
         CallService.afterStart = { runCatching(action).onFailure { feedback = it.message ?: "Не удалось подключить медиа" } }
         context.startForegroundService(Intent(context, CallService::class.java).putExtra("types",
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or extraTypes))
+            (if (android.os.Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0) or extraTypes))
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) startService { if (media == null) media = NativeCallMedia(context.applicationContext, signaling) }
@@ -92,11 +108,15 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     LaunchedEffect(state.closed) { if (state.closed) onLeave() }
     LaunchedEffect(roomId) { while (true) { now = System.currentTimeMillis(); delay(500) } }
     val elapsed = ((now - state.startedAt.coerceAtLeast(1)) / 1000).coerceAtLeast(0)
-    Scaffold(containerColor = Color(0xFF04111D), topBar = {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.freetalk_mascot), null, Modifier.size(36.dp))
-            Text("Trlka", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
-            Text("Голосовая комната", color = secondary, fontSize = 12.sp)
+    if (!expanded) return
+    Scaffold(containerColor = MobileDesign.canvas, topBar = {
+        if (focused == null) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { sheet = null; onMinimize() }, modifier = Modifier.background(MobileDesign.incoming, RoundedCornerShape(14.dp))) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Свернуть звонок") }
+            Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MobileText("Комната с друзьями", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                MobileText(if (media?.connections?.values?.any { it == "Подключён" } == true) "Связь установлена" else if (state.peers.size < 2) "Ожидаем участников" else "Проверяем связь…", color = secondary, fontSize = 11.sp)
+            }
+            MobileText(if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "…", color = secondary, fontSize = 11.sp)
         }
     }, bottomBar = {
         CallToolbar(
@@ -107,145 +127,94 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             onCameraOptions = { sheet = "camera" },
             onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent()) },
             onReaction = { sheet = "reactions" }, onChat = { sheet = "chat" }, onMore = { sheet = "menu" }, onLeave = onLeave,
+            onActivity = {
+                if (state.activity == null) feedback = "Подключаем общий планшет…"
+                else {
+                    if (!JSONObject(state.activity!!).optBoolean("open")) signaling.activity(JSONObject().put("kind", "open"))
+                    sheet = null
+                    tabletVisible = true
+                }
+            },
         )
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text("Участники", fontSize = 26.sp, fontWeight = FontWeight.Bold); Text("${state.peers.size} из 8", color = secondary, fontSize = 12.sp) }
-                    Text(if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "Подключение…", color = cyan)
-                }
-                Text("Комната · $roomId", color = secondary, fontSize = 12.sp)
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (focused == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                MobileText("Участники · ${state.peers.size} из 8", Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { sheet = "invite" }, enabled = state.peers.size < 8) { Icon(Icons.Outlined.PersonAdd, null, Modifier.size(16.dp)); MobileText("Добавить", Modifier.padding(start = 6.dp), fontSize = 12.sp) }
             }
-            media?.videos?.toList()?.filter { it.first.endsWith(":screen") }?.forEach { (key, track) ->
-                item(key = "screen:$key") {
-                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(if (key == "self:screen") "Вы показываете экран" else "Демонстрация экрана", color = cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Surface(color = Color.Black, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF1E6070))) {
-                            RoomVideo(track, media!!, mirror = false, modifier = Modifier.fillMaxWidth().height(235.dp))
-                        }
-                    }
-                }
-            }
-            items(state.peers, key = { it.id }) { peer ->
-                val self = peer.id == state.selfId
-                val off = if (self) media?.muted != false else peer.muted
-                val talking = !off && media?.speaking?.contains(peer.id) == true
-                val cameraTrack = media?.videos?.get(if (self) "self:camera" else "${peer.id}:camera")
-                Surface(color = Color(0xFF061624), shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, if (talking) cyan else Color(0xFF193345))) {
-                    Column(Modifier.fillMaxWidth()) {
-                        if (cameraTrack != null) {
-                            Box(Modifier.fillMaxWidth().height(if (state.peers.size == 1) 260.dp else 205.dp).clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))) {
-                                RoomVideo(cameraTrack, media!!, mirror = self, modifier = Modifier.fillMaxSize())
-                                Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xB804111D)).padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(peer.name + if (self) " · Вы" else "", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                    if (off) Icon(Icons.Outlined.MicOff, null, tint = Color(0xFFFF8096), modifier = Modifier.size(18.dp))
-                                    else if (talking) Text("Говорит", color = cyan, fontSize = 11.sp)
-                                }
-                            }
-                        } else {
-                            Column(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(if (state.peers.size == 1) 86.dp else 62.dp).clip(CircleShape).background(Color(0xFF10354A)), contentAlignment = Alignment.Center) {
-                                    if (peer.avatar != null) AsyncImage(peer.avatar, peer.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    else Text(peer.name.take(1), fontSize = 26.sp)
-                                }
-                                Text(peer.name + if (self) " · Вы" else "", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                            }
-                        }
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            if (peer.owner) Text("♛ Создатель комнаты", color = cyan, fontSize = 11.sp)
-                            Text(when { off -> "Микрофон выключен"; talking -> "Говорит"; self -> "Слушает"; media?.connections?.get(peer.id) == "Подключён" -> "Слушает"; else -> media?.connections?.get(peer.id) ?: "Подключение…" }, color = if (talking) cyan else secondary, fontSize = 12.sp)
-                            VoiceLevelIndicator(level = if (off) 0f else media?.levels?.get(peer.id) ?: 0f, speaking = talking, modifier = Modifier.padding(top = 7.dp))
-                            val reactions = state.reactions.filter { it.peerId == peer.id && now - it.at < 2850 }
-                            if (reactions.isNotEmpty()) Text(reactions.joinToString(" ") { it.emoji }, fontSize = 26.sp)
-                        }
-                    }
-                }
-            }
-            item { OutlinedButton(onClick = { sheet = "invite" }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PersonAdd, null); Text("Добавить друзей · ${(8 - state.peers.size).coerceAtLeast(0)} мест") } }
-            item { if (feedback.isNotBlank()) Text(feedback, color = cyan); if (media?.error?.isNotBlank() == true) Text(media!!.error, color = Color(0xFFFF647C)); if (status != "Комната создана") Text(status, color = secondary, fontSize = 12.sp) }
+            if (feedback.isNotBlank() || media?.error?.isNotBlank() == true) MobileText(feedback.ifBlank { media?.error.orEmpty() }, color = MobileDesign.red, fontSize = 12.sp)
+            CallParticipants(state.peers, state.selfId, media, videoMode, focused, { focused = it }, Modifier.weight(1f))
         }
     }
-    if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null }, containerColor = Color(0xFF081725)) {
+    if (tabletVisible) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { tabletVisible = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(Modifier.fillMaxSize().background(MobileDesign.background).safeDrawingPadding()) {
+            NativeTablet(signaling, media) { tabletVisible = false }
+        }
+    }
+    if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null }, containerColor = MobileDesign.canvas) {
         Column(Modifier.fillMaxWidth().padding(20.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when (sheet) {
                 "camera" -> {
-                    Text("Камера", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    MobileText("Камера", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     TextButton(enabled = media != null, onClick = { sheet = null; if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) }) {
-                        Text(if (media?.camera == true) "Выключить камеру" else "Включить камеру")
+                        MobileText(if (media?.camera == true) "Выключить камеру" else "Включить камеру")
                     }
-                    TextButton(enabled = media?.camera == true, onClick = { media?.switchCamera(); sheet = null }) { Text("Переключить переднюю / заднюю камеру") }
+                    TextButton(enabled = media?.camera == true, onClick = { media?.switchCamera(); sheet = null }) { MobileText("Переключить переднюю / заднюю камеру") }
                 }
                 "menu" -> {
-                    Text("Функции звонка", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { sheet = "chat" }) { Text("Чат комнаты · ${state.messages.size}") }
-                    TextButton(onClick = { sheet = "reactions" }) { Text("Отправить реакцию") }
-                    TextButton(onClick = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" }) { Text("Выбрать устройство звука") }
+                    MobileText("Функции звонка", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { sheet = "camera" }) { MobileText("Камера и переключение объектива") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { MobileText("Зеркалить свою камеру", Modifier.weight(1f)); Switch(MobilePreferences.mirrorSelf, { MobilePreferences.mirrorSelf = it; MobilePreferences.save(context) }) }
+                    TextButton(onClick = { sheet = "chat" }) { MobileText("Чат комнаты · ${state.messages.size}") }
+                    TextButton(onClick = { sheet = "reactions" }) { MobileText("Отправить реакцию") }
+                    TextButton(onClick = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" }) { MobileText("Выбрать устройство звука") }
                     TextButton(enabled = media != null, onClick = {
                         sheet = null
                         if (media?.sharing == true) media?.stopCapture("screen")
                         else screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
-                    }) { Text(if (media?.sharing == true) "Остановить показ экрана" else "Показать экран") }
-                    TextButton(onClick = { sheet = "invite" }) { Text("Пригласить друзей") }
+                    }) { MobileText(if (media?.sharing == true) "Остановить показ экрана" else "Показать экран") }
+                    TextButton(onClick = { sheet = "invite" }) { MobileText("Пригласить друзей") }
                 }
                 "audio" -> {
-                    Text("Выход звука", fontWeight = FontWeight.Bold)
-                    media?.routes()?.forEach { (id, name) -> TextButton(onClick = { media?.route(id); sheet = null }) { Text(name) } }
-                    if (media == null) Text("Сначала разрешите доступ к микрофону")
+                    MobileText("Выход звука", fontWeight = FontWeight.Bold)
+                    media?.routes()?.forEach { (id, name) -> TextButton(onClick = { media?.route(id); sheet = null }) { MobileText(name) } }
+                    if (media == null) MobileText("Сначала разрешите доступ к микрофону")
                 }
                 "reactions" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     listOf("👍", "❤️", "😂", "🎉", "🔥").forEach { emoji -> TextButton(onClick = {
                         if (!signaling.send(JSONObject().put("type", "reaction").put("id", UUID.randomUUID().toString()).put("reaction", emoji))) feedback = "Нет соединения"
                         sheet = null
-                    }) { Text(emoji, fontSize = 27.sp) } }
+                    }) { MobileText(emoji, fontSize = 27.sp) } }
                 }
                 "invite" -> {
-                    Text("Пригласить в звонок", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение Trlka", link)); feedback = "Ссылка скопирована"; sheet = null }) { Text("Скопировать ссылку") }
-                    TextButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), "Пригласить в звонок")) }) { Text("Поделиться ссылкой…") }
+                    MobileText("Пригласить в звонок", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение Trlka", link)); feedback = "Ссылка скопирована"; sheet = null }) { MobileText("Скопировать ссылку") }
+                    TextButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), "Пригласить в звонок")) }) { MobileText("Поделиться ссылкой…") }
                     LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        item { Text("Друзья", color = secondary) }
+                        item { MobileText("Друзья", color = secondary) }
                         items(friends, key = { "friend:${it.id}" }) { friend ->
                             TextButton(enabled = !pendingInvite, onClick = { pendingInvite = true; scope.launch {
                                 runCatching { api.inviteToCall(roomId, listOf(friend.id)) }.onSuccess { feedback = "Приглашение в звонок отправлено"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }
                                 pendingInvite = false
-                            } }) { Text(friend.displayName) }
+                            } }) { MobileText(friend.displayName) }
                         }
-                        item { Text("Чаты и группы", color = secondary) }
+                        item { MobileText("Чаты и группы", color = secondary) }
                         items(chats, key = { it.id }) { chat ->
                         val invitees = chat.members.map { it.id }.filter { it != user.id && state.peers.none { peer -> peer.id == it } }
-                        TextButton(enabled = !pendingInvite && invitees.isNotEmpty(), onClick = { pendingInvite = true; scope.launch { runCatching { api.inviteToCall(roomId, invitees) }.onSuccess { feedback = "Участники приглашены"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { Text(chat.displayTitle(user.id)) }
+                        TextButton(enabled = !pendingInvite && invitees.isNotEmpty(), onClick = { pendingInvite = true; scope.launch { runCatching { api.inviteToCall(roomId, invitees) }.onSuccess { feedback = "Участники приглашены"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { MobileText(chat.displayTitle(user.id)) }
                     } }
                 }
-                "chat" -> {
-                    var draft by remember { mutableStateOf("") }
-                    val list = rememberLazyListState()
-                    LaunchedEffect(state.messages.size) { if (state.messages.isNotEmpty()) list.animateScrollToItem(state.messages.lastIndex) }
-                    Text("Чат комнаты", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    LazyColumn(Modifier.heightIn(max = 360.dp).fillMaxWidth(), state = list, verticalArrangement = Arrangement.spacedBy(8.dp)) { items(state.messages, key = { it.id }) { message ->
-                        val mine = message.name == user.displayName
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-                            Surface(color = if (mine) Color(0xFF0C3347) else Color(0xFF071D2C), shape = RoundedCornerShape(topStart = 17.dp, topEnd = 17.dp, bottomStart = if (mine) 17.dp else 5.dp, bottomEnd = if (mine) 5.dp else 17.dp), border = BorderStroke(1.dp, Color(0xFF1B4657))) {
-                                Column(Modifier.widthIn(max = 285.dp).padding(horizontal = 13.dp, vertical = 9.dp)) {
-                                    if (!mine) Text(message.name, color = cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    Text(message.text)
-                                }
-                            }
-                        }
-                    } }
-                    if (state.messages.isEmpty()) Text("Пока нет сообщений", color = secondary)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(draft, { if (it.length <= 2000) draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("Сообщение") }, maxLines = 4, shape = RoundedCornerShape(16.dp))
-                        IconButton(enabled = draft.isNotBlank(), onClick = { if (signaling.send(JSONObject().put("type", "room-chat-message").put("id", UUID.randomUUID().toString()).put("text", draft.trim()))) draft = "" else feedback = "Нет соединения" }, modifier = Modifier.padding(start = 7.dp).background(cyan, RoundedCornerShape(14.dp))) { Icon(Icons.AutoMirrored.Outlined.Send, "Отправить", tint = Color(0xFF02101A)) }
-                    }
-                }
+                "chat" -> NativeRoomChat(signaling)
             }
         }
     }
 }
 
 @Composable
-private fun RoomVideo(track: org.webrtc.VideoTrack, engine: NativeCallMedia, mirror: Boolean, modifier: Modifier = Modifier) {
+internal fun RoomVideo(track: org.webrtc.VideoTrack, engine: NativeCallMedia, mirror: Boolean, modifier: Modifier = Modifier) {
     key(track.id()) {
         AndroidView(
             factory = { ctx ->
@@ -257,6 +226,7 @@ private fun RoomVideo(track: org.webrtc.VideoTrack, engine: NativeCallMedia, mir
                 }
             },
             modifier = modifier.background(Color.Black),
+            update = { it.setMirror(mirror) },
             onRelease = { renderer -> runCatching { track.removeSink(renderer) }; renderer.release() },
         )
     }

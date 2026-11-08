@@ -1,2 +1,4 @@
 -keepattributes Signature
 -dontwarn org.conscrypt.**
+-keep class org.webrtc.** { *; }
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
