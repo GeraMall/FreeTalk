@@ -6,7 +6,7 @@ import type { RoomChatMessage, RoomChatAttachment, RoomChatAction } from '@freet
 import { MessageContextMenu, type MessageContextState, type MessageItem } from './ChatsPage';
 import { TypingIndicator } from './TypingIndicator';
 import { AppToast } from './AppToast';
-import { useTypingSender, useVisibleMessageReads } from '../lib/chat-interactions';
+import { useTypingSender } from '../lib/chat-interactions';
 import {
   ArrowDown,
   MessageCircle,
@@ -16,8 +16,6 @@ import {
   Download,
   FileText,
   LoaderCircle,
-  Copy,
-  CheckCircle2,
   Pin,
 } from 'lucide-react';
 import { loadRoomChatFile } from '../lib/room-chat-files';
@@ -66,7 +64,6 @@ export function RoomChatPanel({
   const [menu, setMenu] = useState<MessageContextState>(),
     [reply, setReply] = useState<RoomChatMessage>(),
     [editing, setEditing] = useState<string>(),
-    [selection, setSelection] = useState(new Set<string>()),
     [notice, setNotice] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -113,8 +110,8 @@ export function RoomChatPanel({
   const showMenu = (m: RoomChatMessage, x: number, y: number) =>
     setMenu({
       message: asMessage(m),
-      x: Math.max(8, Math.min(x, window.innerWidth - 294)),
-      y: Math.max(8, Math.min(y, window.innerHeight - 430)),
+      x: Math.max(8, Math.min(x, window.innerWidth - 220)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 200)),
       expanded: false,
     });
   const menuId = menu?.message.id;
@@ -137,7 +134,6 @@ export function RoomChatPanel({
     const escape = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setMenu(undefined);
-      setSelection(new Set());
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
@@ -149,13 +145,6 @@ export function RoomChatPanel({
       return latest && !latest.deleted ? { ...old, message: asMessage(latest) } : undefined;
     });
   }, [messages, asMessage]);
-  const toggle = (id: string) =>
-    setSelection((old) => {
-      const next = new Set(old);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   const copy = async (items: RoomChatMessage[]) => {
     try {
       if (items.length === 1 && items[0]!.attachment?.image && fileToken) {
@@ -179,12 +168,6 @@ export function RoomChatPanel({
   };
   const [showNewMessages, setShowNewMessages] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  useVisibleMessageReads(
-    listRef,
-    onAction ? 'room' : undefined,
-    messages.map((m) => m.id).join(','),
-    (ids) => onAction?.({ kind: 'read', ids }),
-  );
   const stickToBottom = useRef(true);
   const previousCount = useRef(messages.length);
 
@@ -293,10 +276,9 @@ export function RoomChatPanel({
             const own = message.participantId === selfId;
             return (
               <article
-                className={`room-chat-message ${own ? 'own' : ''}${selection.has(message.id) ? ' selected' : ''}`}
+                className={`room-chat-message ${own ? 'own' : ''}`}
                 key={message.id}
                 data-message-id={message.id}
-                data-read-eligible={!own && !message.deleted}
                 tabIndex={0}
                 onPointerDown={(event) => {
                   cancelHold();
@@ -410,17 +392,6 @@ export function RoomChatPanel({
                     </span>
                   )}
                 </span>
-                {selection.size > 0 && (
-                  <button
-                    className="room-chat-selection-check"
-                    role="checkbox"
-                    aria-checked={selection.has(message.id)}
-                    aria-label={t('Выбрать сообщение')}
-                    onClick={() => toggle(message.id)}
-                  >
-                    <CheckCircle2 size={19} />
-                  </button>
-                )}
               </article>
             );
           })
@@ -449,22 +420,6 @@ export function RoomChatPanel({
               }}
             >
               <X size={15} />
-            </button>
-          </div>
-        )}
-        {selection.size > 0 && (
-          <div className="room-chat-selection-bar">
-            <span>
-              {selection.size} {t('выбрано')}
-            </span>
-            <button
-              aria-label={t('Копировать выбранные сообщения')}
-              onClick={() => void copy(messages.filter((m) => selection.has(m.id)))}
-            >
-              <Copy size={17} />
-            </button>
-            <button aria-label={t('Снять выделение')} onClick={() => setSelection(new Set())}>
-              <X size={17} />
             </button>
           </div>
         )}
@@ -569,8 +524,19 @@ export function RoomChatPanel({
             accountId={selfId}
             own={menu.message.sender_id === selfId}
             canDelete={!!onAction && menu.message.sender_id === selfId}
-            canPin={!!onAction && menu.message.sender_id === selfId}
-            onExpand={() => setMenu((old) => (old ? { ...old, expanded: !old.expanded } : old))}
+            compact
+            canPin={false}
+            onExpand={() =>
+              setMenu((old) =>
+                old
+                  ? {
+                      ...old,
+                      expanded: !old.expanded,
+                      y: Math.min(old.y, Math.max(8, window.innerHeight - 340)),
+                    }
+                  : old,
+              )
+            }
             onReact={(emoji) => {
               onAction?.({ kind: 'react', id: menu.message.id, emoji });
               setMenu(undefined);
@@ -600,20 +566,6 @@ export function RoomChatPanel({
               setDeleting(menu.message.id);
               setMenu(undefined);
             }}
-            onSelect={() => {
-              toggle(menu.message.id);
-              setMenu(undefined);
-            }}
-            readReceipt={
-              menu.message.sender_id === selfId &&
-              onAction &&
-              !messages.find((m) => m.id === menu.message.id)?.deleted
-                ? {
-                    group: true,
-                    readers: messages.find((m) => m.id === menu.message.id)?.readers ?? [],
-                  }
-                : undefined
-            }
           />,
           document.body,
         )}

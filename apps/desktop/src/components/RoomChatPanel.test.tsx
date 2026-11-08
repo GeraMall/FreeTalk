@@ -45,7 +45,7 @@ const sample = {
   text: 'Original',
   timestamp: Date.now(),
 };
-it('uses the shared menu for replies, edits, reactions, selection, and confirmed deletion', () => {
+it('uses a compact room menu for replies, edits, reactions, and confirmed deletion', () => {
   const action = vi.fn(),
     send = vi.fn().mockReturnValue(true);
   const view = render(
@@ -64,9 +64,10 @@ it('uses the shared menu for replies, edits, reactions, selection, and confirmed
   expect(
     within(menu)
       .getAllByRole('menuitem')
-      .map((el) => el.textContent?.trim())
-      .slice(-2),
-  ).toEqual(['Выделить', '0 просмотров']);
+      .map((el) => el.textContent?.trim()),
+  ).toEqual(['Ответить', 'Изменить', 'Копировать текст', 'Удалить']);
+  for (const name of ['Закрепить', 'Выделить', 'Кто просмотрел', '0 просмотров'])
+    expect(within(menu).queryByRole('menuitem', { name })).toBeNull();
   fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ответить' }));
   fireEvent.change(view.getByLabelText('Сообщение в чат комнаты'), { target: { value: 'Reply' } });
   fireEvent.click(view.getByRole('button', { name: 'Отправить сообщение' }));
@@ -81,11 +82,6 @@ it('uses the shared menu for replies, edits, reactions, selection, and confirmed
   open();
   fireEvent.click(view.getByRole('button', { name: 'Поставить реакцию ❤️' }));
   expect(action).toHaveBeenCalledWith({ kind: 'react', id: sample.id, emoji: '❤️' });
-  open();
-  fireEvent.click(view.getByRole('menuitem', { name: 'Выделить' }));
-  expect(view.getByRole('checkbox').getAttribute('aria-checked')).toBe('true');
-  fireEvent.keyDown(document, { key: 'Escape' });
-  expect(view.queryByRole('checkbox')).toBeNull();
   open();
   fireEvent.click(view.getByRole('menuitem', { name: 'Удалить' }));
   expect(action).not.toHaveBeenCalledWith({ kind: 'delete', id: sample.id });

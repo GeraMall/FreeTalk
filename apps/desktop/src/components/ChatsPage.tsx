@@ -3605,6 +3605,7 @@ export function MessageContextMenu({
   onDelete,
   onSelect,
   readReceipt,
+  compact = false,
 }: {
   menuRef: { current: HTMLDivElement | null };
   state: MessageContextState;
@@ -3620,7 +3621,8 @@ export function MessageContextMenu({
   onCopy(): void;
   onForward?(): void;
   onDelete(): void;
-  onSelect(): void;
+  onSelect?(): void;
+  compact?: boolean;
   readReceipt?: MessageReceiptSource;
 }) {
   const [customReaction, setCustomReaction] = useState('');
@@ -3637,7 +3639,7 @@ export function MessageContextMenu({
   return (
     <div
       ref={menuRef}
-      className={`message-context-menu${state.expanded ? ' expanded' : ''}`}
+      className={`message-context-menu${state.expanded ? ' expanded' : ''}${compact ? ' room-message-context-menu' : ''}`}
       style={{ left: state.x, top: state.y }}
       role="menu"
       aria-label={t('Действия с сообщением')}
@@ -3662,17 +3664,19 @@ export function MessageContextMenu({
     >
       {reactionsAllowed && !state.pickerOnly ? (
         <div className="message-quick-reactions" aria-label={t('Быстрые реакции')}>
-          {QUICK_MESSAGE_REACTIONS.map((emoji) => (
-            <button
-              type="button"
-              aria-label={t('Поставить реакцию {p0}', { p0: emoji })}
-              aria-pressed={reactionIsActive(emoji)}
-              onClick={() => onReact(emoji)}
-              key={emoji}
-            >
-              {emoji}
-            </button>
-          ))}
+          {(compact ? QUICK_MESSAGE_REACTIONS.slice(0, 4) : QUICK_MESSAGE_REACTIONS).map(
+            (emoji) => (
+              <button
+                type="button"
+                aria-label={t('Поставить реакцию {p0}', { p0: emoji })}
+                aria-pressed={reactionIsActive(emoji)}
+                onClick={() => onReact(emoji)}
+                key={emoji}
+              >
+                {emoji}
+              </button>
+            ),
+          )}
           <button
             type="button"
             className="reaction-expand-button"
@@ -3757,9 +3761,11 @@ export function MessageContextMenu({
               {own ? '' : t(' как администратор')}
             </button>
           ) : null}
-          <button type="button" role="menuitem" onClick={onSelect}>
-            <CheckCircle2 /> {t('Выделить')}
-          </button>
+          {onSelect && (
+            <button type="button" role="menuitem" onClick={onSelect}>
+              <CheckCircle2 /> {t('Выделить')}
+            </button>
+          )}
           {own && readReceipt && (
             <MessageReceiptMenuItem
               key={state.message.id}

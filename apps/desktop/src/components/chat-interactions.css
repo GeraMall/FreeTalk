@@ -83,21 +83,6 @@
     animation: none;
   }
 }
-.room-chat-message.selected .room-chat-bubble {
-  background: var(--ui-surface2-100, #20314a);
-  border-color: var(--ft-cyan, #8da6dc);
-}
-.room-chat-selection-check {
-  align-self: center;
-  flex-shrink: 0;
-  background: transparent;
-  border: 0;
-  color: var(--ft-cyan, #8da6dc);
-  padding: 2px;
-}
-.room-chat-selection-check[aria-checked='false'] {
-  opacity: 0.4;
-}
 .room-chat-reply-preview {
   display: block;
   width: 100%;
@@ -114,8 +99,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.room-chat-reply-draft,
-.room-chat-selection-bar {
+.room-chat-reply-draft {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -126,16 +110,14 @@
   background: var(--ui-surface1-100, #101c2a);
   margin-bottom: 7px;
 }
-.room-chat-reply-draft > span,
-.room-chat-selection-bar > span {
+.room-chat-reply-draft > span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.room-chat-reply-draft button,
-.room-chat-selection-bar button {
+.room-chat-reply-draft button {
   background: transparent;
   color: inherit;
   border: 0;
@@ -247,4 +229,40 @@
   .message-readers-popover {
     animation: none;
   }
+}
+
+/* Temporary room: compact everyday actions, no selection or read-receipt panel. */
+.message-context-menu.room-message-context-menu {
+  width: 210px;
+  border-radius: 11px;
+  max-height: min(330px, calc(100dvh - 20px));
+}
+.room-message-context-menu .message-quick-reactions {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 4px;
+  gap: 2px;
+}
+.room-message-context-menu .message-quick-reactions button {
+  min-height: 26px;
+  font-size: 16px;
+  border-radius: 6px;
+}
+.room-message-context-menu .message-quick-reactions svg {
+  width: 13px;
+  height: 13px;
+}
+.room-message-context-menu .message-context-actions {
+  padding: 4px;
+  gap: 1px;
+}
+.room-message-context-menu .message-context-actions > button {
+  min-height: 27px;
+  padding: 5px 8px;
+  gap: 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+.room-message-context-menu .message-context-actions > button svg {
+  width: 14px;
+  height: 14px;
 }
