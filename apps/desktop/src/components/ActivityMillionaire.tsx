@@ -1,3 +1,4 @@
+import { localizeGameText } from '../lib/game-text';
 import { quizPrizes, type TableOf } from '@freetalk/protocol';
 import { useEffect, useState } from 'react';
 import { Users, Phone, Scissors, Trophy } from 'lucide-react';
@@ -54,14 +55,15 @@ export function ActivityMillionaire({
         </div>
         {table.helpUntil && table.helpUntil > now && (
           <p className="quiz-help-banner">
-            {t('Обсудите ответ с другом в звонке')} · {Math.ceil((table.helpUntil - now) / 1000)} с
+            {t('Обсудите ответ с другом в звонке')} · {Math.ceil((table.helpUntil - now) / 1000)}{' '}
+            {t('сек')}
           </p>
         )}
         <div className="quiz-question">
           <small>
             {t('Вопрос')} {table.level + 1} / 15 · {quizPrizes[table.level + 1]!.toLocaleString()} ¤
           </small>
-          <h3>{table.question}</h3>
+          <h3>{localizeGameText(table.question)}</h3>
         </div>
         <div className="quiz-answers">
           {table.answers.map((answer, i) => (
@@ -73,7 +75,7 @@ export function ActivityMillionaire({
               onClick={() => setSelected(i)}
             >
               <b>{'ABCD'[i]}:</b>
-              <span>{table.eliminated.includes(i) ? '—' : answer}</span>
+              <span>{table.eliminated.includes(i) ? '—' : localizeGameText(answer)}</span>
               {table.audience && <small>{table.audience[i]}%</small>}
             </button>
           ))}

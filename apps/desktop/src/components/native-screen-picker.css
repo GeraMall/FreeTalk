@@ -2,14 +2,14 @@
   width: min(620px, calc(100vw - 32px));
   max-height: 85dvh;
   padding: 24px;
-  border: 1px solid #353c4b;
+  border: 1px solid var(--ui-line-100, #353c4b);
   border-radius: 24px;
-  background: #0c1521;
-  color: #eef6ff;
-  box-shadow: 0 24px 80px #0008;
+  background: var(--ui-surface1-100, #0c1521);
+  color: var(--ui-text-100, #eef6ff);
+  box-shadow: 0 24px 80px var(--ui-shadow-53, #0008);
 }
 .native-screen-picker::backdrop {
-  background: #0009;
+  background: var(--ui-surface0-60, #0009);
   backdrop-filter: blur(8px);
 }
 .native-screen-picker header,
@@ -25,7 +25,7 @@
 }
 .native-screen-picker p,
 .native-screen-picker footer span {
-  color: #9eb0c0;
+  color: var(--ui-muted-100, #9eb0c0);
   font-size: 13px;
 }
 .native-screen-picker button {
@@ -34,15 +34,15 @@
   justify-content: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid #353c4b;
+  border: 1px solid var(--ui-line-100, #353c4b);
   border-radius: 12px;
-  background: #181d28;
+  background: var(--ui-surface1-100, #181d28);
   color: inherit;
   cursor: pointer;
 }
 .native-screen-picker button:focus-visible {
   outline: none;
-  border-color: #6d7d99;
+  border-color: var(--ui-line-100, #6d7d99);
 }
 .native-screen-picker [role='tablist'] {
   display: flex;
@@ -53,9 +53,9 @@
   flex: 1;
 }
 .native-screen-picker [aria-selected='true'] {
-  border-color: #869ed1;
-  background: #232937;
-  color: #92a9d9;
+  border-color: var(--ui-line-100, #869ed1);
+  background: var(--ui-surface2-100, #232937);
+  color: var(--ui-muted-100, #92a9d9);
 }
 .native-screen-sources {
   display: grid;
@@ -77,8 +77,8 @@
   white-space: nowrap;
 }
 .native-screen-sources button:hover {
-  border-color: #869ed1;
-  background: #222938;
+  border-color: var(--ui-line-100, #869ed1);
+  background: var(--ui-surface2-100, #222938);
 }
 
 .native-screen-sources .native-source-preview {
@@ -88,8 +88,8 @@
   place-items: center;
   border-radius: 8px;
   overflow: hidden;
-  background: #050b14;
-  color: #8190a8;
+  background: var(--ui-surface0-100, #050b14);
+  color: var(--ui-muted-100, #8190a8);
 }
 .native-source-preview img {
   width: 100%;
@@ -110,7 +110,7 @@
   align-items: center;
   gap: 10px;
   margin: 0 0 18px;
-  color: #dce5f4;
+  color: var(--ui-text-100, #dce5f4);
   font-size: 14px;
   cursor: pointer;
 }

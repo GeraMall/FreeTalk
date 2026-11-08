@@ -8,10 +8,10 @@
     scrollbar-width: thin;
     gap: 4px;
     padding: 10px;
-    border-color: rgba(132, 177, 204, 0.15);
+    border-color: var(--ui-line-15, rgba(132, 177, 204, 0.15));
     border-radius: 18px;
-    background: #07111d;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+    background: var(--ui-surface0-100, #07111d);
+    box-shadow: 0 16px 48px var(--ui-shadow-36, rgba(0, 0, 0, 0.36));
   }
 
   .account-profile-popover .profile-popover-cover {
@@ -30,14 +30,14 @@
   .account-profile-popover .profile-avatar-small.large {
     width: 68px;
     height: 68px;
-    border-color: #07111d;
+    border-color: var(--ui-line-100, #07111d);
   }
 
   .account-profile-popover .profile-popover-identity {
     gap: 12px;
     padding: 38px 6px 16px;
     margin-bottom: 4px;
-    border-color: rgba(132, 177, 204, 0.1);
+    border-color: var(--ui-line-10, rgba(132, 177, 204, 0.1));
   }
 
   .account-profile-popover .profile-popover-identity > span {
@@ -66,7 +66,7 @@
   }
 
   .account-profile-popover .profile-popover-identity p {
-    color: #b0bfce;
+    color: var(--ui-muted-100, #b0bfce);
     font-size: 13px;
     line-height: 20px;
   }
@@ -80,7 +80,7 @@
     border-color: transparent;
     border-radius: 10px;
     background: transparent;
-    color: #cbd7e3;
+    color: var(--ui-text-100, #cbd7e3);
     font-size: 14px;
     line-height: 20px;
   }
@@ -94,7 +94,7 @@
 
   .account-profile-popover .profile-popover-action small,
   .account-profile-popover .profile-presence-options small {
-    color: #8499ae;
+    color: var(--ui-muted-100, #8499ae);
     font-size: 12px;
     font-weight: 400;
     line-height: 17px;
@@ -105,16 +105,16 @@
   .account-profile-popover .profile-status-control.open,
   .account-profile-popover .profile-presence-options button:hover,
   .account-profile-popover .profile-presence-options button.selected {
-    border-color: rgba(141, 166, 220, 0.1);
+    border-color: var(--ui-line-10, rgba(141, 166, 220, 0.1));
     background: rgba(141, 166, 220, 0.05);
-    color: #edf6ff;
+    color: var(--ui-text-100, #edf6ff);
   }
 
   .account-profile-popover .profile-presence-options {
     margin-top: 4px;
     padding: 4px;
-    border-color: rgba(132, 177, 204, 0.1);
-    background: #091624;
+    border-color: var(--ui-line-10, rgba(132, 177, 204, 0.1));
+    background: var(--ui-surface1-100, #091624);
   }
 
   .account-profile-popover .profile-presence-options button {
@@ -129,9 +129,9 @@
     padding: 10px;
     margin-top: 6px;
     border: 1px solid transparent;
-    border-top-color: rgba(132, 177, 204, 0.1);
+    border-top-color: var(--ui-line-10, rgba(132, 177, 204, 0.1));
     border-radius: 0 0 10px 10px;
-    color: #e58a9a;
+    color: var(--ui-danger-100, #e58a9a);
     background: transparent;
     font-size: 14px;
     font-weight: 450;
@@ -140,9 +140,9 @@
 
   .account-profile-popover .profile-popover-logout:hover,
   .account-profile-popover .profile-popover-logout:focus-visible {
-    color: #ff9cae;
+    color: var(--ui-danger-100, #ff9cae);
     border-color: transparent;
-    border-top-color: rgba(132, 177, 204, 0.1);
+    border-top-color: var(--ui-line-10, rgba(132, 177, 204, 0.1));
     background: rgba(255, 100, 124, 0.06);
   }
 
@@ -153,7 +153,7 @@
     margin-inline: -6px;
     min-height: 60px;
     padding: 8px 6px;
-    border-color: rgba(148, 171, 190, 0.16);
+    border-color: var(--ui-line-16, rgba(148, 171, 190, 0.16));
     border-radius: 12px;
     background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
@@ -183,7 +183,7 @@
 
   .account-sidebar-with-chats .account-profile-mini.with-audio-controls:hover {
     transform: none;
-    border-color: rgba(148, 171, 190, 0.16);
+    border-color: var(--ui-line-16, rgba(148, 171, 190, 0.16));
     background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
   }
@@ -230,7 +230,7 @@
     width: 32px;
     height: 36px;
     padding: 6px;
-    color: #c5d2df;
+    color: var(--ui-text-100, #c5d2df);
     background: transparent;
     transform: none;
     transition:
@@ -240,11 +240,11 @@
 
   .account-profile-mini.with-audio-controls .profile-audio-device > button:hover {
     background: rgba(159, 186, 209, 0.08);
-    color: #f1f7fc;
+    color: var(--ui-text-100, #f1f7fc);
   }
 
   .account-profile-mini.with-audio-controls .profile-audio-device.is-muted > button {
-    color: #ff829b;
+    color: var(--ui-danger-100, #ff829b);
     background: transparent;
   }
 
@@ -268,7 +268,7 @@
     height: 36px;
     border-color: transparent;
     background: transparent;
-    color: #c5d2df;
+    color: var(--ui-text-100, #c5d2df);
     transform: none;
     box-shadow: none;
     transition:
@@ -284,7 +284,7 @@
   .account-profile-mini.with-audio-controls .account-profile-settings-button:hover,
   .account-profile-mini.with-audio-controls .account-profile-settings-button:focus-visible,
   .account-profile-mini.with-audio-controls .account-profile-settings-button:active {
-    color: #f1f7fc;
+    color: var(--ui-text-100, #f1f7fc);
     background: rgba(159, 186, 209, 0.14);
     border-color: transparent;
     transform: none;

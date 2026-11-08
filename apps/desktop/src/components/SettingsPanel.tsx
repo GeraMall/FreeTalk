@@ -1,3 +1,5 @@
+import { interfaceTheme } from '../lib/interface-theme';
+import { InterfaceAppearance } from './InterfaceAppearance';
 import { PasskeySettings } from './PasskeySettings';
 import { QrScanDialog } from './QrLoginDialog';
 import { t } from '../lib/app-language';
@@ -484,6 +486,15 @@ export function SettingsPanel({
                     </div>
                     <LanguagePicker />
                   </div>
+                  <InterfaceAppearance />
+                  <CallCardDesigner
+                    name={accountUser?.displayName || settings.displayName}
+                    avatar={accountUser?.avatarUrl || settings.avatarDataUrl}
+                    glass={settings.participantCardStyle === 'avatar-glass'}
+                    onGlass={(value) =>
+                      onSetting({ participantCardStyle: value ? 'avatar-glass' : 'classic' }, false)
+                    }
+                  />
                 </section>
               )}
               {tab === 'audio' && (
@@ -652,6 +663,7 @@ export function SettingsPanel({
                 className="danger"
                 onClick={() => {
                   setConfirmReset(false);
+                  interfaceTheme.choose('default');
                   onReset();
                 }}
               >
@@ -1081,15 +1093,6 @@ function ProfileTab({
               </div>
             )}
           </section>
-
-          <CallCardDesigner
-            name={draft.displayName}
-            avatar={cachedDraftAvatar ?? ''}
-            glass={draft.participantCardStyle === 'avatar-glass'}
-            onGlass={(value) =>
-              onDraft({ participantCardStyle: value ? 'avatar-glass' : 'classic' })
-            }
-          />
 
           <section className="profile-zone profile-security-zone">
             <header className="profile-zone-heading">

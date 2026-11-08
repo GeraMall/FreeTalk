@@ -180,21 +180,18 @@ describe('SettingsPanel profile actions', () => {
     fireEvent.click(getByRole('switch', { name: 'Микрофон выключен' }));
     expect(onVideoSetting).toHaveBeenCalledWith({ microphoneDisabledSound: false });
   });
-  it('keeps glass styling in the draft until the single done action', async () => {
+  it('keeps call-card appearance in Interface and saves it locally without an account profile request', () => {
     const { container, getByRole, onClose, onSaveProfile, onSetting } = renderProfile();
-
+    expect(container.querySelector('.profile-card-preview')).toBeNull();
+    fireEvent.click(getByRole('button', { name: 'Интерфейс' }));
     expect(container.querySelector('.profile-card-preview')).toBeTruthy();
     expect(getByRole('switch', { name: 'Жидкое стекло' }).getAttribute('aria-checked')).toBe(
       'false',
     );
     fireEvent.click(getByRole('switch', { name: 'Жидкое стекло' }));
-    expect(onSetting).not.toHaveBeenCalled();
-    expect(container.textContent).not.toContain('Элементы оформления');
-    expect(container.querySelector('[aria-label="Узор карточки"]')).toBeNull();
-
-    fireEvent.click(getByRole('button', { name: 'Готово' }));
-    await waitFor(() => expect(onSaveProfile).toHaveBeenCalledOnce());
     expect(onSetting).toHaveBeenCalledWith({ participantCardStyle: 'avatar-glass' }, false);
+    expect(onSaveProfile).not.toHaveBeenCalled();
+    fireEvent.click(getByRole('button', { name: 'Закрыть настройки' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 

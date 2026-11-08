@@ -12,7 +12,6 @@ import {
   Spade,
   Mic,
   Headphones,
-  Square,
 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ActivityGame, RoomActivity, RoomActivityAction, TableKind } from '@freetalk/protocol';
@@ -218,7 +217,12 @@ export function CallActivity({
       <header className="activity-heading">
         <div>
           {!catalog && activeKind ? (
-            <button type="button" aria-label={t('К играм')} onClick={() => setCatalog(true)}>
+            <button
+              type="button"
+              className="tablet-back-control"
+              aria-label={t('К играм')}
+              onClick={() => setCatalog(true)}
+            >
               <ArrowLeft size={17} />
             </button>
           ) : (
@@ -255,11 +259,29 @@ export function CallActivity({
               title={t('Завершить для всех')}
               onClick={onEnd}
             >
-              <Square size={13} aria-hidden="true" />
+              <svg
+                className="tablet-power-icon"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path className="tablet-power-ring" d="M7.2 5.8a8 8 0 1 0 9.6 0" />
+                <path className="tablet-power-stem" d="M12 3v8" />
+              </svg>
               <span>{t('Завершить для всех')}</span>
             </button>
           )}
-          <button type="button" aria-label={t('Свернуть планшет')} onClick={onClose}>
+          <button
+            type="button"
+            className="tablet-close-control"
+            aria-label={t('Свернуть планшет')}
+            onClick={onClose}
+          >
             <X size={17} />
           </button>
         </div>

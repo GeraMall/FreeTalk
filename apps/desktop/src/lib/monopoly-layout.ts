@@ -1,3 +1,4 @@
+import { localizeGameText } from './game-text';
 import { propertyBoard as originalBoard } from '@freetalk/protocol';
 import { Rocket, Car, Ship, Crown, TrainFront, Cat } from 'lucide-react';
 export const propertyColors = [
@@ -79,5 +80,5 @@ export function propertyLog(text: string | undefined) {
   let result = text ?? '';
   for (const [i, name] of Object.entries(streetNames))
     result = result.replaceAll(originalBoard[Number(i)]![0], name);
-  return result;
+  return localizeGameText(result);
 }

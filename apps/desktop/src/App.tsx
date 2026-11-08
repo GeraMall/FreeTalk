@@ -1,10 +1,18 @@
+import { applyInterfaceTheme, interfaceTheme } from './lib/interface-theme';
 import { AppToast } from './components/AppToast';
 import { useSoloCallTimeout } from './lib/use-solo-call-timeout';
 import { clearAccountView } from './lib/account-view-cache';
 import { mergeParticipantAudioState } from '@freetalk/protocol';
 import { useCallAudioControls } from './lib/call-audio-controls';
 import { t } from './lib/app-language';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ChevronLeft, PhoneCall } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_ICE_SERVERS, ROOM_MAX_PARTICIPANTS } from '@freetalk/config';
@@ -182,6 +190,7 @@ export function App() {
   const mobileLayout = useMobileLayout();
   const [settings, setSettings] = useState(loadSettings);
   const [accountUser, setAccountUser] = useState<AccountUser>();
+  useEffect(() => interfaceTheme.connect(accountUser?.id), [accountUser?.id]);
   const [accountReady, setAccountReady] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -192,6 +201,13 @@ export function App() {
   const [lockedFeatureOpen, setLockedFeatureOpen] = useState(false);
   const [name, setName] = useState(settings.displayName);
   const [roomId, setRoomId] = useState<string>();
+  useLayoutEffect(() => {
+    document.documentElement.dataset.authScreen = String(!accountUser && !roomId);
+    applyInterfaceTheme();
+    return () => {
+      delete document.documentElement.dataset.authScreen;
+    };
+  }, [accountUser, roomId]);
   const [callChatId, setCallChatId] = useState<string>();
   const callChatRef = useRef<string | undefined>(undefined);
   const pendingChatRing = useRef(false);

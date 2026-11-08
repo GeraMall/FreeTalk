@@ -15,7 +15,12 @@ export type TableUiProps<T extends ActivityTable = ActivityTable> = {
 export const playerName = (
   id: string | null | undefined,
   participants: TableUiProps['participants'],
-) => (id ? (participants.find((p) => p.id === id)?.name ?? t('Отключился')) : t('Свободное место'));
+) => {
+  if (!id) return t('Свободное место');
+  const person = participants.find((p) => p.id === id);
+  if (!person) return t('Отключился');
+  return person.bot ? `${t('Бот')} ${t(person.name.replace(/^Бот /u, ''))}` : person.name;
+};
 export const tableNames = {
   chess: 'Шахматы',
   fleet: 'Морской бой',

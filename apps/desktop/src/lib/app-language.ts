@@ -1,3 +1,4 @@
+import gameTranslations from './game-translations.json';
 import { isTauri } from '@tauri-apps/api/core';
 import reviewTranslations from './review-translations.json';
 import belarusian from './app-language.be.json';
@@ -1541,7 +1542,10 @@ export function t(text: string, values?: Record<string, unknown>) {
     const entry = (reviewTranslations as Record<string, Partial<Record<AppLanguage, string>>>)[
       text
     ];
-    translated = entry?.[language] ?? translated;
+    const gameEntry = (gameTranslations as Record<string, Partial<Record<AppLanguage, string>>>)[
+      text
+    ];
+    translated = gameEntry?.[language] ?? entry?.[language] ?? translated;
   }
   return values
     ? translated.replace(/\{(\w+)\}/g, (token, key: string) => String(values[key] ?? token))

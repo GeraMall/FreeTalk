@@ -10,14 +10,14 @@
   min-height: 0;
   max-height: 100%;
   margin-inline: auto;
-  border: 1px solid #2b3a50;
+  border: 1px solid var(--ui-line-100, #2b3a50);
   border-radius: 19px;
   padding: 5px;
-  background: #060c15;
+  background: var(--ui-surface0-100, #060c15);
   box-shadow:
-    0 12px 34px #02050b55,
-    inset 0 1px #b5c9ff13;
-  color: #eff4ff;
+    0 12px 34px var(--ui-shadow-33, #02050b55),
+    inset 0 1px var(--ui-shadow-7, #b5c9ff13);
+  color: var(--ui-text-100, #eff4ff);
   animation: tablet-arrive 430ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .activity-heading,
@@ -32,14 +32,14 @@
   justify-content: space-between;
   min-height: 44px;
   padding: 5px 12px;
-  border: 1px solid #253248;
+  border: 1px solid var(--ui-line-100, #253248);
   border-radius: 13px 13px 0 0;
-  background: #101928;
+  background: var(--ui-surface1-100, #101928);
 }
 .activity-heading h2 {
   margin: 0;
   font-size: 13px;
-  color: #b4c4dc;
+  color: var(--ui-muted-100, #b4c4dc);
 }
 .activity-heading button,
 .activity-game-status button,
@@ -50,21 +50,21 @@
   gap: 5px;
   min-height: 31px;
   padding: 4px 8px;
-  color: #d5e2f9;
-  background: #19273a;
-  border: 1px solid #30415c;
+  color: var(--ui-text-100, #d5e2f9);
+  background: var(--ui-surface1-100, #19273a);
+  border: 1px solid var(--ui-line-100, #30415c);
   border-radius: 7px;
 }
 .activity-heading button:hover,
 .activity-game-status button:hover {
-  background: #22334b;
+  background: var(--ui-surface2-100, #22334b);
 }
 .activity-content {
   position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  border-inline: 1px solid #253248;
+  border-inline: 1px solid var(--ui-line-100, #253248);
   scrollbar-width: thin;
   scrollbar-color: #425473 transparent;
   overscroll-behavior: contain;
@@ -80,7 +80,7 @@
 .activity-intro {
   max-width: 400px;
   margin: 0 0 24px;
-  color: #aabbd2;
+  color: var(--ui-muted-100, #aabbd2);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -96,10 +96,10 @@
   width: 144px;
   min-height: 106px;
   padding: 12px;
-  border: 1px solid #6d81ad61;
+  border: 1px solid var(--ui-line-38, #6d81ad61);
   border-radius: 11px;
-  background: #101c31eb;
-  color: #e4edff;
+  background: var(--ui-surface1-92, #101c31eb);
+  color: var(--ui-text-100, #e4edff);
   font-size: 13px;
   font-weight: 650;
   transition:
@@ -107,8 +107,8 @@
     border-color 180ms;
 }
 .activity-tile:hover {
-  background: #263752;
-  border-color: #869dc4;
+  background: var(--ui-surface2-100, #263752);
+  border-color: var(--ui-line-100, #869dc4);
 }
 .activity-game-mark {
   display: grid;
@@ -133,7 +133,9 @@
   display: grid;
   align-items: safe center;
   padding: 12px;
-  background: radial-gradient(ellipse at 90% 0, #25335155, transparent 65%), #070f1c;
+  background:
+    radial-gradient(ellipse at 90% 0, var(--ui-surface2-33, #25335155), transparent 65%),
+    var(--ui-surface0-100, #070f1c);
 }
 .activity-game {
   display: grid;
@@ -152,7 +154,7 @@
   display: grid;
   width: min(100%, 360px, calc(100dvh - 365px));
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  border: 1px solid #5c739a;
+  border: 1px solid var(--ui-line-100, #5c739a);
   overflow: hidden;
   border-radius: 7px;
 }
@@ -164,7 +166,7 @@
   min-height: 0;
   padding: 0;
   border-radius: 0;
-  border: 1px solid #283f5c;
+  border: 1px solid var(--ui-line-100, #283f5c);
   background: #9fb0c9;
   color: #111d30;
   font-size: clamp(16px, 3vw, 27px);
@@ -178,13 +180,13 @@
 }
 .activity-board-mines > button,
 .activity-board-fleet > button {
-  background: #1c344f;
-  color: #e4edff;
+  background: var(--ui-surface2-100, #1c344f);
+  color: var(--ui-text-100, #e4edff);
   font-size: 15px;
 }
 .activity-board-mines > button.revealed,
 .activity-board-fleet > button.revealed {
-  background: #0d1d30;
+  background: var(--ui-surface1-100, #0d1d30);
 }
 .activity-board > button:disabled {
   opacity: 1;
@@ -206,10 +208,10 @@
   min-height: 46px;
   gap: 10px;
   padding: 6px 10px;
-  border: 1px solid #253248;
+  border: 1px solid var(--ui-line-100, #253248);
   border-radius: 0 0 13px 13px;
-  background: #101928;
-  color: #b4c4dc;
+  background: var(--ui-surface1-100, #101928);
+  color: var(--ui-muted-100, #b4c4dc);
   font-size: 12px;
 }
 .activity-dock button {
@@ -217,18 +219,18 @@
   align-items: center;
   gap: 6px;
   padding: 4px 7px;
-  border: 1px solid #30415c;
+  border: 1px solid var(--ui-line-100, #30415c);
   border-radius: 7px;
-  background: #152035;
-  color: #d5e2f9;
+  background: var(--ui-surface1-100, #152035);
+  color: var(--ui-text-100, #d5e2f9);
   font-size: 11px;
 }
 .activity-dock button[aria-pressed='true'] {
-  border-color: #91a9d3;
-  background: #233653;
+  border-color: var(--ui-line-100, #91a9d3);
+  background: var(--ui-surface2-100, #233653);
 }
 .activity-dock button:hover {
-  background: #263752;
+  background: var(--ui-surface2-100, #263752);
 }
 .activity-dock .activity-game-mark {
   width: 24px;
@@ -236,9 +238,9 @@
   border-radius: 5px;
 }
 .participant-card.activity-invitation {
-  border-color: #435578;
-  background: #0e1a2b;
-  color: #e6edfa;
+  border-color: var(--ui-line-100, #435578);
+  background: var(--ui-surface1-100, #0e1a2b);
+  color: var(--ui-text-100, #e6edfa);
 }
 .participants-grid .participant-card.activity-invitation > .activity-invitation-content {
   position: absolute;
@@ -255,19 +257,19 @@
   width: 44px;
   height: 44px;
   border-radius: 13px;
-  background: #202e48;
-  color: #adc1f0;
+  background: var(--ui-surface2-100, #202e48);
+  color: var(--ui-muted-100, #adc1f0);
 }
 .activity-invitation-content > span:not(.activity-invitation-icon) {
   font-size: 12px;
-  color: #a4b3c9;
+  color: var(--ui-muted-100, #a4b3c9);
   text-align: center;
 }
 .activity-invitation button {
   min-height: 33px;
   padding: 5px 16px;
   border-radius: 9px;
-  border: 1px solid #728bb5;
+  border: 1px solid var(--ui-line-100, #728bb5);
   background: #809ac4;
   color: #081220;
   font-weight: 650;
@@ -278,10 +280,10 @@
   top: 58px;
   transform: translateX(-50%);
   padding: 7px 12px;
-  border: 1px solid #35435d;
+  border: 1px solid var(--ui-line-100, #35435d);
   border-radius: 10px;
-  background: #0b1422ed;
-  color: #a8b9d6;
+  background: var(--ui-surface0-93, #0b1422ed);
+  color: var(--ui-muted-100, #a8b9d6);
   font-size: 12px;
   pointer-events: none;
 }
@@ -377,8 +379,9 @@
   overflow: auto;
   isolation: isolate;
   background:
-    radial-gradient(ellipse at 91% 72%, #30275c 0%, transparent 55%),
-    radial-gradient(ellipse at 22% 35%, #162644 0%, transparent 62%), #0a1222;
+    radial-gradient(ellipse at 91% 72%, var(--ui-surface2-100, #30275c) 0%, transparent 55%),
+    radial-gradient(ellipse at 22% 35%, var(--ui-surface1-100, #162644) 0%, transparent 62%),
+    var(--ui-surface0-100, #0a1222);
 }
 
 .activity-catalog::before {
@@ -421,7 +424,13 @@
   inset: 7%;
   background:
     repeating-linear-gradient(0deg, transparent 0 7px, #a5a3df19 7px 10px),
-    linear-gradient(158deg, #99a6d2 6%, #676ba8 45%, #333361 70%, #211d41 100%);
+    linear-gradient(
+      158deg,
+      #99a6d2 6%,
+      #676ba8 45%,
+      var(--ui-surface2-100, #333361) 70%,
+      var(--ui-surface1-100, #211d41) 100%
+    );
   clip-path: polygon(
     31% 0,
     69% 0,
@@ -464,8 +473,8 @@
 
 .activity-pixel-planet i {
   inset: 41% -14%;
-  border: 3px solid #bfc9ff81;
-  border-top-color: #98a7f039;
+  border: 3px solid var(--ui-line-51, #bfc9ff81);
+  border-top-color: var(--ui-line-22, #98a7f039);
   border-radius: 50%;
   transform: rotate(-23deg);
 }
@@ -477,7 +486,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  color: #aabbd2;
+  color: var(--ui-muted-100, #aabbd2);
 }
 
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
@@ -505,10 +514,10 @@
   left: 50%;
   transform: translateX(-50%);
   padding: 7px 14px;
-  border: 1px solid rgba(149, 173, 226, 0.3);
+  border: 1px solid var(--ui-line-30, rgba(149, 173, 226, 0.3));
   border-radius: 10px;
-  background: #101c2d;
-  color: #e5edff;
+  background: var(--ui-surface1-100, #101c2d);
+  color: var(--ui-text-100, #e5edff);
   font-size: 13px;
   font-weight: 650;
   pointer-events: none;
@@ -657,14 +666,14 @@
     height: 18px;
   }
   .call-activity > .activity-dock .tablet-audio-controls > .tablet-device-on {
-    color: #bed6d0;
-    background: #162d32;
-    border-color: #3c5558;
+    color: var(--ui-text-100, #bed6d0);
+    background: var(--ui-surface2-100, #162d32);
+    border-color: var(--ui-line-100, #3c5558);
   }
   .call-activity > .activity-dock .tablet-audio-controls > .tablet-device-off {
-    color: #fa8c9d;
-    background: #39202b;
-    border-color: #754153;
+    color: var(--ui-danger-100, #fa8c9d);
+    background: var(--ui-surface1-100, #39202b);
+    border-color: var(--ui-line-100, #754153);
   }
   .tablet-audio-controls button svg {
     width: 18px;
@@ -697,16 +706,16 @@
   border-radius: 9px;
   font-size: 12px;
   font-weight: 600;
-  background: #19283a;
-  border-color: #35485f;
-  color: #dde7f1;
+  background: var(--ui-surface1-100, #19283a);
+  border-color: var(--ui-line-100, #35485f);
+  color: var(--ui-text-100, #dde7f1);
   transition:
     color 160ms,
     background 160ms,
     border-color 160ms;
 }
 .call-activity > .activity-heading .tablet-end-session:hover {
-  color: #fff2f4;
+  color: var(--ui-text-100, #fff2f4);
   background: #9c2941;
   border-color: #d85b73;
 }
@@ -714,7 +723,7 @@
   background: #ba304d;
 }
 .call-activity > .activity-heading .tablet-end-session:focus-visible {
-  outline: 2px solid #e7b0bd;
+  outline: 2px solid var(--ui-line-100, #e7b0bd);
   outline-offset: 2px;
 }
 .call-activity .tablet-viewers > span {
@@ -723,8 +732,8 @@
   position: relative;
   overflow: hidden;
   flex: 0 0 28px;
-  border-color: #527083;
-  background: #1b3042;
+  border-color: var(--ui-line-100, #527083);
+  background: var(--ui-surface2-100, #1b3042);
 }
 .tablet-viewers > span > img {
   position: absolute;
@@ -787,5 +796,80 @@
   }
   .call-activity > .activity-heading .tablet-end-session > span {
     display: none;
+  }
+}
+
+.tablet-power-icon {
+  overflow: visible;
+}
+.tablet-power-ring {
+  transform-origin: 12px 12px;
+}
+.tablet-end-session:is(:hover, :focus-visible) .tablet-power-ring {
+  animation: tablet-power-turn 550ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.tablet-end-session:is(:hover, :focus-visible) .tablet-power-stem {
+  animation: tablet-power-press 550ms ease-out both;
+}
+.tablet-back-control:is(:hover, :focus-visible) > svg {
+  animation: tablet-back-nudge 440ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.tablet-close-control:is(:hover, :focus-visible) > svg {
+  animation: tablet-close-turn 460ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+:is(.tablet-back-control, .tablet-close-control):active > svg {
+  scale: 0.86;
+}
+:root[data-ui-theme='light'] .tablet-end-session:is(:hover, :focus-visible) {
+  color: #fff;
+}
+@keyframes tablet-power-turn {
+  0% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(25deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@keyframes tablet-power-press {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(1.8px);
+  }
+}
+@keyframes tablet-back-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(-3px);
+  }
+  70% {
+    transform: translateX(1px);
+  }
+}
+@keyframes tablet-close-turn {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  45% {
+    transform: rotate(16deg);
+  }
+  75% {
+    transform: rotate(-5deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-heading :is(.tablet-power-ring, .tablet-power-stem, button > svg) {
+    animation: none !important;
+    transition: none;
   }
 }

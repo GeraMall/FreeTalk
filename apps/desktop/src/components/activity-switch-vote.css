@@ -6,11 +6,11 @@
   width: 330px;
   max-width: calc(100vw - 24px);
   padding: 16px;
-  color: #e6ecee;
-  border: 1px solid #526b68;
+  color: var(--ui-text-100, #e6ecee);
+  border: 1px solid var(--ui-line-100, #526b68);
   border-radius: 15px;
-  background: #101f2bf5;
-  box-shadow: 0 12px 30px #0007;
+  background: var(--ui-surface1-96, #101f2bf5);
+  box-shadow: 0 12px 30px var(--ui-shadow-47, #0007);
   backdrop-filter: blur(15px);
   animation: game-vote-enter 0.28s ease-out;
 }
@@ -22,7 +22,7 @@
   gap: 10px;
 }
 .activity-switch-vote header > svg {
-  color: #a4c0a2;
+  color: var(--ui-muted-100, #a4c0a2);
   flex-shrink: 0;
 }
 .activity-switch-vote header strong {
@@ -36,8 +36,8 @@
   place-items: center;
   border: 0;
   border-radius: 8px;
-  background: #22343e;
-  color: #a5b8bd;
+  background: var(--ui-surface2-100, #22343e);
+  color: var(--ui-muted-100, #a5b8bd);
   cursor: pointer;
 }
 .activity-switch-vote p {
@@ -48,7 +48,7 @@
 .activity-switch-vote small {
   font-size: 11px;
   line-height: 1.5;
-  color: #91a9af;
+  color: var(--ui-muted-100, #91a9af);
   display: block;
 }
 .game-vote-count {
@@ -57,13 +57,13 @@
   font-size: 11px;
 }
 .game-vote-count span:first-child {
-  color: #abd3ae;
+  color: var(--ui-text-100, #abd3ae);
 }
 .game-vote-count span:last-child {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #b2c3cb;
+  color: var(--ui-muted-100, #b2c3cb);
 }
 .game-vote-actions {
   margin-bottom: 8px;
@@ -71,17 +71,17 @@
 .game-vote-actions button {
   flex: 1;
   min-height: 40px;
-  border: 1px solid #3b545a;
+  border: 1px solid var(--ui-line-100, #3b545a);
   border-radius: 9px;
-  background: #21353e;
-  color: #d6e5e7;
+  background: var(--ui-surface2-100, #21353e);
+  color: var(--ui-text-100, #d6e5e7);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
 }
 .game-vote-actions button:first-child {
-  background: #486c56;
-  border-color: #759177;
+  background: var(--ui-surface3-100, #486c56);
+  border-color: var(--ui-line-100, #759177);
 }
 .game-vote-actions button:disabled {
   opacity: 0.45;

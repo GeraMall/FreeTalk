@@ -1,8 +1,8 @@
 /* Approved steel-blue accent. Semantic success/warning/error colours are kept. */
 :root {
-  --ft-accent: #8da6dc;
+  --ft-accent: var(--ui-muted-100, #8da6dc);
   --ft-cyan: var(--ft-accent);
-  --ft-chrome: #020914;
+  --ft-chrome: var(--ui-surface0-100, #020914);
 }
 .custom-titlebar {
   background: var(--ft-chrome);
@@ -12,7 +12,7 @@
   :root .room-account-shell > .account-sidebar {
     background: var(--ft-chrome);
     backdrop-filter: none;
-    border-right-color: #202a38;
+    border-right-color: var(--ui-line-100, #202a38);
     box-shadow: none;
   }
   :root .account-shell > .account-sidebar::after,
@@ -44,7 +44,7 @@
     top: 16px;
     bottom: 0;
     width: 1px;
-    background: #202a38;
+    background: var(--ui-surface2-100, #202a38);
     box-shadow: none;
     transform: none;
   }
@@ -60,8 +60,8 @@
   }
   .messenger-layout.external-sidebar:has(> .active-chat-header),
   .account-content-chat > .service-chat {
-    border-block-start: 1px solid #202a38;
-    border-inline-start: 1px solid #202a38;
+    border-block-start: 1px solid var(--ui-line-100, #202a38);
+    border-inline-start: 1px solid var(--ui-line-100, #202a38);
     border-start-start-radius: 18px;
   }
   .messenger-layout.external-sidebar:has(> .active-chat-header) {
@@ -90,34 +90,34 @@
     border-start-start-radius: 16px;
   }
   .account-sidebar nav button {
-    color: #c4cfdf;
+    color: var(--ui-text-100, #c4cfdf);
   }
   .account-sidebar nav button svg {
-    color: #a8b8cf;
+    color: var(--ui-muted-100, #a8b8cf);
   }
   .account-sidebar nav button.active {
-    background: #151e2e;
-    box-shadow: inset 2px 0 #8da6dc;
+    background: var(--ui-surface1-100, #151e2e);
+    box-shadow: inset 2px 0 var(--ui-shadow-100, #8da6dc);
   }
   .account-sidebar .account-sidebar-chat-heading {
-    color: #b3c0d3;
+    color: var(--ui-muted-100, #b3c0d3);
   }
   .account-sidebar .account-sidebar-chat-open.active {
-    background: #151e2e;
-    border-color: #536b99;
-    box-shadow: inset 2px 0 #8da6dc;
+    background: var(--ui-surface1-100, #151e2e);
+    border-color: var(--ui-line-100, #536b99);
+    box-shadow: inset 2px 0 var(--ui-shadow-100, #8da6dc);
   }
   .account-sidebar nav button:hover,
   .account-sidebar .account-sidebar-chat-row:hover .account-sidebar-chat-open,
   .account-sidebar-chat-leave:is(:hover, :focus-visible) {
-    background: #0d1725;
+    background: var(--ui-surface1-100, #0d1725);
   }
   .account-sidebar .account-chat-search {
     overflow: hidden;
     min-height: 40px;
-    border: 1px solid #293648;
+    border: 1px solid var(--ui-line-100, #293648);
     border-radius: 12px;
-    background: #101823;
+    background: var(--ui-surface1-100, #101823);
     box-shadow: none;
   }
   .account-sidebar .account-chat-search input,
@@ -131,28 +131,28 @@
     box-shadow: none;
   }
   .account-sidebar .account-chat-search:focus-within {
-    border-color: #8da6dc;
+    border-color: var(--ui-line-100, #8da6dc);
   }
   .account-sidebar .account-profile-menu-anchor {
-    --ft-sidebar-profile-surface: #06121f;
+    --ft-sidebar-profile-surface: var(--ui-surface0-100, #06121f);
   }
   .account-sidebar .account-profile-mini,
   .account-sidebar .account-profile-mini:hover {
     background: var(--ft-sidebar-profile-surface);
-    border-color: #293648;
+    border-color: var(--ui-line-100, #293648);
   }
   .account-sidebar .account-sidebar-chat-list small {
-    color: #8e9eb3;
+    color: var(--ui-muted-100, #8e9eb3);
   }
   .account-sidebar .account-sidebar-chat-list strong {
-    color: #e0e7f1;
+    color: var(--ui-text-100, #e0e7f1);
   }
 
   .account-sidebar .account-profile-menu-anchor.has-active-call {
     width: calc(100% + 12px);
     margin-inline: -6px;
     padding-top: 0;
-    border: 1px solid #293648;
+    border: 1px solid var(--ui-line-100, #293648);
     border-radius: 14px;
     background: var(--ft-sidebar-profile-surface);
     box-shadow: none;
@@ -172,25 +172,25 @@
     width: 100%;
     margin: 0;
     border: 0;
-    border-top: 1px solid #293648;
+    border-top: 1px solid var(--ui-line-100, #293648);
     border-radius: 0 0 13px 13px;
     background: transparent;
     box-shadow: none;
     transform: none;
   }
   .account-profile-menu-anchor.has-active-call .sidebar-call-tools button {
-    border: 1px solid #293b54;
-    background: #1b283c;
-    color: #bdcbe0;
+    border: 1px solid var(--ui-line-100, #293b54);
+    background: var(--ui-surface1-100, #1b283c);
+    color: var(--ui-text-100, #bdcbe0);
   }
   .account-profile-menu-anchor.has-active-call .sidebar-call-tools button:hover {
-    border-color: #7186ad;
-    background: #253550;
+    border-color: var(--ui-line-100, #7186ad);
+    background: var(--ui-surface2-100, #253550);
   }
   .account-profile-menu-anchor.has-active-call .sidebar-call-tools button[aria-pressed='true'] {
-    border-color: #7186ad;
-    background: #273751;
-    color: #c5d5f4;
+    border-color: var(--ui-line-100, #7186ad);
+    background: var(--ui-surface2-100, #273751);
+    color: var(--ui-text-100, #c5d5f4);
   }
   .dock-split-control > .dock-control {
     border-radius: 11px 0 0 11px;
@@ -202,40 +202,40 @@
 
 .connection-pill[data-quality='excellent'] {
   border-color: rgba(85, 230, 165, 0.38);
-  color: #9be8bc;
+  color: var(--ui-text-100, #9be8bc);
   background: rgba(38, 160, 105, 0.15);
 }
 .connection-pill[data-quality='excellent'] i {
   background: #55e6a5;
-  box-shadow: 0 0 9px rgba(85, 230, 165, 0.45);
+  box-shadow: 0 0 9px var(--ui-shadow-45, rgba(85, 230, 165, 0.45));
 }
 .participant-avatar:not(.waiting-participant-avatar) i,
 .participant-status[data-presence='online'] i {
   background: #55e6a5;
-  box-shadow: 0 0 9px rgba(85, 230, 165, 0.4);
+  box-shadow: 0 0 9px var(--ui-shadow-40, rgba(85, 230, 165, 0.4));
 }
 .participant-avatar[data-presence='away'] i,
 .participant-status[data-presence='away'] i {
   background: #f2c34f;
-  box-shadow: 0 0 9px rgba(242, 195, 79, 0.35);
+  box-shadow: 0 0 9px var(--ui-shadow-35, rgba(242, 195, 79, 0.35));
 }
 .participant-avatar[data-presence='dnd'] i,
 .participant-status[data-presence='dnd'] i {
   background: #f2687f;
-  box-shadow: 0 0 9px rgba(242, 104, 127, 0.35);
+  box-shadow: 0 0 9px var(--ui-shadow-35, rgba(242, 104, 127, 0.35));
 }
 .participant-avatar[data-presence='offline'] i,
 .participant-status[data-presence='offline'] i {
-  background: #8595a8;
+  background: var(--ui-surface3-100, #8595a8);
   box-shadow: none;
 }
 .reaction-menu,
 .dock-reactions {
   gap: 4px;
   padding: 6px;
-  border: 1px solid #29394d;
+  border: 1px solid var(--ui-line-100, #29394d);
   border-radius: 14px;
-  background: var(--ft-sidebar-profile-surface, #0a1523);
+  background: var(--ft-sidebar-profile-surface, var(--ui-surface1-100, #0a1523));
 }
 .reaction-menu button,
 .dock-reactions button {
@@ -252,16 +252,16 @@
 .reaction-menu button:focus-visible,
 .dock-reactions button:hover,
 .dock-reactions button:focus-visible {
-  border-color: #4d6384;
-  background: #1a2a41;
+  border-color: var(--ui-line-100, #4d6384);
+  background: var(--ui-surface2-100, #1a2a41);
   transform: translateY(-2px);
 }
 
 /* Match the settings layers to the app chrome and chat canvas. */
 .settings-modal {
   --settings-canvas: var(--chat-canvas);
-  --settings-card: #0d1725;
-  --settings-selected: #151e2e;
+  --settings-card: var(--ui-surface1-100, #0d1725);
+  --settings-selected: var(--ui-surface1-100, #151e2e);
   --settings-divider: rgba(149, 173, 226, 0.12);
   border-color: var(--ft-border);
   background: var(--settings-canvas);

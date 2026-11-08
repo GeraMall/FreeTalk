@@ -85,7 +85,7 @@ export function PropertyBoard({
             <span className="mono-cell-band" />
             <PropertyArtwork index={i} />
             {group >= 0 && group < 8 ? (
-              <PropertyStreetName text={propertyBoardLabels[i] ?? name} />
+              <PropertyStreetName text={t(propertyBoardLabels[i] ?? name)} />
             ) : (
               <span className="mono-cell-name">{t(name)}</span>
             )}

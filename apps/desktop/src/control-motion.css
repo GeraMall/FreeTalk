@@ -17,7 +17,7 @@
   transition: stroke-dashoffset 175ms var(--ft-ease);
 }
 .profile-audio-slash {
-  stroke: #ff617a;
+  stroke: var(--ui-danger-100, #ff617a);
   stroke-width: 2.2;
 }
 
@@ -53,7 +53,7 @@
   background: linear-gradient(112deg, rgba(85, 218, 148, 0.09), rgba(75, 127, 255, 0.04));
 }
 .system-call-message:not(.ended):has(> button) .system-call-icon {
-  color: #7ce3a9;
+  color: var(--ui-success-100, #7ce3a9);
   background: rgba(85, 218, 148, 0.11);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -379,13 +379,13 @@
 @keyframes sidebar-detail-light {
   42%,
   62% {
-    stroke: #d5e3ff;
+    stroke: var(--ui-text-100, #d5e3ff);
   }
 }
 @keyframes sidebar-friends-greet {
   35% {
     translate: -1.3px -1.7px;
-    stroke: #d5e3ff;
+    stroke: var(--ui-text-100, #d5e3ff);
   }
   70% {
     translate: -0.3px 0.4px;
@@ -397,14 +397,14 @@
   }
   61% {
     translate: 1.2px -1.4px;
-    stroke: #d5e3ff;
+    stroke: var(--ui-text-100, #d5e3ff);
   }
 }
 @keyframes sidebar-store-awning {
   34% {
     translate: 0 -1.5px;
     scale: 1.07 0.88;
-    stroke: #d5e3ff;
+    stroke: var(--ui-text-100, #d5e3ff);
   }
   66% {
     translate: 0 0.6px;
@@ -458,7 +458,7 @@
 @keyframes composer-photo-glint {
   42% {
     transform: scale(1.42);
-    stroke: #e2edff;
+    stroke: var(--ui-text-100, #e2edff);
   }
 }
 @keyframes composer-sticker-sway {
@@ -613,7 +613,7 @@
   align-items: center;
   gap: 5px;
   padding: 9px 3px;
-  border-block: 1px solid #a4b4cc16;
+  border-block: 1px solid var(--ui-line-9, #a4b4cc16);
 }
 .account-profile-popover .profile-status-arrow {
   display: grid;
@@ -623,14 +623,14 @@
   place-items: center;
   border: 0;
   border-radius: 8px;
-  color: #afbdd2;
+  color: var(--ui-muted-100, #afbdd2);
   background: transparent;
   transform: none;
   box-shadow: none;
 }
 .account-profile-popover .profile-status-arrow:hover {
-  color: #fff;
-  background: #ffffff08;
+  color: var(--ui-text-100, #fff);
+  background: var(--ui-wash-3, #ffffff08);
 }
 .profile-status-current {
   display: grid;
@@ -639,14 +639,14 @@
   gap: 3px 6px;
 }
 .profile-status-current strong {
-  color: #eaf0fa;
+  color: var(--ui-text-100, #eaf0fa);
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
 }
 .profile-status-current small {
   grid-column: 2;
-  color: #97a6bb;
+  color: var(--ui-muted-100, #97a6bb);
   font-size: 11px;
   line-height: 16px;
 }
@@ -656,7 +656,7 @@
   margin-top: 9px;
   border: 1px solid #d7607957;
   border-radius: 10px;
-  color: #ff8b9e;
+  color: var(--ui-danger-100, #ff8b9e);
   background: #f04f6b0a;
   box-shadow: none;
 }
@@ -675,19 +675,19 @@
 .profile-media-editor .profile-identity-bio {
   margin: 0;
   padding: 16px 18px 18px;
-  border-top: 1px solid #a4b4cc16;
+  border-top: 1px solid var(--ui-line-9, #a4b4cc16);
   background: transparent;
 }
 .profile-identity-bio h4 {
   margin: 0 0 7px;
-  color: #a5b4cb;
+  color: var(--ui-muted-100, #a5b4cb);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.4;
 }
 .profile-identity-bio p {
   margin: 0;
-  color: #c5cedd;
+  color: var(--ui-text-100, #c5cedd);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
@@ -698,11 +698,11 @@
 }
 .passkey-settings > div {
   padding: 18px;
-  border-top: 1px solid #a4b4cc16;
+  border-top: 1px solid var(--ui-line-9, #a4b4cc16);
 }
 .passkey-settings > div > p {
   margin: 0 0 14px;
-  color: #a7b4c8;
+  color: var(--ui-muted-100, #a7b4c8);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -712,7 +712,7 @@
 }
 .passkey-settings > p {
   padding: 0 18px 14px;
-  color: #b9c7dc;
+  color: var(--ui-text-100, #b9c7dc);
 }
 .passkey-setting-row {
   display: flex;
@@ -722,15 +722,15 @@
   margin-bottom: 14px;
 }
 .system-call-message.joined {
-  background: #0c1521;
-  border-color: #8da5d22e;
+  background: var(--ui-surface1-100, #0c1521);
+  border-color: var(--ui-line-18, #8da5d22e);
 }
 .system-call-joined {
   flex: 0 0 auto;
   padding: 9px 12px;
-  border: 1px solid #8da5d22e;
+  border: 1px solid var(--ui-line-18, #8da5d22e);
   border-radius: 10px;
-  color: #b6c7e7;
+  color: var(--ui-text-100, #b6c7e7);
   background: #93aada0c;
   font-size: 12px;
   font-weight: 600;
@@ -742,7 +742,7 @@
 .camera-preview-dialog {
   width: min(500px, 100%);
   max-height: 100%;
-  background: #0c1521;
+  background: var(--ui-surface1-100, #0c1521);
 }
 @media (min-width: 761px) {
   .room-shell.conversation-room.conversation-chat-hidden .participants-heading {

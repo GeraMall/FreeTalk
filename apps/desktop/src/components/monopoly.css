@@ -2467,3 +2467,140 @@
   color: #eee4c9;
   font-weight: 650;
 }
+
+/* A quiet rose identity for the Monopoly lobby, separate from poker felt. */
+.mono-lobby {
+  --mono-rose: #d6a7bc;
+  --mono-rose-muted: #bba0b7;
+  color: #f0e9ef;
+  background: linear-gradient(145deg, #211b29, #101522 60%);
+  border-radius: 16px;
+}
+.mono-lobby :is(.mono-brand, .table-bot-controls) {
+  background: #302334;
+  border-color: #665064;
+  color: #e7c6d5;
+}
+.mono-lobby :is(.table-seat, .mono-lobby-rule, .mono-lobby-setting) {
+  background: #1c1b29;
+  border-color: #514255;
+  color: #e9dce7;
+}
+.mono-lobby .table-seat.is-self {
+  background: #322735;
+  border-color: #c7a1ba;
+}
+.mono-lobby :is(.table-primary, .table-start-button) {
+  background: #d6a7bc;
+  color: #2e1e2a;
+  border-color: #debace;
+}
+.mono-lobby :is(.table-muted, .table-bot-controls small, .mono-lobby-heading p) {
+  color: #baa6bd;
+}
+:root[data-ui-theme='light'] .mono-lobby {
+  color: #432e43;
+  background: linear-gradient(145deg, #fff7fa, #f5f3fa);
+}
+:root[data-ui-theme='light']
+  .mono-lobby
+  :is(.mono-brand, .table-bot-controls, .table-seat, .mono-lobby-rule, .mono-lobby-setting) {
+  color: #52374f;
+  background: #f7edf3;
+  border-color: #d9bfd1;
+}
+:root[data-ui-theme='light']
+  .mono-lobby
+  :is(.table-muted, .table-bot-controls small, .mono-lobby-heading p) {
+  color: #795e76;
+}
+
+.mono-viewport .mono-lobby :is(.mono-modes button, .mono-lobby-seats button, .mono-rule-note) {
+  border-color: #665064;
+  background: #261e2e;
+  color: #e9dce7;
+}
+.mono-viewport
+  .mono-lobby
+  :is(.mono-modes button[aria-pressed='true'], .mono-lobby-seats button.is-self) {
+  background: #3a293c;
+  border-color: #c79fb8;
+}
+.mono-viewport .mono-lobby .mono-primary {
+  background: #d6a7bc;
+  color: #301e2a;
+  border-color: #debace;
+}
+.mono-viewport .mono-lobby .mono-primary:hover:not(:disabled) {
+  background: #e3bed0;
+}
+.mono-viewport
+  .mono-lobby
+  :is(
+    .mono-rule-note p,
+    .mono-rule-note small,
+    .mono-lobby-seats small,
+    .mono-lobby-heading small,
+    .mono-lobby-start p
+  ) {
+  color: #bea8bf;
+}
+:root[data-ui-theme='light']
+  .mono-viewport
+  .mono-lobby
+  :is(.mono-modes button, .mono-lobby-seats button, .mono-rule-note) {
+  border-color: #d9bfd1;
+  background: #f7edf3;
+  color: #52374f;
+}
+:root[data-ui-theme='light']
+  .mono-viewport
+  .mono-lobby
+  :is(
+    .mono-rule-note p,
+    .mono-rule-note small,
+    .mono-lobby-seats small,
+    .mono-lobby-heading small,
+    .mono-lobby-start p
+  ) {
+  color: #795e76;
+}
+
+.mono-lobby .mono-modes b {
+  color: #e2b4cb;
+}
+.mono-lobby
+  :is(.mono-lobby-heading > b, .mono-seat-title button, .table-bot-controls > div:first-child) {
+  color: #d6b9ce;
+}
+.mono-lobby .table-bot-controls button {
+  background: #443047;
+  border-color: #70576e;
+  color: #eddfea;
+}
+.mono-lobby :is(.mono-lobby-heading, .mono-lobby-start) {
+  border-color: #72586d;
+}
+:root[data-ui-theme='light'] .mono-lobby .mono-modes b {
+  color: #eed1ad;
+  -webkit-text-stroke: 0.8px #69434f;
+  paint-order: stroke fill;
+  text-shadow: none;
+}
+:root[data-ui-theme='light']
+  .mono-lobby
+  :is(.mono-lobby-heading > b, .mono-seat-title button, .table-bot-controls > div:first-child) {
+  color: #79506d;
+}
+:root[data-ui-theme='light'] .mono-lobby .table-bot-controls button {
+  background: #eddae7;
+  border-color: #c9aabe;
+  color: #52374f;
+}
+:root[data-ui-theme='light'] .mono-lobby :is(.mono-lobby-heading, .mono-lobby-start) {
+  border-color: #dcc6d6;
+}
+:root[data-ui-theme='light'] .mono-viewport .mono-lobby .mono-modes button[aria-pressed='true'] {
+  background: #efdae7;
+  border-color: #aa7d9b;
+}

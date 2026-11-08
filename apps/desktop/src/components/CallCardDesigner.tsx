@@ -17,9 +17,7 @@ export function CallCardDesigner({
       <div className="profile-card-design-heading">
         <span>
           <strong>{t('Ваша карточка в звонке')}</strong>
-          <small>
-            {t('Так выглядит карточка участника. Эффект сохранится по кнопке «Готово».')}
-          </small>
+          <small>{t('Так выглядит карточка участника. Изменения сохраняются сразу.')}</small>
         </span>
         <Sparkles aria-hidden="true" />
       </div>

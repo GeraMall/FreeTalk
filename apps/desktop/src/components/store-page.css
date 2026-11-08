@@ -43,11 +43,11 @@
   font-weight: 600;
 }
 .store-section-switch button:hover {
-  background: #0d1725;
+  background: var(--ui-surface1-100, #0d1725);
 }
 .store-section-switch button[aria-pressed='true'] {
-  border-color: #43577c;
-  background: #1a2a44;
+  border-color: var(--ui-line-100, #43577c);
+  background: var(--ui-surface2-100, #1a2a44);
   color: var(--ft-text);
 }
 .store-section-switch button:active:not(:disabled) {
@@ -58,27 +58,27 @@
   align-items: center;
   min-height: 220px;
   padding: clamp(20px, 4vw, 42px);
-  border: 1px solid #2b3d58;
+  border: 1px solid var(--ui-line-100, #2b3d58);
   border-radius: 20px;
-  background-color: #0b1728;
+  background-color: var(--ui-surface1-100, #0b1728);
   background-image:
-    linear-gradient(90deg, #0b1728 26%, transparent 100%),
+    linear-gradient(90deg, var(--ui-surface1-100, #0b1728) 26%, transparent 100%),
     repeating-radial-gradient(ellipse at 92% 115%, transparent 0 23px, #9fb8ed33 24px 25px),
-    radial-gradient(ellipse at 90% 95%, #334f8f, transparent 66%);
+    radial-gradient(ellipse at 90% 95%, var(--ui-surface3-100, #334f8f), transparent 66%);
 }
 .store-hero-appearance {
   background-image:
-    linear-gradient(90deg, #0b1728 26%, transparent 100%),
+    linear-gradient(90deg, var(--ui-surface1-100, #0b1728) 26%, transparent 100%),
     repeating-linear-gradient(138deg, transparent 0 24px, #c2acd12b 25px 26px),
-    radial-gradient(ellipse at 90% 95%, #513a64, transparent 66%);
+    radial-gradient(ellipse at 90% 95%, var(--ui-surface3-100, #513a64), transparent 66%);
 }
 .store-preview-label {
   display: inline-block;
   padding: 4px 9px;
-  border: 1px solid #405371;
+  border: 1px solid var(--ui-line-100, #405371);
   border-radius: 999px;
-  background: #141f32;
-  color: #c7d4ef;
+  background: var(--ui-surface1-100, #141f32);
+  color: var(--ui-text-100, #c7d4ef);
   font-size: 12px;
 }
 .store-hero h2 {
@@ -144,15 +144,15 @@
   overflow: hidden;
   border: 1px solid var(--ft-border);
   border-radius: 15px;
-  background: #0d1725;
+  background: var(--ui-surface1-100, #0d1725);
 }
 .store-card-art {
   display: grid;
   align-items: end;
   min-height: 134px;
   padding: 15px;
-  color: #f2f5ff;
-  background: #192a45;
+  color: var(--ui-text-100, #f2f5ff);
+  background: var(--ui-surface2-100, #192a45);
 }
 .store-card-art > span {
   font-weight: 720;
@@ -161,47 +161,65 @@
 }
 .store-art-orbit {
   background:
-    linear-gradient(0deg, #101b33 4%, transparent 80%),
-    repeating-radial-gradient(ellipse at 84% 12%, #253c63 0 11px, #456398 12px 13px);
+    linear-gradient(0deg, var(--ui-surface1-100, #101b33) 4%, transparent 80%),
+    repeating-radial-gradient(
+      ellipse at 84% 12%,
+      var(--ui-surface2-100, #253c63) 0 11px,
+      #456398 12px 13px
+    );
 }
 .store-art-north {
   background:
-    linear-gradient(0deg, #132a31 4%, transparent 90%),
-    repeating-linear-gradient(146deg, #233e46 0 15px, #456266 16px 17px);
+    linear-gradient(0deg, var(--ui-surface1-100, #132a31) 4%, transparent 90%),
+    repeating-linear-gradient(
+      146deg,
+      var(--ui-surface2-100, #233e46) 0 15px,
+      var(--ui-surface3-100, #456266) 16px 17px
+    );
 }
 .store-art-signal {
   background:
-    linear-gradient(0deg, #23192e 4%, transparent 90%),
-    repeating-linear-gradient(98deg, #372843 0 14px, #675071 15px 16px);
+    linear-gradient(0deg, var(--ui-surface1-100, #23192e) 4%, transparent 90%),
+    repeating-linear-gradient(
+      98deg,
+      var(--ui-surface2-100, #372843) 0 14px,
+      var(--ui-surface3-100, #675071) 15px 16px
+    );
 }
 .store-card-art > i {
   display: block;
   place-self: center;
-  background: #0d1725;
+  background: var(--ui-surface1-100, #0d1725);
 }
 .store-art-frame > i {
   width: 60px;
   aspect-ratio: 1;
-  border: 3px solid #b5cbfa;
+  border: 3px solid var(--ui-line-100, #b5cbfa);
   border-radius: 50%;
   box-shadow:
-    0 0 0 6px #8ca8da50,
-    0 0 0 12px #8ca8da25;
+    0 0 0 6px var(--ui-shadow-31, #8ca8da50),
+    0 0 0 12px var(--ui-shadow-15, #8ca8da25);
 }
 .store-art-banner > i,
 .store-art-theme > i {
   width: min(100%, 120px);
   height: 70px;
-  border: 1px solid #8da6dc70;
+  border: 1px solid var(--ui-line-44, #8da6dc70);
   border-radius: 10px;
 }
 .store-art-banner > i {
   background:
-    linear-gradient(130deg, #647fb2, #526289 48%, #372a57 49%) 0 0 / 100% 55% no-repeat,
-    #0d1725;
+    linear-gradient(130deg, #647fb2, #526289 48%, var(--ui-surface2-100, #372a57) 49%) 0 0 / 100%
+      55% no-repeat,
+    var(--ui-surface1-100, #0d1725);
 }
 .store-art-theme > i {
-  background: linear-gradient(90deg, #0b1425 27%, #2c3e5b 28% 29%, #121f36 30%);
+  background: linear-gradient(
+    90deg,
+    var(--ui-surface0-100, #0b1425) 27%,
+    var(--ui-surface3-100, #2c3e5b) 28% 29%,
+    var(--ui-surface1-100, #121f36) 30%
+  );
 }
 .store-card-info {
   padding: 13px 15px 16px;

@@ -1,3 +1,4 @@
+import { applyInterfaceTheme, storedInterfaceTheme } from './lib/interface-theme';
 import { PasskeyDesktopApproval } from './components/PasskeySettings';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,6 +20,16 @@ import './gif-library.css';
 import './theme-steel.css';
 import './chat-theme.css';
 import './control-motion.css';
+import './interface-themes.css';
+
+const themeSurface = new URLSearchParams(location.search);
+applyInterfaceTheme(
+  ['chat-preview', 'call-placeholder', 'notification-overlay'].some((key) =>
+    themeSurface.has(key),
+  ) || window.__FREETALK_CALL_PLACEHOLDER__
+    ? storedInterfaceTheme()
+    : 'default',
+);
 
 document.documentElement.lang = appLanguage();
 document.documentElement.classList.toggle('mac-desktop-app', usesMacDesktop());
