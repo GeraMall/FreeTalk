@@ -113,6 +113,19 @@ export const tableSchema = z.discriminatedUnion('kind', [
     handNumber: count,
     pokerRules: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
+    pokerFlow: z.literal(2).optional(),
+    nextHandAt: count.optional(),
+    levelEndsAt: count.optional(),
+    pokerBreak: z
+      .object({
+        id: id,
+        startedAt: count,
+        endsAt: count,
+        nextLevel: count.max(10),
+        electorate: z.array(id).max(8),
+        yes: z.array(id).max(8),
+      })
+      .optional(),
     pokerMode: z.enum(['classic', 'tournament', 'tournament-fixed']).optional(),
     pokerAnte: z.boolean().optional(),
     ageConfirmed: z.boolean().optional(),
@@ -157,6 +170,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('table-open'),
     edition: z.literal(3).optional(),
+    pokerFlow: z.literal(2).optional(),
     game: tableKindSchema,
     pokerRules: z.literal(2).optional(),
     pokerSeats: z.literal(8).optional(),
@@ -244,6 +258,7 @@ export const tableActionSchema = z.discriminatedUnion('kind', [
     remove: z.boolean().optional(),
   }),
   z.object({ kind: z.literal('poker-next') }),
+  z.object({ kind: z.literal('poker-break-vote'), breakId: id }),
   z.object({ kind: z.literal('poker-rebuy') }),
   z.object({ kind: z.literal('tablet-join'), joined: z.boolean() }),
   z.object({

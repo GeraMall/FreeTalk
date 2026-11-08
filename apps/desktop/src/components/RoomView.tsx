@@ -140,6 +140,7 @@ interface RoomViewProps {
   onCopyInvite(): void;
   onInviteFriends?(userIds: string[]): Promise<boolean>;
   onMute(): void;
+  onDeafen?(): void;
   onCamera(): void;
   onInputDevice(deviceId: string): void;
   onOutputDevice(deviceId: string): void;
@@ -205,6 +206,7 @@ export function RoomView({
   onCopyInvite,
   onInviteFriends,
   onMute,
+  onDeafen,
   onCamera,
   onInputDevice,
   onOutputDevice,
@@ -953,14 +955,21 @@ export function RoomView({
               selfId={selfId}
               participants={participants.map((person) => ({
                 ...person,
+                muted: person.id === selfId ? muted : person.muted,
+                deafened: person.id === selfId ? deafened : person.deafened,
                 speaking:
-                  !person.muted &&
-                  !person.deafened &&
+                  (person.id === selfId
+                    ? !muted && !deafened
+                    : !person.muted && !person.deafened) &&
                   (person.id === selfId ? localSpeaking : peerState[person.id]?.speaking),
                 cameraStream:
                   person.id === selfId ? localVideo.cameraStream : remoteVideos[person.id]?.camera,
               }))}
               onAction={onActivity}
+              muted={muted}
+              deafened={deafened}
+              onMute={onMute}
+              onDeafen={onDeafen}
               onClose={() => setJoinedActivity(undefined)}
               onEnd={activityUnlocked ? () => onActivity?.({ kind: 'close' }) : undefined}
             />

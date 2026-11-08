@@ -20,6 +20,42 @@ class Connection implements PeerConnection {
   }
 }
 describe('private table projections and pointers', () => {
+  it('requires flow negotiation before showing or controlling an automatic poker table', () => {
+    const manager = new RoomManager(),
+      host = Object.assign(new Connection(), {
+        pokerSeats: 8 as const,
+        tabletVersion: 3 as const,
+        pokerFlow: 2 as const,
+      }),
+      old = Object.assign(new Connection(), { pokerSeats: 8 as const, tabletVersion: 3 as const });
+    manager.create('ABCDEFGH2345', id(1), 'session-123456789', 'Host', host);
+    manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'Old', old);
+    const send = (action: RoomActivityAction) =>
+      manager.updateActivity('ABCDEFGH2345', id(1), host.activity.revision, action);
+    send({ kind: 'open' });
+    send({
+      kind: 'table-open',
+      game: 'poker',
+      pokerRules: 2,
+      pokerSeats: 8,
+      edition: 3,
+      pokerFlow: 2,
+    });
+    expect(host.activity.table?.kind === 'poker' && host.activity.table.pokerFlow).toBe(2);
+    expect(old.activity.table).toBeUndefined();
+    manager.updateActivity('ABCDEFGH2345', id(2), old.activity.revision, {
+      kind: 'table-seat',
+      seat: 1,
+    });
+    expect(host.activity.table?.seats[1]).toBeNull();
+    const upgraded = Object.assign(new Connection(), {
+      pokerSeats: 8 as const,
+      tabletVersion: 3 as const,
+      pokerFlow: 2 as const,
+    });
+    manager.join('ABCDEFGH2345', id(2), 'session-223456789', 'New', upgraded);
+    expect(upgraded.activity.table?.kind).toBe('poker');
+  });
   it('never allows a real connection to assume a server bot identity', () => {
     const manager = new RoomManager();
     const host = Object.assign(new Connection(), {

@@ -2203,6 +2203,7 @@ export function App() {
 
   const roomView = (
     <RoomView
+      onDeafen={toggleDeafen}
       conversation={Boolean(callChatId)}
       conversationType={callConversation?.type}
       conversationHidden={conversationHidden || mobileFocusedCall}

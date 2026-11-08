@@ -94,9 +94,14 @@ export function dealPoker(session: TableSession, now: number): TableSession {
   if (v.edition === 3) {
     v.tournamentStartedAt ??= now;
     v.blindLevel =
-      v.pokerMode === 'tournament'
-        ? Math.min(10, Math.floor((now - v.tournamentStartedAt) / 900000))
-        : 0;
+      v.pokerFlow === 2
+        ? (v.blindLevel ?? 0)
+        : v.pokerMode === 'tournament'
+          ? Math.min(10, Math.floor((now - v.tournamentStartedAt) / 900000))
+          : 0;
+    if (v.pokerFlow === 2 && v.pokerMode === 'tournament') v.levelEndsAt ??= now + 900000;
+    v.nextHandAt = undefined;
+    v.pokerBreak = undefined;
     v.smallBlindAmount = 10 * 2 ** v.blindLevel;
     v.bigBlindAmount = v.smallBlindAmount * 2;
     v.anteAmount = v.pokerAnte ? Math.max(1, Math.floor(v.bigBlindAmount / 10)) : 0;
@@ -187,6 +192,12 @@ function settlePoker(v: TableOf<'poker'>, session: TableSession, now: number) {
     v.winner = v.seats[v.stacks.findIndex((n) => n > 0)] ?? undefined;
   }
   v.turnDeadline = undefined;
+  if (v.pokerFlow === 2 && v.phase !== 'finished') {
+    const rebuyWindow =
+      (!v.pokerMode || v.pokerMode === 'classic') &&
+      v.seats.some((id, i) => id && v.stacks[i] === 0 && (v.rebuys?.[i] ?? 0) < 3);
+    v.nextHandAt = v.handEndedAt + (rebuyWindow ? 15000 : 6000);
+  }
 }
 function showdown(session: TableSession, now: number): TableSession {
   if (session.view.kind !== 'poker') return session;
@@ -243,6 +254,23 @@ export function reducePoker(
   if (session.view.kind !== 'poker') return session;
   const old = session.view;
   const actorSeat = old.seats.indexOf(context.actorId);
+  if (action.kind === 'poker-break-vote') {
+    const pause = old.pokerBreak;
+    if (
+      old.pokerFlow !== 2 ||
+      !pause ||
+      pause.id !== action.breakId ||
+      context.now >= pause.endsAt ||
+      !pause.electorate.includes(context.actorId) ||
+      pause.yes.includes(context.actorId)
+    )
+      return session;
+    const yes = [...pause.yes, context.actorId];
+    const next = { ...session, view: { ...old, pokerBreak: { ...pause, yes } } };
+    return yes.length >= Math.floor(pause.electorate.length / 2) + 1
+      ? finishPokerBreak(next, context.now)
+      : next;
+  }
   if (action.kind === 'poker-rebuy') {
     if (
       (old.pokerMode !== undefined && old.pokerMode !== 'classic') ||
@@ -272,7 +300,8 @@ export function reducePoker(
     };
   }
   if (action.kind === 'poker-next')
-    return old.stage === 'showdown' &&
+    return old.pokerFlow !== 2 &&
+      old.stage === 'showdown' &&
       old.hostId === context.actorId &&
       (old.pokerRules !== 2 || context.now >= (old.handEndedAt ?? 0) + 1800)
       ? dealPoker(session, context.now)
@@ -364,6 +393,8 @@ export function reducePoker(
 
 export function tickPoker(session: TableSession, now: number): TableSession {
   const v = session.view;
+  if (v.kind === 'poker' && v.pokerFlow === 2 && v.stage === 'showdown' && v.phase !== 'finished')
+    return tickPokerFlow(session, now);
   if (
     v.kind !== 'poker' ||
     v.pokerRules !== 2 ||
@@ -380,4 +411,74 @@ export function tickPoker(session: TableSession, now: number): TableSession {
     { actorId: v.seats[v.turn]!, members: v.seats.filter((id): id is string => Boolean(id)), now },
     true,
   );
+}
+
+function finishPokerBreak(session: TableSession, now: number): TableSession {
+  if (session.view.kind !== 'poker' || !session.view.pokerBreak) return session;
+  const v = session.view,
+    level = v.pokerBreak!.nextLevel;
+  const next = {
+    ...session,
+    view: addLog(
+      {
+        ...v,
+        pokerBreak: undefined,
+        blindLevel: level,
+        levelEndsAt: now + 900000,
+        nextHandAt: now,
+      },
+      `Перерыв завершён · уровень ${level + 1}`,
+    ),
+  };
+  return dealPoker(next, now);
+}
+
+/** Authoritative, bounded progression; legacy tables keep their manual next-hand rule. */
+function tickPokerFlow(session: TableSession, now: number): TableSession {
+  if (session.view.kind !== 'poker') return session;
+  let v = session.view;
+  if (v.pokerBreak) return now >= v.pokerBreak.endsAt ? finishPokerBreak(session, now) : session;
+  if (v.nextHandAt === undefined || now < v.nextHandAt) return session;
+  // Training opponents have the same three rebuy limit as people.
+  if (!v.pokerMode || v.pokerMode === 'classic')
+    for (const bot of v.bots ?? []) {
+      const i = v.seats.indexOf(bot.id);
+      if (i >= 0 && v.stacks[i] === 0 && (v.rebuys?.[i] ?? 0) < 3)
+        session = reducePoker(
+          session,
+          { kind: 'poker-rebuy' },
+          { actorId: bot.id, members: [bot.id], now },
+        );
+    }
+  if (session.view.kind !== 'poker') return session;
+  v = session.view;
+  if (v.seats.filter((id, i) => id && v.stacks[i]! > 0).length < 2) return dealPoker(session, now);
+  if (
+    v.pokerMode === 'tournament' &&
+    (v.blindLevel ?? 0) < 10 &&
+    now >= (v.levelEndsAt ?? Infinity)
+  ) {
+    const electorate = v.seats.filter(
+      (id): id is string => Boolean(id) && !v.bots?.some((b) => b.id === id),
+    );
+    return {
+      ...session,
+      view: addLog(
+        {
+          ...v,
+          nextHandAt: undefined,
+          pokerBreak: {
+            id: crypto.randomUUID(),
+            startedAt: now,
+            endsAt: now + 300000,
+            nextLevel: (v.blindLevel ?? 0) + 1,
+            electorate,
+            yes: [],
+          },
+        },
+        'Перерыв 5 минут перед повышением блайндов',
+      ),
+    };
+  }
+  return dealPoker(session, now);
 }

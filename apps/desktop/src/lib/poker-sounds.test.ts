@@ -34,6 +34,25 @@ const table = (): TableOf<'poker'> => ({
 });
 afterEach(() => vi.useRealTimers());
 describe('local poker foley', () => {
+  it('announces a new level break once and keeps reconnecting to an existing break silent', () => {
+    const tracker = new PokerSoundTracker(),
+      v = { ...table(), pokerFlow: 2 as const, stage: 'showdown' as const };
+    tracker.update(v, 'a', 20000);
+    const paused = {
+      ...v,
+      pokerBreak: {
+        id: 'pause',
+        startedAt: 21000,
+        endsAt: 321000,
+        nextLevel: 1,
+        electorate: ['a', 'b'],
+        yes: [],
+      },
+    };
+    expect(tracker.update(paused, 'a', 21000).map((e) => e.sound)).toEqual(['vote']);
+    expect(tracker.update(paused, 'a', 21250)).toEqual([]);
+    expect(new PokerSoundTracker().update(paused, 'a', 21500)).toEqual([]);
+  });
   it('synchronizes sixteen card sounds inside the deal animation and ignores old snapshots', () => {
     const v = table();
     const tracker = new PokerSoundTracker();

@@ -587,3 +587,87 @@
     font-size: 11px;
   }
 }
+
+/* The extra call controls belong to the phone tablet only. */
+.activity-dock > .tablet-audio-controls {
+  display: none;
+}
+.call-activity > .activity-dock .tablet-audio-controls > button > .device-control-icon {
+  display: inline-flex;
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+.tablet-audio-controls .device-control-icon > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 900px) and (pointer: coarse) {
+  .call-activity > .activity-dock {
+    display: grid;
+    grid-template-columns: 66px minmax(0, 1fr) 66px;
+    gap: 4px;
+    padding: 6px;
+  }
+  .call-activity > .activity-dock > .tablet-audio-controls {
+    display: flex;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow: visible;
+  }
+  .call-activity > .activity-dock > span {
+    display: none;
+  }
+  .call-activity > .activity-dock > .tablet-game-shortcuts {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    overflow: visible;
+  }
+  .call-activity > .activity-dock .tablet-desktop-game {
+    display: none;
+  }
+  .call-activity > .activity-dock .tablet-game-shortcuts > button > span:last-child {
+    display: none;
+  }
+  .call-activity > .activity-dock .tablet-game-shortcuts > button.tablet-mobile-recommendation {
+    padding: 2px;
+    min-width: 30px;
+    width: 30px;
+  }
+  .call-activity > .activity-dock .activity-game-mark {
+    width: 25px;
+    height: 27px;
+  }
+  .call-activity > .activity-dock .tablet-audio-controls > button[class] {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    width: 30px;
+    min-width: 30px;
+    height: 33px;
+    border-radius: 8px;
+  }
+  .tablet-audio-controls button .device-control-icon {
+    width: 18px;
+    height: 18px;
+  }
+  .call-activity > .activity-dock .tablet-audio-controls > .tablet-device-on {
+    color: #bed6d0;
+    background: #162d32;
+    border-color: #3c5558;
+  }
+  .call-activity > .activity-dock .tablet-audio-controls > .tablet-device-off {
+    color: #fa8c9d;
+    background: #39202b;
+    border-color: #754153;
+  }
+  .tablet-audio-controls button svg {
+    width: 18px;
+    height: 18px;
+  }
+}

@@ -78,6 +78,8 @@ export class PokerSoundTracker {
         }
     }
     if (old && old.handNumber === table.handNumber) {
+      if (table.pokerBreak && table.pokerBreak.id !== old.pokerBreak?.id)
+        add(`break:${table.pokerBreak.id}`, 'vote');
       const action = table.lastAction;
       if (action && action.sequence !== old.lastAction?.sequence && now - action.at < 1500) {
         const sound =

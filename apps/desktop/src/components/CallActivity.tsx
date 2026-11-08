@@ -10,8 +10,10 @@ import {
   Landmark,
   Trophy,
   Spade,
+  Mic,
+  Headphones,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ActivityGame, RoomActivity, RoomActivityAction, TableKind } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 import './call-activity.css';
@@ -21,10 +23,13 @@ import { ActivityChess } from './ActivityChess';
 import { ActivityFleet } from './ActivityFleet';
 import { ActivityMillionaire } from './ActivityMillionaire';
 import { ActivityPoker } from './ActivityPoker';
+import { PokerLobby } from './PokerLobby';
+import { PokerViewport } from './PokerViewport';
 import type { TableParticipant } from './activity-table-ui';
 import { ActivityProperty } from './ActivityProperty';
 import { TableBotControls } from './TableBotControls';
 import { ActivityPointers } from './ActivityPointers';
+import { DeviceControlIcon } from './CallDock';
 const games = {
   chess: 'Шахматы',
   mines: 'Сапёр',
@@ -133,6 +138,10 @@ export function CallActivity({
   onAction,
   onClose,
   onEnd,
+  muted = false,
+  deafened = false,
+  onMute,
+  onDeafen,
 }: {
   activity: RoomActivity;
   selfId?: string;
@@ -140,6 +149,10 @@ export function CallActivity({
   onAction?(action: RoomActivityAction): void;
   onClose?(): void;
   onEnd?(): void;
+  muted?: boolean;
+  deafened?: boolean;
+  onMute?(): void;
+  onDeafen?(): void;
 }) {
   const [flagging, setFlagging] = useState(false);
   const game = activity.game;
@@ -149,6 +162,10 @@ export function CallActivity({
     ...(table?.bots ?? []).map((b) => ({ ...b, bot: true })),
   ];
   const activeKind = table?.kind ?? game?.kind;
+  const TableFrame = table?.kind === 'poker' ? PokerViewport : Fragment;
+  const mobileGames: (ActivityGame | TableKind)[] = ['chess', 'mines', 'fleet', 'poker'];
+  if (activity.canPlayPoker === false) mobileGames[3] = 'millionaire';
+  if (activeKind && !mobileGames.includes(activeKind)) mobileGames[3] = activeKind;
   const surface = useRef<HTMLElement>(null);
   const actionRef = useRef(onAction);
   actionRef.current = onAction;
@@ -177,7 +194,9 @@ export function CallActivity({
             kind: 'table-open',
             game: next,
             edition: 3,
-            ...(next === 'poker' ? { pokerRules: 2 as const, pokerSeats: 8 as const } : {}),
+            ...(next === 'poker'
+              ? { pokerRules: 2 as const, pokerSeats: 8 as const, pokerFlow: 2 as const }
+              : {}),
           },
     );
   };
@@ -245,7 +264,7 @@ export function CallActivity({
             visible: false,
           })
         }
-        className={`activity-content ${catalog || (!activeKind && !activity.restrictedGame) ? 'activity-catalog' : 'activity-playing'}`}
+        className={`activity-content ${catalog || (!activeKind && !activity.restrictedGame) ? 'activity-catalog' : 'activity-playing'} ${!catalog && table?.kind === 'poker' ? 'activity-poker-fit' : ''}`}
       >
         {catalog || (!activeKind && !activity.restrictedGame) ? (
           <>
@@ -317,67 +336,76 @@ export function CallActivity({
         )}
         {table && !catalog && (
           <div className="activity-table-surface" data-activity-surface="tablet">
-            {table.training && (
-              <div className="table-training-banner">
-                {t('Тренировка с ботами · статистика не учитывается')}
-              </div>
-            )}
-            {table.phase === 'lobby' && (
-              <TableBotControls
-                table={table}
-                selfId={selfId}
-                send={(action) => onAction?.(action)}
-              />
-            )}
-            {table.kind === 'fleet' ? (
-              <ActivityFleet
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            ) : table.phase === 'lobby' ? (
-              <ActivityTableLobby
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            ) : table.kind === 'chess' ? (
-              <ActivityChess
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            ) : table.kind === 'millionaire' ? (
-              <ActivityMillionaire
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            ) : table.kind === 'poker' ? (
-              <ActivityPoker
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            ) : (
-              <ActivityProperty
-                key={table.id}
-                table={table}
-                selfId={selfId}
-                participants={participants}
-                send={(action) => onAction?.(action)}
-              />
-            )}
+            <TableFrame>
+              {table.training && table.kind !== 'poker' && (
+                <div className="table-training-banner">
+                  {t('Тренировка с ботами · статистика не учитывается')}
+                </div>
+              )}
+              {table.phase === 'lobby' && table.kind !== 'poker' && (
+                <TableBotControls
+                  table={table}
+                  selfId={selfId}
+                  send={(action) => onAction?.(action)}
+                />
+              )}
+              {table.kind === 'fleet' ? (
+                <ActivityFleet
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.phase === 'lobby' && table.kind === 'poker' ? (
+                <PokerLobby
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.phase === 'lobby' ? (
+                <ActivityTableLobby
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.kind === 'chess' ? (
+                <ActivityChess
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.kind === 'millionaire' ? (
+                <ActivityMillionaire
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : table.kind === 'poker' ? (
+                <ActivityPoker
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              ) : (
+                <ActivityProperty
+                  key={table.id}
+                  table={table}
+                  selfId={selfId}
+                  participants={participants}
+                  send={(action) => onAction?.(action)}
+                />
+              )}
+            </TableFrame>
           </div>
         )}
         {game && !catalog && (
@@ -467,14 +495,41 @@ export function CallActivity({
         disabled={Boolean(table && ['fleet', 'poker'].includes(table.kind))}
       />
       <footer className="activity-dock">
+        <div className="tablet-audio-controls" aria-label={t('Звук звонка')}>
+          <button
+            type="button"
+            aria-label={t(muted ? 'Включить микрофон' : 'Выключить микрофон')}
+            aria-pressed={!muted}
+            className={muted ? 'tablet-device-off' : 'tablet-device-on'}
+            disabled={!onMute}
+            onClick={onMute}
+          >
+            <DeviceControlIcon icon={Mic} off={muted} />
+          </button>
+          <button
+            type="button"
+            aria-label={t(deafened ? 'Включить звук' : 'Выключить звук')}
+            aria-pressed={!deafened}
+            className={deafened ? 'tablet-device-off' : 'tablet-device-on'}
+            disabled={!onDeafen}
+            onClick={onDeafen}
+          >
+            <DeviceControlIcon icon={Headphones} off={deafened} />
+          </button>
+        </div>
         <span>{!catalog && activeKind ? t(games[activeKind]) : t('Игры')}</span>
-        <div>
+        <div className="tablet-game-shortcuts">
           {(Object.keys(games) as (ActivityGame | TableKind)[]).map((kind) => {
             const Icon = gameIcons[kind];
             return (
               <button
                 type="button"
                 key={kind}
+                className={
+                  mobileGames.includes(kind)
+                    ? 'tablet-mobile-recommendation'
+                    : 'tablet-desktop-game'
+                }
                 aria-label={`${t('Открыть')} ${t(games[kind])}`}
                 aria-pressed={!catalog && activeKind === kind}
                 disabled={!onAction || (kind === 'poker' && activity.canPlayPoker === false)}

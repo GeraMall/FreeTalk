@@ -171,7 +171,9 @@ export function ActivityPoker({
     table.pokerMode === 'tournament'
       ? Math.max(
           0,
-          (table.tournamentStartedAt ?? now) + ((table.blindLevel ?? 0) + 1) * 900000 - now,
+          (table.pokerFlow === 2
+            ? (table.levelEndsAt ?? now + 900000)
+            : (table.tournamentStartedAt ?? now) + ((table.blindLevel ?? 0) + 1) * 900000) - now,
         )
       : undefined;
   const raiseLabel = amount === maximum ? 'ALL IN' : t(table.bet ? 'Повысить до' : 'Ставка');
@@ -194,12 +196,15 @@ export function ActivityPoker({
               {Boolean(table.anteAmount) && ` · ${t('Анте')} ${table.anteAmount}`}
               <i />
               {advanced ? t('30 секунд на ход') : t('Виртуальные фишки')}
+              {table.training && (
+                <span className="pkr-practice">{t('Тренировка · без статистики')}</span>
+              )}
               {tournament && (
                 <span>
                   {t('Турнир')} ·{' '}
                   {table.pokerMode === 'tournament-fixed'
                     ? t('Постоянные блайнды')
-                    : `${t('Уровень')} ${(table.blindLevel ?? 0) + 1} · ${nextLevel === 0 ? t('повышение со следующей раздачи') : `${t('повышение через')} ${Math.floor((nextLevel ?? 0) / 60000)}:${String(Math.floor(((nextLevel ?? 0) % 60000) / 1000)).padStart(2, '0')}`}`}
+                    : `${t('Уровень')} ${(table.blindLevel ?? 0) + 1} · ${(table.blindLevel ?? 0) >= 10 ? t('Максимальный уровень') : table.pokerBreak ? t('Перерыв') : nextLevel === 0 ? t(table.pokerFlow === 2 ? 'Перерыв после этой раздачи' : 'повышение со следующей раздачи') : `${t('повышение через')} ${Math.floor((nextLevel ?? 0) / 60000)}:${String(Math.floor(((nextLevel ?? 0) % 60000) / 1000)).padStart(2, '0')}`}`}
                 </span>
               )}
             </p>
@@ -409,7 +414,10 @@ export function ActivityPoker({
                 {(table.bets[i] ?? 0) > 0 && !settled && (
                   <div className="pkr-wager" key={`wager:${table.handNumber}:${table.bets[i]}`}>
                     <PokerChips amount={table.bets[i]!} compact />
-                    <span>{fmt(table.bets[i]!)}</span>
+                    <span>
+                      <small>{t('Ставка')}</small>
+                      {fmt(table.bets[i]!)}
+                    </span>
                   </div>
                 )}
                 {table.lastAction?.seat === i && now - table.lastAction.at < 2600 && !dealing && (
@@ -473,7 +481,42 @@ export function ActivityPoker({
           ))}
         </span>
       </div>
-      {seat >= 0 && !settled && table.phase === 'playing' && table.stacks[seat]! > 0 ? (
+      {table.pokerBreak ? (
+        <section className="pkr-break-panel" aria-label={t('Перерыв перед повышением блайндов')}>
+          <div>
+            <strong>{t('Перерыв перед новым уровнем')}</strong>
+            <p>
+              {t('Следующие блайнды')}: {10 * 2 ** table.pokerBreak.nextLevel} /{' '}
+              {20 * 2 ** table.pokerBreak.nextLevel}
+            </p>
+            <small>
+              {t('Чтобы продолжить раньше, нужно большинство игроков.')}{' '}
+              {table.pokerBreak.yes.length} /{' '}
+              {Math.floor(table.pokerBreak.electorate.length / 2) + 1}
+            </small>
+          </div>
+          <b className="pkr-break-timer">
+            {Math.floor(Math.max(0, table.pokerBreak.endsAt - now) / 60000)}:
+            {String(
+              Math.floor((Math.max(0, table.pokerBreak.endsAt - now) % 60000) / 1000),
+            ).padStart(2, '0')}
+          </b>
+          <button
+            type="button"
+            disabled={
+              !table.pokerBreak.electorate.includes(selfId ?? '') ||
+              table.pokerBreak.yes.includes(selfId ?? '')
+            }
+            onClick={() => send({ kind: 'poker-break-vote', breakId: table.pokerBreak!.id })}
+          >
+            {t(
+              table.pokerBreak.yes.includes(selfId ?? '')
+                ? 'Ваш голос принят'
+                : 'Пропустить перерыв',
+            )}
+          </button>
+        </section>
+      ) : seat >= 0 && !settled && table.phase === 'playing' && table.stacks[seat]! > 0 ? (
         <section
           className={`pkr-decisions ${canAct ? 'pkr-your-decision' : ''}`}
           aria-label={t('Ваше действие')}
@@ -605,17 +648,32 @@ export function ActivityPoker({
                 : t(settled ? 'Банк распределён' : 'Вы в раздаче')}
             </span>
           )}
-          {settled && table.phase !== 'finished' && selfId === table.hostId && (
-            <button
-              type="button"
-              className="pkr-next-hand"
-              disabled={advanced && now < (table.handEndedAt ?? 0) + 1800}
-              onClick={() => send({ kind: 'poker-next' })}
-            >
-              {t('Следующая раздача')}
-              <ChevronRight size={15} />
-            </button>
-          )}
+          {settled &&
+            table.pokerFlow === 2 &&
+            table.phase !== 'finished' &&
+            table.nextHandAt !== undefined && (
+              <span className="pkr-auto-next">
+                <Clock3 size={15} />
+                {t('Следующая раздача через')}{' '}
+                <b>
+                  {Math.max(0, Math.ceil((table.nextHandAt - now) / 1000))} {t('сек')}
+                </b>
+              </span>
+            )}
+          {settled &&
+            table.pokerFlow !== 2 &&
+            table.phase !== 'finished' &&
+            selfId === table.hostId && (
+              <button
+                type="button"
+                className="pkr-next-hand"
+                disabled={advanced && now < (table.handEndedAt ?? 0) + 1800}
+                onClick={() => send({ kind: 'poker-next' })}
+              >
+                {t('Следующая раздача')}
+                <ChevronRight size={15} />
+              </button>
+            )}
           {table.phase === 'finished' && selfId === table.hostId && (
             <button type="button" onClick={() => send({ kind: 'table-reset' })}>
               {t('Новый стол')}

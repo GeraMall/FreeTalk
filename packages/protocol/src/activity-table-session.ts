@@ -107,6 +107,7 @@ export function createTable(
   pokerRules?: 2,
   pokerSeats?: 8,
   edition?: 3,
+  pokerFlow?: 2,
 ): TableSession {
   const maximum =
     kind === 'poker' && pokerSeats === 8
@@ -191,6 +192,7 @@ export function createTable(
       handNumber: 0,
       pokerRules,
       pokerSeats,
+      pokerFlow: edition === 3 ? pokerFlow : undefined,
     };
   return { view, secret: {} };
 }
@@ -295,6 +297,7 @@ export function reduceTable(
       v.kind === 'poker' ? v.pokerRules : undefined,
       v.kind === 'poker' ? v.pokerSeats : undefined,
       v.edition,
+      v.kind === 'poker' ? v.pokerFlow : undefined,
     );
     fresh.view.training = v.training;
     fresh.view.bots = v.bots;

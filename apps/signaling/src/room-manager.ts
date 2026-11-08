@@ -21,6 +21,7 @@ export interface PeerConnection {
   activityVersion?: 2;
   pokerSeats?: 8;
   tabletVersion?: 3;
+  pokerFlow?: 2;
   isAdult?: boolean;
   lastAgeCheckAt?: number;
   send(message: ServerMessage): void;
@@ -193,6 +194,7 @@ export class RoomManager {
         connection.pokerSeats === 8,
         connection.tabletVersion === 3,
         connection.isAdult === true,
+        connection.pokerFlow === 2,
       ),
     });
     if (!existing) this.broadcast(room, { type: 'participant-joined', participant }, clientId);
@@ -310,6 +312,12 @@ export class RoomManager {
     const peer = room?.peers.get(clientId);
     if (!room || !peer) return;
     const v2 = peer.connection.activityVersion === 2;
+    if (
+      (action.kind === 'poker-break-vote' ||
+        (action.kind === 'table-open' && action.pokerFlow === 2)) &&
+      peer.connection.pokerFlow !== 2
+    )
+      return;
     const targetsPoker =
       (action.kind === 'table-open' || action.kind === 'game-propose') && action.game === 'poker';
     const controlsPoker =
@@ -331,6 +339,14 @@ export class RoomManager {
       this.sendActivity(room);
       return;
     }
+    if (
+      room.activity.table?.view.kind === 'poker' &&
+      room.activity.table.view.pokerFlow === 2 &&
+      peer.connection.pokerFlow !== 2 &&
+      (action.kind.startsWith('poker-') ||
+        (action.kind.startsWith('table-') && !action.kind.startsWith('tablet-')))
+    )
+      return;
     // Old clients cannot parse an eight-seat snapshot. Keep their call connected.
     if (action.kind === 'table-open' && action.pokerSeats === 8 && peer.connection.pokerSeats !== 8)
       return;
@@ -388,7 +404,12 @@ export class RoomManager {
     // Delivery content is intentionally absent from the shared gaming tablet.
     if (action.kind === 'service' || action.kind === 'region') return;
     const now = Date.now();
-    if (v2 && revision !== room.activity.view.revision && action.kind !== 'game-vote') {
+    if (
+      v2 &&
+      revision !== room.activity.view.revision &&
+      action.kind !== 'game-vote' &&
+      action.kind !== 'poker-break-vote'
+    ) {
       // A delayed action must refresh this player's private snapshot rather
       // than leave apparently live controls stuck on an obsolete betting turn.
       if (now - peer.lastActivityResyncAt >= 250) {
@@ -402,6 +423,7 @@ export class RoomManager {
             peer.connection.pokerSeats === 8,
             peer.connection.tabletVersion === 3,
             peer.connection.isAdult === true,
+            peer.connection.pokerFlow === 2,
           ),
         });
       }
@@ -416,10 +438,21 @@ export class RoomManager {
       v2
         ? {
             actorId: clientId,
+            pokerFlow: peer.connection.pokerFlow,
             members: [...room.peers.keys()],
             now,
             voters: [...room.peers]
-              .filter(([, p]) => p.connection.tabletVersion === 3 && p.connection.canUseActivity)
+              .filter(
+                ([, p]) =>
+                  p.connection.tabletVersion === 3 &&
+                  p.connection.canUseActivity &&
+                  (!(
+                    action.kind === 'game-propose' &&
+                    action.game === 'poker' &&
+                    peer.connection.pokerFlow === 2
+                  ) ||
+                    p.connection.pokerFlow === 2),
+              )
               .map(([id]) => id),
             adultIds: [...room.peers]
               .filter(([, p]) => p.connection.isAdult === true)
@@ -445,6 +478,7 @@ export class RoomManager {
           peer.connection.pokerSeats === 8,
           peer.connection.tabletVersion === 3,
           peer.connection.isAdult === true,
+          peer.connection.pokerFlow === 2,
         ),
       });
   }

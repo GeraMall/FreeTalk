@@ -24,6 +24,7 @@ export function roomActivityView(
   pokerEight = true,
   version3 = true,
   adult = true,
+  pokerFlow = true,
 ): RoomActivity {
   return {
     ...session.view,
@@ -35,7 +36,8 @@ export function roomActivityView(
       session.table &&
       (version3 || session.table.view.edition !== 3) &&
       (adult || session.table.view.kind !== 'poker') &&
-      (pokerEight || session.table.view.seats.length <= 6)
+      (pokerEight || session.table.view.seats.length <= 6) &&
+      (pokerFlow || session.table.view.kind !== 'poker' || session.table.view.pokerFlow !== 2)
         ? tableView(session.table, viewerId)
         : undefined,
   };
@@ -164,7 +166,12 @@ export function applyRoomActivity(
   context?: TableContext,
 ): RoomActivitySession {
   const previous = current.view;
-  if (revision !== previous.revision && action.kind !== 'game-vote') return current;
+  if (
+    revision !== previous.revision &&
+    action.kind !== 'game-vote' &&
+    action.kind !== 'poker-break-vote'
+  )
+    return current;
   const view = { ...previous, revision: previous.revision + 1 };
   if (action.kind === 'open')
     return previous.open ? current : { ...current, view: { ...view, open: true } };
@@ -186,6 +193,7 @@ export function applyRoomActivity(
       action.pokerRules,
       action.pokerSeats,
       action.edition,
+      action.pokerFlow,
     );
     return { table, view: { ...view, game: undefined, table: tableView(table) } };
   }
@@ -294,6 +302,7 @@ function completeSwitch(
         vote.game === 'poker' ? 2 : undefined,
         vote.game === 'poker' ? 8 : undefined,
         3,
+        vote.pokerFlow,
       );
       next = {
         ...session,
@@ -347,6 +356,7 @@ function reduceSwitchVote(
       game: action.game,
       from: session.table?.view.kind ?? session.view.game?.kind,
       requestedBy: context.actorId,
+      pokerFlow: action.game === 'poker' ? context.pokerFlow : undefined,
       electorate,
       yes: [context.actorId],
       no: [],

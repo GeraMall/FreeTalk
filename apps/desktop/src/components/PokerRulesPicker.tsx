@@ -2,7 +2,11 @@ import type { TableOf, RoomActivityAction } from '@freetalk/protocol';
 import { t } from '../lib/app-language';
 const modes = [
   ['classic', 'Обычный стол', 'Блайнды 10 / 20. Три докупки по 1000.'],
-  ['tournament', 'Турнир с повышением', 'Блайнды удваиваются каждые 15 минут. Без докупок.'],
+  [
+    'tournament',
+    'Турнир с повышением',
+    '15 минут игры, 5 минут перерыва, затем блайнды ×2. Без докупок.',
+  ],
   ['tournament-fixed', 'Турнир без повышения', 'Постоянные блайнды 10 / 20. Без докупок.'],
 ] as const;
 export function PokerRulesPicker({
@@ -15,6 +19,10 @@ export function PokerRulesPicker({
   send: (action: RoomActivityAction) => void;
 }) {
   if (table.edition !== 3) return null;
+  const description = (mode: string, text: string) =>
+    mode === 'tournament' && table.pokerFlow !== 2
+      ? 'Блайнды удваиваются каждые 15 минут. Без докупок.'
+      : text;
   const config = (
     mode: NonNullable<typeof table.pokerMode>,
     ante: boolean,
@@ -32,10 +40,18 @@ export function PokerRulesPicker({
             onClick={() => config(mode, Boolean(table.pokerAnte))}
           >
             <strong>{t(title)}</strong>
-            <small>{t(text)}</small>
+            <small>{t(description(mode, text))}</small>
           </button>
         ))}
       </div>
+      <p className="poker-selected-mode">
+        {t(
+          description(
+            table.pokerMode ?? 'classic',
+            modes.find(([mode]) => mode === (table.pokerMode ?? 'classic'))![2],
+          ),
+        )}
+      </p>
       <label className="poker-rule-check">
         <input
           type="checkbox"
@@ -45,11 +61,7 @@ export function PokerRulesPicker({
         />
         <span>
           <strong>{t('Играть с анте')}</strong>
-          <small>
-            {t(
-              'Каждый игрок вносит 10% большого блайнда в банк перед раздачей. Эта сумма не заменяет блайнд.',
-            )}
-          </small>
+          <small>{t('10% большого блайнда с каждого перед раздачей, сверх блайндов.')}</small>
         </span>
       </label>
       <label className="poker-rule-check poker-age-check">
@@ -62,10 +74,10 @@ export function PokerRulesPicker({
           }
         />
         <span>
-          <strong>{t('Подтверждаю: всем людям за столом исполнилось 18 лет.')}</strong>
+          <strong>{t('Подтверждаю: всем участникам исполнилось 18 лет.')}</strong>
           <small>
             {t(
-              'Как организатор подтверждаю возраст участников. Используем только виртуальные фишки, без денег и призов. Сервер отдельно проверяет возраст по данным аккаунтов.',
+              'Только виртуальные фишки, без денег и призов. Сервер проверит возраст по аккаунтам.',
             )}
           </small>
         </span>

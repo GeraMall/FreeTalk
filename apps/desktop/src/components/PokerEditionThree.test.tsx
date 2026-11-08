@@ -8,6 +8,7 @@ import { PokerRulesPicker } from './PokerRulesPicker';
 import { TableBotControls } from './TableBotControls';
 import { ActivitySwitchVote } from './ActivitySwitchVote';
 import { CallActivity } from './CallActivity';
+import { ActivityPoker } from './ActivityPoker';
 vi.mock('../lib/app-language', () => ({ t: (text: string) => text }));
 vi.mock('../lib/settings', () => ({
   loadSettings: () => ({ messageNotificationSound: false, outputVolume: 0.5 }),
@@ -45,6 +46,90 @@ const table = (): TableOf<'poker'> => ({
   turnDeadline: 42040,
 });
 describe('staged poker rendering and shared controls', () => {
+  it('routes the mobile tablet audio controls to the existing call handlers and reflects their shared state', () => {
+    const mute = vi.fn(),
+      deafen = vi.fn(),
+      activity = { open: true, revision: 1, region: 'RU' as const, table: table() };
+    const screen = render(
+      <CallActivity
+        activity={activity}
+        selfId="a"
+        onMute={mute}
+        onDeafen={deafen}
+        muted={false}
+        deafened={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Выключить микрофон' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Выключить звук' }));
+    expect(mute).toHaveBeenCalledOnce();
+    expect(deafen).toHaveBeenCalledOnce();
+    screen.rerender(
+      <CallActivity
+        activity={activity}
+        selfId="a"
+        onMute={mute}
+        onDeafen={deafen}
+        muted
+        deafened
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Включить микрофон' }).getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(screen.getByRole('button', { name: 'Включить звук' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+  });
+  it('shows the server automatic-deal countdown without a manual next button', () => {
+    const now = Date.now(),
+      v = {
+        ...table(),
+        pokerFlow: 2 as const,
+        stage: 'showdown' as const,
+        boardAt: undefined,
+        handEndedAt: now - 1000,
+        nextHandAt: now + 5000,
+      };
+    const screen = render(<ActivityPoker table={v} selfId="a" participants={[]} send={vi.fn()} />);
+    expect(screen.getByText('Следующая раздача через')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Следующая раздача' })).toBeNull();
+  });
+  it('pauses betting during a break and submits only the stable break vote ID', () => {
+    const now = Date.now(),
+      send = vi.fn(),
+      pause = {
+        id: 'break-id',
+        startedAt: now,
+        endsAt: now + 300000,
+        nextLevel: 1,
+        electorate: ['a', 'b'],
+        yes: [] as string[],
+      };
+    const v = {
+      ...table(),
+      pokerFlow: 2 as const,
+      stage: 'showdown' as const,
+      boardAt: undefined,
+      handEndedAt: now - 1000,
+      pokerBreak: pause,
+    };
+    const screen = render(<ActivityPoker table={v} selfId="a" participants={[]} send={send} />);
+    expect(screen.queryByRole('region', { name: 'Ваше действие' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Пропустить перерыв' }));
+    expect(send).toHaveBeenCalledExactlyOnceWith({ kind: 'poker-break-vote', breakId: 'break-id' });
+    screen.rerender(
+      <ActivityPoker
+        table={{ ...v, pokerBreak: { ...pause, yes: ['a'] } }}
+        selfId="a"
+        participants={[]}
+        send={send}
+      />,
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Ваш голос принят' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
   it('opens the flop one card at a time and never restarts the first card when betting state changes', () => {
     const v = table();
     expect(pokerVisibleBoard(v, 10149)).toHaveLength(0);
