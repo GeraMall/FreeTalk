@@ -1910,7 +1910,7 @@
   transform: none;
 }
 .pkr-eight .pkr-pos-2 {
-  inset: 39% auto auto 0;
+  inset: calc(39% - 24px) auto auto 0;
   transform: none;
 }
 .pkr-eight .pkr-pos-3 {
@@ -1926,7 +1926,7 @@
   transform: none;
 }
 .pkr-eight .pkr-pos-6 {
-  inset: 39% 0 auto auto;
+  inset: calc(39% - 24px) 0 auto auto;
   transform: none;
 }
 .pkr-eight .pkr-pos-7 {
