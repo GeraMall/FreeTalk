@@ -1,5 +1,6 @@
 import type { ServerMessage, TelemetryConnectionSample } from '@freetalk/protocol';
 import { connectionDiagnostics } from './connection-diagnostics';
+import { usesMacDesktop } from './window-chrome';
 import type { VideoMediaSource } from './video-manager';
 import {
   NATIVE_SCREEN_CHANNEL,
@@ -13,6 +14,7 @@ import {
   nextAdaptiveQualityLevel,
   normalizeVideoPreferences,
   screenEncodingProfile,
+  screenDegradationPreference,
   screenSenderPreferences,
   type NetworkQualitySample,
   type VideoPreferences,
@@ -328,6 +330,7 @@ export class PeerManager {
       if (connection.connectionState === 'connected') {
         context.iceRestartAttempts = 0;
         this.clearDisconnectTimer(context);
+        this.configureNegotiatedMacScreen(peerId, context);
         this.sendVideoState(peerId, context);
         this.requestVideoState(context);
       } else if (
@@ -484,6 +487,7 @@ export class PeerManager {
         connectionDiagnostics.record('answer-sent', message.from);
       }
     }
+    this.configureNegotiatedMacScreen(message.from, context);
     if (connection.signalingState === 'stable' && context.negotiationPending)
       this.negotiateWhenStable(message.from, context);
   }
@@ -997,6 +1001,19 @@ export class PeerManager {
       .catch(() => undefined);
   }
 
+  private configureNegotiatedMacScreen(peerId: string, context: PeerContext) {
+    const screen = context.videoSenders.screen;
+    if (
+      usesMacDesktop() &&
+      context.connection.signalingState === 'stable' &&
+      screen?.sender.track
+    ) {
+      // WebKit may reject setParameters before SDP establishes the encoding.
+      // Re-read negotiated parameters, even with adaptation disabled or level 0.
+      this.configureVideoSender(peerId, screen, 'screen');
+    }
+  }
+
   private configureVideoSender(
     peerId: string,
     videoSender: VideoSenderContext,
@@ -1020,13 +1037,7 @@ export class PeerManager {
       source === 'screen' ? screenProfile.scaleResolutionDownBy : 1;
     parameters.encodings[0]!.priority = source === 'screen' ? 'high' : 'medium';
     parameters.degradationPreference =
-      source === 'screen'
-        ? screenPreferences.screenContentMode === 'text'
-          ? 'maintain-resolution'
-          : screenPreferences.screenContentMode === 'video'
-            ? 'maintain-framerate'
-            : 'balanced'
-        : 'maintain-framerate';
+      source === 'screen' ? screenDegradationPreference(screenPreferences) : 'maintain-framerate';
     void videoSender.sender
       .setParameters(parameters)
       .then(() =>
@@ -1038,7 +1049,12 @@ export class PeerManager {
           degradationPreference: parameters.degradationPreference ?? 'unknown',
         }),
       )
-      .catch(() => undefined);
+      .catch((error) =>
+        connectionDiagnostics.record('video-sender:configuration-error', peerId, {
+          mediaSource: source,
+          errorName: error instanceof Error ? error.name : 'unknown',
+        }),
+      );
   }
 
   private async pollAdaptiveQuality(peerId: string, context: PeerContext) {
@@ -1110,6 +1126,8 @@ export class PeerManager {
         level: context.adaptiveQualityLevel,
         width: Number(outboundReport?.frameWidth ?? trackSettings.width ?? 0),
         height: Number(outboundReport?.frameHeight ?? trackSettings.height ?? 0),
+        captureWidth: Number(trackSettings.width ?? 0),
+        captureHeight: Number(trackSettings.height ?? 0),
         framesPerSecond: Number(outboundReport?.framesPerSecond ?? trackSettings.frameRate ?? 0),
         bitrate,
         availableOutgoingBitrate: availableOutgoingBitrate ?? 0,

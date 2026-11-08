@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PeerManager } from './peer-manager';
+import { usesMacDesktop } from './window-chrome';
 import { attachNativeScreenSender, isNativeScreenTrack } from './windows-screen';
 vi.mock('./windows-screen', () => ({
   NATIVE_SCREEN_CHANNEL: 'trlka-native-screen-v1',
@@ -9,6 +10,10 @@ vi.mock('./windows-screen', () => ({
   isNativeScreenTrack: vi.fn(() => false),
   receiveNativeScreen: vi.fn(() => vi.fn()),
   updateNativeScreenIceServers: vi.fn(),
+}));
+vi.mock('./window-chrome', async (original) => ({
+  ...(await original<typeof import('./window-chrome')>()),
+  usesMacDesktop: vi.fn(() => false),
 }));
 
 class FakeSender {
@@ -126,6 +131,7 @@ class FakeStream {
 
 describe('PeerManager video sender lifecycle', () => {
   beforeEach(() => {
+    vi.mocked(usesMacDesktop).mockReturnValue(false);
     VideoPeerConnection.instances = [];
     vi.mocked(isNativeScreenTrack).mockReturnValue(false);
     vi.mocked(attachNativeScreenSender).mockClear();
@@ -279,6 +285,127 @@ describe('PeerManager video sender lifecycle', () => {
       }),
     );
   });
+
+  it.each(['text', 'balanced', 'video'] as const)(
+    'preserves Mac screen resolution in %s mode without changing camera or Windows policy',
+    async (screenContentMode) => {
+      vi.mocked(usesMacDesktop).mockReturnValue(true);
+      const manager = new PeerManager(
+        'self',
+        [],
+        new FakeStream([]) as unknown as MediaStream,
+        vi.fn(),
+        { onTrack: vi.fn(), onState: vi.fn() },
+        {
+          cameraDeviceId: '',
+          screenResolution: '1080p',
+          screenFrameRate: 60,
+          screenContentMode,
+          screenAudioByDefault: true,
+          screenAdaptiveQuality: true,
+        },
+      );
+      manager.ensure('peer');
+      await manager.setVideoTrack(track('video', 'camera'), 'camera');
+      await manager.setVideoTrack(track('video', 'screen'), 'screen');
+      const [camera, screen] = VideoPeerConnection.instances[0]!.transceivers;
+      expect(screen!.sender.setParameters).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          degradationPreference: 'maintain-resolution',
+          encodings: [
+            expect.objectContaining({
+              maxBitrate: 9_000_000,
+              maxFramerate: 60,
+              scaleResolutionDownBy: 1,
+            }),
+          ],
+        }),
+      );
+      expect(camera!.sender.setParameters).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          degradationPreference: 'maintain-framerate',
+        }),
+      );
+      manager.closeAll();
+    },
+  );
+
+  it.each([true, false])(
+    'retries a rejected Mac screen profile after SDP and reconnect, with adaptive quality %s',
+    async (screenAdaptiveQuality) => {
+      vi.mocked(usesMacDesktop).mockReturnValue(true);
+      const manager = new PeerManager(
+        'self',
+        [],
+        new FakeStream([]) as unknown as MediaStream,
+        vi.fn(),
+        { onTrack: vi.fn(), onState: vi.fn() },
+        {
+          cameraDeviceId: '',
+          screenResolution: '1080p',
+          screenFrameRate: 60,
+          screenContentMode: 'video',
+          screenAudioByDefault: true,
+          screenAdaptiveQuality,
+        },
+      );
+      const connection = manager.ensure('peer') as unknown as VideoPeerConnection;
+      let negotiated = false;
+      // Reject the initial sender configuration, as WebKit can before SDP.
+      const create = connection.addTransceiver.bind(connection);
+      vi.spyOn(connection, 'addTransceiver').mockImplementation((video) => {
+        const transceiver = create(video);
+        const sender = transceiver.sender as unknown as FakeSender;
+        sender.setParameters.mockImplementation(async () => {
+          if (!negotiated) throw new DOMException('Encoding not negotiated', 'InvalidStateError');
+        });
+        vi.spyOn(sender, 'getParameters').mockImplementation(
+          () =>
+            ({
+              encodings: negotiated ? [{ rid: 'screen' }] : [],
+              transactionId: negotiated ? 'negotiated' : 'initial',
+            }) as RTCRtpSendParameters,
+        );
+        return transceiver;
+      });
+      await manager.setVideoTrack(track('video', 'screen'), 'screen');
+      const sender = connection.transceivers[0]!.sender;
+      const attempts = sender.setParameters.mock.calls.length;
+      connection.signalingState = 'have-local-offer';
+      vi.spyOn(connection, 'setRemoteDescription').mockImplementation(async (description) => {
+        connection.remoteDescription = description as RTCSessionDescription;
+        connection.signalingState = 'stable';
+        negotiated = true;
+      });
+      await manager.handle({
+        type: 'answer',
+        from: 'peer',
+        description: { type: 'answer', sdp: 'v=0' },
+      });
+      expect(sender.setParameters.mock.calls.length).toBeGreaterThan(attempts);
+      expect(sender.setParameters).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          transactionId: 'negotiated',
+          degradationPreference: 'maintain-resolution',
+          encodings: [
+            expect.objectContaining({
+              rid: 'screen',
+              maxBitrate: 9_000_000,
+              maxFramerate: 60,
+              scaleResolutionDownBy: 1,
+            }),
+          ],
+        }),
+      );
+      sender.setParameters.mockClear();
+      connection.onconnectionstatechange?.call(
+        connection as unknown as RTCPeerConnection,
+        new Event('connectionstatechange'),
+      );
+      expect(sender.setParameters).toHaveBeenCalledOnce();
+      manager.closeAll();
+    },
+  );
 
   it('automatically reduces only the congested peer screen sender', async () => {
     vi.useFakeTimers();

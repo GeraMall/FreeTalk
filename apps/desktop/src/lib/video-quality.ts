@@ -66,6 +66,16 @@ export function screenSenderPreferences(preferences: VideoPreferences): VideoPre
     : preferences;
 }
 
+export function screenDegradationPreference(
+  preferences: VideoPreferences,
+): RTCDegradationPreference {
+  // WebKit can shrink even moving screens to a thumbnail when preserving FPS.
+  // Let our bounded adaptive profiles choose the scale, rather than allowing
+  // an additional, unbounded resolution reduction inside WebKit's encoder.
+  if (usesMacDesktop() || preferences.screenContentMode === 'text') return 'maintain-resolution';
+  return preferences.screenContentMode === 'video' ? 'maintain-framerate' : 'balanced';
+}
+
 export function screenCaptureConstraints(preferences: VideoPreferences): MediaTrackConstraints {
   const resolution = RESOLUTIONS[preferences.screenResolution];
   return {
