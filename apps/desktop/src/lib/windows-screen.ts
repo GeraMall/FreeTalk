@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { selectNativeScreen, type NativeScreenSource } from './native-screen-picker';
 export { cancelNativeScreenSelection } from './native-screen-picker';
 import { screenEncodingProfile, type VideoPreferences, type ScreenQuality } from './video-quality';
+import { connectionDiagnostics } from './connection-diagnostics';
 
 export const NATIVE_SCREEN_CHANNEL = 'trlka-native-screen-v1';
 type Signal =
@@ -79,6 +80,9 @@ class NativeScreenSession {
   private peerQueues = new Map<string, Promise<void>>();
   private preview?: ScreenReceiver;
   private closers = new Set<() => void>();
+  private statsTimer?: ReturnType<typeof setInterval>;
+  private statsPending = false;
+  private previousCapture?: { elapsedMs: number; frames: number };
   constructor(private readonly notice: (message: string) => void) {}
 
   async start(source: NativeScreenSource, preferences: VideoPreferences, audio: boolean) {
@@ -170,6 +174,46 @@ class NativeScreenSession {
       clearTimeout(timer);
     }
     if (this.disposed) throw new Error('Демонстрация остановлена');
+    connectionDiagnostics.record('native-screen:started', undefined, {
+      kind: source.kind,
+      requestedFps: preferences.screenFrameRate,
+      width,
+      height,
+      audio,
+    });
+    this.statsTimer = setInterval(() => void this.pollStats(), 2_000);
+  }
+
+  private async pollStats() {
+    if (this.disposed || this.statsPending) return;
+    this.statsPending = true;
+    try {
+      const snapshot = await invoke<{
+        capture: { elapsedMs: number; frames: number; processingMs: number; requestedFps: number };
+        senders: Array<Record<string, string | number | boolean | null>>;
+        routes: Array<Record<string, string | number | boolean | null>>;
+      }>('windows_screen_stats', { sessionId: this.id });
+      if (this.disposed) return;
+      const previous = this.previousCapture;
+      const elapsed = snapshot.capture.elapsedMs - (previous?.elapsedMs ?? 0);
+      const fps =
+        elapsed > 0
+          ? ((snapshot.capture.frames - (previous?.frames ?? 0)) * 1000) / elapsed
+          : 0;
+      connectionDiagnostics.record('native-screen:capture-sample', undefined, {
+        ...snapshot.capture,
+        fps,
+      });
+      this.previousCapture = snapshot.capture;
+      for (const sender of snapshot.senders)
+        connectionDiagnostics.record('native-screen:sender-sample', undefined, sender);
+      for (const route of snapshot.routes)
+        connectionDiagnostics.record('native-screen:route-sample', undefined, route);
+    } catch {
+      /* capture may have ended while the stats request was in flight */
+    } finally {
+      this.statsPending = false;
+    }
   }
 
   async addIce(peerId: string, candidate: RTCIceCandidateInit) {
@@ -295,6 +339,7 @@ class NativeScreenSession {
   async stop() {
     if (this.disposed) return;
     this.disposed = true;
+    clearInterval(this.statsTimer);
     if (active === this) active = undefined;
     for (const close of [...this.closers]) close();
     this.preview?.close();

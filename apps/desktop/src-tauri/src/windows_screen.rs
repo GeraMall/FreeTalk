@@ -182,6 +182,18 @@ pub async fn windows_screen_restart_peer(
     }
 }
 
+/// Numeric pipeline counters only. Never return ICE addresses, SDP or pixels.
+#[tauri::command]
+pub async fn windows_screen_stats(
+    state: tauri::State<'_, State>,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    { return native::stats(&state, &session_id).await; }
+    #[cfg(not(target_os = "windows"))]
+    { let _ = (state, session_id); Err("Unsupported platform".into()) }
+}
+
 #[cfg(target_os = "windows")]
 mod native {
     use super::*;
@@ -203,7 +215,7 @@ mod native {
     use std::{
         collections::{HashMap, VecDeque},
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
             Arc, Mutex,
         },
         time::{Duration, Instant},
@@ -288,6 +300,9 @@ mod native {
         pub peers: Mutex<HashMap<String, PeerConnection>>,
         bitrate: u64,
         fps: u32,
+        started: Instant,
+        captured_frames: Arc<AtomicU64>,
+        processing_us: Arc<AtomicU64>,
     }
     impl Drop for Session {
         fn drop(&mut self) {
@@ -500,6 +515,9 @@ mod native {
             peers: Mutex::new(HashMap::new()),
             bitrate: options.bitrate,
             fps: options.fps,
+            started: Instant::now(),
+            captured_frames: Arc::new(AtomicU64::new(0)),
+            processing_us: Arc::new(AtomicU64::new(0)),
         });
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let capture_stop = stop.clone();
@@ -507,6 +525,8 @@ mod native {
         let event_id = id.clone();
         let capture_kind = options.kind.clone();
         let capture_id = options.source_id.clone();
+        let frame_counter = session.captured_frames.clone();
+        let processing_counter = session.processing_us.clone();
         std::thread::Builder::new().name("trlka-screen-capture".into()).spawn(move || {
             let setup=(|| {
                 let mut capture=capturer(&capture_kind)?;
@@ -519,7 +539,10 @@ mod native {
                 capture.start_capture(Some(source),move |frame| {
                     match frame {
                         Ok(frame) if frame.width()>0 && frame.height()>0 => {
+                            frame_counter.fetch_add(1,Ordering::Relaxed);
+                            let processing=Instant::now();
                             deliver_frame(&video,&frame,start.elapsed().as_micros() as i64);
+                            processing_counter.fetch_add(processing.elapsed().as_micros() as u64,Ordering::Relaxed);
                             callback_first_frame.store(true,Ordering::Release);
                         },
                         Err(CaptureError::Permanent) => { callback_failed.store(true,Ordering::Release); },
@@ -741,6 +764,50 @@ mod native {
         let sdp = offer.to_string();
         pc.set_local_description(offer).await.map_err(error)?;
         Ok(sdp)
+    }
+    pub async fn stats(state: &State, id: &str) -> Result<serde_json::Value, String> {
+        let s = session(state, id)?;
+        let mut peers: Vec<_> = s.peers.lock().unwrap().iter()
+            .map(|(id, pc)| (id.clone(), pc.clone())).collect();
+        peers.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut senders = Vec::new();
+        let mut routes = Vec::new();
+        for (index, (peer_id, pc)) in peers.into_iter().enumerate() {
+            let preview = peer_id == "preview";
+            let Ok(Ok(reports)) = tokio::time::timeout(Duration::from_secs(2), pc.get_stats()).await else { continue };
+            for report in reports {
+                if let libwebrtc::stats::RtcStats::CandidatePair(ref r) = report {
+                    if r.candidate_pair.nominated {
+                        routes.push(serde_json::json!({"peerIndex":index,"localPreview":preview,
+                            "rttMs":r.candidate_pair.current_round_trip_time*1000.0,
+                            "availableOutgoingBitrate":r.candidate_pair.available_outgoing_bitrate,
+                            "bytesSent":r.candidate_pair.bytes_sent,
+                            "bytesReceived":r.candidate_pair.bytes_received}));
+                    }
+                }
+                if let libwebrtc::stats::RtcStats::OutboundRtp(r) = report {
+                    if r.stream.kind != "video" { continue }
+                    senders.push(serde_json::json!({
+                        "peerIndex":index,"localPreview":preview,
+                        "width":r.outbound.frame_width,"height":r.outbound.frame_height,
+                        "fps":r.outbound.frames_per_second,"framesEncoded":r.outbound.frames_encoded,
+                        "framesSent":r.outbound.frames_sent,"bytesSent":r.sent.bytes_sent,
+                        "totalEncodeTime":r.outbound.total_encode_time,
+                        "targetBitrate":r.outbound.target_bitrate,
+                        "limitation":format!("{:?}",r.outbound.quality_limitation_reason),
+                        "encoder":r.outbound.encoder_implementation,
+                        "hardware":r.outbound.power_efficient_encoder
+                    }));
+                }
+            }
+        }
+        Ok(serde_json::json!({
+            "capture": {"elapsedMs":s.started.elapsed().as_millis() as u64,
+                "frames":s.captured_frames.load(Ordering::Relaxed),
+                "processingMs":s.processing_us.load(Ordering::Relaxed) as f64/1000.0,
+                "requestedFps":s.fps},
+            "senders":senders,"routes":routes
+        }))
     }
     fn peer(state: &State, id: &str, pid: &str) -> Result<PeerConnection, String> {
         session(state, id)?
