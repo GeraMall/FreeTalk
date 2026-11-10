@@ -3,7 +3,7 @@
 [env]
 # The C++/Rust bridge must catch libwebrtc errors even though the prebuilt
 # engine itself was compiled without C++ exceptions.
-CXXFLAGS_x86_64_pc_windows_msvc = { value = "/DNTDDI_WIN11_GE=0x0A000010 /D_HAS_EXCEPTIONS=1", force = false }
+CXXFLAGS_x86_64_pc_windows_msvc = { value = "/DNTDDI_WIN11_GE=0x0A000010 /D_HAS_EXCEPTIONS=1 /permissive", force = false }
 
 [target.x86_64-pc-windows-msvc]
 # libwebrtc's distributed Windows binaries use the static release CRT.
