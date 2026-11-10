@@ -197,9 +197,7 @@ class NativeScreenSession {
       const previous = this.previousCapture;
       const elapsed = snapshot.capture.elapsedMs - (previous?.elapsedMs ?? 0);
       const fps =
-        elapsed > 0
-          ? ((snapshot.capture.frames - (previous?.frames ?? 0)) * 1000) / elapsed
-          : 0;
+        elapsed > 0 ? ((snapshot.capture.frames - (previous?.frames ?? 0)) * 1000) / elapsed : 0;
       connectionDiagnostics.record('native-screen:capture-sample', undefined, {
         ...snapshot.capture,
         fps,
