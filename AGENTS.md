@@ -1,5 +1,27 @@
 # Проверка изменений дизайна
 
+10.11.2026 Windows224: устранён подтверждённый сбой голосового соединения без VPN.
+На обоих существующих VPS добавлен authenticated coturn UDP/TCP3478,
+relayUDP49160–49671; signaling0.1.21 немедленно отдаёт локальные REST credentials,
+Cloudflare остаётся дополнительным fallback. Четыре Chromium relay-only проверки
+прошли. Владелец разрешил краткое переподключение и подтвердил голос без VPN.
+HA export/sync/PG streaming sync проверены, standby application не запускался.
+Не менять ownership/fencing/DNS; ключи только root-only на VPS, не печатать.
+Backend source a592e30, подробности docs/WINDOWS_CALL_NETWORK_2026-11-10.md.
+FPS FC27 при показе всего экрана Windows НЕ исправлен: пользователь уточнил
+16→4FPS, окно без рамки не помогло. Native227 PRIVATE (sourcee82c896/CI42902262944)
+добавляет только локальные числовые замеры capture/encode/routes. Full pnpm check,
+native release/NSIS прошли. Файлы outputs/desktop/beta227-private/windows/;
+setup SHA3197e803711735406f9d2ae0285a59c61613c8dfc4ff7dad5219fcc3a8693556,
+portable SHA1520e959acc9b8a05d8509bde56cc04a49384a2d75fe9b8706d79c5dcf953ba7.
+PE version227/x64/native command проверены, физический FC27 ещё НЕ проверен.
+Локальный MSVC14.41 компилирует bridge с /permissive, но link падает на6 новых
+STL symbols из prebuilt libwebrtc; использовать CI с современным toolset,
+не подделывать symbols и не менять media-код ради старого компилятора.
+Не объявлять это исправлением FPS. Public desktop/web/feed остаются224,
+Android226 private без изменений. Untracked previews/ — отдельный дизайн-макет,
+не включать случайно в основной продукт или коммит.
+
 09.11.2026 Android226 PRIVATE: после225 пользователь сообщил вечное подключение,
 сменаWi-Fi/мобильнойсети не помогает. Физическаяпричина НЕустановлена.
 Sourcec322dac, outputs/android/beta226-preview/Trlka_0.4.0-beta.226_android.apk,

@@ -67,3 +67,41 @@ It does not include SDP, addresses, credentials or pixels, does not change the
 capture/encoder selection, and is intended to distinguish capture, conversion,
 encoding and transmission bottlenecks during reproduction on the sender's PC.
 Public feeds and Mac/Android packages are unchanged.
+
+### Build environment
+
+The local Visual Studio Community toolset is 14.41.34120. Its C++ bridge needs
+the same `/permissive` flag already used by the release workflow (now also the
+local default). After compilation, linking against the prebuilt WebRTC library
+still fails with six missing newer STL algorithm symbols (`__std_remove_8`,
+`__std_search_1`, etc.). Do not add fake symbol implementations or change media
+code to conceal this toolchain mismatch. Use the existing Windows CI release
+environment for this preview; no additional Visual Studio installation was made.
+
+Private preview source: e82c896 (native diagnostics originally 406c9a6; local
+toolchain flag b1f354a). Windows-only workflow run: 42902262944. A previous run
+42902106878 was cancelled before completion to include the final formatting.
+The branch workflow only uploads private artifacts, with no public release or
+updater promotion. Local desktop tests: 565 passed; additional targeted video
+checks: 26 passed; frontend production build passed. Final artifact validation is
+recorded below after downloading the completed CI package.
+
+### Completed private package
+
+CI 42902262944 completed successfully: full `pnpm check` and native release/NSIS
+build passed. The public-release job was skipped. Source is
+e82c896c2ba0f685d59921a72f623757e0fe976e. Downloaded files are in
+outputs/desktop/beta227-private/windows/:
+
+| File                                  |    Bytes | SHA256                                                           |
+| ------------------------------------- | -------: | ---------------------------------------------------------------- |
+| Trlka_0.4.0-beta.227_portable_x64.exe | 75104768 | 1520e959acc9b8a05d8509bde56cc04a49384a2d75fe9b8706d79c5dcf953ba7 |
+| Trlka_0.4.0-beta.227_x64-setup.exe    | 48468120 | 3197e803711735406f9d2ae0285a59c61613c8dfc4ff7dad5219fcc3a8693556 |
+
+Both PE resources identify Trlka 0.4.0-beta.227; the portable is x64 (0x8664)
+and contains the new native stats command. No physical FC27 reproduction or
+diagnostic sampling from the packaged app has been performed yet. The optional
+test with FC27 capped at 60 FPS was not performed because the owner was not
+available to test. Ask for a sender-side report after 20–30 seconds of low-FPS
+sharing, while that capture is still active. This is a diagnostic preview, not a
+confirmed FPS repair.
