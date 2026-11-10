@@ -22,6 +22,10 @@ import {
 
 assertAuthorizationConfigured();
 
+// Warm the external fallback before anyone joins, without delaying startup or
+// room admission when our independent relay is configured.
+if (process.env.LOCAL_TURN_URLS) void getIceConfig().catch(() => undefined);
+
 const port = Number(process.env.PORT ?? 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? '*';
 const manager = new RoomManager();
@@ -78,7 +82,7 @@ export const httpServer = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.20' }));
+    response.end(JSON.stringify({ ok: true, service: 'freetalk-signaling', version: '0.1.21' }));
     return;
   }
   response.writeHead(404, { 'content-type': 'application/json' });
@@ -130,7 +134,10 @@ sockets.on('headers', (headers, request) => {
   const info = upgradeMetadata.get(request);
   if (!info) return;
   headers.push(`x-freetalk-server-connection-id: ${info.serverConnectionId}`);
-  headers.push('x-freetalk-edge-colo: VPS-SPB');
+  const location = process.env.SIGNALING_LOCATION;
+  headers.push(
+    `x-freetalk-edge-colo: ${location === 'VPS-MSK' || location === 'VPS-SPB' ? location : 'VPS'}`,
+  );
 });
 
 sockets.on('connection', (socket, request) => {
