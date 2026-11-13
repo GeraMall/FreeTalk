@@ -55,6 +55,13 @@ struct CallScreen: View {
                     }.padding(.vertical, 2)
                 }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list")
             }
+            #if os(iOS)
+            if call.sharingScreen {
+                Button { call.toggleScreen() } label: {
+                    Label("Остановить показ TRLKA", systemImage: "stop.circle.fill")
+                }.buttonStyle(.bordered).tint(.red).accessibilityIdentifier("call.stop-screen-share")
+            }
+            #endif
             HStack(spacing: 8) {
                 CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, highlighted: !call.muted) { call.setMuted(!call.muted) }
                     .accessibilityIdentifier("call.microphone")
@@ -89,6 +96,15 @@ struct CallScreen: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Настройки звонка").font(.title2.bold())
                 #if os(iOS)
+                Button {
+                    more = false
+                    call.toggleScreen()
+                } label: {
+                    Label(call.sharingScreen ? "Остановить показ TRLKA" : "Показать экран TRLKA", systemImage: "rectangle.on.rectangle")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .disabled(call.screenBusy || call.selfID.isEmpty)
+                .accessibilityIdentifier("call.screen-share")
                 Toggle("Отключить звук звонка", isOn: Binding(get: { call.deafened }, set: { call.setDeafened($0) }))
                 Button { account.calls.toggleSpeaker() } label: {
                     Label(account.calls.speaker ? "Динамик включён" : "Разговорный динамик", systemImage: account.calls.speaker ? "speaker.wave.2.fill" : "ear")
@@ -100,7 +116,7 @@ struct CallScreen: View {
                 ShareLink(item: URL(string: "https://trlka.com/join/\(account.calls.roomID)")!) { Label("Поделиться комнатой", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
                 Text("Код комнаты: \(account.calls.roomID)").font(.callout.monospaced()).textSelection(.enabled)
                 Button("Готово") { more = false }
-            }.padding(24).presentationDetents([.medium])
+            }.padding(24).presentationDetents([.large])
         }
         .sheet(isPresented: $invite) { InviteToCallScreen(account: account) }
         #if os(iOS)
@@ -163,7 +179,8 @@ struct ParticipantCard: View {
     }
     private var activity: some View {
         Group {
-            if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink) }
+            if participant.deafened == true { Image(systemName: "speaker.slash.fill").foregroundStyle(Color.pink).accessibilityLabel("Звук звонка выключен") }
+            else if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink).accessibilityLabel("Микрофон выключен") }
             else {
                 HStack(spacing: 3) {
                     ForEach(0..<4) { index in

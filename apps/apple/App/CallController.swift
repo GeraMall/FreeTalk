@@ -2,6 +2,9 @@ import SwiftUI
 import AVFoundation
 import WebRTC
 import TRLKACore
+#if os(iOS)
+import UIKit
+#endif
 #if DEBUG
 import QuartzCore
 #endif
@@ -93,6 +96,10 @@ final class CallController {
     private var ringMembers: [String] = []
     private var shouldCreate = false
     #if os(iOS)
+    private var screenCapture: InAppScreenShare?
+    private(set) var sharingScreen = false
+    private(set) var screenBusy = false
+    private var screenBackgroundObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var routeObserver: NSObjectProtocol?
     private var audioInterrupted = false
@@ -199,7 +206,9 @@ final class CallController {
             else if !rejoining { startedAt = Date() }
             participants.filter { $0.id != selfID }.forEach { _ = ensure($0.id) }
             publishAudioState()
-            refreshPhase(); sendInvitations()
+            refreshPhase()
+            if rejoining && tabletPresented { sendTablet(["kind": "tablet-join", "joined": true]) }
+            sendInvitations()
         case "participants":
             let updated = decode([RoomParticipant].self, message["participants"]) ?? participants
             let ids = Set(updated.map(\.id))
@@ -261,6 +270,9 @@ final class CallController {
             peer.sendSignal = { [weak self] in self?.socket.send($0) }
             peer.changed = { [weak self] in self?.refreshPhase() }
             peer.failed = { [weak self] in self?.error = $0 }
+            #if os(iOS)
+            if sharingScreen, let track = screenCapture?.track { peer.setScreen(track) }
+            #endif
             peer.negotiate()
             return peer
         } catch { self.error = error.localizedDescription; return nil }
@@ -326,7 +338,7 @@ final class CallController {
     func openTablet() {
         guard tablet != nil, !selfID.isEmpty, phase != .reconnecting else { return }
         if tablet?["open"] as? Bool == true { tabletPresented = true }
-        else if !requestedTablet {
+        else {
             requestedTablet = true
             sendTablet(["kind": "open"])
         }
@@ -431,8 +443,55 @@ final class CallController {
         capturer?.stopCapture {}; capturer = nil; cameraSource = nil; localVideo = nil; cameraDevice = nil; revision += 1
     }
 
+    #if os(iOS)
+    func toggleScreen() {
+        guard active, !screenBusy, let factory else { return }
+        if let screenCapture {
+            sharingScreen = false
+            screenBusy = true
+            peers.values.forEach { $0.setScreen(nil) }
+            screenCapture.stop()
+            return
+        }
+        screenBusy = true
+        let expected = generation
+        let capture = InAppScreenShare(factory: factory)
+        screenCapture = capture
+        screenBackgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                                                         object: nil, queue: .main) { [weak capture] _ in
+            Task { @MainActor in capture?.stop() }
+        }
+        capture.started = { [weak self, weak capture] in
+            guard let self, let capture, screenCapture === capture, active, generation == expected else { return }
+            screenBusy = false
+            sharingScreen = true
+            peers.values.forEach { $0.setScreen(capture.track) }
+        }
+        capture.ended = { [weak self, weak capture] failure in
+            guard let self, screenCapture === capture else { return }
+            if let screenBackgroundObserver { NotificationCenter.default.removeObserver(screenBackgroundObserver) }
+            screenBackgroundObserver = nil
+            screenCapture = nil
+            screenBusy = false
+            sharingScreen = false
+            if active && generation == expected {
+                peers.values.forEach { $0.setScreen(nil) }
+                if let failure { error = failure.localizedDescription }
+            }
+        }
+        capture.start()
+    }
+    #endif
+
     func end() {
         generation += 1
+        #if os(iOS)
+        if let screenCapture {
+            sharingScreen = false
+            screenBusy = true
+            screenCapture.stop()
+        }
+        #endif
         ringTask?.cancel(); ringTask = nil
         ice = [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"])]
         statisticsTask?.cancel(); statisticsTask = nil

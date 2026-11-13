@@ -8,7 +8,7 @@ enum AccountFormMode: String, Identifiable {
         switch self {
         case .register: "Создать аккаунт"
         case .verify: "Подтвердить почту"
-        case .requestReset: "Восстановить доступ"
+        case .requestReset: "Восстановление пароля"
         case .reset: "Новый пароль"
         }
     }
@@ -35,6 +35,8 @@ struct AccountForm: View {
     @State private var busy = false
     @State private var error: String?
     @State private var notice: String?
+    @State private var challenge = false
+    @State private var proof: String?
 
     init(account: AccountStore, initial: AccountFormMode, email: String, onReset: @escaping (String) -> Void) {
         self.account = account
@@ -107,9 +109,16 @@ struct AccountForm: View {
                     }
                 }.disabled(busy).padding(20).frame(maxWidth: 480).frame(maxWidth: .infinity)
             }
-            .background(Brand.webBackground).navigationTitle(mode.title)
+            .background(Brand.webBackground).navigationTitle(LocalizedStringKey(mode.title))
             .toolbar { ToolbarItem { Button("Закрыть") { dismiss() }.disabled(busy) } }
             .task { if mode == .register { await loadDocuments() } }
+            .sheet(isPresented: $challenge, onDismiss: {
+                guard let token = proof else { return }
+                proof = nil
+                Task { await submit(captchaToken: token) }
+            }) {
+                CaptchaSheet { value in proof = value; challenge = false }
+            }
             .sheet(isPresented: $pickingDate) {
                 VStack {
                     DatePicker("Дата рождения", selection: $birthDate, in: Self.firstDate...Date(), displayedComponents: .date)
@@ -151,7 +160,7 @@ struct AccountForm: View {
     }
     private func changeMode(_ next: AccountFormMode) { mode = next; error = nil; notice = nil; code = "" }
 
-    @MainActor private func submit() async {
+    @MainActor private func submit(captchaToken: String? = nil) async {
         guard valid, !busy else { return }
         busy = true; error = nil; notice = nil
         defer { busy = false }
@@ -164,7 +173,7 @@ struct AccountForm: View {
                 formatter.dateFormat = "yyyy-MM-dd"
                 try await account.client.register(Registration(email: address, username: username, displayName: displayName,
                     password: password, birthDate: formatter.string(from: birthDate), legalVersion: documents[0].version,
-                    acceptedTerms: termsAccepted, acceptedPrivacy: privacyAccepted))
+                    acceptedTerms: termsAccepted, acceptedPrivacy: privacyAccepted, captchaToken: captchaToken))
                 password = ""; repeatPassword = ""
                 changeMode(.verify)
                 notice = "Введите код из письма для подтверждения аккаунта."
@@ -178,6 +187,8 @@ struct AccountForm: View {
                 try await account.client.resetPassword(email: address, code: code, password: password)
                 onReset(address)
             }
+        } catch let error as APIError where mode == .register && error.code == "CAPTCHA_REQUIRED" {
+            challenge = true
         } catch { self.error = error.localizedDescription }
     }
 

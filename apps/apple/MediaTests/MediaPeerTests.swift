@@ -45,20 +45,21 @@ final class MediaPeerTests: XCTestCase {
         first.negotiate(); second.negotiate()
         await fulfillment(of: [connected], timeout: 25)
 
-        // Real H264/VP8 encode/decode with synthetic frames; no microphone/camera access.
-        for index in 0..<2 {
-            let received = expectation(description: "Video frame received, camera run \(index)")
+        // Both channels use the same real negotiation and encoders as the phone.
+        // Starting twice catches stale MID/track mappings after a sender is removed.
+        for (index, kind) in ["camera", "screen", "screen", "camera"].enumerated() {
+            let received = expectation(description: "Video frame received, \(kind) run \(index)")
             let probe = FrameProbe(received)
             let source = factory.videoSource()
             let capture = RTCVideoCapturer(delegate: source)
-            let track = factory.videoTrack(with: source, trackId: "camera-\(index)")
+            let track = factory.videoTrack(with: source, trackId: "\(kind)-\(index)")
             var attached = false
             second.changed = {
-                if !attached, let remote = second.tracks.values.first(where: { $0.trackId == track.trackId }) {
+                if !attached, let remote = second.video(source: kind) {
                     remote.add(probe); attached = true
                 }
             }
-            first.setCamera(track)
+            if kind == "screen" { first.setScreen(track) } else { first.setCamera(track) }
             let sending = Task { @MainActor in
                 for _ in 0..<220 {
                     if Task.isCancelled { return }
@@ -79,8 +80,13 @@ final class MediaPeerTests: XCTestCase {
             await fulfillment(of: [received], timeout: 20)
             sending.cancel()
             second.tracks.values.forEach { $0.remove(probe) }
-            first.setCamera(nil)
-            try await Task.sleep(for: .milliseconds(500))
+            let stopped = expectation(description: "\(kind) is removed from the remote view")
+            var removed = false
+            second.changed = {
+                if !removed && second.video(source: kind) == nil { removed = true; stopped.fulfill() }
+            }
+            if kind == "screen" { first.setScreen(nil) } else { first.setCamera(nil) }
+            await fulfillment(of: [stopped], timeout: 5)
         }
     }
 }

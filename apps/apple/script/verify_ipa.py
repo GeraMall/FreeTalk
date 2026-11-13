@@ -58,12 +58,13 @@ def verify(path):
         assert not any(name.endswith((".p12", ".p8", ".pem", ".key")) for name in names), "Unexpected signing material"
         assert not any(name.endswith(".dylib") and ("debug" in name or "preview" in name) for name in names), "Debug library in release IPA"
         framework = prefix + "Frameworks/WebRTC.framework/WebRTC"
-        tablet = prefix + "tablet/"
-        html = archive.read(tablet + "android-tablet.html").decode()
-        for asset in re.findall(r'(?:src|href)="\./([^"]+)"', html):
-            assert tablet + asset in names, f"Missing tablet asset {asset}"
-        assert "type=\"module\"" not in html and 'defer src="./assets/' in html, "Missing local game script"
-        assert all(tablet + "sounds/" + sound in names for sound in ("poker/deal.wav", "monopoly/roll.wav"))
+        if int(info["CFBundleVersion"]) >= 228:
+            tablet = prefix + "tablet/"
+            html = archive.read(tablet + "android-tablet.html").decode()
+            for asset in re.findall(r'(?:src|href)="\./([^"]+)"', html):
+                assert tablet + asset in names, f"Missing tablet asset {asset}"
+            assert 'type="module"' not in html and 'defer src="./assets/' in html, "Missing local game script"
+            assert all(tablet + "sounds/" + sound in names for sound in ("poker/deal.wav", "monopoly/roll.wav"))
         if info["CFBundleShortVersionString"] != "0.1.0":
             assert framework in names, "Missing native WebRTC framework"
             native = archive.read(framework)

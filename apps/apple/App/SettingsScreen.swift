@@ -22,7 +22,7 @@ struct ProfileView: View {
                     VStack(spacing: 10) {
                         NavigationLink { profilePage } label: { settingsRow("Профиль", icon: "person", description: "Имя, аватар и информация о себе") }
                         NavigationLink { AppearancePage(account: account) } label: { settingsRow("Интерфейс", icon: "circle.lefthalf.filled", description: "Тема приложения и синхронизация") }
-                        NavigationLink { videoPage } label: { settingsRow("Видео и звук", icon: "video", description: "Предпросмотр камеры") }
+                        NavigationLink { videoPage } label: { settingsRow("Видео и звуки", icon: "video", description: "Предпросмотр камеры") }
                         NavigationLink { devicesPage } label: { settingsRow("Устройства", icon: "hifispeaker", description: "Текущий аудиомаршрут") }
                         NavigationLink { chatsPage } label: { settingsRow("Чаты", icon: "bubble.left", description: "Оформление сообщений") }
                         #if os(iOS)
@@ -68,7 +68,7 @@ struct ProfileView: View {
                 Toggle("Зеркалить свою камеру", isOn: $mirrorSelf).font(.subheadline).tint(Brand.accent)
                 Text("Настройка меняет только ваш предпросмотр. Собеседники видят обычное изображение.").font(.caption).foregroundStyle(Brand.muted)
             }.padding(18).webPanel().padding(16)
-        }.background(Brand.webBackground).navigationTitle("Видео и звук")
+        }.background(Brand.webBackground).navigationTitle("Видео и звуки")
     }
     private var devicesPage: some View {
         ScrollView {
@@ -123,7 +123,7 @@ struct ProfileView: View {
     private func settingsRow(_ title: String, icon: String, description: String) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon).foregroundStyle(Brand.accent).frame(width: 25)
-            VStack(alignment: .leading, spacing: 4) { Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.primary); Text(description).font(.system(size: 11)).foregroundStyle(Brand.muted) }
+            VStack(alignment: .leading, spacing: 4) { Text(LocalizedStringKey(title)).font(.system(size: 16, weight: .semibold)).foregroundStyle(.primary); Text(LocalizedStringKey(description)).font(.system(size: 11)).foregroundStyle(Brand.muted) }
             Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
         }.padding(15).webPanel(14)
     }

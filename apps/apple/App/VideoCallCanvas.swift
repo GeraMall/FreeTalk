@@ -16,7 +16,8 @@ struct AudioParticipantRow: View {
                 Text(account.calls.connectionState(participant.id)).font(.system(size: 12)).foregroundStyle(Brand.muted).lineLimit(1)
             }
             Spacer(minLength: 4)
-            if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink) }
+            if participant.deafened == true { Image(systemName: "speaker.slash.fill").foregroundStyle(Color.pink).accessibilityLabel("Звук звонка выключен") }
+            else if participant.muted { Image(systemName: "mic.slash.fill").foregroundStyle(Color.pink).accessibilityLabel("Микрофон выключен") }
             else {
                 HStack(spacing: 3) {
                     ForEach(0..<4) { index in

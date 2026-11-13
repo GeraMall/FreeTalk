@@ -22,5 +22,5 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Real native peer negotiation, glare, video and camera restart
+      - name: Native peer negotiation, camera and screen-share restart
         run: swift test --package-path apps/apple --scratch-path apps/apple/build/media-tests

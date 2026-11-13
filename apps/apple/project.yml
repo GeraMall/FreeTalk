@@ -1,5 +1,6 @@
 name: TRLKA
 options:
+  developmentLanguage: ru
   bundleIdPrefix: com.trlka
   deploymentTarget:
     iOS: '17.0'

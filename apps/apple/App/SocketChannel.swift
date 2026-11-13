@@ -3,6 +3,8 @@ import Foundation
 /// One socket generation owns its receive, heartbeat and reconnect tasks.
 @MainActor
 final class SocketChannel {
+    // A joined-room snapshot can contain eight 18 KB inline avatars plus the shared table.
+    private static let maximumIncomingBytes = 1_000_000
     var onMessage: (([String: Any]) -> Void)?
     var onConnection: ((Bool) -> Void)?
     var onFailure: ((String) -> Void)?
@@ -32,7 +34,7 @@ final class SocketChannel {
                 var request = URLRequest(url: address)
                 request.timeoutInterval = 12
                 let current = session.webSocketTask(with: request)
-                current.maximumMessageSize = 131_072
+                current.maximumMessageSize = Self.maximumIncomingBytes
                 socket = current
                 ready = false
                 lastPong = Date()
@@ -66,7 +68,7 @@ final class SocketChannel {
                         guard expected == generation && socket === current else { break }
                         let data: Data
                         switch frame { case .data(let bytes): data = bytes; case .string(let text): data = Data(text.utf8); @unknown default: continue }
-                        guard data.count <= 131_072, let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                        guard data.count <= Self.maximumIncomingBytes, let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
                         let type = message["type"] as? String
                         if type == "pong" { lastPong = Date(); continue }
                         if type == "ready" || type == "joined-room" {

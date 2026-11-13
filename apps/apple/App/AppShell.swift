@@ -84,7 +84,7 @@ struct AppShell: View {
                                 .font(.system(size: 22, weight: .regular))
                                 .symbolRenderingMode(.hierarchical)
                                 .frame(width: 28, height: 25)
-                            Text(item.rawValue).font(.system(size: 11, weight: .semibold))
+                            Text(LocalizedStringKey(item.rawValue)).font(.system(size: 11, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .foregroundStyle(page == item ? Brand.accent : Brand.muted)

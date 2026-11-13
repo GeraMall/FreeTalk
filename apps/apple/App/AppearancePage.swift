@@ -9,6 +9,8 @@ final class AppearanceSettings {
     var error: String?
     private var revision = 0
     private var owner: String?
+    private var pendingTheme = false
+    private var failedSync: Bool?
 
     func refresh(user: String?, client: AccountClient) async {
         if owner != user {
@@ -16,9 +18,16 @@ final class AppearanceSettings {
             owner = user
             syncEnabled = false
             saving = false
+            failedSync = nil
+            pendingTheme = false
             error = nil
         }
         guard let user, !saving else { return }
+        if pendingTheme {
+            await save(true, client: client)
+            return
+        }
+        revision += 1
         let ticket = revision
         do {
             let remote = try await client.appearance()
@@ -32,7 +41,11 @@ final class AppearanceSettings {
         guard !saving, value != theme else { return }
         revision += 1
         apply(value)
-        if syncEnabled { await save(true, client: client) }
+        if syncEnabled { pendingTheme = true; await save(true, client: client) }
+    }
+
+    func retry(client: AccountClient) async {
+        if let failedSync { await save(failedSync, client: client) }
     }
 
     private func apply(_ value: String) {
@@ -50,30 +63,41 @@ final class AppearanceSettings {
         defer { if ticket == revision { saving = false } }
         do {
             try await client.setAppearance(theme: theme, syncEnabled: enabled)
-            if ticket == revision { syncEnabled = enabled }
+            if ticket == revision { syncEnabled = enabled; pendingTheme = false; failedSync = nil }
         } catch {
-            if ticket == revision { self.error = error.localizedDescription }
+            if ticket == revision { self.error = error.localizedDescription; failedSync = enabled }
         }
     }
 }
 
 struct AppearancePage: View {
+    @AppStorage("trlka.language") private var language = "ru"
     let account: AccountStore
     var body: some View {
         let settings = account.appearance
         Form {
-            Picker("Тема", selection: Binding(get: { settings.theme }, set: { new in
+            Picker("Язык программы", selection: $language) {
+                Text(verbatim: "Русский").tag("ru")
+                Text(verbatim: "English").tag("en")
+                Text(verbatim: "简体中文").tag("zh-CN")
+                Text(verbatim: "Қазақша").tag("kk")
+                Text(verbatim: "Беларуская").tag("be")
+                Text(verbatim: "ქართული").tag("ka")
+                Text(verbatim: "Español").tag("es")
+            }
+            Picker("Тема оформления", selection: Binding(get: { settings.theme }, set: { new in
                 Task { await settings.choose(new, client: account.client) }
             })) {
-                Text("Основная").tag("default")
+                Text(verbatim: "TRLKA").tag("default")
                 Text("Светлая").tag("light")
                 Text("Чёрная").tag("black")
             }
-            Toggle("Синхронизировать тему между устройствами", isOn: Binding(get: { settings.syncEnabled }, set: { new in
+            Toggle("Синхронизировать тему", isOn: Binding(get: { settings.syncEnabled }, set: { new in
                 Task { await settings.save(new, client: account.client) }
             }))
             if let error = settings.error {
                 Text(error).foregroundStyle(.red)
+                Button("Повторить") { Task { await settings.retry(client: account.client) } }
             }
         }.disabled(settings.saving).navigationTitle("Интерфейс")
     }

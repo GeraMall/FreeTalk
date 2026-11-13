@@ -62,20 +62,21 @@ final class AccountStore {
         }
     }
 
-    func login(login: String, password: String) async {
+    private(set) var needsCaptcha = false
+    func login(login: String, password: String, captchaToken: String? = nil) async {
         guard !working else { return }
         working = true
         error = nil
-        needsEmailVerification = false
+        needsEmailVerification = false; needsCaptcha = false
         defer { working = false }
         do {
-            user = try await client.login(login: login, password: password)
+            user = try await client.login(login: login, password: password, captchaToken: captchaToken)
             phase = .signedIn
             await startRealtime()
         } catch let error as APIError where error.code == "EMAIL_NOT_VERIFIED" {
             needsEmailVerification = true
         } catch let error as APIError where error.code == "CAPTCHA_REQUIRED" {
-            self.error = "Сервер запросил CAPTCHA. В этой предварительной сборке проверка ещё не подключена. Повторите вход позже."
+            needsCaptcha = true
         } catch { self.error = error.localizedDescription }
     }
 

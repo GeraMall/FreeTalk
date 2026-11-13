@@ -9,14 +9,16 @@ public struct RegistrationDocument: Decodable, Sendable {
 public struct Registration: Encodable, Sendable {
     let email, username, password, birthDate, legalVersion: String
     let displayName: String?
+    let captchaToken: String?
     let acceptedTerms, acceptedPrivacy: Bool
 
     public init(email: String, username: String, displayName: String, password: String, birthDate: String,
-                legalVersion: String, acceptedTerms: Bool, acceptedPrivacy: Bool) {
+                legalVersion: String, acceptedTerms: Bool, acceptedPrivacy: Bool, captchaToken: String? = nil) {
         self.email = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         self.username = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.displayName = name.isEmpty ? nil : name
+        self.captchaToken = captchaToken
         self.password = password
         self.birthDate = birthDate
         self.legalVersion = legalVersion

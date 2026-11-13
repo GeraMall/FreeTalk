@@ -10,3 +10,4 @@ outputs/**
 pnpm-lock.yaml
 apps/android-native/app/src/main/assets/tablet/**
 apps/android-native/app/src/main/assets/native-translations.json
+apps/android-native/app/src/main/assets/registration-legal.json

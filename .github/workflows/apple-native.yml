@@ -87,7 +87,17 @@ jobs:
               modes = ['settings','bot','conversation','home','chats','friends','history','login'] if non_call else ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
               for mode in modes:
                   subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
-                  subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode,'-AppleLanguages','(ru)','-AppleLocale','ru_RU'],check=True)
+                  launch = ['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode,'-AppleLanguages','(ru)','-AppleLocale','ru_RU']
+                  for attempt in range(4):
+                      result = subprocess.run(launch, capture_output=True, text=True)
+                      if result.returncode == 0:
+                          break
+                      print(result.stderr, flush=True)
+                      if attempt == 3 or 'SBMainWorkspace' not in result.stderr:
+                          subprocess.run(['xcrun','simctl','spawn',uid,'log','show','--last','1m','--style','compact',
+                              '--predicate','eventMessage CONTAINS[c] "com.trlka.ios"'])
+                          result.check_returncode()
+                      time.sleep(4 * (attempt + 1))
                   time.sleep(6)
                   subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
               if family == 'iPhone' and not quick:

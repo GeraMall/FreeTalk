@@ -7,6 +7,8 @@ struct LoginView: View {
     @State private var visiblePassword = false
     @State private var form: AccountFormMode?
     @State private var notice: String?
+    @State private var challenge = false
+    @State private var proof: String?
 
     var body: some View {
         ScrollView {
@@ -41,12 +43,7 @@ struct LoginView: View {
                         Text(error).font(.callout).foregroundStyle(.red).accessibilityAddTraits(.updatesFrequently)
                     }
                     Button {
-                        Task {
-                            notice = nil
-                            await account.login(login: login, password: password)
-                            if account.needsEmailVerification { form = .verify }
-                            if account.user != nil { password = "" }
-                        }
+                        Task { await submit() }
                     } label: {
                         HStack {
                             if account.working { ProgressView().controlSize(.small) }
@@ -70,6 +67,13 @@ struct LoginView: View {
             }
             .padding(24).frame(maxWidth: 440).webPanel(24).padding(20).frame(maxWidth: .infinity)
         }
+        .sheet(isPresented: $challenge, onDismiss: {
+            guard let token = proof else { return }
+            proof = nil
+            Task { await submit(captchaToken: token) }
+        }) {
+            CaptchaSheet { value in proof = value; challenge = false }
+        }
         .sheet(item: $form) { mode in
             AccountForm(account: account, initial: mode, email: login.contains("@") && !login.hasPrefix("@") ? login : "") { address in
                 login = address
@@ -79,5 +83,12 @@ struct LoginView: View {
                 form = nil
             }
         }
+    }
+    @MainActor private func submit(captchaToken: String? = nil) async {
+        notice = nil
+        await account.login(login: login, password: password, captchaToken: captchaToken)
+        if account.needsCaptcha { challenge = true }
+        else if account.needsEmailVerification { form = .verify }
+        if account.user != nil { password = "" }
     }
 }

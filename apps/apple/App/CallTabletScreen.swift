@@ -8,6 +8,7 @@ import TRLKACore
 struct CallTabletScreen: View {
     let call: CallController
     let client: AccountClient
+    @AppStorage("trlka.language") private var language = "ru"
     @AppStorage("trlka.theme") private var theme = "default"
     @State private var failed = false
     @State private var avatars: [String: String] = [:]
@@ -49,7 +50,6 @@ struct CallTabletScreen: View {
 
     private var payload: String? {
         guard let activity = call.tablet, activity["open"] as? Bool == true else { return nil }
-        let language = Locale.preferredLanguages.first?.split(separator: "-").first.map(String.init) ?? "ru"
         let participants: [[String: Any]] = call.participants.map { peer in
             var result: [String: Any] = ["id": peer.id, "name": peer.name, "isOwner": peer.isOwner,
                 "muted": peer.muted, "deafened": peer.deafened ?? false, "connectedAt": 0,
@@ -58,7 +58,7 @@ struct CallTabletScreen: View {
             return result
         }
         let snapshot: [String: Any] = ["activity": activity, "participants": participants, "selfId": call.selfID,
-            "muted": call.muted, "deafened": call.deafened, "language": language == "zh" ? "zh-CN" : language,
+            "muted": call.muted, "deafened": call.deafened, "language": language,
             "theme": theme]
         guard let data = try? JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys]) else { return nil }
         return String(decoding: data, as: UTF8.self)

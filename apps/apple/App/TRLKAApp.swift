@@ -3,6 +3,7 @@ import TRLKACore
 
 @main
 struct TRLKAApp: App {
+    @AppStorage("trlka.language") private var language = "ru"
     @State private var account = AccountStore()
 
     @Environment(\.scenePhase) private var scenePhase
@@ -12,6 +13,7 @@ struct TRLKAApp: App {
         WindowGroup {
             RootView(account: account)
                 .tint(Brand.accent)
+                .environment(\.locale, Locale(identifier: language))
                 .preferredColorScheme(theme == "light" ? .light : .dark)
                 .onChange(of: theme, initial: true) { _, value in Brand.palette.theme = value }
                 .task(id: account.user?.id) { await account.appearance.refresh(user: account.user?.id, client: account.client) }

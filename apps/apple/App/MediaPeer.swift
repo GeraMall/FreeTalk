@@ -22,8 +22,8 @@ final class MediaPeer: NSObject {
     var state: RTCIceConnectionState = .new
     var tracks: [String: RTCVideoTrack] = [:]
     var sources: [String: Any]?
-    var localCamera: RTCVideoTrack?
     private var cameraSender: RTCRtpSender?
+    private var screenSender: RTCRtpSender?
     private var channels: [RTCDataChannel] = []
     private var pendingICE: [RTCIceCandidate] = []
     private var operation: Task<Void, Never>?
@@ -97,7 +97,19 @@ final class MediaPeer: NSObject {
             if let cameraSender { cameraSender.track = track }
             else { cameraSender = connection.add(track, streamIds: ["camera"]) }
         } else if let cameraSender { connection.removeTrack(cameraSender); self.cameraSender = nil }
-        localCamera = track
+        publishVideo()
+        negotiate()
+    }
+
+    func setScreen(_ track: RTCVideoTrack?) {
+        guard !closed, track != nil || screenSender != nil else { return }
+        if let track {
+            if let screenSender { screenSender.track = track }
+            else { screenSender = connection.add(track, streamIds: ["screen"]) }
+        } else if let screenSender {
+            connection.removeTrack(screenSender)
+            self.screenSender = nil
+        }
         publishVideo()
         negotiate()
     }
@@ -240,10 +252,12 @@ final class MediaPeer: NSObject {
         _ = channel.sendData(RTCDataBuffer(data: data, isBinary: false))
     }
     private func publishVideo() {
-        let mid = connection.transceivers.first(where: { $0.sender.senderId == cameraSender?.senderId })?.mid
+        func source(_ sender: RTCRtpSender?) -> [String: Any] {
+            let mid = sender.flatMap { current in connection.transceivers.first(where: { $0.sender.senderId == current.senderId })?.mid }
+            return ["active": sender?.track != nil, "trackId": sender?.track?.trackId as Any? ?? NSNull(), "mid": mid as Any? ?? NSNull()]
+        }
         let message: [String: Any] = ["version": 2, "sources": [
-            "camera": ["active": localCamera != nil, "trackId": localCamera?.trackId as Any? ?? NSNull(), "mid": mid as Any? ?? NSNull()],
-            "screen": ["active": false, "trackId": NSNull(), "mid": NSNull()]
+            "camera": source(cameraSender), "screen": source(screenSender)
         ]]
         for channel in channels where channel.readyState == .open && channel.label == "freetalk-video-state-v1" { sendData(message, channel: channel) }
     }
@@ -252,6 +266,8 @@ final class MediaPeer: NSObject {
         if let sources {
             guard let value = sources[source] as? [String: Any], value["active"] as? Bool == true,
                   let trackID = value["trackId"] as? String else { return nil }
+            if let mid = value["mid"] as? String,
+               let receiver = connection.transceivers.first(where: { $0.mid == mid })?.receiver.track as? RTCVideoTrack { return receiver }
             return tracks[trackID]
         }
         return source == "camera" ? tracks.values.first : nil
