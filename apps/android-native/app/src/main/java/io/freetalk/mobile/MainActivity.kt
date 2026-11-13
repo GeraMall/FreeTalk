@@ -3,6 +3,7 @@ package io.freetalk.mobile
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.key
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -144,7 +145,13 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
     var authPage by remember { mutableStateOf(AuthPage.Login) }
     var verificationEmail by remember { mutableStateOf("") }
     var recovery by remember { mutableStateOf(false) }
+    var challenge by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<String?>?>(null) }
     val scope = rememberCoroutineScope()
+    suspend fun requestToken(): String? {
+        val pending = kotlinx.coroutines.CompletableDeferred<String?>()
+        challenge = pending
+        return try { pending.await() } finally { if (challenge === pending) challenge = null }
+    }
 
     LaunchedEffect(restoreAttempt) {
         restoring = true
@@ -180,23 +187,24 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
                     onLogin = { login, password ->
                         status = "Входим…"
                         scope.launch {
-                            runCatching { api.login(login, password) }
+                            runCatching { withAuthCaptcha(::requestToken) { token -> api.login(login, password, token) } }
                                 .onSuccess { user = it.user; status = "" }
                                 .onFailure {
-                                    if (it is ApiException && it.code == "EMAIL_NOT_VERIFIED" && login.contains('@')) {
-                                        verificationEmail = login
+                                    if (it is CaptchaDismissed) { status = ""; return@onFailure }
+                                    if (it is ApiException && it.code == "EMAIL_NOT_VERIFIED") {
+                                        verificationEmail = login.takeIf { value -> AuthValidation.email(value) }.orEmpty()
                                         authPage = AuthPage.Verify
                                     }
                                     status = it.message ?: "Не удалось войти"
                                 }
                         }
                     },
-                    onRegister = { email, username, name, password, birthDate ->
+                    onRegister = { email, username, name, password, birthDate, legalVersion ->
                         status = "Создаём аккаунт…"
                         scope.launch {
-                            runCatching { api.register(email, username, name, password, birthDate) }
+                            runCatching { withAuthCaptcha(::requestToken) { token -> api.register(email, username, name, password, birthDate, legalVersion, token) } }
                                 .onSuccess { verificationEmail = email; authPage = AuthPage.Verify; status = "Код отправлен на почту" }
-                                .onFailure { status = it.message ?: "Не удалось зарегистрироваться" }
+                                .onFailure { status = if (it is CaptchaDismissed) "" else it.message ?: "Не удалось зарегистрироваться" }
                         }
                     },
                     onVerify = { email, code ->
@@ -227,6 +235,7 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
                     },
                 )
             }
+            challenge?.let { pending -> NativeCaptchaDialog { pending.complete(it) } }
         }
     }
 }
@@ -359,6 +368,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 if (PushRuntime.userId == user.id) PushRuntime.syncToken(notificationContext.applicationContext, token)
             }
             chatLiveEvents(api).collect { event ->
+                api.applyChatEventToCache(event)
                 api.chatEvents.emit(event)
                 when (event.optString("type")) {
                     "presence-updated" -> data = data?.copy(friends = data!!.friends.map {
@@ -377,7 +387,13 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                             ) })
                         } else latestLoad()
                     }
-                    "ready", "chat-updated", "history-cleared" -> latestLoad()
+                    "ready", "chat-updated", "history-cleared", "friends-updated" -> latestLoad()
+                    "chat-removed" -> {
+                        val removed = event.optString("chatId")
+                        if (activeChat?.id == removed) activeChat = null
+                        data = data?.let { account -> account.copy(chats = account.chats.filterNot { it.id == removed }) }
+                        latestLoad()
+                    }
                     "incoming-call" -> {
                         val inviter = event.optJSONObject("inviter") ?: org.json.JSONObject()
                         incomingCall = IncomingCall(
@@ -432,7 +448,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     else if (serviceOpen) ServiceBotScreen(api, { serviceOpen = false }, onRead = { if (readingService && accountLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) markServiceRead(it) })
     else if (activeChat != null) {
         val chat = activeChat!!
-        NativeChatScreen(
+        key(chat.id) { NativeChatScreen(
             api, cache, user, chat,
             onBack = { activeChat = null },
             onChanged = load,
@@ -455,7 +471,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             },
             onJoinCall = { code -> roomStatus = "Подключаемся…"; api.accessToken?.let { signaling.join(code, user, it) } },
             reading = readingChatId == chat.id,
-        )
+        ) }
     }
     else Scaffold(
         modifier = Modifier.background(appBackground),

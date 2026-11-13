@@ -7,7 +7,12 @@ import android.os.IBinder
 
 // Capture starts only after Android permission/consent and this foreground notification.
 class CallService : Service() {
-    companion object { var afterStart: (() -> Unit)? = null; var onEnd: (() -> Unit)? = null }
+    companion object {
+        var afterStart: (() -> Unit)? = null
+        var onStartDenied: (() -> Unit)? = null
+        var onEnd: (() -> Unit)? = null
+    }
+    private var foreground = false
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "end") { onEnd?.invoke(); stopSelf(); return START_NOT_STICKY }
@@ -21,7 +26,17 @@ class CallService : Service() {
         val defaultTypes = if (android.os.Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
         val requested = intent?.getIntExtra("types", defaultTypes) ?: defaultTypes
         val supported = if (android.os.Build.VERSION.SDK_INT >= 30) requested else requested and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        startForeground(80, notification, supported)
+        try {
+            startForeground(80, notification, supported)
+            foreground = true
+        } catch (e: RuntimeException) {
+            if (e !is SecurityException && e !is IllegalStateException) throw e
+            // Permission or foreground eligibility can change while the system picker is open.
+            afterStart = null
+            onStartDenied?.invoke()
+            if (!foreground) stopSelf(startId)
+            return START_NOT_STICKY
+        }
         afterStart?.also { afterStart = null; it() }
         return START_NOT_STICKY
     }

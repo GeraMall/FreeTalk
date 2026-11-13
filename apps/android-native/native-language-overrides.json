@@ -1,4 +1,8 @@
 {
+  "Предыдущие сообщения": ["Earlier messages", "更早的消息", "Алдыңғы хабарлар", "Папярэднія паведамленні", "ადრინდელი შეტყობინებები", "Mensajes anteriores"],
+  "Избранные GIF": ["Favorite GIFs", "收藏的 GIF", "Таңдаулы GIF", "Абраныя GIF", "რჩეული GIF-ები", "GIF favoritos"],
+  "Здесь появятся ваши GIF": ["Your saved GIFs will appear here", "你收藏的 GIF 将显示在这里", "Сақталған GIF осында көрсетіледі", "Тут з’явяцца захаваныя GIF", "აქ გამოჩნდება შენახული GIF-ები", "Tus GIF guardados aparecerán aquí"],
+  "Свой GIF": ["Upload a GIF", "上传 GIF", "GIF жүктеу", "Загрузіць GIF", "GIF-ის ატვირთვა", "Subir un GIF"],
   "TRLKA · БОТ": [
     "TRLKA · BOT",
     "TRLKA · 机器人",

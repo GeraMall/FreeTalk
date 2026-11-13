@@ -55,7 +55,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     if (screen == "tablet") NativeTablet(signal, null) { screen = "call" } else NativeRoomChat(signal)
                 }
             }
-            "login" -> BrandedAuthScreen(AuthPage.Login, "", "", {}, { _, _ -> }, { _, _, _, _, _ -> }, { _, _ -> }, {}, { screen = "recovery" })
+            "login" -> BrandedAuthScreen(AuthPage.Login, "", "", {}, { _, _ -> }, { _, _, _, _, _, _ -> }, { _, _ -> }, {}, { screen = "recovery" })
             "recovery" -> PasswordRecoveryScreen(api) { screen = "login" }
             "conversation" -> NativeChatScreen(api, cache, self, chat, back, {}, { screen = "call" }, { screen = "call" }, preview = listOf(
                 ChatMessage("m1", "Привет! Как дела?", friend.id, "Макс", "2026-11-02T12:00:00Z"),

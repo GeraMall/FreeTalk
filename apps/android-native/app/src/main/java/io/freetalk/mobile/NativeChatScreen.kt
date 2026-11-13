@@ -66,6 +66,8 @@ internal fun NativeChatScreen(
 ) {
     var messages by remember(chat.id) { mutableStateOf(preview ?: api.cachedMessages(chat.id).orEmpty()) }
     var loading by remember(chat.id) { mutableStateOf(preview == null && api.cachedMessages(chat.id) == null) }
+    var hasEarlier by remember(chat.id) { mutableStateOf(false) }
+    var loadingEarlier by remember(chat.id) { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var input by remember(chat.id) { mutableStateOf("") }
@@ -76,12 +78,17 @@ internal fun NativeChatScreen(
     var replyTo by remember(chat.id) { mutableStateOf<ChatMessage?>(null) }
     var editTarget by remember(chat.id) { mutableStateOf<ChatMessage?>(null) }
     var forwardTargets by remember(chat.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
+    var forwardDestination by remember(chat.id) { mutableStateOf<ChatSummary?>(null) }
     var forwarding by remember { mutableStateOf(false) }
     var forwardingChats by remember { mutableStateOf(emptyList<ChatSummary>()) }
     var readers by remember { mutableStateOf<List<ChatReader>?>(null) }
     var downloaded by remember(chat.id) { mutableStateOf(emptySet<String>()) }
     var downloading by remember { mutableStateOf<String?>(null) }
     var selected by remember(chat.id) { mutableStateOf(emptySet<String>()) }
+    var chooseGif by remember(chat.id) { mutableStateOf(false) }
+    var favorites by remember(chat.id) { mutableStateOf<List<ChatGif>?>(null) }
+    var gifError by remember(chat.id) { mutableStateOf(false) }
+    var favoriteAttempt by remember(chat.id) { mutableIntStateOf(0) }
     var typingPeers by remember(chat.id) { mutableStateOf(emptyMap<String, Pair<String, Long>>()) }
     var typingClock by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var peerProfile by remember(chat.id) { mutableStateOf(chat.members.firstOrNull { it.id != user.id }?.let { api.cachedProfile(it.id) }) }
@@ -89,6 +96,35 @@ internal fun NativeChatScreen(
     val context = LocalContext.current
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+    fun sendGif(getGif: suspend () -> ChatGif) {
+        if (sending) return
+        val replyId = replyTo?.id
+        sending = true
+        chooseGif = false
+        scope.launch {
+            try {
+                val sent = api.sendGif(chat.id, getGif(), replyId)
+                messages = (messages + sent).distinctBy { it.id }
+                replyTo = null
+                error = ""
+                onChanged()
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: "Не удалось отправить GIF" }
+            finally { sending = false }
+        }
+    }
+    val gifUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) sendGif { uploadPickedGif(context, uri, api) }
+    }
+    fun toggleReaction(message: ChatMessage, emoji: String) {
+        scope.launch {
+            try {
+                val latest = api.react(message.id, emoji, message.reactions.any { it.emoji == emoji && it.mine })
+                messages = messages.map { if (it.id == message.id) it.copy(reactions = latest) else it }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message.orEmpty() }
+        }
+    }
     val attachment = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null && !sending) {
             sending = true
@@ -144,8 +180,8 @@ internal fun NativeChatScreen(
                         messages = messages.filterNot { it.id == event.optString("messageId") }
                         return@collect
                     }
-                    "message-updated" -> if (event.has("body")) {
-                        messages = messages.map { if (it.id != event.optString("messageId")) it else it.copy(body = event.optString("body")) }
+                    "message-updated" -> {
+                        messages = messages.map { if (it.id != event.optString("messageId")) it else it.updatedBy(event) }
                         return@collect
                     }
                 }
@@ -157,7 +193,18 @@ internal fun NativeChatScreen(
                         }
                         return@withLock
                     }
-                    try { messages = api.loadMessages(chat.id); error = "" }
+                    try {
+                        val page = api.loadMessages(chat.id)
+                        val oldestLoaded = page.messages.firstOrNull()?.let { first -> messages.indexOfFirst { it.id == first.id } } ?: -1
+                        if (page.hasMore && oldestLoaded > 0) {
+                            // Keep older pages and the user's reading position across a reconnect.
+                            messages = messages.take(oldestLoaded) + page.messages
+                        } else {
+                            messages = page.messages
+                            hasEarlier = page.hasMore
+                        }
+                        error = ""
+                    }
                     catch (e: CancellationException) { throw e }
                     catch (e: Exception) { error = e.message ?: "Не удалось загрузить сообщения" }
                     finally { loading = false }
@@ -165,12 +212,24 @@ internal fun NativeChatScreen(
             }
         }
     }
-    LaunchedEffect(chat.id, input.isNotBlank(), reading) {
+    LaunchedEffect(chat.id, input.isNotBlank(), reading, lifecycle) {
         if (preview != null || chat.isSaved) return@LaunchedEffect
         if (input.isBlank() || !reading) { runCatching { api.typing(chat.id, false) }; return@LaunchedEffect }
-        while (true) { runCatching { api.typing(chat.id, true) }; delay(2500) }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { runCatching { api.typing(chat.id, true) }; delay(2500) }
+        }
     }
-    LaunchedEffect(chat.id) { while (true) { delay(1000); typingClock = System.currentTimeMillis() } }
+    LaunchedEffect(chat.id, typingPeers, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            typingClock = System.currentTimeMillis()
+            val nextExpiry = typingPeers.values.minOfOrNull { it.second }
+            if (nextExpiry != null) {
+                delay((nextExpiry - typingClock).coerceAtLeast(0))
+                typingClock = System.currentTimeMillis()
+                typingPeers = typingPeers.filterValues { it.second > typingClock }
+            }
+        }
+    }
     LaunchedEffect(chat.id, lifecycle, reading) {
         if (preview != null || chat.isSaved || !reading) return@LaunchedEffect
         val recorded = mutableSetOf<String>()
@@ -183,11 +242,13 @@ internal fun NativeChatScreen(
             }
         }
     }
-    LaunchedEffect(chat.id) {
-        if (preview != null) return@LaunchedEffect
-        while (true) {
-            runCatching { api.activeCall(chat.id) }.onSuccess { activeCall = it }
-            delay(3_000)
+    LaunchedEffect(chat.id, lifecycle, reading) {
+        if (preview != null || !reading || chat.isSaved) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                runCatching { api.activeCall(chat.id) }.onSuccess { activeCall = it }
+                delay(3_000)
+            }
         }
     }
     BackHandler { if (selected.isNotEmpty()) selected = emptySet() else onBack() }
@@ -254,7 +315,9 @@ internal fun NativeChatScreen(
                                 MobileText(message.body.ifBlank { "Звонок Trlka" }, fontWeight = FontWeight.SemiBold)
                                 MobileText(chatDate(message.createdAt), color = Color(0xFF9AABC1), fontSize = 10.sp)
                             }
-                            if (activeCall != null) TextButton(onClick = { onJoinCall(activeCall!!.roomId) }) { MobileText("Войти") }
+                            activeCall?.takeIf { !message.callEnded && message.callRoomId == it.roomId }?.let { current ->
+                                TextButton(onClick = { onJoinCall(current.roomId) }) { MobileText("Войти") }
+                            }
                         }
                     }
                     return@items
@@ -264,15 +327,27 @@ internal fun NativeChatScreen(
                     Row(Modifier.fillMaxWidth().background(if (message.id in selected) MobileDesign.accent.copy(alpha = .12f) else Color.Transparent), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                         if (!mine) { MobileAvatar(message.senderName, message.avatarUrl, 32.dp); Spacer(Modifier.width(8.dp)) }
                         Column(Modifier.widthIn(max = bubbleWidth), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                        MobileMessage(if (message.deleted) "Сообщение удалено" else message.body, mobileMessageTime(message.createdAt), mine, Modifier.widthIn(max = bubbleWidth).combinedClickable(
+                        MobileMessage(if (message.deleted) "Сообщение удалено" else if (message.gif == null) message.body else "", mobileMessageTime(message.createdAt), mine, Modifier.widthIn(max = bubbleWidth).combinedClickable(
                             onClick = { if (selected.isNotEmpty()) selected = if (message.id in selected) selected - message.id else selected + message.id },
                             onLongClick = { if (selected.isNotEmpty()) selected = selected + message.id else actionTarget = message },
                         ), onLink = { link -> roomCodeFromLink(link)?.let { onJoinCall(it); true } ?: false }, afterText = {
-                            if (!message.deleted && preview == null) NativeVideoPreview(api, cache, user.id, message.body)
+                            if (!message.deleted && message.gif == null && preview == null) NativeVideoPreview(api, cache, user.id, message.body)
                         }) {
                             if (chat.type == "group" && !mine) MobileText(message.senderName, localize = false, color = MobileDesign.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             message.reply?.let { MobileText(it.take(120), localize = false, fontSize = 12.sp, color = MobileDesign.muted) }
-                            if (message.kind == "image" && !message.deleted) CachedChatPhoto(api, cache, user.id, message, false) { if (selected.isEmpty()) viewer = message else selected = selected + message.id }
+                            if (!message.deleted) message.gif?.let { gif ->
+                                NativeGifImage(gif, api, cache, user.id, true, message.expiresAt,
+                                    Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio((gif.width.toFloat() / gif.height).coerceIn(.7f, 2.2f)))
+                                val attribution = gif.attributionUrl
+                                MobileText("GIF · " + gif.provider, localize = false, color = MobileDesign.muted, fontSize = 11.sp,
+                                    modifier = if (attribution == null) Modifier else Modifier.clickable {
+                                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(attribution))) }
+                                    })
+                            }
+                            if (message.kind == "image" && !message.deleted) CachedChatPhoto(api, cache, user.id, message, false) {
+                                if (selected.isEmpty()) viewer = message
+                                else selected = if (message.id in selected) selected - message.id else selected + message.id
+                            }
                             if (message.kind == "file" && !message.deleted) OutlinedButton(enabled = downloading == null, onClick = {
                                 downloading = message.id
                                 saveFile.launch(message.filename.ifBlank { "file" })
@@ -287,7 +362,7 @@ internal fun NativeChatScreen(
                         if (message.reactions.isNotEmpty() && !message.deleted) FlowRow(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             message.reactions.forEach { reaction ->
                                 OutlinedButton(enabled = preview == null, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 0.dp), modifier = Modifier.height(30.dp), onClick = {
-                                    scope.launch { runCatching { api.react(message.id, reaction.emoji, reaction.mine) }.onFailure { error = it.message.orEmpty() } }
+                                    toggleReaction(message, reaction.emoji)
                                 }) { MobileText("${reaction.emoji} ${reaction.count}", localize = false, fontSize = 12.sp) }
                             }
                         }
@@ -295,6 +370,26 @@ internal fun NativeChatScreen(
                         if (mine) { Spacer(Modifier.width(8.dp)); MobileAvatar(user.displayName, user.avatarUrl, 32.dp) }
                     }
                 }
+            }
+            if (hasEarlier && preview == null) item(key = "older") {
+                TextButton(enabled = !loadingEarlier, onClick = {
+                    if (!loadingEarlier) {
+                        loadingEarlier = true
+                        scope.launch {
+                            try {
+                                mutex.withLock {
+                                    val first = messages.firstOrNull() ?: return@withLock
+                                    val page = api.loadMessages(chat.id, first.createdAt)
+                                    val older = page.messages.filterNot { past -> messages.any { it.id == past.id } }
+                                    messages = older + messages
+                                    hasEarlier = older.isNotEmpty() && page.hasMore
+                                }
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { error = e.message.orEmpty() }
+                            finally { loadingEarlier = false }
+                        }
+                    }
+                }, modifier = Modifier.fillMaxWidth()) { MobileText(if (loadingEarlier) "Загружаем предыдущие сообщения…" else "Предыдущие сообщения") }
             }
         }
         val typing = typingPeers.values.filter { it.second > typingClock }.map { it.first }.take(2)
@@ -309,7 +404,9 @@ internal fun NativeChatScreen(
             }
             IconButton(onClick = { replyTo = null; editTarget = null }) { Icon(Icons.Outlined.Close, "Отмена") }
         }
-        MobileComposer(input, { input = it }, sending, enabled = preview == null, placeholder = "Написать сообщение…", onAttach = { attachment.launch(arrayOf("*/*")) }) {
+        MobileComposer(input, { input = it }, sending, enabled = preview == null, placeholder = "Написать сообщение…",
+            onAttach = if (editTarget != null) null else ({ attachment.launch(arrayOf("*/*")) }),
+            onGif = if (editTarget != null) null else ({ chooseGif = true })) {
             val body = input.trim()
             if (body.isNotEmpty() && !sending) {
                 sending = true
@@ -341,11 +438,15 @@ internal fun NativeChatScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf("❤️", "👍", "😂", "😮", "😢", "🔥").forEach { emoji -> TextButton(enabled = preview == null, onClick = {
                     actionTarget = null
-                    scope.launch { runCatching { api.react(message.id, emoji, message.reactions.any { it.emoji == emoji && it.mine }) }.onFailure { error = it.message.orEmpty() } }
+                    toggleReaction(message, emoji)
                 }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) { MobileText(emoji, fontSize = 23.sp) } }
             }
             TextButton(onClick = { replyTo = message; editTarget = null; actionTarget = null }) { MobileText("Ответить") }
-            if (message.senderId == user.id && message.kind == "text") TextButton(onClick = { editTarget = message; replyTo = null; input = message.body; actionTarget = null }) { MobileText("Изменить") }
+            if (message.senderId == user.id && message.kind == "text" && message.gif == null) TextButton(onClick = { editTarget = message; replyTo = null; input = message.body; actionTarget = null }) { MobileText("Изменить") }
+            if (message.gif != null) TextButton(enabled = preview == null, onClick = {
+                actionTarget = null
+                scope.launch { runCatching { api.favoriteGif(message.id) }.onFailure { error = it.message.orEmpty() } }
+            }) { MobileText("Добавить GIF в избранное") }
             TextButton(onClick = { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TRLKA", message.body)); actionTarget = null }) { MobileText("Копировать текст") }
             TextButton(onClick = { forwardTargets = listOf(message); actionTarget = null }) { MobileText("Переслать") }
             TextButton(onClick = { selected = setOf(message.id); actionTarget = null }) { MobileText("Выделить") }
@@ -359,27 +460,77 @@ internal fun NativeChatScreen(
             }
         }
     } }
-    LaunchedEffect(forwardTargets.isNotEmpty()) { if (forwardTargets.isNotEmpty() && preview == null) runCatching { api.loadChats() }.onSuccess { forwardingChats = it } }
-    if (forwardTargets.isNotEmpty()) ModalBottomSheet(onDismissRequest = { if (!forwarding) forwardTargets = emptyList() }, containerColor = MobileDesign.canvas) {
+    if (chooseGif) ModalBottomSheet(onDismissRequest = { chooseGif = false }, containerColor = MobileDesign.canvas) {
+        LaunchedEffect(favoriteAttempt) {
+            gifError = false
+            try { favorites = api.gifFavorites() }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { gifError = true }
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MobileText("Избранные GIF", Modifier.weight(1f), fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                TextButton(onClick = { gifUpload.launch(arrayOf("image/gif")) }) { MobileText("Свой GIF") }
+            }
+            if (gifError) TextButton(onClick = { favoriteAttempt++ }) { MobileText("Повторить") }
+            else if (favorites == null) CircularProgressIndicator(Modifier.size(24.dp))
+            else if (favorites!!.isEmpty()) MobileText("Здесь появятся ваши GIF", color = MobileDesign.muted)
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                items(favorites.orEmpty().chunked(3)) { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { gif -> NativeGifImage(gif, api, cache, user.id, false,
+                        modifier = Modifier.weight(1f).padding(vertical = 3.dp).aspectRatio(1.5f).clip(RoundedCornerShape(8.dp)).clickable { sendGif { gif } }) }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                } }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+    if (forwardTargets.isNotEmpty()) ModalBottomSheet(onDismissRequest = { if (!forwarding) { forwardTargets = emptyList(); forwardDestination = null } }, containerColor = MobileDesign.canvas) {
+        var forwardError by remember { mutableStateOf("") }
+        var loadAttempt by remember { mutableIntStateOf(0) }
+        LaunchedEffect(loadAttempt) {
+            if (preview == null) try { forwardingChats = api.loadChats(); forwardError = "" }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { forwardError = e.message.orEmpty() }
+        }
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             MobileText("Переслать сообщение", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            if (forwardError.isNotEmpty()) MobileText(forwardError, localize = false, color = MobileDesign.red)
             val sendTo: (ChatSummary?) -> Unit = { destination -> if (!forwarding) {
+                forwardError = ""
                 forwarding = true
                 scope.launch {
                     try {
-                        val target = destination ?: api.savedChat()
-                        for (message in forwardTargets) { api.forward(message.id, target.id); delay(600) }
-                        forwardTargets = emptyList(); selected = emptySet(); onChanged()
-                    } catch (e: Exception) { error = e.message.orEmpty() }
+                        val target = forwardDestination ?: destination ?: api.savedChat()
+                        forwardDestination = target
+                        for (message in forwardTargets.toList()) {
+                            api.forward(message.id, target.id)
+                            forwardTargets = forwardTargets.filterNot { it.id == message.id }
+                            selected = selected - message.id
+                            if (forwardTargets.isNotEmpty()) delay(600)
+                        }
+                        forwardDestination = null; onChanged()
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { forwardError = e.message.orEmpty() }
                     finally { forwarding = false }
                 }
             } }
-            TextButton(enabled = !forwarding && preview == null, onClick = { sendTo(null) }) { Icon(Icons.Outlined.Bookmark, null); MobileText("Избранное", Modifier.padding(start = 8.dp)) }
-            LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                items(forwardingChats.filterNot { it.isSaved }.sortedByDescending { it.lastMessageAt }, key = { it.id }) { destination ->
-                    TextButton(enabled = !forwarding, onClick = { sendTo(destination) }, modifier = Modifier.fillMaxWidth()) {
-                        MobileAvatar(destination.displayTitle(user.id), destination.avatarUrl)
-                        MobileText(destination.displayTitle(user.id), localize = false, modifier = Modifier.padding(start = 12.dp))
+            if (forwardDestination != null) {
+                MobileText(forwardDestination!!.displayTitle(user.id), localize = false)
+                if (forwarding) CircularProgressIndicator(Modifier.size(20.dp))
+                else TextButton(onClick = { sendTo(forwardDestination) }) { MobileText("Повторить") }
+            } else {
+                TextButton(enabled = !forwarding && preview == null, onClick = { sendTo(null) }) {
+                    Icon(Icons.Outlined.Bookmark, null)
+                    MobileText("Избранное", Modifier.padding(start = 8.dp))
+                }
+                if (forwardError.isNotEmpty()) TextButton(onClick = { loadAttempt++ }) { MobileText("Повторить") }
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(forwardingChats.filterNot { it.isSaved }.sortedByDescending { it.lastMessageAt }, key = { it.id }) { destination ->
+                        TextButton(enabled = !forwarding, onClick = { sendTo(destination) }, modifier = Modifier.fillMaxWidth()) {
+                            MobileAvatar(destination.displayTitle(user.id), destination.avatarUrl)
+                            MobileText(destination.displayTitle(user.id), localize = false, modifier = Modifier.padding(start = 12.dp))
+                        }
                     }
                 }
             }

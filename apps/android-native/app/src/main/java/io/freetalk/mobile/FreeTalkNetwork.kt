@@ -90,7 +90,15 @@ data class ChatMessage(
     val width: Int = 0, val height: Int = 0,
     val filename: String = "", val mime: String = "application/octet-stream", val size: Long = 0,
     val reactions: List<ChatReaction> = emptyList(), val reply: String? = null, val deleted: Boolean = false,
+    val gif: ChatGif? = null, val callRoomId: String? = null, val callEnded: Boolean = false,
 )
+internal data class ChatPage(val messages: List<ChatMessage>, val hasMore: Boolean)
+internal fun ChatMessage.updatedBy(event: JSONObject): ChatMessage {
+    val metadata = event.optJSONObject("metadata")
+    return copy(body = event.optString("body", body),
+        callRoomId = metadata?.nullableString("roomId") ?: callRoomId,
+        callEnded = metadata?.optBoolean("ended", callEnded) ?: callEnded)
+}
 data class ChatReaction(val emoji: String, val count: Int, val mine: Boolean)
 data class AccountDevice(val id: String, val current: Boolean, val userAgent: String, val lastActiveAt: String)
 data class AccountData(
@@ -137,6 +145,22 @@ class FreeTalkApi(private val sessions: SessionStore) {
     private val profileCache = linkedMapOf<String, SignedInUser>()
     internal var cachedServiceMessages by mutableStateOf<List<ServiceEntry>?>(null); private set
     @Synchronized fun cachedMessages(chatId: String): List<ChatMessage>? = messagesCache[chatId]
+    @Synchronized internal fun applyChatEventToCache(event: JSONObject) {
+        val chatId = event.optString("chatId")
+        val current = messagesCache[chatId] ?: return
+        val id = event.optString("messageId")
+        when (event.optString("type")) {
+            "chat-removed", "history-cleared" -> messagesCache.remove(chatId)
+            "message-deleted" -> rememberMessages(chatId, current.filterNot { it.id == id })
+            "message-created" -> event.optJSONObject("message")?.let {
+                rememberMessages(chatId, (current + parseMessage(it)).distinctBy { message -> message.id })
+            }
+            "message-reactions-updated" -> rememberMessages(chatId, current.map {
+                if (it.id == id) it.copy(reactions = parseReactions(event.optJSONArray("reactions"))) else it
+            })
+            "message-updated" -> rememberMessages(chatId, current.map { if (it.id == id) it.updatedBy(event) else it })
+        }
+    }
     @Synchronized private fun rememberMessages(chatId: String, messages: List<ChatMessage>): List<ChatMessage> {
         messagesCache.remove(chatId)
         messagesCache[chatId] = messages.takeLast(200)
@@ -166,16 +190,17 @@ class FreeTalkApi(private val sessions: SessionStore) {
         }
     }
 
-    suspend fun login(login: String, password: String): SignedInSession =
-        acceptSession(publicJson("/v1/auth/login", JSONObject().put("login", login).put("password", password)))
+    suspend fun login(login: String, password: String, captchaToken: String? = null): SignedInSession =
+        acceptSession(publicJson("/v1/auth/login", JSONObject().put("login", login).put("password", password).putOpt("captchaToken", captchaToken)))
 
-    suspend fun register(email: String, username: String, displayName: String, password: String, birthDate: String) {
+    suspend fun register(email: String, username: String, displayName: String, password: String, birthDate: String, legalVersion: String, captchaToken: String? = null) {
         publicJson(
             "/v1/auth/register",
             JSONObject().put("email", email.trim().lowercase())
                 .put("username", username.trim().removePrefix("@").lowercase())
                 .put("displayName", displayName.trim()).put("password", password).put("birthDate", birthDate)
-                .put("acceptedTerms", true).put("acceptedPrivacy", true),
+                .put("acceptedTerms", true).put("acceptedPrivacy", true).put("legalVersion", legalVersion)
+                .putOpt("captchaToken", captchaToken),
         )
     }
 
@@ -215,9 +240,13 @@ class FreeTalkApi(private val sessions: SessionStore) {
         )
     }
 
-    suspend fun loadMessages(chatId: String): List<ChatMessage> {
-        val array = authorizedJson("/v1/chats/$chatId/messages").optJSONArray("messages") ?: JSONArray()
-        return rememberMessages(chatId, array.objects().map(::parseMessage))
+    internal suspend fun loadMessages(chatId: String, before: String? = null): ChatPage {
+        UUID.fromString(chatId)
+        val query = before?.let { "?before=" + java.net.URLEncoder.encode(it, "UTF-8") }.orEmpty()
+        val result = authorizedJson("/v1/chats/$chatId/messages$query")
+        val messages = result.getJSONArray("messages").objects().map(::parseMessage)
+        if (before == null) rememberMessages(chatId, messages)
+        return ChatPage(messages, result.optBoolean("hasMore") && messages.isNotEmpty())
     }
 
     suspend fun sendMessage(chatId: String, body: String, replyTo: String? = null): ChatMessage {
@@ -237,9 +266,10 @@ class FreeTalkApi(private val sessions: SessionStore) {
 
     suspend fun editMessage(messageId: String, body: String) { UUID.fromString(messageId); authorizedJson("/v1/messages/$messageId", "PATCH", JSONObject().put("body", body)) }
     suspend fun deleteMessage(messageId: String) { UUID.fromString(messageId); authorizedJson("/v1/messages/$messageId", "DELETE") }
-    suspend fun react(messageId: String, emoji: String, remove: Boolean) {
+    suspend fun react(messageId: String, emoji: String, remove: Boolean): List<ChatReaction> {
         UUID.fromString(messageId)
-        authorizedJson("/v1/messages/$messageId/reactions", "POST", JSONObject().put("emoji", emoji).put("remove", remove))
+        val result = authorizedJson("/v1/messages/$messageId/reactions", "PUT", JSONObject().put("emoji", emoji).put("remove", remove))
+        return parseReactions(result.getJSONArray("reactions"))
     }
     suspend fun forward(messageId: String, chatId: String) {
         UUID.fromString(messageId); UUID.fromString(chatId)
@@ -253,7 +283,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
     suspend fun readers(chatId: String, messageId: String): List<ChatReader> {
         UUID.fromString(chatId); UUID.fromString(messageId)
         return (authorizedJson("/v1/chats/$chatId/messages/$messageId/readers").optJSONArray("readers") ?: JSONArray()).objects().map {
-            ChatReader(it.optString("displayName"), it.nullableString("avatarUrl"), it.optString("readAt"))
+            ChatReader(it.nullableString("name") ?: it.optString("username"), it.nullableString("avatarUrl"), it.optString("readAt"))
         }
     }
 
@@ -288,6 +318,28 @@ class FreeTalkApi(private val sessions: SessionStore) {
             refreshMutex.withLock { if (accessToken == token) refresh(sessions.readRefreshToken() ?: throw error) }
             execute(path) { it.header("Authorization", "Bearer ${accessToken ?: throw error}").post(body).build() }
         }
+    }
+
+    internal suspend fun gifFavorites(): List<ChatGif> =
+        authorizedJson("/v1/gifs/favorites").getJSONArray("gifs").objects().mapNotNull(::parseChatGif)
+
+    internal suspend fun favoriteGif(messageId: String) {
+        UUID.fromString(messageId)
+        authorizedJson("/v1/gifs/favorites", "POST", JSONObject().put("messageId", messageId))
+    }
+
+    internal suspend fun sendGif(chatId: String, gif: ChatGif, replyTo: String?): ChatMessage {
+        UUID.fromString(chatId)
+        val input = gif.assetId?.let { JSONObject().put("assetId", it) } ?: JSONObject(gif.metadata)
+        replyTo?.let { input.put("replyToMessageId", it) }
+        return parseMessage(authorizedJson("/v1/chats/$chatId/gifs", "POST", input).getJSONObject("message"))
+    }
+
+    internal suspend fun uploadGif(file: java.io.File, name: String, thumbnail: ByteArray): ChatGif {
+        val form = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("gif", name, file.asRequestBody("image/gif".toMediaType()))
+            .addFormDataPart("thumbnail", "preview.png", thumbnail.toRequestBody("image/png".toMediaType())).build()
+        return parseChatGif(authorizedUpload("/v1/gifs/uploads", form).getJSONObject("gif")) ?: error("Некорректный GIF")
     }
 
     suspend fun manageChat(chat: ChatSummary, action: String, currentUserId: String) {
@@ -390,28 +442,29 @@ class FreeTalkApi(private val sessions: SessionStore) {
         ).getJSONObject("invitation").getString("roomId")
     }
 
-    suspend fun downloadChatImage(messageId: String, full: Boolean): ByteArray = withContext(Dispatchers.IO) {
-        require(runCatching { UUID.fromString(messageId) }.isSuccess)
-        val token = accessToken ?: throw ApiException("UNAUTHORIZED", "Требуется вход", 401)
+    suspend fun downloadChatImage(messageId: String, full: Boolean): ByteArray {
+        UUID.fromString(messageId)
         val path = "/v1/messages/$messageId/image?variant=" + if (full) "full" else "thumbnail"
+        return authorizedImage(path, 20L * 1024 * 1024)
+    }
+
+    internal suspend fun gifAsset(id: String, thumbnail: Boolean): ByteArray {
+        UUID.fromString(id)
+        val path = "/v1/gifs/assets/$id" + if (thumbnail) "?variant=thumbnail" else ""
+        return authorizedImage(path, if (thumbnail) 64L * 1024 else 30L * 1024 * 1024)
+    }
+
+    private suspend fun authorizedImage(path: String, limit: Long): ByteArray = withContext(Dispatchers.IO) {
+        val token = accessToken ?: throw ApiException("UNAUTHORIZED", "Требуется вход", 401)
         fun fetch(bearer: String): ByteArray = androidServers.execute(path) {
             it.header("Authorization", "Bearer $bearer").build()
         }.use { response ->
             if (!response.isSuccessful) throw ApiException("IMAGE_FAILED", "Не удалось загрузить фото (${response.code})", response.code)
             val body = response.body ?: error("Пустое изображение")
             require(body.contentType()?.type == "image") { "Сервер вернул не изображение" }
-            val limit = 20 * 1024 * 1024
             require(body.contentLength() <= limit) { "Изображение слишком большое" }
             val output = java.io.ByteArrayOutputStream()
-            body.byteStream().use { input ->
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    require(output.size() + count <= limit) { "Изображение слишком большое" }
-                    output.write(buffer, 0, count)
-                }
-            }
+            body.byteStream().use { input -> copyBounded(input, output, limit) }
             output.toByteArray()
         }
         try { fetch(token) } catch (error: ApiException) {
@@ -549,6 +602,9 @@ class FreeTalkApi(private val sessions: SessionStore) {
         parseReactions(json.optJSONArray("reactions")),
         (json.optJSONObject("reply_to") ?: json.optJSONObject("metadata")?.optJSONObject("replyTo"))?.optString("body"),
         !json.isNull("deleted_at") || json.optJSONObject("metadata")?.optBoolean("deleted") == true,
+        json.optJSONObject("metadata")?.optJSONObject("gif")?.let(::parseChatGif),
+        json.optJSONObject("metadata")?.nullableString("roomId"),
+        json.optJSONObject("metadata")?.optBoolean("ended") == true,
     )
     internal fun parseReactions(array: JSONArray?) = (array ?: JSONArray()).objects().map {
         val ids = it.optJSONArray("userIds") ?: JSONArray()

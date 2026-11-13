@@ -75,9 +75,16 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     val link = "https://trlka.com/join/$roomId"
     val latestLeave by rememberUpdatedState(onLeave)
     fun startService(extraTypes: Int = 0, action: () -> Unit) {
-        CallService.afterStart = { runCatching(action).onFailure { feedback = it.message ?: "Не удалось подключить медиа" } }
-        context.startForegroundService(Intent(context, CallService::class.java).putExtra("types",
-            (if (android.os.Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0) or extraTypes))
+        if (CallService.afterStart != null) return
+        CallService.afterStart = { runCatching(action).onSuccess { feedback = "" }.onFailure { feedback = it.message ?: "Не удалось подключить медиа" } }
+        try {
+            context.startForegroundService(Intent(context, CallService::class.java).putExtra("types",
+                (if (android.os.Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0) or extraTypes))
+        } catch (e: RuntimeException) {
+            if (e !is SecurityException && e !is IllegalStateException) throw e
+            CallService.afterStart = null
+            CallService.onStartDenied?.invoke()
+        }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) startService { if (media == null) media = NativeCallMedia(context.applicationContext, signaling) }
@@ -100,14 +107,16 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         val previousVolumeStream = activity?.volumeControlStream
         activity?.volumeControlStream = android.media.AudioManager.STREAM_VOICE_CALL
         CallService.onEnd = { latestLeave() }
+        CallService.onStartDenied = { feedback = "Не удалось подключить медиа" }
         onDispose {
             if (previousVolumeStream != null) activity.volumeControlStream = previousVolumeStream
-            CallService.afterStart = null; CallService.onEnd = null; media?.close(); context.stopService(Intent(context, CallService::class.java))
+            CallService.afterStart = null; CallService.onStartDenied = null; CallService.onEnd = null
+            media?.close(); context.stopService(Intent(context, CallService::class.java))
         }
     }
     LaunchedEffect(roomId) { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
     LaunchedEffect(state.closed) { if (state.closed) onLeave() }
-    LaunchedEffect(roomId) { while (true) { now = System.currentTimeMillis(); delay(500) } }
+    LaunchedEffect(roomId, expanded) { if (expanded) while (true) { now = System.currentTimeMillis(); delay(1000) } }
     val elapsed = ((now - state.startedAt.coerceAtLeast(1)) / 1000).coerceAtLeast(0)
     if (!expanded) return
     Scaffold(containerColor = MobileDesign.canvas, topBar = {

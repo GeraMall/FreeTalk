@@ -11,6 +11,8 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import org.json.JSONObject
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -65,11 +67,15 @@ internal fun BrandedAuthScreen(
     verificationEmail: String,
     onPage: (AuthPage) -> Unit,
     onLogin: (String, String) -> Unit,
-    onRegister: (String, String, String, String, String) -> Unit,
+    onRegister: (String, String, String, String, String, String) -> Unit,
     onVerify: (String, String) -> Unit,
     onResend: (String) -> Unit,
     onRecovery: () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val documents = remember(context) {
+        context.assets.open("registration-legal.json").bufferedReader().use { JSONObject(it.readText()) }
+    }
     var login by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable(verificationEmail) { mutableStateOf(verificationEmail) }
     var username by rememberSaveable { mutableStateOf("") }
@@ -166,8 +172,8 @@ internal fun BrandedAuthScreen(
                                     AuthAction(
                                         if (busy) "Создаём аккаунт…" else "Создать аккаунт",
                                         !busy && terms && privacy && AuthValidation.email(email) && AuthValidation.username(username) &&
-                                            name.trim().length <= 64 && AuthValidation.password(password) && password == repeatedPassword && birthDate != null,
-                                    ) { birthDate?.let { onRegister(email, username, name, password, it) } }
+                                            name.trim().length <= 48 && AuthValidation.password(password) && password == repeatedPassword && birthDate != null,
+                                    ) { birthDate?.let { onRegister(email, username, name, password, it, documents.getString("version")) } }
                                     MobileText("После регистрации подтвердите почту кодом из письма",
                                         color = authMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
                                 }
@@ -194,8 +200,9 @@ internal fun BrandedAuthScreen(
     legal?.let { key ->
         AlertDialog(
             onDismissRequest = { legal = null },
-            title = { MobileText(if (key == "terms") "Пользовательское соглашение Trlka" else "Политика конфиденциальности Trlka") },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) { MobileText(if (key == "terms") termsText else privacyText) } },
+            title = { MobileText(documents.getJSONObject(key).getString("title")) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { val paragraphs = documents.getJSONObject(key).getJSONArray("paragraphs")
+                Text((0 until paragraphs.length()).joinToString("\n\n") { paragraphs.getString(it) }) } },
             confirmButton = { TextButton(onClick = { legal = null }) { MobileText("Закрыть") } },
         )
     }
@@ -259,7 +266,3 @@ private fun LegalAcceptance(checked: Boolean, onChecked: (Boolean) -> Unit, titl
         }
     }
 }
-
-// Same beta documents shown by the desktop WelcomeScreen, not new legal terms.
-private const val termsText = "Проект находится на стадии закрытого beta-тестирования. Перед публичным production-релизом документ должен быть проверен владельцем продукта и юристом применимой юрисдикции.\n\nTrlka предоставляет средства голосовой и видеосвязи, демонстрации экрана и временного обмена сообщениями. Пользователь обязан соблюдать применимое законодательство, не злоупотреблять сервисом и не пытаться обходить ограничения безопасности.\n\nСервис предоставляется без гарантии абсолютной доступности. Содержимое разговоров не записывается сервером Trlka."
-private const val privacyText = "Проект находится на стадии закрытого beta-тестирования. Документ не является обещанием защиты от любых юридических рисков.\n\nДля работы аккаунта обрабатываются email, username, отображаемое имя, аватар, данные сессий и безопасности, друзья, членство в чатах и история факта звонков. Текст сообщений удаляется после установленного срока.\n\nАудио, видео и содержимое экрана не передаются account API и не используются для аналитики. Пароли хранятся только как Argon2id-хеш, а токены сессий — только в виде серверного SHA-256-хеша с секретным pepper."

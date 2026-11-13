@@ -101,10 +101,11 @@ private fun SolidColorBrush() = androidx.compose.ui.graphics.SolidColor(MobileDe
 
 @Composable
 internal fun MobileComposer(text: String, onText: (String) -> Unit, sending: Boolean, enabled: Boolean = true,
-    placeholder: String = "Сообщение", onAttach: (() -> Unit)? = null, onSend: () -> Unit) {
+    placeholder: String = "Сообщение", onAttach: (() -> Unit)? = null, onGif: (() -> Unit)? = null, onSend: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(MobileDesign.canvas).padding(12.dp),
         verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onAttach != null) IconButton(onClick = onAttach, enabled = enabled && !sending, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.AttachFile, "Прикрепить файл", tint = MobileDesign.muted) }
+        if (onGif != null) TextButton(onClick = onGif, enabled = enabled && !sending, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { MobileText("GIF", color = MobileDesign.accent, fontWeight = FontWeight.Bold) }
         BasicTextField(text, { onText(it.take(4000)) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 120.dp)
             .clip(RoundedCornerShape(12.dp)).background(MobileDesign.input)
             .border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)).padding(horizontal = 13.dp, vertical = 12.dp),

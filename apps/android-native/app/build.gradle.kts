@@ -5,6 +5,10 @@ plugins {
 }
 
 val repositoryRoot = rootDir.parentFile.parentFile
+val turnstileSiteKey = File(repositoryRoot, "apps/desktop/.env.production").useLines { lines ->
+    lines.first { it.startsWith("VITE_TURNSTILE_SITE_KEY=") }.substringAfter('=').trim()
+}
+require(turnstileSiteKey.matches(Regex("[A-Za-z0-9_-]+")))
 val sourceCommit = providers.exec {
     workingDir = repositoryRoot
     commandLine("git", "rev-parse", "--short=12", "HEAD")
@@ -18,9 +22,10 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 226
-        versionName = "0.4.0-beta.226"
+        versionCode = 228
+        versionName = "0.4.0-beta.228"
         buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
+        buildConfigField("String", "TURNSTILE_SITE_KEY", "\"$turnstileSiteKey\"")
         testInstrumentationRunner = providers.gradleProperty("callProbeRunner")
             .orElse("androidx.test.runner.AndroidJUnitRunner").get()
     }
@@ -49,7 +54,7 @@ android {
 val bundleTablet by tasks.registering(Exec::class) {
     workingDir = repositoryRoot
     commandLine(if (System.getProperty("os.name").startsWith("Windows")) "pnpm.cmd" else "pnpm",
-        "--filter", "@freetalk/desktop", "exec", "vite", "build", "--config", "vite.android-tablet.config.ts", "--configLoader", "runner")
+        "--filter", "@freetalk/desktop", "exec", "vite", "build", "--config", "vite.android-tablet.config.ts")
     inputs.dir(File(repositoryRoot, "apps/desktop/src"))
     inputs.dir(File(repositoryRoot, "apps/desktop/public/sounds"))
     inputs.dir(File(repositoryRoot, "packages/protocol/src"))
@@ -66,7 +71,9 @@ val bundleNativeTranslations by tasks.registering(Exec::class) {
     inputs.dir(File(repositoryRoot, "apps/desktop/src/lib"))
     inputs.file(File(repositoryRoot, "apps/android-native/native-language-overrides.json"))
     inputs.file(File(repositoryRoot, "scripts/android/export-native-translations.mjs"))
+    inputs.file(File(repositoryRoot, "packages/protocol/src/registration-legal.ts"))
     outputs.file("src/main/assets/native-translations.json")
+    outputs.file("src/main/assets/registration-legal.json")
 }
 tasks.named("preBuild") { dependsOn(bundleTablet, bundleNativeTranslations) }
 
@@ -86,6 +93,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-gif:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

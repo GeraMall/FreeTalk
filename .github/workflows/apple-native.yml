@@ -58,7 +58,11 @@ jobs:
         run: |
           xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGN_IDENTITY=- build
+          APP=build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = com.trlka.ios
+          file "$APP/TRLKA"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           if [[ '${{ inputs.call_preview_only }}' != 'true' && '${{ inputs.non_call_preview_only }}' != 'true' ]]; then
             xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
               -destination 'generic/platform=iOS' -derivedDataPath build/device \
@@ -77,13 +81,21 @@ jobs:
           import json, os, subprocess, time
           non_call = os.environ.get('TRLKA_NON_CALL_PREVIEW_ONLY') == 'true'
           quick = os.environ.get('TRLKA_CALL_PREVIEW_ONLY') == 'true' or non_call
-          devices = [d for group in json.load(open('build/devices.json'))['devices'].values() for d in group]
+          by_runtime = json.load(open('build/devices.json'))['devices']
+          sdk = subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-version'], text=True).strip()
+          version = lambda s: tuple(map(int, s.replace('-', '.').split('.')))
+          runtime = max((key for key in by_runtime if '.iOS-' in key and by_runtime[key]
+                         and version(key.split('.iOS-')[1]) <= version(sdk)),
+                        key=lambda key: version(key.split('.iOS-')[1]))
+          devices = by_runtime[runtime]
+          print('Simulator runtime:', runtime, 'SDK:', sdk, flush=True)
           for family in (('iPhone',) if quick else ('iPhone', 'iPad')):
               device = next(d for d in devices if d['name'].startswith(family))
               uid = device['udid']
               subprocess.run(['xcrun','simctl','boot',uid], check=False)
               subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
               subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
+              subprocess.run(['xcrun','simctl','get_app_container',uid,'com.trlka.ios','app'],check=True)
               modes = ['settings','bot','conversation','home','chats','friends','history','login'] if non_call else ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
               for mode in modes:
                   subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
@@ -104,7 +116,7 @@ jobs:
                   subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
                       '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
                       '-parallel-testing-enabled','NO','-resultBundlePath','build/UITests.xcresult',
-                      'CODE_SIGNING_ALLOWED=NO'],check=True)
+                      'CODE_SIGN_IDENTITY=-'],check=True)
               subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
           PY
       - name: Package local Mac preview

@@ -1,5 +1,5 @@
 import { t } from '../lib/app-language';
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 declare global {
   interface Window {
@@ -20,8 +20,13 @@ function loadTurnstile() {
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('CAPTCHA недоступна'));
+    const failed = () => {
+      script.remove();
+      scriptPromise = undefined;
+      reject(new Error('CAPTCHA недоступна'));
+    };
+    script.onload = () => (window.turnstile ? resolve() : failed());
+    script.onerror = failed;
     document.head.append(script);
   });
   return scriptPromise;
@@ -30,27 +35,36 @@ function loadTurnstile() {
 export function CaptchaBox({ onToken }: { onToken(token: string): void }) {
   const id = useId();
   const container = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 
   useEffect(() => {
     if (!siteKey || !container.current) return;
     let disposed = false;
     let widgetId = '';
-    void loadTurnstile().then(() => {
-      if (disposed || !container.current || !window.turnstile) return;
-      widgetId = window.turnstile.render(container.current, {
-        sitekey: siteKey,
-        theme: 'dark',
-        callback: onToken,
-        'expired-callback': () => onToken(''),
-        'error-callback': () => onToken(''),
+    void loadTurnstile()
+      .then(() => {
+        if (disposed || !container.current || !window.turnstile) return;
+        widgetId = window.turnstile.render(container.current, {
+          sitekey: siteKey,
+          theme: 'dark',
+          callback: onToken,
+          'expired-callback': () => onToken(''),
+          'error-callback': () => onToken(''),
+        });
+      })
+      .catch(() => {
+        if (!disposed) {
+          setFailed(true);
+          onToken('');
+        }
       });
-    });
     return () => {
       disposed = true;
       if (widgetId) window.turnstile?.remove(widgetId);
     };
-  }, [onToken, siteKey]);
+  }, [onToken, siteKey, attempt]);
 
   if (!siteKey && import.meta.env.DEV)
     return (
@@ -58,5 +72,21 @@ export function CaptchaBox({ onToken }: { onToken(token: string): void }) {
         {t('Подтвердить локальную CAPTCHA')}
       </button>
     );
-  return <div id={id} ref={container} className="captcha-box" aria-label={t('Проверка CAPTCHA')} />;
+  return (
+    <>
+      <div id={id} ref={container} className="captcha-box" aria-label={t('Проверка CAPTCHA')} />
+      {failed && (
+        <button
+          type="button"
+          className="captcha-local"
+          onClick={() => {
+            setFailed(false);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          {t('Повторить')}
+        </button>
+      )}
+    </>
+  );
 }
