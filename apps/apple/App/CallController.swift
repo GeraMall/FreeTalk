@@ -1,0 +1,495 @@
+import SwiftUI
+import AVFoundation
+import WebRTC
+import TRLKACore
+#if DEBUG
+import QuartzCore
+#endif
+
+@MainActor @Observable
+final class CallController {
+    enum Phase { case idle, preparing, connecting, connected, reconnecting }
+    var phase: Phase = .idle
+    var roomID = ""
+    var title = "Звонок"
+    var selfID = ""
+    var participants: [RoomParticipant] = []
+    struct WaitingPerson: Identifiable {
+        let id: String
+        let name: String
+        let avatar: String?
+        var expiresAt = Date().addingTimeInterval(45)
+        var sent = false
+    }
+    var waiting: [WaitingPerson] = []
+    var muted = false
+    var deafened = false
+    private var mutedBeforeDeafening = false
+    var tablet: [String: Any]?
+    var tabletPresented = false
+    private var requestedTablet = false
+    @ObservationIgnored var onTabletPointer: (([String: Any]) -> Void)?
+    var cameraOn = false
+    var cameraBusy = false
+    var speaker = true
+    var presented = false
+    var error: String?
+    var startedAt = Date()
+    var revision = 0
+    var localVideo: RTCVideoTrack?
+    var busy: Bool { phase == .preparing }
+    var active: Bool { phase != .idle }
+    private let client: AccountClient
+    private let socket = SocketChannel()
+    private var factory: RTCPeerConnectionFactory?
+    private var audioSource: RTCAudioSource?
+    private var audio: RTCAudioTrack?
+    private var cameraSource: RTCVideoSource?
+    private var capturer: RTCCameraVideoCapturer?
+    private var cameraDevice: AVCaptureDevice?
+    private var peers: [String: MediaPeer] = [:]
+    private var ice: [RTCIceServer] = [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"])]
+    private var generation = 0
+    private var cameraGeneration = 0
+    private var ringTask: Task<Void, Never>?
+    #if DEBUG
+    private var previewFrames: Task<Void, Never>?
+    func installPreviewCamera() {
+        let previewFactory = RTCPeerConnectionFactory()
+        let source = previewFactory.videoSource()
+        let capture = RTCVideoCapturer(delegate: source)
+        factory = previewFactory
+        localVideo = previewFactory.videoTrack(with: source, trackId: "preview-camera")
+        cameraOn = true; revision += 1
+        previewFrames = Task {
+            var tick = 0
+            while !Task.isCancelled {
+                var buffer: CVPixelBuffer?
+                CVPixelBufferCreate(kCFAllocatorDefault, 320, 240, kCVPixelFormatType_32BGRA, nil, &buffer)
+                if let buffer {
+                    CVPixelBufferLockBaseAddress(buffer, [])
+                    if let base = CVPixelBufferGetBaseAddress(buffer) {
+                        let pixels = base.assumingMemoryBound(to: UInt8.self)
+                        let stride = CVPixelBufferGetBytesPerRow(buffer)
+                        for y in 0..<240 { for x in 0..<320 {
+                            let index = y * stride + x * 4
+                            pixels[index] = UInt8((x + tick) % 180 + 60)
+                            pixels[index + 1] = UInt8(y / 2 + 60)
+                            pixels[index + 2] = 70; pixels[index + 3] = 255
+                        } }
+                    }
+                    CVPixelBufferUnlockBaseAddress(buffer, [])
+                    let frame = RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: buffer), rotation: ._0, timeStampNs: Int64(CACurrentMediaTime() * 1_000_000_000))
+                    source.capturer(capture, didCapture: frame)
+                }
+                tick += 4
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+    #endif
+    private var statisticsTask: Task<Void, Never>?
+    private var chatID: String?
+    private var ringMembers: [String] = []
+    private var shouldCreate = false
+    #if os(iOS)
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeObserver: NSObjectProtocol?
+    private var audioInterrupted = false
+    private var previousAudio: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
+    #endif
+
+    init(client: AccountClient) {
+        self.client = client
+        socket.onMessage = { [weak self] in self?.receive($0) }
+        socket.onConnection = { [weak self] connected in
+            guard let self, active else { return }
+            if !connected { phase = .reconnecting; requestedTablet = false }
+        }
+        socket.onFailure = { [weak self] _ in
+            guard let self, active else { return }; phase = .reconnecting
+        }
+    }
+
+    func start(user: AccountUser, chat: Chat? = nil, join code: String? = nil) async {
+        #if DEBUG
+        if PreviewFixtures.mode != nil { error = "В снимке интерфейса звонки отключены."; return }
+        #endif
+        if active { presented = true; return }
+        generation += 1
+        let expected = generation
+        phase = .preparing; error = nil; presented = true
+        do {
+            guard await AVCaptureDevice.requestAccess(for: .audio) else {
+                throw APIError(status: 0, code: "MIC_PERMISSION", message: "Разрешите доступ к микрофону в настройках iPhone для TRLKA.")
+            }
+            guard expected == generation else { return }
+            var create = code == nil
+            var room = try code.map(RoomCode.parse) ?? RoomCode.generate()
+            if let chat {
+                if let existing = try await client.activeCall(chatID: chat.id) { room = existing.roomId; create = false }
+                else { try await client.registerCall(chatID: chat.id, roomID: room) }
+            }
+            guard expected == generation else { return }
+            try configureAudio()
+            RTCInitializeSSL()
+            let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
+            self.factory = factory
+            let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: ["googEchoCancellation": "true", "googNoiseSuppression": "true"]))
+            audioSource = source
+            audio = factory.audioTrack(with: source, trackId: "microphone")
+            audio?.isEnabled = !muted
+            roomID = room; title = chat?.name(currentUserID: user.id) ?? "Комната TRLKA"
+            chatID = chat?.id
+            ringMembers = create ? (chat?.members.filter { $0.id != user.id }.map(\.id) ?? []) : []
+            waiting = create ? (chat?.members.filter { $0.id != user.id }.map { WaitingPerson(id: $0.id, name: $0.displayName, avatar: $0.avatarUrl) } ?? []) : []
+            shouldCreate = create
+            let participantID = UUID().uuidString.lowercased()
+            let sessionID = UUID().uuidString.lowercased()
+            phase = .connecting
+            statisticsTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                    guard let self, self.active else { return }
+                    self.peers.values.forEach { $0.sampleStatistics() }
+                    self.waiting.removeAll { $0.expiresAt <= Date() }
+                }
+            }
+            socket.start(url: { [client] in
+                try await client.readyEndpoint()
+                return try await client.signalingURL(roomID: room)
+            }, roomHeartbeat: true) { [weak self] in
+                guard let self, active else { throw CancellationError() }
+                let token = try await client.realtimeToken()
+                var hello: [String: Any] = ["type": shouldCreate ? "create-room" : "join-room", "roomId": room,
+                        "clientId": participantID, "sessionId": sessionID, "authToken": token,
+                        "name": user.displayName, "cardStyle": "avatar-glass"]
+                #if os(iOS)
+                hello.merge(["activityVersion": 2, "tabletVersion": 3, "pokerSeats": 8, "pokerFlow": 2,
+                             "propertyRules": 2, "propertyRoll": 2]) { _, new in new }
+                #endif
+                return hello
+            }
+        } catch {
+            guard expected == generation else { return }
+            end(); self.error = error.localizedDescription
+        }
+    }
+
+    private func receive(_ message: [String: Any]) {
+        guard active, let type = message["type"] as? String else { return }
+        switch type {
+        case "ice-config":
+            let updated: [RTCIceServer] = (message["iceServers"] as? [[String: Any]] ?? []).compactMap { value in
+                let urls = value["urls"] as? [String] ?? (value["urls"] as? String).map { [$0] } ?? []
+                guard !urls.isEmpty else { return nil }
+                return RTCIceServer(urlStrings: urls, username: value["username"] as? String ?? "", credential: value["credential"] as? String ?? "")
+            }
+            guard !updated.isEmpty else { return }
+            ice = updated
+            peers.values.forEach { $0.updateICE(updated) }
+        case "joined-room":
+            guard let id = message["selfId"] as? String else { return }
+            let rejoining = !selfID.isEmpty
+            selfID = id; shouldCreate = false
+            acceptTablet(message["activity"] as? [String: Any])
+            if rejoining { peers.values.forEach { $0.close() }; peers.removeAll() }
+            participants = decode([RoomParticipant].self, message["participants"]) ?? []
+            if let timestamp = message["roomStartedAt"] as? Double { startedAt = Date(timeIntervalSince1970: timestamp / 1000) }
+            else if !rejoining { startedAt = Date() }
+            participants.filter { $0.id != selfID }.forEach { _ = ensure($0.id) }
+            publishAudioState()
+            refreshPhase(); sendInvitations()
+        case "participants":
+            let updated = decode([RoomParticipant].self, message["participants"]) ?? participants
+            let ids = Set(updated.map(\.id))
+            for id in Array(peers.keys) where !ids.contains(id) { peers.removeValue(forKey: id)?.close() }
+            participants = updated
+            updated.filter { $0.id != selfID }.forEach { _ = ensure($0.id) }
+            refreshPhase()
+        case "participant-joined", "participant-updated":
+            guard let participant = decode(RoomParticipant.self, message["participant"]) else { return }
+            if let index = participants.firstIndex(where: { $0.id == participant.id }) { participants[index] = participant }
+            else { participants.append(participant) }
+            if participant.id != selfID { _ = ensure(participant.id) }
+            refreshPhase()
+        case "participant-left":
+            guard let id = message["participantId"] as? String else { return }
+            participants.removeAll { $0.id == id }; peers.removeValue(forKey: id)?.close(); refreshPhase()
+        case "mute-changed":
+            if let id = message["participantId"] as? String, let index = participants.firstIndex(where: { $0.id == id }), let muted = message["muted"] as? Bool {
+                participants[index].muted = muted
+                participants[index].deafened = message["deafened"] as? Bool ?? false
+            }
+        case "activity-state": acceptTablet(message["activity"] as? [String: Any])
+        case "activity-pointer": if tabletPresented { onTabletPointer?(message) }
+        case "force-mute": setMuted(true)
+        case "owner-changed":
+            if let owner = message["ownerId"] as? String {
+                for index in participants.indices { participants[index].isOwner = participants[index].id == owner }
+            }
+        case "offer", "answer":
+            guard let id = message["from"] as? String, let description = message["description"] as? [String: Any], let sdp = description["sdp"] as? String, sdp.utf8.count <= 24000 else { return }
+            ensure(id)?.description(type: type, sdp: sdp)
+        case "ice-candidate":
+            guard let id = message["from"] as? String, let value = message["candidate"] as? [String: Any], let sdp = value["candidate"] as? String, sdp.utf8.count <= 8000 else { return }
+            ensure(id)?.candidate(RTCIceCandidate(sdp: sdp, sdpMLineIndex: Int32(value["sdpMLineIndex"] as? Int ?? 0), sdpMid: value["sdpMid"] as? String))
+        case "room-closed", "participant-disconnected":
+            let reason = message["reason"] as? String ?? "Звонок завершён"
+            end(); error = reason
+        case "error":
+            requestedTablet = false
+            let text = message["message"] as? String ?? "Не удалось подключиться"
+            if message["fatal"] as? Bool == true || ["ROOM_NOT_FOUND", "ROOM_FULL", "AUTH_REQUIRED", "ROOM_EXISTS"].contains(message["code"] as? String ?? "") { end() }
+            error = text
+        default: break
+        }
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ object: Any?) -> T? {
+        guard let object, JSONSerialization.isValidJSONObject(object), let data = try? JSONSerialization.data(withJSONObject: object) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private func ensure(_ id: String) -> MediaPeer? {
+        guard id != selfID, UUID(uuidString: id) != nil, participants.contains(where: { $0.id == id }), let factory, let audio else { return nil }
+        if let existing = peers[id] { return existing }
+        do {
+            let peer = try MediaPeer(id: id, localID: selfID, factory: factory, audio: audio, ice: ice, camera: localVideo)
+            peers[id] = peer
+            peer.setOutputMuted(deafened)
+            peer.sendSignal = { [weak self] in self?.socket.send($0) }
+            peer.changed = { [weak self] in self?.refreshPhase() }
+            peer.failed = { [weak self] in self?.error = $0 }
+            peer.negotiate()
+            return peer
+        } catch { self.error = error.localizedDescription; return nil }
+    }
+
+    private func refreshPhase() {
+        let joined = Set(participants.compactMap(\.accountId))
+        waiting.removeAll { joined.contains($0.id) }
+        revision += 1
+        if peers.isEmpty || peers.values.contains(where: { $0.state == .connected || $0.state == .completed }) {
+            phase = .connected; applySpeaker()
+        } else { phase = .connecting }
+    }
+
+    private func sendInvitations() {
+        guard !ringMembers.isEmpty else { return }
+        let members = ringMembers; ringMembers = []
+        let room = roomID; let expected = generation
+        ringTask?.cancel()
+        ringTask = Task {
+            for attempt in 0..<5 {
+                guard expected == generation && active && !Task.isCancelled else { return }
+                do {
+                    let receipts = try await client.invite(roomID: room, userIDs: members)
+                    guard expected == generation && active else { return }
+                    for receipt in receipts {
+                        if let index = waiting.firstIndex(where: { $0.id == receipt.userId }) {
+                            waiting[index].sent = true
+                            waiting[index].expiresAt = WireDate.parse(receipt.expiresAt) ?? Date().addingTimeInterval(30)
+                        }
+                    }
+                    return
+                }
+                catch {
+                    if attempt == 4 { self.waiting = []; self.error = "Приглашение не отправлено. Можно войти по коду комнаты." }
+                    else { try? await Task.sleep(for: .seconds(1.5)) }
+                }
+            }
+        }
+    }
+
+    func setMuted(_ value: Bool) {
+        if !value { deafened = false }
+        muted = value
+        publishAudioState()
+    }
+    func setDeafened(_ value: Bool) {
+        guard value != deafened else { return }
+        if value { mutedBeforeDeafening = muted; muted = true }
+        else { muted = mutedBeforeDeafening }
+        deafened = value
+        publishAudioState()
+    }
+    private func publishAudioState() {
+        audio?.isEnabled = !muted
+        peers.values.forEach { $0.setOutputMuted(deafened) }
+        if let index = participants.firstIndex(where: { $0.id == selfID }) {
+            participants[index].muted = muted
+            participants[index].deafened = deafened
+        }
+        socket.send(["type": "mute-changed", "muted": muted, "deafened": deafened])
+    }
+    func openTablet() {
+        guard tablet != nil, !selfID.isEmpty, phase != .reconnecting else { return }
+        if tablet?["open"] as? Bool == true { tabletPresented = true }
+        else if !requestedTablet {
+            requestedTablet = true
+            sendTablet(["kind": "open"])
+        }
+    }
+    func closeTablet() {
+        if tabletPresented { sendTablet(["kind": "tablet-join", "joined": false]) }
+        requestedTablet = false
+        tabletPresented = false
+    }
+    func sendTablet(_ action: [String: Any]) {
+        guard active, phase != .reconnecting, !selfID.isEmpty, let revision = tablet?["revision"] as? Int else { return }
+        socket.send(["type": "activity-action", "revision": revision, "action": action])
+    }
+    private func acceptTablet(_ snapshot: [String: Any]?) {
+        if snapshot?["open"] as? Bool == true {
+            if requestedTablet { tabletPresented = true }
+            else if snapshot?["sessionId"] as? String != tablet?["sessionId"] as? String { tabletPresented = false }
+            requestedTablet = false
+        } else { tabletPresented = false }
+        tablet = snapshot
+    }
+    func toggleSpeaker() { speaker.toggle(); applySpeaker() }
+    func removeWaiting(_ userID: String) { waiting.removeAll { $0.id == userID } }
+    func noteInvitation(_ friend: Friend, receipts: [CallInviteReceipt]) {
+        guard let receipt = receipts.first(where: { $0.userId == friend.id }) else { return }
+        if !waiting.contains(where: { $0.id == friend.id }) {
+            waiting.append(WaitingPerson(id: friend.id, name: friend.display_name, avatar: friend.avatarUrl,
+                expiresAt: WireDate.parse(receipt.expiresAt) ?? Date().addingTimeInterval(30), sent: true))
+        }
+    }
+    func video(participantID: String, source: String = "camera") -> RTCVideoTrack? {
+        _ = revision
+        if participantID == selfID { return source == "camera" ? localVideo : nil }
+        return peers[participantID]?.video(source: source)
+    }
+    func connectionState(_ id: String) -> String {
+        guard id != selfID else { return muted ? "Микрофон выключен" : "Вы в звонке" }
+        guard let peer = peers[id] else { return "Подключение…" }
+        switch peer.state { case .connected, .completed: return "На связи"; case .failed, .disconnected: return "Переподключение…"; default: return "Подключение…" }
+    }
+
+    var quality: MediaPeer.Grade {
+        _ = revision
+        guard phase == .connected, !peers.isEmpty else { return .unknown }
+        return peers.values.map(\.grade).max(by: { $0.rawValue < $1.rawValue }) ?? .unknown
+    }
+    var qualityColor: Color {
+        switch quality { case .unknown: return Brand.muted; case .good: return Color(red: 0.29, green: 0.86, blue: 0.64); case .fair: return .yellow; case .poor: return .pink }
+    }
+    var qualityText: String {
+        if phase == .connecting || phase == .preparing { return "Подключение…" }
+        if phase == .reconnecting { return "Восстанавливаем связь…" }
+        if participants.count < 2 { return "Ожидаем участников" }
+        switch quality { case .unknown: return "Проверяем связь…"; case .good: return "На связи"; case .fair: return "Нестабильная связь"; case .poor: return "Плохое соединение" }
+    }
+    func level(_ id: String) -> Double {
+        _ = revision
+        if id == selfID { return muted ? 0 : peers.values.map(\.localLevel).max() ?? 0 }
+        return peers[id]?.remoteLevel ?? 0
+    }
+
+    func toggleCamera() async {
+        guard active, !cameraBusy, let factory else { return }
+        cameraBusy = true
+        defer { cameraBusy = false }
+        if cameraOn { stopCamera(); return }
+        cameraGeneration += 1
+        let expected = cameraGeneration
+        guard await AVCaptureDevice.requestAccess(for: .video) else { error = "Разрешите доступ к камере в настройках TRLKA."; return }
+        guard active && expected == cameraGeneration else { return }
+        let source = factory.videoSource()
+        let capture = RTCCameraVideoCapturer(delegate: source)
+        guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == .front }) ?? RTCCameraVideoCapturer.captureDevices().first else { error = "Камера недоступна"; return }
+        let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        guard let format = formats.min(by: { abs(Int(CMVideoFormatDescriptionGetDimensions($0.formatDescription).width) - 640) < abs(Int(CMVideoFormatDescriptionGetDimensions($1.formatDescription).width) - 640) }) else { error = "Формат камеры недоступен"; return }
+        let fps = min(24, Int(format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 24))
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                capture.startCapture(with: device, format: format, fps: fps) { error in
+                    if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+                }
+            }
+            guard active && expected == cameraGeneration else { capture.stopCapture {}; return }
+            for output in capture.captureSession.outputs {
+                for connection in output.connections where connection.isVideoMirroringSupported {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                    connection.isVideoMirrored = false
+                }
+            }
+            cameraSource = source; capturer = capture; cameraDevice = device
+            localVideo = factory.videoTrack(with: source, trackId: "camera-\(UUID().uuidString.lowercased())")
+            cameraOn = true
+            peers.values.forEach { $0.setCamera(localVideo) }; revision += 1
+        } catch { self.error = error.localizedDescription }
+    }
+    private func stopCamera() {
+        #if DEBUG
+        previewFrames?.cancel(); previewFrames = nil
+        #endif
+        cameraGeneration += 1; cameraOn = false
+        peers.values.forEach { $0.setCamera(nil) }
+        capturer?.stopCapture {}; capturer = nil; cameraSource = nil; localVideo = nil; cameraDevice = nil; revision += 1
+    }
+
+    func end() {
+        generation += 1
+        ringTask?.cancel(); ringTask = nil
+        ice = [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"])]
+        statisticsTask?.cancel(); statisticsTask = nil
+        socket.finish(["type": "leave-room"])
+        peers.values.forEach { $0.close() }; peers.removeAll()
+        stopCamera(); audio?.isEnabled = false; audio = nil; audioSource = nil; factory = nil
+        participants = []; waiting = []; selfID = ""; roomID = ""; ringMembers = []; chatID = nil
+        phase = .idle; muted = false; presented = false
+        tablet = nil; tabletPresented = false; requestedTablet = false; onTabletPointer = nil
+        deafened = false; mutedBeforeDeafening = false
+        #if os(iOS)
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }; interruptionObserver = nil
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }; routeObserver = nil
+        if let previousAudio {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(previousAudio.0, mode: previousAudio.1, options: previousAudio.2)
+        }
+        previousAudio = nil; audioInterrupted = false
+        #endif
+    }
+
+    private func configureAudio() throws {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        previousAudio = (session.category, session.mode, session.categoryOptions)
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setActive(true)
+        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.applySpeaker() }
+        }
+        interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+            let began = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
+            Task { @MainActor in
+                guard let self, self.active else { return }
+                self.audioInterrupted = began
+                if began { self.setMuted(true); self.error = "Микрофон выключен из-за другого звонка. Включите его после завершения." }
+                else { self.applySpeaker() }
+            }
+        }
+        #endif
+    }
+    private func applySpeaker() {
+        #if os(iOS)
+        guard previousAudio != nil && !audioInterrupted else { return }
+        let session = AVAudioSession.sharedInstance()
+        let external = session.currentRoute.outputs.contains { [.bluetoothA2DP, .bluetoothHFP, .headphones, .airPlay, .usbAudio].contains($0.portType) }
+        if !external {
+            let usingSpeaker = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+            if session.categoryOptions.contains(.defaultToSpeaker) != speaker {
+                var desired = session.categoryOptions
+                if speaker { desired.insert(.defaultToSpeaker) } else { desired.remove(.defaultToSpeaker) }
+                desired.insert(.allowBluetooth)
+                try? session.setCategory(.playAndRecord, mode: .voiceChat, options: desired)
+            }
+            if speaker != usingSpeaker { try? session.overrideOutputAudioPort(speaker ? .speaker : .none) }
+        }
+        #endif
+    }
+}

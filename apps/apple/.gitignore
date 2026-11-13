@@ -1,0 +1,10 @@
+.build/
+build/
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+*.mobileprovision
+*.p12
+*.p8
+*.cer
+__pycache__/

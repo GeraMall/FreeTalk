@@ -13,7 +13,7 @@ export class MonopolySounds {
     }
     const settings = loadSettings();
     if (settings.outputVolume <= 0) return;
-    const audio = new Audio(`/sounds/monopoly/${sound}.wav`);
+    const audio = new Audio(`${import.meta.env.BASE_URL}sounds/monopoly/${sound}.wav`);
     this.active.set(audio, sound);
     audio.volume = Math.min(1, settings.outputVolume) * 0.6;
     audio.preload = 'auto';

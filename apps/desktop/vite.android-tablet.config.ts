@@ -2,6 +2,9 @@ import { defineConfig, mergeConfig } from 'vite';
 import { cpSync } from 'node:fs';
 import base from './vite.config';
 
+const apple = process.env.TRLKA_TABLET_PLATFORM === 'ios';
+const outDir = apple ? '../apple/build/tablet' : '../android-native/app/src/main/assets/tablet';
+
 export default mergeConfig(
   base,
   defineConfig({
@@ -10,17 +13,34 @@ export default mergeConfig(
       {
         name: 'tablet-game-sounds',
         closeBundle() {
-          cpSync('public/sounds', '../android-native/app/src/main/assets/tablet/sounds', {
+          cpSync('public/sounds', `${outDir}/sounds`, {
             recursive: true,
           });
         },
       },
+      ...(apple
+        ? [
+            {
+              name: 'tablet-webkit-script',
+              transformIndexHtml: {
+                order: 'post' as const,
+                handler: (html: string) =>
+                  html
+                    .replace('type="module" crossorigin', 'defer')
+                    .replace('rel="stylesheet" crossorigin', 'rel="stylesheet"'),
+              },
+            },
+          ]
+        : []),
     ],
     build: {
-      outDir: '../android-native/app/src/main/assets/tablet',
+      outDir,
       emptyOutDir: true,
       sourcemap: false,
-      rollupOptions: { input: 'android-tablet.html' },
+      rollupOptions: {
+        input: 'android-tablet.html',
+        ...(apple && { output: { format: 'iife', inlineDynamicImports: true } }),
+      },
     },
   }),
 );

@@ -1,0 +1,42 @@
+name: iPhone IPA preview
+
+on:
+  push:
+    branches: [feat/apple-native]
+    paths:
+      - '.github/workflows/apple-ipa.yml'
+      - 'apps/apple/script/build_ipa.sh'
+      - 'apps/apple/script/verify_ipa.py'
+      - 'apps/apple/project.yml'
+      - 'apps/apple/Configuration/Info.plist'
+      - 'apps/apple/Configuration/iOS-Info.plist'
+      - 'apps/apple/App/**'
+      - 'apps/apple/Packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - run: brew install xcodegen
+      - name: Build and verify unsigned release IPA for iPhone and iPad
+        run: bash apps/apple/script/build_ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRLKA-iPhone-IPA
+          path: |
+            apps/apple/build/*.ipa
+            apps/apple/build/*.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14

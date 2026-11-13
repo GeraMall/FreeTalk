@@ -1,0 +1,119 @@
+name: Apple native preview
+
+on:
+  push:
+    branches: [feat/apple-native]
+    paths: ['apps/apple/**', '.github/workflows/apple-native.yml']
+  workflow_dispatch:
+    inputs:
+      call_preview_only:
+        description: Capture the iPhone call screen only (visual changes; no repeated UI suite)
+        type: boolean
+        default: false
+      non_call_preview_only:
+        description: Capture non-call iPhone screens only after a visual change
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Determine whether simulator screens changed
+        id: screens
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || ! git diff --quiet HEAD^ HEAD -- 'apps/apple/App/*.swift' apps/apple/App/Assets.xcassets apps/apple/project.yml; then
+            echo 'capture=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'capture=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Select Xcode and install project generator
+        run: brew install xcodegen
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - name: Build local shared call tablet and generate Xcode project
+        run: |
+          xcodebuild -version
+          bash apps/apple/script/prepare_tablet.sh
+          (cd apps/apple && xcodegen generate)
+      - name: Core contract and session tests
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        run: swift test --package-path apps/apple/Packages/TRLKACore
+      - name: Build Mac app
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        run: bash apps/apple/script/build_and_run.sh macos --build-only
+      - name: Build iPhone and iPad app
+        working-directory: apps/apple
+        run: |
+          xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO build
+          if [[ '${{ inputs.call_preview_only }}' != 'true' && '${{ inputs.non_call_preview_only }}' != 'true' ]]; then
+            xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
+              -destination 'generic/platform=iOS' -derivedDataPath build/device \
+              CODE_SIGNING_ALLOWED=NO build
+          fi
+      - name: Launch and capture iPhone and iPad previews
+        if: steps.screens.outputs.capture == 'true'
+        working-directory: apps/apple
+        env:
+          TRLKA_CALL_PREVIEW_ONLY: ${{ inputs.call_preview_only }}
+          TRLKA_NON_CALL_PREVIEW_ONLY: ${{ inputs.non_call_preview_only }}
+        run: |
+          mkdir -p build/previews
+          xcrun simctl list devices available --json > build/devices.json
+          python3 - <<'PY'
+          import json, os, subprocess, time
+          non_call = os.environ.get('TRLKA_NON_CALL_PREVIEW_ONLY') == 'true'
+          quick = os.environ.get('TRLKA_CALL_PREVIEW_ONLY') == 'true' or non_call
+          devices = [d for group in json.load(open('build/devices.json'))['devices'].values() for d in group]
+          for family in (('iPhone',) if quick else ('iPhone', 'iPad')):
+              device = next(d for d in devices if d['name'].startswith(family))
+              uid = device['udid']
+              subprocess.run(['xcrun','simctl','boot',uid], check=False)
+              subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
+              subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
+              modes = ['settings','bot','conversation','home','chats','friends','history','login'] if non_call else ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
+              for mode in modes:
+                  subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
+                  subprocess.run(['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode,'-AppleLanguages','(ru)','-AppleLocale','ru_RU'],check=True)
+                  time.sleep(6)
+                  subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
+              if family == 'iPhone' and not quick:
+                  subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
+                      '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
+                      '-parallel-testing-enabled','NO','-resultBundlePath','build/UITests.xcresult',
+                      'CODE_SIGNING_ALLOWED=NO'],check=True)
+              subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
+          PY
+      - name: Package local Mac preview
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        working-directory: apps/apple
+        run: |
+          bash script/sign_preview.sh
+          lipo build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA -archs
+          lipo build/macos/Build/Products/Debug/TRLKA.app/Contents/MacOS/TRLKA -verify_arch arm64 x86_64
+          /usr/bin/open -n build/macos/Build/Products/Debug/TRLKA.app
+          sleep 3
+          pgrep -x TRLKA
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Debug/TRLKA.app build/TRLKA-macOS-preview.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TRLKA-Apple-development-preview
+          path: |
+            apps/apple/build/TRLKA-macOS-preview.zip
+            apps/apple/build/previews/*.png
+            apps/apple/build/UITests.xcresult
+          retention-days: 14

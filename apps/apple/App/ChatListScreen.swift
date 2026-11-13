@@ -1,0 +1,172 @@
+import SwiftUI
+import TRLKACore
+
+struct ChatListScreen: View {
+    let account: AccountStore
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var chats: [Chat] = []
+    @State private var search = ""
+    @State private var error: String?
+    @State private var loading = true
+    @State private var creating = false
+    @State private var created: Chat?
+    @State private var joining = false
+    @State private var code = ""
+    @State private var inArchive = false
+    @State private var busy = false
+    @State private var loadID = UUID()
+    private var filtered: [Chat] {
+        let regular = chats.filter { !$0.isService && $0.isSaved != true && ($0.archived == true) == inArchive }
+        let visible = inArchive ? regular : [Chat.service] + regular
+        return visible.filter { search.isEmpty || $0.name(currentUserID: account.user?.id).localizedCaseInsensitiveContains(search) }
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack {
+                Text(inArchive ? "Архив" : "Чаты").font(.system(size: 28, weight: .bold))
+                Spacer()
+                Button { inArchive.toggle() } label: {
+                    Image(systemName: inArchive ? "archivebox.fill" : "archivebox").frame(width: 40, height: 44).webPanel(14)
+                }.buttonStyle(.plain).accessibilityLabel(inArchive ? "Вернуться к чатам" : "Архив")
+                Button {
+                    if let existing = chats.first(where: { $0.isSaved == true }) { created = existing }
+                    else { perform { created = try await account.client.savedChat() } }
+                } label: {
+                    Image(systemName: "bookmark").frame(width: 40, height: 44).webPanel(14)
+                }.buttonStyle(.plain).accessibilityLabel("Избранное").disabled(busy)
+                Button { creating = true } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44).webPanel(14) }
+                    .buttonStyle(.plain).accessibilityLabel("Создать чат")
+            }.padding(.horizontal, 16)
+            HStack(spacing: 10) {
+                WebSearchField(placeholder: "Поиск по чатам", text: $search)
+                Button { joining = true } label: { Image(systemName: "link").frame(width: 46, height: 47).webPanel(14) }
+                    .buttonStyle(.plain).accessibilityLabel("Войти в комнату по приглашению")
+            }.padding(.horizontal, 16)
+            if let error { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal, 16) }
+            ScrollView {
+            LazyVStack(spacing: 4) {
+            ForEach(filtered) { chat in
+                NavigationLink(value: chat) {
+                    HStack(spacing: 13) {
+                        if chat.isService { Image("BrandMark").resizable().scaledToFit().frame(width: 44, height: 44) }
+                        else { ProfileAvatar(name: chat.name(currentUserID: account.user?.id), url: chat.avatar(currentUserID: account.user?.id), client: account.client, size: 44) }
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text(chat.name(currentUserID: account.user?.id)).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                                Spacer(minLength: 2)
+                                if let date = chat.lastMessageAt.flatMap(WireDate.parse) {
+                                    Text(date, style: .time).font(.system(size: 10)).foregroundStyle(Brand.muted)
+                                }
+                            }
+                            HStack(spacing: 4) {
+                                if chat.pinned == true { Image(systemName: "pin.fill").accessibilityLabel("Закреплено") }
+                                if chat.muted == true { Image(systemName: "bell.slash").accessibilityLabel("Уведомления отключены") }
+                                Text(chat.lastMessage ?? "Нет сообщений")
+                            }.font(.system(size: 13)).foregroundStyle(Brand.muted).lineLimit(1)
+                        }
+                    }.padding(.vertical, 11).padding(.horizontal, 10).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                .contextMenu {
+                    if !chat.isService {
+                        Button(chat.archived == true ? "Вернуть из архива" : "В архив", systemImage: "archivebox") {
+                            perform { try await account.client.archive(chatID: chat.id, archived: chat.archived != true) }
+                        }
+                        Button(chat.pinned == true ? "Открепить" : "Закрепить", systemImage: "pin") {
+                            perform { try await account.client.setPreference(chatID: chat.id, pinned: chat.pinned != true) }
+                        }
+                        Button(chat.muted == true ? "Включить уведомления" : "Выключить уведомления", systemImage: "bell") {
+                            perform { try await account.client.setPreference(chatID: chat.id, muted: chat.muted != true) }
+                        }
+                    }
+                }
+                .listRowBackground(Brand.webBackground)
+                .accessibilityIdentifier("chat.row.\(chat.id)")
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
+            }
+            }.padding(.horizontal, 6)
+            }
+            .refreshable { await load() }
+            .overlay {
+                if loading && chats.isEmpty { ProgressView() }
+                else if filtered.isEmpty { ContentUnavailableView(inArchive ? "Архив пуст" : "Нет чатов", systemImage: inArchive ? "archivebox" : "bubble.left.and.bubble.right") }
+            }
+        }.padding(.top, 12)
+        .task(id: "\(scenePhase == .active)-\(account.chatListRevision)") {
+            guard scenePhase == .active else { return }
+            repeat { await load(); do { try await Task.sleep(for: .seconds(30)) } catch { return } } while !Task.isCancelled
+        }
+        .sheet(isPresented: $creating) { NewChatScreen(account: account) { created = $0; creating = false } }
+        .navigationDestination(item: $created) { ConversationView(chat: $0, account: account) }
+        .alert("Войти в комнату", isPresented: $joining) {
+            TextField("Код или ссылка", text: $code)
+            Button("Войти") { if let user = account.user { Task { await account.calls.start(user: user, join: code) } } }
+            Button("Отмена", role: .cancel) {}
+        }
+    }
+    private func perform(_ action: @escaping @MainActor () async throws -> Void) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do { try await action(); await load() } catch { self.error = error.localizedDescription }
+        }
+    }
+    private func load() async {
+        let id = UUID(); loadID = id
+        defer { if id == loadID { loading = false } }
+        do {
+            let result = try await account.client.chats()
+            guard !Task.isCancelled, loadID == id else { return }
+            chats = result; error = nil
+        } catch { if !Task.isCancelled && loadID == id { self.error = error.localizedDescription } }
+    }
+
+}
+
+extension Chat {
+    func avatar(currentUserID: String?) -> String? { members.first(where: { $0.id != currentUserID })?.avatarUrl }
+}
+
+struct NewChatScreen: View {
+    let account: AccountStore
+    let created: (Chat) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var friends: [Friend] = []
+    @State private var selected: Set<String> = []
+    @State private var title = ""
+    @State private var error: String?
+    @State private var working = false
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                TextField("Название группы (необязательно)", text: $title).webInput().padding(.horizontal)
+                List(friends) { friend in
+                    Button {
+                        if selected.contains(friend.id) { selected.remove(friend.id) } else if selected.count < 7 { selected.insert(friend.id) }
+                    } label: {
+                        HStack {
+                            ProfileAvatar(name: friend.display_name, url: friend.avatarUrl, client: account.client)
+                            Text(friend.display_name).foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: selected.contains(friend.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(Brand.accent)
+                        }
+                    }
+                }.listStyle(.plain)
+                if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                Button("Создать чат") {
+                    working = true
+                    Task {
+                        defer { working = false }
+                        do { let chat = try await account.client.createChat(memberIDs: Array(selected), title: title.isEmpty ? nil : title); dismiss(); created(chat) }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }.buttonStyle(PrimaryButton()).disabled(selected.isEmpty || working).padding()
+            }
+            .navigationTitle("Новый чат")
+            .toolbar { ToolbarItem { Button("Отмена") { dismiss() } } }
+            .task { do { friends = try await account.client.friends() } catch { self.error = error.localizedDescription } }
+        }.presentationDetents([.large])
+    }
+}

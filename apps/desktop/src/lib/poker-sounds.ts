@@ -172,7 +172,7 @@ export class PokerSounds {
     const settings = loadSettings();
     if (!this.enabled || settings.outputVolume <= 0) return;
     if (this.active.size >= 6) return;
-    const audio = new Audio(`/sounds/poker/${sound}.wav`);
+    const audio = new Audio(`${import.meta.env.BASE_URL}sounds/poker/${sound}.wav`);
     audio.preload = 'auto';
     audio.volume = Math.min(1, Math.max(0, settings.outputVolume)) * 0.65;
     this.active.add(audio);

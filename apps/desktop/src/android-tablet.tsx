@@ -12,13 +12,16 @@ import './android-tablet.css';
 declare global {
   interface Window {
     TRLKANativeTablet?: { postMessage(message: string): void };
+    webkit?: { messageHandlers?: { trlkaTablet?: { postMessage(message: string): void } } };
     TRLKATablet?: { receive(raw: string): void; pointer(raw: string): void };
   }
 }
 
 const root = createRoot(document.getElementById('root')!);
-const send = (type: string, action?: unknown) =>
-  window.TRLKANativeTablet?.postMessage(JSON.stringify({ type, ...(action ? { action } : {}) }));
+const send = (type: string, action?: unknown) => {
+  const bridge = window.TRLKANativeTablet ?? window.webkit?.messageHandlers?.trlkaTablet;
+  bridge?.postMessage(JSON.stringify({ type, ...(action ? { action } : {}) }));
+};
 
 window.TRLKATablet = {
   receive(raw) {
