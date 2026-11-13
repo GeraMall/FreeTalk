@@ -395,13 +395,31 @@ class FreeTalkApi(private val sessions: SessionStore) {
         authorizedJson("/v1/me", "PATCH", JSONObject().put("displayName", name.trim()).put("bio", bio)).getJSONObject("user"),
     )
 
-    suspend fun directChat(userId: String): ChatSummary {
-        UUID.fromString(userId)
-        return parseChat(authorizedJson("/v1/chats", "POST", JSONObject().put("type", "direct").put("memberIds", JSONArray().put(userId))).getJSONObject("chat"))
+    suspend fun directChat(friend: FriendSummary): ChatSummary = createChat("direct", null, listOf(friend))
+
+    suspend fun createGroup(title: String, friends: List<FriendSummary>): ChatSummary {
+        require(title.trim().length in 1..80 && friends.size in 1..49)
+        return createChat("group", title.trim(), friends)
+    }
+
+    private suspend fun createChat(type: String, title: String?, friends: List<FriendSummary>): ChatSummary {
+        val members = friends.distinctBy { it.id }.map { friend ->
+            UUID.fromString(friend.id)
+            ChatMember(friend.id, friend.displayName, friend.avatarUrl, friend.username)
+        }
+        val body = JSONObject().put("type", type).putOpt("title", title).put("memberIds", JSONArray(members.map { it.id }))
+        // The create endpoint returns only the ID, including for existing direct chats.
+        val id = authorizedJson("/v1/chats", "POST", body).getJSONObject("chat").getString("id")
+        return ChatSummary(id, type, title, members, null, null, if (type == "direct") members.single().avatarUrl else null)
     }
 
     suspend fun forgotPassword(email: String) {
         publicJson("/v1/auth/forgot-password", JSONObject().put("email", email.trim().lowercase()).put("codeFormat", "numeric"))
+    }
+
+    internal suspend fun approveComputerLogin(challenge: String) {
+        require(Regex("[A-Za-z0-9_-]{43}").matches(challenge))
+        authorizedJson("/v1/auth/qr/approve", "POST", JSONObject().put("challenge", challenge))
     }
 
     suspend fun resetPassword(email: String, token: String, password: String) {

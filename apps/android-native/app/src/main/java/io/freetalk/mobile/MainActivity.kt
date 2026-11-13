@@ -108,13 +108,25 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    private var pendingNavigation by mutableStateOf<android.content.Intent?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingNavigation = intent
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingNavigation = intent
         enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         MobilePreferences.load(this)
         val api = FreeTalkApi(SessionStore(this))
         val cache = MediaCache(this).also { it.trim() }
-        setContent { FreeTalkNativeApp(api, cache) }
+        setContent { FreeTalkNativeApp(api, cache, pendingNavigation) {
+            pendingNavigation = null
+            setIntent(android.content.Intent(this, MainActivity::class.java))
+        } }
     }
 }
 
@@ -135,7 +147,7 @@ private val appBackground get() = Brush.verticalGradient(listOf(MobileDesign.bac
 internal enum class AuthPage { Login, Register, Verify }
 
 @Composable
-private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
+private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache, navigation: android.content.Intent?, consumeNavigation: () -> Unit) {
     val appContext = LocalContext.current.applicationContext
     var user by remember { mutableStateOf<SignedInUser?>(null) }
     var restoring by remember { mutableStateOf(true) }
@@ -225,6 +237,7 @@ private fun FreeTalkNativeApp(api: FreeTalkApi, cache: MediaCache) {
                 )
                 else -> NativeShell(
                     api = api, cache = cache, user = user!!,
+                    navigation = navigation, consumeNavigation = consumeNavigation,
                     onLogout = {
                         appContext.getSharedPreferences("push", android.content.Context.MODE_PRIVATE).edit().remove("userId").apply()
                         appContext.getSystemService(android.app.NotificationManager::class.java).cancelAll()
@@ -252,7 +265,8 @@ private fun LoadingScreen(label: String) {
 
 
 @Composable
-private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser, onLogout: () -> Unit) {
+private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
+    navigation: android.content.Intent?, consumeNavigation: () -> Unit, onLogout: () -> Unit) {
     val nativeContext = LocalContext.current
     val appearance = remember(user.id) { NativeAppearance(nativeContext.applicationContext) }
     val appearanceLifecycle = LocalLifecycleOwner.current.lifecycle
@@ -340,6 +354,33 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
         onDispose { signaling.dispose() }
     }
     LaunchedEffect(user.id) { load() }
+    var invitedRoom by remember(user.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(navigation, user.id, data) {
+        val intent = navigation ?: return@LaunchedEffect
+        val chatId = intent.getStringExtra("trlka.chatId")
+        if (chatId != null && intent.getStringExtra("trlka.recipient") == user.id) {
+            val snapshot = data ?: return@LaunchedEffect
+            snapshot.chats.firstOrNull { it.id == chatId }?.let {
+                settingsOpen = false; serviceOpen = false; callExpanded = false
+                page = 1; activeChat = it
+            }
+        } else if (intent.action == android.content.Intent.ACTION_VIEW) {
+            intent.dataString?.let(::roomCodeFromLink)?.let { code ->
+                if (roomId == code) callExpanded = true else invitedRoom = code
+            }
+        }
+        consumeNavigation()
+    }
+    invitedRoom?.let { code ->
+        AlertDialog(onDismissRequest = { invitedRoom = null },
+            title = { MobileText("Приглашение в комнату") },
+            text = { MobileText(if (roomId == null) code else "Сначала завершите текущий звонок.") },
+            confirmButton = { if (roomId == null) TextButton(onClick = {
+                invitedRoom = null
+                api.accessToken?.let { signaling.join(code, profile, it) }
+            }) { MobileText("Присоединиться") } },
+            dismissButton = { TextButton(onClick = { invitedRoom = null }) { MobileText("Закрыть") } })
+    }
     val notificationContext = LocalContext.current
     androidx.compose.runtime.DisposableEffect(user.id) {
         PushRuntime.api = api
@@ -497,7 +538,10 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                         api.accessToken?.let { signaling.join(code, user, it) }
                     },
                 )
-                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true }, friends = data?.friends.orEmpty(), onNewChat = { id -> scope.launch { runCatching { api.directChat(id) }.onSuccess { activeChat = it; load() }.onFailure { error = it.message ?: "Не удалось открыть чат" } } }, onJoinLink = { link -> api.accessToken?.let { signaling.join(normalizeRoomCode(link), profile, it) } },
+                page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true }, friends = data?.friends.orEmpty(),
+                    onNewChat = { friend -> scope.launch { runCatching { api.directChat(friend) }.onSuccess { activeChat = it; load() }.onFailure { error = it.message ?: "Не удалось открыть чат" } } },
+                    onCreateGroup = { title, friends -> activeChat = api.createGroup(title, friends); load() },
+                    onJoinLink = { link -> api.accessToken?.let { signaling.join(normalizeRoomCode(link), profile, it) } },
                     serviceUnread = serviceUnread,
                     onSaved = { if (!chatActionRunning) {
                         chatActionRunning = true
@@ -729,7 +773,8 @@ private fun RecentRoomCard(call: CallSummary, currentUserId: String, onCreateAga
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat: (ChatSummary) -> Unit, onRefresh: () -> Unit, onService: () -> Unit,
-    friends: List<FriendSummary> = emptyList(), onNewChat: (String) -> Unit = {}, onJoinLink: (String) -> Unit = {},
+    friends: List<FriendSummary> = emptyList(), onNewChat: (FriendSummary) -> Unit = {}, onJoinLink: (String) -> Unit = {},
+    onCreateGroup: suspend (String, List<FriendSummary>) -> Unit = { _, _ -> },
     onSaved: () -> Unit = {}, onChatAction: (ChatSummary, String) -> Unit = { _, _ -> }, serviceUnread: Int = 0) {
     var query by remember { mutableStateOf("") }
     var create by remember { mutableStateOf(false) }
@@ -796,14 +841,7 @@ internal fun ChatsPage(user: SignedInUser, chats: List<ChatSummary>, activeChat:
         confirmButton = { TextButton(onClick = { confirm = null; onChatAction(chat, action) }) { MobileText("Подтвердить", color = MobileDesign.red) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { MobileText("Отмена") } },
     ) }
-    if (create) ModalBottomSheet(onDismissRequest = { create = false }, containerColor = MobileDesign.canvas) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            MobileText("Новый чат", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            if (friends.isEmpty()) MobileText("Добавьте друзей, чтобы начать переписку.", color = MobileDesign.muted)
-            friends.forEach { friend -> TextButton(onClick = { create = false; onNewChat(friend.id) }) { MobileAvatar(friend.displayName, friend.avatarUrl); MobileText(friend.displayName, localize = false, modifier = Modifier.padding(start = 12.dp)) } }
-            Spacer(Modifier.height(20.dp))
-        }
-    }
+    if (create) NewChatSheet(friends, onDismiss = { create = false }, onDirect = { create = false; onNewChat(it) }, onGroup = onCreateGroup)
     if (invite) AlertDialog(onDismissRequest = { invite = false }, title = { MobileText("Войти по приглашению") },
         text = { OutlinedTextField(inviteCode, { inviteCode = it }, label = { MobileText("Код или ссылка комнаты") }) },
         confirmButton = { TextButton(enabled = inviteCode.isNotBlank(), onClick = { invite = false; onJoinLink(inviteCode) }) { MobileText("Войти") } },
@@ -860,7 +898,7 @@ internal fun FriendsPage(api: FreeTalkApi, user: SignedInUser, friends: List<Fri
                 ListCard(
                     friend.displayName, "@${friend.username} · ${if (online) "В сети" else "Не в сети"}",
                     friend.displayName.take(1), imageUrl = friend.avatarUrl, online = online,
-                ) { scope.launch { runCatching { api.directChat(friend.id) }.onSuccess(onChat).onFailure { feedback = it.message ?: "Не удалось открыть чат" } } }
+                ) { scope.launch { runCatching { api.directChat(friend) }.onSuccess(onChat).onFailure { feedback = it.message ?: "Не удалось открыть чат" } } }
             }
         }
     }

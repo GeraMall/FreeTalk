@@ -61,6 +61,7 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
                     SettingsItem("Интерфейс", "Тема, язык и синхронизация", Icons.Outlined.Palette) { section = "Интерфейс" }
                     SettingsItem("Видео и звук", "Предпросмотр камеры", Icons.Outlined.Videocam) { section = "Видео и звук" }
                     SettingsItem("Устройства", "Подключённые сессии", Icons.Outlined.Devices) { section = "Устройства" }
+                    ComputerLoginItem(api)
                     SettingsItem("Чаты", "Оформление сообщений и хранилище", Icons.Outlined.ChatBubbleOutline) { section = "Чаты" }
                     SettingsItem("О приложении", "Версия и информация", Icons.Outlined.Info) { section = "О приложении" }
                 }
@@ -107,6 +108,9 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
                     }
                 }
                 "Видео и звук" -> {
+                    MobileText("Демонстрация экрана", fontWeight = FontWeight.SemiBold)
+                    ScreenShareOptions()
+                    HorizontalDivider(color = MobileDesign.stroke)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         MobileText("Зеркалить свою камеру", Modifier.weight(1f), fontSize = 16.sp)
                         Switch(MobilePreferences.mirrorSelf, { MobilePreferences.mirrorSelf = it; MobilePreferences.save(context) })
@@ -158,7 +162,7 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
         confirmButton = { TextButton(onClick = onLogout) { MobileText("Выйти", color = MobileDesign.red) } }, dismissButton = { TextButton(onClick = { confirm = false }) { MobileText("Отмена") } })
     if (reset) AlertDialog(onDismissRequest = { reset = false }, title = { MobileText("Сбросить настройки?") },
         text = { MobileText("Размер сообщений и зеркальный предпросмотр камеры вернутся к значениям по умолчанию.") },
-        confirmButton = { TextButton(onClick = { MobilePreferences.textScale = 1f; MobilePreferences.mirrorSelf = true; MobilePreferences.save(context); reset = false }) { MobileText("Сбросить") } },
+        confirmButton = { TextButton(onClick = { MobilePreferences.textScale = 1f; MobilePreferences.mirrorSelf = true; MobilePreferences.shareQuality = ScreenShareQuality(); MobilePreferences.save(context); reset = false }) { MobileText("Сбросить") } },
         dismissButton = { TextButton(onClick = { reset = false }) { MobileText("Отмена") } })
 }
 

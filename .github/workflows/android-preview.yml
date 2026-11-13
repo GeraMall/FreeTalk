@@ -32,14 +32,29 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Phone UI flows and phone/tablet screenshots
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: bash apps/android-native/scripts/capture-preview.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='system-images;android-36;google_apis;x86_64'
+          if [[ ! -x "$ANDROID_HOME/emulator/emulator" ]]; then sdkmanager emulator; fi
+          for attempt in 1 2 3; do
+            if sdkmanager "$image"; then break; fi
+            if [[ $attempt == 3 ]]; then exit 1; fi
+            sleep 5
+          done
+          echo no | avdmanager create avd --name trlka --package "$image" --device pixel_6
+          "$ANDROID_HOME/emulator/emulator" -avd trlka -no-window -gpu swiftshader_indirect -noaudio -no-snapshot -no-boot-anim -camera-back emulated > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          pid=$!
+          trap 'adb emu kill || true' EXIT
+          for _ in {1..120}; do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
+            kill -0 "$pid" || { tail -100 "$RUNNER_TEMP/emulator.log"; exit 1; }
+            sleep 2
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
+          adb shell input keyevent 82
+          for setting in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$setting" 0; done
+          bash apps/android-native/scripts/capture-preview.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:

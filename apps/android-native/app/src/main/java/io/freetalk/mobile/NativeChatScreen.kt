@@ -86,6 +86,7 @@ internal fun NativeChatScreen(
     var downloading by remember { mutableStateOf<String?>(null) }
     var selected by remember(chat.id) { mutableStateOf(emptySet<String>()) }
     var chooseGif by remember(chat.id) { mutableStateOf(false) }
+    var stickerTab by remember(chat.id) { mutableStateOf(false) }
     var favorites by remember(chat.id) { mutableStateOf<List<ChatGif>?>(null) }
     var gifError by remember(chat.id) { mutableStateOf(false) }
     var favoriteAttempt by remember(chat.id) { mutableIntStateOf(0) }
@@ -406,7 +407,7 @@ internal fun NativeChatScreen(
         }
         MobileComposer(input, { input = it }, sending, enabled = preview == null, placeholder = "Написать сообщение…",
             onAttach = if (editTarget != null) null else ({ attachment.launch(arrayOf("*/*")) }),
-            onGif = if (editTarget != null) null else ({ chooseGif = true })) {
+            onGif = if (editTarget != null) null else ({ stickerTab = false; chooseGif = true })) {
             val body = input.trim()
             if (body.isNotEmpty() && !sending) {
                 sending = true
@@ -468,6 +469,34 @@ internal fun NativeChatScreen(
             catch (_: Exception) { gifError = true }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !stickerTab, onClick = { stickerTab = false }, label = { MobileText("GIF") })
+                FilterChip(selected = stickerTab, onClick = { stickerTab = true }, label = { MobileText("Стикеры") })
+            }
+            if (stickerTab) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    chatStickers.forEach { emoji ->
+                        TextButton(enabled = !sending, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp), onClick = {
+                            if (!sending) {
+                                val caption = input
+                                val reply = replyTo?.id
+                                chooseGif = false
+                                sending = true
+                                scope.launch {
+                                    try {
+                                        val sent = uploadChatSticker(context, api, emoji, chat.id, caption, reply)
+                                        messages = (messages + sent).distinctBy { it.id }
+                                        if (input == caption) input = ""
+                                        replyTo = null; onChanged()
+                                    } catch (e: CancellationException) { throw e }
+                                    catch (e: Exception) { error = e.message ?: "Не удалось отправить стикер" }
+                                    finally { sending = false }
+                                }
+                            }
+                        }) { MobileText(emoji, localize = false, fontSize = 26.sp) }
+                    }
+                }
+            } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MobileText("Избранные GIF", Modifier.weight(1f), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 TextButton(onClick = { gifUpload.launch(arrayOf("image/gif")) }) { MobileText("Свой GIF") }
@@ -481,6 +510,7 @@ internal fun NativeChatScreen(
                         modifier = Modifier.weight(1f).padding(vertical = 3.dp).aspectRatio(1.5f).clip(RoundedCornerShape(8.dp)).clickable { sendGif { gif } }) }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 } }
+            }
             }
             Spacer(Modifier.height(16.dp))
         }

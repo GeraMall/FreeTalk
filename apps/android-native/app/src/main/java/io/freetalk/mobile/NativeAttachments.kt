@@ -10,6 +10,24 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 
+internal val chatStickers = listOf("😎", "😂", "🔥", "❤️", "🎉", "👋")
+
+internal suspend fun uploadChatSticker(context: Context, api: FreeTalkApi, emoji: String, chatId: String,
+    caption: String, replyTo: String?): ChatMessage = withContext(Dispatchers.IO) {
+    require(emoji in chatStickers)
+    val file = File.createTempFile("sticker-", ".png", context.cacheDir)
+    val bitmap = android.graphics.Bitmap.createBitmap(192, 192, android.graphics.Bitmap.Config.ARGB_8888)
+    try {
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 144f
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        android.graphics.Canvas(bitmap).drawText(emoji, 96f, 96f - (paint.ascent() + paint.descent()) / 2, paint)
+        file.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+        api.uploadAttachment(chatId, file, "sticker.png", "image/png", true, caption, replyTo)
+    } finally { bitmap.recycle(); file.delete() }
+}
+
 internal fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long): Long {
     var total = 0L
     val buffer = ByteArray(32 * 1024)

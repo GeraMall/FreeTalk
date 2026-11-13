@@ -135,7 +135,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             onAudio = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" },
             onCamera = { if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) },
             onCameraOptions = { sheet = "camera" },
-            onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent()) },
+            onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else sheet = "share" },
             onReaction = { sheet = "reactions" }, onChat = { sheet = "chat" }, onMore = { sheet = "menu" }, onLeave = onLeave,
             onActivity = {
                 if (state.activity == null) feedback = "Подключаем общий планшет…"
@@ -171,6 +171,14 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null }, containerColor = MobileDesign.canvas) {
         Column(Modifier.fillMaxWidth().padding(20.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when (sheet) {
+                "share" -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MobileText("Демонстрация экрана", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    ScreenShareOptions()
+                    Button(onClick = {
+                        sheet = null
+                        screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
+                    }, modifier = Modifier.fillMaxWidth(), enabled = media != null) { MobileText("Показать экран") }
+                }
                 "camera" -> {
                     MobileText("Камера", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     TextButton(enabled = media != null, onClick = { sheet = null; if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) }) {
@@ -188,7 +196,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                     TextButton(enabled = media != null, onClick = {
                         sheet = null
                         if (media?.sharing == true) media?.stopCapture("screen")
-                        else screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
+                        else sheet = "share"
                     }) { MobileText(if (media?.sharing == true) "Остановить показ экрана" else "Показать экран") }
                     TextButton(onClick = { sheet = "invite" }) { MobileText("Пригласить друзей") }
                 }

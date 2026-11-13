@@ -55,18 +55,25 @@ internal object MobileDesign {
 internal object MobilePreferences {
     var textScale by mutableStateOf(1f)
     var mirrorSelf by mutableStateOf(true)
+    var shareQuality by mutableStateOf(ScreenShareQuality())
     var language by mutableStateOf("ru")
     var theme by mutableStateOf("default")
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("mobile-design", Context.MODE_PRIVATE)
         textScale = prefs.getFloat("textScale", 1f).coerceIn(.9f, 1.3f)
         mirrorSelf = prefs.getBoolean("mirrorSelf", true)
+        shareQuality = ScreenShareQuality(
+            prefs.getInt("shareResolution", 1080).takeIf { it in listOf(720, 1080, 1440) } ?: 1080,
+            prefs.getInt("shareFps", 30).takeIf { it in listOf(15, 30, 60) } ?: 30,
+            ShareContent.entries.find { it.name == prefs.getString("shareContent", "") } ?: ShareContent.Balanced,
+        )
         language = prefs.getString("language", "ru").orEmpty().takeIf { it in listOf("ru", "en", "zh-CN", "kk", "be", "ka", "es") } ?: "ru"
         theme = prefs.getString("theme", "default").orEmpty().takeIf { it in listOf("default", "light", "black") } ?: "default"
     }
     fun save(context: Context) {
         context.getSharedPreferences("mobile-design", Context.MODE_PRIVATE).edit()
             .putFloat("textScale", textScale).putBoolean("mirrorSelf", mirrorSelf)
+            .putInt("shareResolution", shareQuality.shortEdge).putInt("shareFps", shareQuality.fps).putString("shareContent", shareQuality.content.name)
             .putString("language", language).putString("theme", theme).apply()
     }
 }

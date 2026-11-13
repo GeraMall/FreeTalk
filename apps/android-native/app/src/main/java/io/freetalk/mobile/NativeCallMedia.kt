@@ -7,6 +7,8 @@ import android.media.AudioDeviceInfo
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.projection.MediaProjection
+import android.hardware.display.DisplayManager
+import android.view.Display
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -48,6 +50,10 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     private var lastRetryAt = -5_000L
     private val peers = mutableMapOf<String, Peer>()
     private val captures = mutableMapOf<String, Capture>()
+    private val displays = context.getSystemService(DisplayManager::class.java)
+    private var displayListener: DisplayManager.DisplayListener? = null
+    private var screenQuality = ScreenShareQuality()
+    private var screenSize: Pair<Int, Int>? = null
     private data class Capture(val capturer: VideoCapturer, val source: VideoSource, val helper: SurfaceTextureHelper, val track: VideoTrack)
     private data class SenderBinding(val sender: RtpSender, val transceiver: RtpTransceiver)
     private class Peer(val pc: PeerConnection) {
@@ -322,7 +328,18 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
                 listOf(source),
             ),
         )
-        return SenderBinding(transceiver.sender, transceiver)
+        val sender = transceiver.sender
+        if (source == "screen") {
+            val params = sender.parameters
+            params.degradationPreference = when (screenQuality.content) {
+                ShareContent.Text -> RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
+                ShareContent.Video -> RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
+                ShareContent.Balanced -> RtpParameters.DegradationPreference.BALANCED
+            }
+            params.encodings.forEach { it.maxFramerate = screenQuality.fps }
+            sender.setParameters(params)
+        }
+        return SenderBinding(sender, transceiver)
     }
     private fun publishAudioState() {
         audio.setEnabled(!muted && !deafened)
@@ -356,22 +373,61 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         })
     }
     fun startScreen(data: Intent) {
+        if (sharing || stopped) return
         runCatching {
-            val display = context.resources.displayMetrics
-            val scale = minOf(720f / display.widthPixels, 1280f / display.heightPixels)
-            val width = ((display.widthPixels * scale).toInt() / 2 * 2).coerceAtLeast(2)
-            val height = ((display.heightPixels * scale).toInt() / 2 * 2).coerceAtLeast(2)
-            startCapture("screen", ScreenCapturerAndroid(data, object : MediaProjection.Callback() {
-                override fun onStop() = post { stopCapture("screen") }
-            }), width, height, 15); sharing = true
-        }.onFailure { error = it.message ?: "Не удалось показать экран" }
+            screenQuality = MobilePreferences.shareQuality
+            lateinit var capturer: ScreenCapturerAndroid
+            fun resize(width: Int, height: Int) {
+                val capture = captures["screen"] ?: return
+                if (capture.capturer !== capturer || width <= 0 || height <= 0) return
+                val size = screenQuality.dimensions(width, height)
+                if (size == screenSize) return
+                runCatching {
+                    capturer.changeCaptureFormat(size.first, size.second, screenQuality.fps)
+                    capture.source.adaptOutputFormat(size.first, size.second, screenQuality.fps)
+                    screenSize = size
+                }.onFailure { error = it.message ?: "Не удалось изменить разрешение" }
+            }
+            capturer = ScreenCapturerAndroid(data, object : MediaProjection.Callback() {
+                override fun onStop() = post { if (captures["screen"]?.capturer === capturer) stopCapture("screen") }
+                override fun onCapturedContentResize(width: Int, height: Int) = post { resize(width, height) }
+            })
+            val display = physicalDisplaySize()
+            val size = screenQuality.dimensions(display.x, display.y)
+            startCapture("screen", capturer, size.first, size.second, screenQuality.fps)
+            screenSize = size
+            sharing = true
+            // API 34+ reports the actual captured app/window. Older versions capture the full display.
+            if (Build.VERSION.SDK_INT < 34) {
+                val listener = object : DisplayManager.DisplayListener {
+                    override fun onDisplayAdded(id: Int) {}
+                    override fun onDisplayRemoved(id: Int) {}
+                    override fun onDisplayChanged(id: Int) {
+                        if (id == Display.DEFAULT_DISPLAY) physicalDisplaySize().let { resize(it.x, it.y) }
+                    }
+                }
+                displays.registerDisplayListener(listener, main)
+                displayListener = listener
+            }
+        }.onFailure { stopCapture("screen"); error = it.message ?: "Не удалось показать экран" }
+    }
+    @Suppress("DEPRECATION")
+    private fun physicalDisplaySize(): android.graphics.Point {
+        val metrics = context.resources.displayMetrics
+        return android.graphics.Point(metrics.widthPixels, metrics.heightPixels).also {
+            displays.getDisplay(Display.DEFAULT_DISPLAY)?.getRealSize(it)
+        }
     }
     private fun startCapture(name: String, capturer: VideoCapturer, width: Int, height: Int, fps: Int) {
         if (captures.containsKey(name)) return
         val source = factory.createVideoSource(name == "screen")
         val helper = SurfaceTextureHelper.create("capture-$name", egl.eglBaseContext)
         val track = factory.createVideoTrack(name, source)
-        try { capturer.initialize(helper, context, source.capturerObserver); capturer.startCapture(width, height, fps) }
+        try {
+            if (name == "screen") source.adaptOutputFormat(width, height, fps)
+            capturer.initialize(helper, context, source.capturerObserver)
+            capturer.startCapture(width, height, fps)
+        }
         catch (e: Exception) { capturer.dispose(); helper.dispose(); track.dispose(); source.dispose(); throw e }
         captures[name] = Capture(capturer, source, helper, track)
         videos = videos + ("self:$name" to track)
@@ -379,6 +435,11 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     }
     fun stopCapture(name: String) {
         val c = captures.remove(name) ?: return
+        if (name == "screen") {
+            displayListener?.let(displays::unregisterDisplayListener)
+            displayListener = null
+            screenSize = null
+        }
         videos = videos - "self:$name"
         peers.forEach { (id, p) -> p.senders.remove(name)?.let { p.pc.removeTrack(it.sender) }; publishVideo(p); negotiate(id) }
         runCatching { c.capturer.stopCapture() }; c.capturer.dispose(); c.helper.dispose(); c.track.dispose(); c.source.dispose()

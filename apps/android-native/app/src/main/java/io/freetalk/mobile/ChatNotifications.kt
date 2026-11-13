@@ -27,11 +27,21 @@ internal class ChatNotifications(private val context: Context) {
             preferences.edit().putStringSet(currentUserId, seen).apply()
         }
         if (message.optString("sender_id") == currentUserId || event.optString("chatId") == openChatId) return
-        if (message.optString("kind") !in listOf("text", "image")) return
+        if (message.optString("kind") !in listOf("text", "image", "file")) return
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val chatId = event.optString("chatId")
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            data = android.net.Uri.Builder().scheme("trlka-notification").authority("chat").appendPath(currentUserId).appendPath(chatId).build()
+            putExtra("trlka.chatId", chatId)
+            putExtra("trlka.recipient", currentUserId)
+        }
         val pending = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val text = if (message.optString("kind") == "image") "Фотография" else message.optString("body").take(240)
+        val text = when (message.optString("kind")) {
+            "image" -> "Фотография"
+            "file" -> "Файл"
+            else -> message.optString("body").take(240)
+        }
         manager.notify(id, 1, Notification.Builder(context, "messages")
             .setSmallIcon(R.drawable.notification_message)
             .setContentTitle(message.optString("display_name", "Trlka"))
