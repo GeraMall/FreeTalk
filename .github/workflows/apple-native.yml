@@ -116,6 +116,16 @@ jobs:
                           result.check_returncode()
                       time.sleep(4 * (attempt + 1))
                   time.sleep(6)
+                  running = subprocess.run(['xcrun','simctl','spawn',uid,'launchctl','list'], capture_output=True, text=True, check=True)
+                  alive = any('com.trlka.ios' in line and line.split()[0].isdigit() for line in running.stdout.splitlines())
+                  if not alive:
+                      console = ['xcrun','simctl','launch','--console',uid,'com.trlka.ios'] + launch[5:]
+                      try:
+                          diagnostic = subprocess.run(console, capture_output=True, text=True, timeout=12)
+                          print(diagnostic.stdout, diagnostic.stderr, flush=True)
+                      except subprocess.TimeoutExpired as error:
+                          print(error.stdout, error.stderr, flush=True)
+                      raise RuntimeError(f'TRLKA exited before capturing {mode}')
                   subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
               if family == 'iPhone' and not quick:
                   subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
