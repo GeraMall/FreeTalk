@@ -55,6 +55,7 @@ final class MediaPeerTests: XCTestCase {
             let received = expectation(description: "Video frame received, \(kind) run \(index)")
             let probe = FrameProbe(received)
             let source = factory.videoSource()
+            source.adaptOutputFormat(toWidth: 320, height: 240, fps: 20)
             let capture = RTCVideoCapturer(delegate: source)
             let track = factory.videoTrack(with: source, trackId: "\(kind)-\(index)")
             var attached = false
@@ -82,6 +83,16 @@ final class MediaPeerTests: XCTestCase {
                 }
             }
             await fulfillment(of: [received], timeout: 20)
+            print("Video run \(index), attached renderer: \(attached), remote tracks: \(second.tracks.keys.sorted())")
+            for (name, peer) in [("sender", first), ("receiver", second)] {
+                let report: RTCStatisticsReport = await withCheckedContinuation { continuation in
+                    peer.connection.statistics { continuation.resume(returning: $0) }
+                }
+                for item in report.statistics.values where ["outbound-rtp", "inbound-rtp", "media-source", "codec"].contains(item.type) {
+                    let fields = item.values.filter { ["kind", "mimeType", "frames", "framesEncoded", "framesDecoded", "framesSent", "framesReceived", "bytesSent", "bytesReceived", "qualityLimitationReason"].contains($0.key) }
+                    print("Video run \(index), \(name) \(item.type): \(fields)")
+                }
+            }
             sending.cancel()
             second.tracks.values.forEach { $0.remove(probe) }
             let stopped = expectation(description: "\(kind) is removed from the remote view")
