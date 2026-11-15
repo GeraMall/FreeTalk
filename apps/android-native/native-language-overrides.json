@@ -252,13 +252,28 @@
     "El tamaño de los mensajes, el reflejo de la cámara y la calidad de la pantalla compartida volverán a sus valores predeterminados."
   ],
   "Не удалось загрузить проверку": [
-    "Couldn't load the verification", "无法加载验证", "Тексеру жүктелмеді", "Не ўдалося загрузіць праверку", "შემოწმების ჩატვირთვა ვერ მოხერხდა", "No se pudo cargar la verificación"
+    "Couldn't load the verification",
+    "无法加载验证",
+    "Тексеру жүктелмеді",
+    "Не ўдалося загрузіць праверку",
+    "შემოწმების ჩატვირთვა ვერ მოხერხდა",
+    "No se pudo cargar la verificación"
   ],
   "Не удалось создать группу": [
-    "Couldn't create the group", "无法创建群组", "Топ құрылмады", "Не ўдалося стварыць групу", "ჯგუფი ვერ შეიქმნა", "No se pudo crear el grupo"
+    "Couldn't create the group",
+    "无法创建群组",
+    "Топ құрылмады",
+    "Не ўдалося стварыць групу",
+    "ჯგუფი ვერ შეიქმნა",
+    "No se pudo crear el grupo"
   ],
   "Показать экран": [
-    "Share screen", "共享屏幕", "Экранды көрсету", "Паказаць экран", "ეკრანის გაზიარება", "Compartir pantalla"
+    "Share screen",
+    "共享屏幕",
+    "Экранды көрсету",
+    "Паказаць экран",
+    "ეკრანის გაზიარება",
+    "Compartir pantalla"
   ],
   "Размер текста": [
     "Text size",

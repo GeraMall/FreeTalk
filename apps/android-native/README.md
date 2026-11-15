@@ -4,6 +4,13 @@ Native Android client built with Kotlin and Jetpack Compose. It reuses the exist
 account API, signaling protocol and production infrastructure; it does not embed the desktop
 frontend or a WebView.
 
+Beta.228 adds paginated cached chat history, read receipts, reactions, GIFs and
+stickers, group creation, password recovery/CAPTCHA, QR approval of computer
+sign-in, notification/deep-link routing, shared tablet games, appearance themes
+and opt-in account theme sync. Native WebRTC calls run in a foreground service.
+Screen sharing offers content, resolution and frame-rate controls. Device calls,
+Bluetooth and background/network transitions require physical-device testing.
+
 Current native foundation:
 
 - Compose mobile shell and bottom navigation;
@@ -24,8 +31,8 @@ Current native foundation:
 - bounded 384 MB on-device media cache with size reporting and manual clearing;
 - Android deep-link declarations and runtime permission declarations.
 
-The native WebRTC media engine, image uploading, profile editing and
-background call service are the next implementation layer before this client is release-ready.
+Native WebRTC, attachment uploading, profile editing and the foreground call
+service are implemented. This remains a private preview pending device validation.
 
 Alpha.9 integrates Firebase Messaging for project trlka-b5d34, alongside foreground
 WebSocket notifications. Android 13+ requests notification permission.
