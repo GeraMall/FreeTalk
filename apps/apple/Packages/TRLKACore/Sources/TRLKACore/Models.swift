@@ -82,6 +82,7 @@ public struct Message: Codable, Identifiable, Sendable, Equatable {
         public let userIds: [String]
     }
     public struct Metadata: Codable, Sendable, Equatable {
+        public var gif: ChatGif?
         public let roomId: String?
         public let ended: Bool?
         public let filename: String?

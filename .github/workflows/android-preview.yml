@@ -35,6 +35,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/trlka-avds"
+          mkdir -p "$ANDROID_AVD_HOME"
           image='system-images;android-36;google_apis;x86_64'
           if [[ ! -x "$ANDROID_HOME/emulator/emulator" ]]; then sdkmanager emulator; fi
           for attempt in 1 2 3; do
@@ -43,6 +45,7 @@ jobs:
             sleep 5
           done
           echo no | avdmanager create avd --name trlka --package "$image" --device pixel_6
+          avdmanager list avd
           "$ANDROID_HOME/emulator/emulator" -avd trlka -no-window -gpu swiftshader_indirect -noaudio -no-snapshot -no-boot-anim -camera-back emulated > "$RUNNER_TEMP/emulator.log" 2>&1 &
           pid=$!
           trap 'adb emu kill || true' EXIT

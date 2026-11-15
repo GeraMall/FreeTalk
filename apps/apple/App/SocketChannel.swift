@@ -91,6 +91,8 @@ final class SocketChannel {
         }
     }
 
+    var connectedURL: URL? { ready ? socket?.originalRequest?.url : nil }
+
     func send(_ message: [String: Any]) {
         guard let current = socket, let data = try? JSONSerialization.data(withJSONObject: message) else { return }
         Task {

@@ -1,6 +1,16 @@
 import XCTest
 
 final class InterfaceTests: XCTestCase {
+    func testRoomChatShowsSignalingHistoryAndReturnsToCall() {
+        let app = launch("call")
+        let open = app.buttons["call.chat"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        open.tap()
+        XCTAssertTrue(app.staticTexts["Сообщение из комнаты"].waitForExistence(timeout: 5))
+        app.buttons["Закрыть чат"].tap()
+        XCTAssertTrue(app.buttons["call.end"].waitForExistence(timeout: 5))
+    }
+
     func testSharedTabletOpensFromACallAndReturnsToItsParticipants() {
         let app = launch("call")
         let open = app.buttons["call.tablet"]

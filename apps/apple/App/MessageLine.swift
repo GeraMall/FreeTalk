@@ -41,6 +41,11 @@ struct MessageLine: View {
                             }.padding(8).webPanel(10)
                         }
                         #if os(iOS)
+                        if let gif = message.metadata?.gif {
+                            ChatGifImage(client: account.client, gif: gif, preview: false)
+                                .frame(width: min(maximumWidth, 240), height: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
                         if message.kind == "file" || message.kind == "image" {
                             ChatAttachmentView(message: message, client: account.client)
                         }

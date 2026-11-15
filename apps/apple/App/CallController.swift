@@ -92,7 +92,9 @@ final class CallController {
     }
     #endif
     private var statisticsTask: Task<Void, Never>?
-    private var chatID: String?
+    private(set) var chatID: String?
+    private(set) var attachedChat: Chat?
+    let roomChat = NativeRoomChat()
     private var ringMembers: [String] = []
     private var shouldCreate = false
     #if os(iOS)
@@ -108,17 +110,22 @@ final class CallController {
 
     init(client: AccountClient) {
         self.client = client
+        roomChat.transmit = { [weak self] message in
+            guard let self, self.socket.connectedURL != nil, self.active else { return false }
+            self.socket.send(message)
+            return true
+        }
         socket.onMessage = { [weak self] in self?.receive($0) }
         socket.onConnection = { [weak self] connected in
             guard let self, active else { return }
-            if !connected { phase = .reconnecting; requestedTablet = false }
+            if !connected { roomChat.disconnect(); phase = .reconnecting; requestedTablet = false }
         }
         socket.onFailure = { [weak self] _ in
             guard let self, active else { return }; phase = .reconnecting
         }
     }
 
-    func start(user: AccountUser, chat: Chat? = nil, join code: String? = nil) async {
+    func start(user: AccountUser, chat: Chat? = nil, join code: String? = nil, attachedChatID: String? = nil) async {
         #if DEBUG
         if PreviewFixtures.mode != nil { error = "В снимке интерфейса звонки отключены."; return }
         #endif
@@ -147,7 +154,8 @@ final class CallController {
             audio = factory.audioTrack(with: source, trackId: "microphone")
             audio?.isEnabled = !muted
             roomID = room; title = chat?.name(currentUserID: user.id) ?? "Комната TRLKA"
-            chatID = chat?.id
+            attachedChat = chat
+            chatID = chat?.id ?? attachedChatID
             ringMembers = create ? (chat?.members.filter { $0.id != user.id }.map(\.id) ?? []) : []
             waiting = create ? (chat?.members.filter { $0.id != user.id }.map { WaitingPerson(id: $0.id, name: $0.displayName, avatar: $0.avatarUrl) } ?? []) : []
             shouldCreate = create
@@ -198,8 +206,19 @@ final class CallController {
         case "joined-room":
             guard let id = message["selfId"] as? String else { return }
             let rejoining = !selfID.isEmpty
+            phase = .connecting
             selfID = id; shouldCreate = false
+            roomChat.join(snapshot: message, socketURL: socket.connectedURL, selfID: id)
             acceptTablet(message["activity"] as? [String: Any])
+            if !rejoining && chatID == nil {
+                let expected = generation, room = roomID
+                Task {
+                    guard let context = try? await client.callContext(roomID: room),
+                          generation == expected, roomID == room, let id = context.chatId else { return }
+                    chatID = id
+                    if let name = context.title, !name.isEmpty { title = name }
+                }
+            }
             if rejoining { peers.values.forEach { $0.close() }; peers.removeAll() }
             participants = decode([RoomParticipant].self, message["participants"]) ?? []
             if let timestamp = message["roomStartedAt"] as? Double { startedAt = Date(timeIntervalSince1970: timestamp / 1000) }
@@ -209,6 +228,8 @@ final class CallController {
             refreshPhase()
             if rejoining && tabletPresented { sendTablet(["kind": "tablet-join", "joined": true]) }
             sendInvitations()
+        case "room-chat-message", "room-chat-updated", "room-chat-typing":
+            roomChat.receive(message)
         case "participants":
             let updated = decode([RoomParticipant].self, message["participants"]) ?? participants
             let ids = Set(updated.map(\.id))
@@ -224,6 +245,7 @@ final class CallController {
             refreshPhase()
         case "participant-left":
             guard let id = message["participantId"] as? String else { return }
+            roomChat.forgetTypist(id)
             participants.removeAll { $0.id == id }; peers.removeValue(forKey: id)?.close(); refreshPhase()
         case "mute-changed":
             if let id = message["participantId"] as? String, let index = participants.firstIndex(where: { $0.id == id }), let muted = message["muted"] as? Bool {
@@ -282,6 +304,9 @@ final class CallController {
         let joined = Set(participants.compactMap(\.accountId))
         waiting.removeAll { joined.contains($0.id) }
         revision += 1
+        // Existing audio may keep producing stats while signaling reconnects.
+        // Only a new joined-room acknowledgement restores room actions.
+        guard active, phase != .reconnecting else { return }
         if peers.isEmpty || peers.values.contains(where: { $0.state == .connected || $0.state == .completed }) {
             phase = .connected; applySpeaker()
         } else { phase = .connecting }
@@ -498,6 +523,7 @@ final class CallController {
         socket.finish(["type": "leave-room"])
         peers.values.forEach { $0.close() }; peers.removeAll()
         stopCamera(); audio?.isEnabled = false; audio = nil; audioSource = nil; factory = nil
+        roomChat.clear(); attachedChat = nil
         participants = []; waiting = []; selfID = ""; roomID = ""; ringMembers = []; chatID = nil
         phase = .idle; muted = false; presented = false
         tablet = nil; tabletPresented = false; requestedTablet = false; onTabletPointer = nil

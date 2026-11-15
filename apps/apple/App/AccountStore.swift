@@ -107,6 +107,9 @@ final class AccountStore {
                 calls.roomID = "ABCDEFGHJKLM"; calls.selfID = PreviewFixtures.userID; calls.title = "Комната с друзьями"
                 calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = PreviewFixtures.mode != "minimized"
                 calls.tablet = ["revision": 1, "open": true, "region": "RU", "canPlayPoker": false]
+                let sample: [String: Any] = ["id": PreviewFixtures.chatID, "participantId": PreviewFixtures.friendID,
+                                            "senderName": "Макс", "text": "Сообщение из комнаты", "timestamp": 1_780_000_000_000.0]
+                calls.roomChat.join(snapshot: ["roomChatVersion": 2, "roomChatMessages": [sample]], socketURL: nil, selfID: calls.selfID)
                 if PreviewFixtures.mode == "call-video" { calls.installPreviewCamera() }
             }
             return
@@ -168,7 +171,7 @@ final class AccountStore {
         clearIncoming()
         do {
             let result = try await client.respond(invitationID: incoming.invitationId, accept: accept)
-            if accept { await calls.start(user: user, join: result.roomId) }
+            if accept { await calls.start(user: user, join: result.roomId, attachedChatID: result.chatId) }
         } catch { self.error = error.localizedDescription }
     }
 }

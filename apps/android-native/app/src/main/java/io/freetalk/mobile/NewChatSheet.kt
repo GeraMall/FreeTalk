@@ -36,7 +36,7 @@ internal fun NewChatSheet(friends: List<FriendSummary>, onDismiss: () -> Unit, o
             } else {
                 OutlinedButton(onClick = { group = true }) { MobileText("Создать группу") }
             }
-            MobileSearch(query, { query = it }, "Поиск друзей", Modifier.fillMaxWidth())
+            MobileSearch(query, { query = it }, if (group) "Поиск друзей для группы" else "Найти друга", Modifier.fillMaxWidth())
             if (friends.isEmpty()) MobileText("Добавьте друзей, чтобы начать переписку.", color = MobileDesign.muted)
             LazyColumn(Modifier.weight(1f, fill = false)) {
                 items(visible, key = { it.id }) { friend ->

@@ -38,6 +38,7 @@ struct ConversationView: View {
     @State private var pageRevision = 0
     #if os(iOS)
     @State private var choosingFile = false
+    @State private var choosingExpression = false
     @State private var photo: PhotosPickerItem?
     #endif
     @State private var profileVisible = false
@@ -126,6 +127,10 @@ struct ConversationView: View {
         .sheet(isPresented: $profileVisible) { PeerProfileScreen(chat: chat, account: account) }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $choosingExpression) {
+            ChatGifPicker(client: account.client, send: sendExpression)
+                .presentationDetents([.medium, .large])
+        }
         #endif
         .onDisappear { finishTyping() }
         .sheet(item: $forwarding) { MessageForwardSheet(account: account, message: $0) }
@@ -183,7 +188,7 @@ struct ConversationView: View {
                         }
                     }
                     if ["text", "file", "image"].contains(message.kind) { Button("Переслать", systemImage: "arrowshape.turn.up.right") { forwarding = message } }
-                    if own && message.kind == "text" { Button("Изменить", systemImage: "pencil") { editText = message.body; editing = message } }
+                    if own && message.kind == "text" && message.metadata?.gif == nil { Button("Изменить", systemImage: "pencil") { editText = message.body; editing = message } }
                     if own && chat.isSaved != true { Button("Просмотры", systemImage: "eye") { displayReaders = message } }
                     if own && message.kind != "system" { Button("Удалить", systemImage: "trash", role: .destructive) { deleteTarget = message } }
                 }
@@ -229,7 +234,7 @@ struct ConversationView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 #if os(iOS)
                 PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo").frame(width: 36, height: 44) }
-                    .buttonStyle(.plain).disabled(sending || replying != nil).accessibilityLabel("Отправить фотографию")
+                    .buttonStyle(.plain).disabled(sending).accessibilityLabel("Отправить фотографию")
                     .onChange(of: photo) { _, item in
                         guard let item else { return }
                         Task {
@@ -241,7 +246,7 @@ struct ConversationView: View {
                         }
                     }
                 Button { choosingFile = true } label: { Image(systemName: "paperclip").frame(width: 34, height: 44) }
-                    .buttonStyle(.plain).disabled(sending || replying != nil).accessibilityLabel("Отправить файл")
+                    .buttonStyle(.plain).disabled(sending).accessibilityLabel("Отправить файл")
                     .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.item]) { result in
                         switch result {
                         case .success(let url):
@@ -254,6 +259,10 @@ struct ConversationView: View {
                 TextField("Сообщение", text: Binding(get: { draft }, set: { draft = $0; noticeTyping($0) }), axis: .vertical)
                     .lineLimit(1...5).webInput()
                     .accessibilityIdentifier("chat.composer")
+                #if os(iOS)
+                Button { choosingExpression = true } label: { Image(systemName: "face.smiling").frame(width: 32, height: 44) }
+                    .buttonStyle(.plain).disabled(sending).accessibilityLabel("GIF и стикеры").accessibilityIdentifier("chat.expressions")
+                #endif
                 Button { Task { await send() } } label: {
                     Image(systemName: "paperplane").font(.system(size: 19))
                         .frame(width: 44, height: 44).background(Brand.gradient, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.black)
@@ -338,17 +347,38 @@ struct ConversationView: View {
     }
 
     #if os(iOS)
+    private func sendExpression(_ choice: ChatGifPicker.Selection) async throws {
+        guard !sending else { throw URLError(.resourceUnavailable) }
+        sending = true
+        defer { sending = false }
+        let replyID = replying?.id
+        let message: Message
+        switch choice {
+        case .gif(let gif): message = try await account.client.sendGif(chatID: chat.id, gif: gif, replyingTo: replyID)
+        case .sticker(let emoji):
+            let bytes = ChatGifPicker.stickerData(emoji)
+            message = try await account.client.sendAttachment(chatID: chat.id, bytes: bytes, filename: "sticker.png", image: true,
+                                                               replyingTo: replyID)
+        }
+        pageRevision += 1
+        if !messages.contains(where: { $0.id == message.id }) { messages.append(message) }
+        nearBottom = true; rebuildGroups(); error = nil
+        if replying?.id == replyID { replying = nil }
+    }
+
     private func sendAttachment(_ prepare: () async throws -> ChatAttachment) async {
         guard !sending else { return }
+        let replyID = replying?.id
         sending = true
         defer { sending = false }
         do {
             let attachment = try await prepare()
             let message = try await account.client.sendAttachment(chatID: chat.id, bytes: attachment.bytes,
-                filename: attachment.name, image: attachment.isImage, thumbnail: attachment.thumbnail)
+                filename: attachment.name, image: attachment.isImage, thumbnail: attachment.thumbnail, replyingTo: replyID)
             pageRevision += 1
             if !messages.contains(where: { $0.id == message.id }) { messages.append(message) }
             nearBottom = true; rebuildGroups(); error = nil
+            if replying?.id == replyID { replying = nil }
         } catch { self.error = error.localizedDescription }
     }
     #endif

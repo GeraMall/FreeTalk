@@ -161,7 +161,7 @@ internal fun AccountSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Si
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { MobileText("Выйти из аккаунта?") },
         confirmButton = { TextButton(onClick = onLogout) { MobileText("Выйти", color = MobileDesign.red) } }, dismissButton = { TextButton(onClick = { confirm = false }) { MobileText("Отмена") } })
     if (reset) AlertDialog(onDismissRequest = { reset = false }, title = { MobileText("Сбросить настройки?") },
-        text = { MobileText("Размер сообщений и зеркальный предпросмотр камеры вернутся к значениям по умолчанию.") },
+        text = { MobileText("Размер сообщений, зеркальный предпросмотр камеры и качество демонстрации вернутся к значениям по умолчанию.") },
         confirmButton = { TextButton(onClick = { MobilePreferences.textScale = 1f; MobilePreferences.mirrorSelf = true; MobilePreferences.shareQuality = ScreenShareQuality(); MobilePreferences.save(context); reset = false }) { MobileText("Сбросить") } },
         dismissButton = { TextButton(onClick = { reset = false }) { MobileText("Отмена") } })
 }

@@ -397,9 +397,10 @@ class FreeTalkApi(private val sessions: SessionStore) {
 
     suspend fun directChat(friend: FriendSummary): ChatSummary = createChat("direct", null, listOf(friend))
 
-    suspend fun createGroup(title: String, friends: List<FriendSummary>): ChatSummary {
+    suspend fun createGroup(title: String, friends: List<FriendSummary>, self: SignedInUser): ChatSummary {
         require(title.trim().length in 1..80 && friends.size in 1..49)
-        return createChat("group", title.trim(), friends)
+        val chat = createChat("group", title.trim(), friends)
+        return chat.copy(members = listOf(ChatMember(self.id, self.displayName, self.avatarUrl, self.username)) + chat.members)
     }
 
     private suspend fun createChat(type: String, title: String?, friends: List<FriendSummary>): ChatSummary {

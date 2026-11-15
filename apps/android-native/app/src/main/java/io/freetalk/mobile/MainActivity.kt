@@ -540,7 +540,7 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
                 )
                 page == 1 -> ChatsPage(profile, data?.chats.orEmpty(), activeChat = { activeChat = it }, onRefresh = load, onService = { serviceOpen = true }, friends = data?.friends.orEmpty(),
                     onNewChat = { friend -> scope.launch { runCatching { api.directChat(friend) }.onSuccess { activeChat = it; load() }.onFailure { error = it.message ?: "Не удалось открыть чат" } } },
-                    onCreateGroup = { title, friends -> activeChat = api.createGroup(title, friends); load() },
+                    onCreateGroup = { title, friends -> activeChat = api.createGroup(title, friends, profile); load() },
                     onJoinLink = { link -> api.accessToken?.let { signaling.join(normalizeRoomCode(link), profile, it) } },
                     serviceUnread = serviceUnread,
                     onSaved = { if (!chatActionRunning) {

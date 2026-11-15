@@ -22,6 +22,7 @@ final class MediaPeer: NSObject {
     var state: RTCIceConnectionState = .new
     var tracks: [String: RTCVideoTrack] = [:]
     var sources: [String: Any]?
+    private var legacyVideoSource: String?
     private var cameraSender: RTCRtpSender?
     private var screenSender: RTCRtpSender?
     private var channels: [RTCDataChannel] = []
@@ -270,7 +271,7 @@ final class MediaPeer: NSObject {
                let receiver = connection.transceivers.first(where: { $0.mid == mid })?.receiver.track as? RTCVideoTrack { return receiver }
             return tracks[trackID]
         }
-        return source == "camera" ? tracks.values.first : nil
+        return source == (legacyVideoSource ?? "camera") ? tracks.values.first : nil
     }
 }
 
@@ -336,7 +337,12 @@ extension MediaPeer: RTCPeerConnectionDelegate, RTCDataChannelDelegate {
                 return
             }
             if json["request"] as? String == "video-state" { publishVideo() }
-            if let value = json["sources"] as? [String: Any] { sources = value; changed?() }
+            if let value = json["sources"] as? [String: Any] {
+                sources = value; legacyVideoSource = nil; changed?()
+            } else if let value = json["source"] as? String, ["camera", "screen", "none"].contains(value) {
+                // Single-track clients reuse the existing camera sender for sharing.
+                sources = nil; legacyVideoSource = value; changed?()
+            }
         }
     }
 }

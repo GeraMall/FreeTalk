@@ -258,6 +258,73 @@ public actor AccountClient {
     public func edit(messageID: String, text: String) async throws {
         let _: EmptyResponse = try await request("v1/messages/\(try identifier(messageID))", method: "PATCH", body: ["body": text])
     }
+    public func favoriteGifs() async throws -> [ChatGif] {
+        struct Response: Decodable { let gifs: [ChatGif] }
+        let response: Response = try await request("v1/gifs/favorites")
+        return response.gifs
+    }
+
+    public func gifProviderKey() async throws -> String? {
+        let config: GifProviderConfig = try await request("v1/gifs/config")
+        return config.provider == "KLIPY" ? config.apiKey : nil
+    }
+
+    public func setFavoriteGif(_ gif: ChatGif, messageID: String? = nil) async throws {
+        if let favorite = gif.favoriteId {
+            let _: EmptyResponse = try await request("v1/gifs/favorites/\(try identifier(favorite))", method: "DELETE")
+        } else {
+            let data: Data
+            if let messageID { data = try JSONEncoder().encode(["messageId": identifier(messageID)]) }
+            else if let asset = gif.assetId { data = try JSONEncoder().encode(["assetId": identifier(asset)]) }
+            else {
+                guard gif.remoteImage(preview: false) != nil else { throw URLError(.badURL) }
+                data = try JSONEncoder().encode(["gif": gif])
+            }
+            let _: EmptyResponse = try await request("v1/gifs/favorites", method: "POST", data: data)
+        }
+    }
+
+    public func searchGifs(key: String, query: String, page: Int, language: String) async throws -> ([ChatGif], Bool) {
+        guard !key.isEmpty, key.count <= 256,
+              key.rangeOfCharacter(from: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_")).inverted) == nil
+        else { throw URLError(.badURL) }
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts = URLComponents(string: "https://api.klipy.com")!
+        parts.path = "/api/v1/\(key)/gifs/" + (search.isEmpty ? "trending" : "search")
+        parts.queryItems = [URLQueryItem(name: "per_page", value: "20"), .init(name: "page", value: String(max(1, page))),
+                            .init(name: "locale", value: language), .init(name: "content_filter", value: "high")]
+        if !search.isEmpty { parts.queryItems?.append(.init(name: "q", value: String(search.prefix(120)))) }
+        let data = try await GifProviderSession.shared.download(parts.url!, limit: 2 * 1024 * 1024)
+        let feed = try JSONDecoder().decode(KlipyFeed.self, from: data)
+        guard feed.result else { throw URLError(.badServerResponse) }
+        return (feed.data.data.compactMap { $0.gif() }, feed.data.has_next == true)
+    }
+
+    public func sendGif(chatID: String, gif: ChatGif, replyingTo: String? = nil) async throws -> Message {
+        var object: [String: Any]
+        if let asset = gif.assetId { object = ["assetId": try identifier(asset)] }
+        else {
+            guard gif.remoteImage(preview: false) != nil else { throw URLError(.badURL) }
+            object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(gif)) as? [String: Any] ?? [:]
+            object.removeValue(forKey: "favoriteId")
+        }
+        if let replyingTo { object["replyToMessageId"] = try identifier(replyingTo) }
+        let response: MessageResponse = try await request("v1/chats/\(try identifier(chatID))/gifs", method: "POST",
+                                                         data: try JSONSerialization.data(withJSONObject: object))
+        return response.message
+    }
+
+    public func gifImage(_ gif: ChatGif, preview: Bool) async throws -> Data {
+        let limit = 30 * 1024 * 1024
+        if let asset = gif.assetId {
+            let data: Data = try await request("v1/gifs/assets/\(try identifier(asset))",
+                query: preview ? [.init(name: "variant", value: "thumbnail")] : [])
+            guard data.count <= limit else { throw URLError(.dataLengthExceedsMaximum) }
+            return data
+        }
+        guard let url = gif.remoteImage(preview: preview) else { throw URLError(.badURL) }
+        return try await GifProviderSession.shared.download(url, limit: limit)
+    }
     public func delete(messageID: String) async throws {
         let _: EmptyResponse = try await request("v1/messages/\(try identifier(messageID))", method: "DELETE")
     }
@@ -285,7 +352,7 @@ public actor AccountClient {
         return result.readers
     }
 
-    public func sendAttachment(chatID: String, bytes: Data, filename: String, image: Bool, thumbnail: Data? = nil) async throws -> Message {
+    public func sendAttachment(chatID: String, bytes: Data, filename: String, image: Bool, thumbnail: Data? = nil, replyingTo: String? = nil) async throws -> Message {
         let path = "v1/chats/\(try identifier(chatID))/\(image ? "images" : "files")"
         guard !bytes.isEmpty, bytes.count <= (image ? 3 : 30) * 1024 * 1024,
               (thumbnail?.count ?? 0) <= 256 * 1024 else {
@@ -299,10 +366,12 @@ public actor AccountClient {
             form.append(bytes)
             form.append(Data("\r\n".utf8))
         }
-        append(image ? "image" : "file", filename, image ? "image/jpeg" : "application/octet-stream", bytes)
+        let imageType = bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) ? "image/png" : "image/jpeg"
+        append(image ? "image" : "file", filename, image ? imageType : "application/octet-stream", bytes)
         if image, let thumbnail { append("thumbnail", "preview.jpg", "image/jpeg", thumbnail) }
         form.append(Data("--\(boundary)--\r\n".utf8))
-        let result: MessageResponse = try await request(path, method: "POST", data: form, contentType: "multipart/form-data; boundary=\(boundary)")
+        let query = try replyingTo.map { [URLQueryItem(name: "replyToMessageId", value: try identifier($0))] } ?? []
+        let result: MessageResponse = try await request(path, method: "POST", query: query, data: form, contentType: "multipart/form-data; boundary=\(boundary)")
         return result.message
     }
 

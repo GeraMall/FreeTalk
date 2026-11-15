@@ -6,6 +6,7 @@ struct CallScreen: View {
     let account: AccountStore
     @State private var more = false
     @State private var invite = false
+    @State private var showChat = false
     @State private var videoMode = false
     @State private var focusedID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,6 +32,10 @@ struct CallScreen: View {
             HStack {
                 Text("Участники · \(call.participants.count) из 8").font(.subheadline.weight(.semibold))
                 Spacer()
+                Button { showChat = true } label: {
+                    Image(systemName: "bubble.left.and.bubble.right").frame(minWidth: 36, minHeight: 32)
+                }.buttonStyle(.bordered).accessibilityLabel("Открыть чат звонка")
+                    .accessibilityIdentifier("call.chat").disabled(call.roomID.isEmpty)
                 Button { invite = true } label: { Label("Добавить", systemImage: "person.badge.plus").font(.caption.weight(.semibold)) }
                     .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
             }
@@ -117,6 +122,9 @@ struct CallScreen: View {
                 Text("Код комнаты: \(account.calls.roomID)").font(.callout.monospaced()).textSelection(.enabled)
                 Button("Готово") { more = false }
             }.padding(24).presentationDetents([.large])
+        }
+        .sheet(isPresented: $showChat) {
+            CallChatSheet(account: account)
         }
         .sheet(isPresented: $invite) { InviteToCallScreen(account: account) }
         #if os(iOS)

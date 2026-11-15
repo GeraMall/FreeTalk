@@ -522,7 +522,8 @@ describe('PeerManager video sender lifecycle', () => {
     const statesBeforeRequest = sentStates.length;
     const onSyncRequest = channel.onmessage as ((event: MessageEvent) => void) | null;
     onSyncRequest?.({
-      data: JSON.stringify({ version: 2, request: 'video-state' }),
+      // Swift JSONSerialization may emit object keys in either order.
+      data: JSON.stringify({ request: 'video-state', version: 2 }),
     } as MessageEvent);
     const statesAfterRequest = channel.send.mock.calls.filter(([value]) => {
       try {

@@ -10,12 +10,12 @@ struct ChatAttachment: Sendable {
     let isImage: Bool
     var thumbnail: Data?
 
-    static func file(_ url: URL) throws -> Self {
+    static func file(_ url: URL, maxBytes: Int = 30 * 1024 * 1024) throws -> Self {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         let attributes = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-        guard attributes.isRegularFile == true, let size = attributes.fileSize, size > 0, size <= 30 * 1024 * 1024 else {
-            throw APIError(status: 0, code: "INVALID_FILE", message: "Выберите непустой файл размером до 30 МБ.")
+        guard attributes.isRegularFile == true, let size = attributes.fileSize, size > 0, size <= maxBytes else {
+            throw APIError(status: 0, code: "INVALID_FILE", message: "Выберите непустой файл размером до \(maxBytes / 1024 / 1024) МБ.")
         }
         return try Self(bytes: Data(contentsOf: url, options: .mappedIfSafe), name: url.lastPathComponent, isImage: false)
     }

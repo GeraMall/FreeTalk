@@ -40,10 +40,10 @@ import ImageIO
         }
         recorder.startCapture(handler: frames, completionHandler: { [weak self] error in
             Task { @MainActor in
-                guard let self, phase == .starting else { return }
-                if let error { finish(error); return }
-                phase = .running
-                if stopRequested { stop() } else { started?() }
+                guard let self, self.phase == .starting else { return }
+                if let error { self.finish(error); return }
+                self.phase = .running
+                if self.stopRequested { self.stop() } else { self.started?() }
             }
         })
     }

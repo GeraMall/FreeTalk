@@ -849,12 +849,7 @@ export class PeerManager {
       this.sendChannelMessage(channel, VIDEO_STATE_REQUEST);
     };
     channel.onmessage = ({ data }) => {
-      if (data === VIDEO_STATE_REQUEST) {
-        connectionDiagnostics.record('video-state-request:received', peerId);
-        this.sendVideoStateOn(peerId, context, channel);
-        return;
-      }
-      this.handleVideoStateMessage(peerId, context, data);
+      this.handleVideoStateMessage(peerId, context, channel, data);
     };
     channel.onopen = synchronize;
     channel.onclose = () => connectionDiagnostics.record('video-state-channel:closed', peerId);
@@ -879,14 +874,20 @@ export class PeerManager {
     }
   }
 
-  private handleVideoStateMessage(peerId: string, context: PeerContext, raw: unknown) {
+  private handleVideoStateMessage(peerId: string, context: PeerContext, channel: RTCDataChannel, raw: unknown) {
     if (typeof raw !== 'string' || raw.length > 512) return;
     try {
       const value = JSON.parse(raw) as {
         version?: unknown;
+        request?: unknown;
         sources?: Partial<Record<VideoMediaSource, Partial<RemoteVideoSourceState>>>;
         source?: unknown;
       };
+      if (value.version === 2 && value.request === 'video-state') {
+        connectionDiagnostics.record('video-state-request:received', peerId);
+        this.sendVideoStateOn(peerId, context, channel);
+        return;
+      }
       if (value.version !== 2 || !value.sources) {
         // Compatibility with 0.3.x peers that exposed one replaceTrack-based source.
         if (value.source !== 'none' && value.source !== 'camera' && value.source !== 'screen')
