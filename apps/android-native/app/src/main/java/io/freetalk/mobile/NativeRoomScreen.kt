@@ -13,6 +13,7 @@ import android.media.projection.MediaProjectionManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +50,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     val scope = rememberCoroutineScope()
     val state = signaling.room
     var media by remember(roomId) { mutableStateOf<NativeCallMedia?>(null) }
+    LaunchedEffect(media, NativeSettingsStore.revision) { media?.applySettings() }
     var sheet by remember { mutableStateOf<String?>(null) }
     var tabletVisible by remember(roomId) { mutableStateOf(false) }
     var feedback by remember(roomId) { mutableStateOf("") }
@@ -133,6 +136,21 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "…",
             onMinimize = { sheet = null; onMinimize() }, onChat = openChat)
     }, bottomBar = {
+        Column {
+        if (NativeSettingsStore.string("transmissionMode") == "push-to-talk") {
+            val engine = media
+            var held by remember(engine) { mutableStateOf(false) }
+            DisposableEffect(engine) { onDispose { engine?.pushToTalk(false) } }
+            Surface(color = if (held) MobileDesign.accent else MobileDesign.canvas,
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .pointerInput(engine) { detectTapGestures(onPress = {
+                        held = true; engine?.pushToTalk(true)
+                        try { tryAwaitRelease() } finally { held = false; engine?.pushToTalk(false) }
+                    }) }) {
+                MobileText(if (held) "Говорите…" else "Удерживайте, чтобы говорить", Modifier.padding(14.dp),
+                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
         CallToolbar(
             muted = media?.muted != false, camera = media?.camera == true, sharing = media?.sharing == true, mediaReady = media != null,
             onMic = { media?.let { it.changeMuted(!it.muted) } ?: micPermission.launch(Manifest.permission.RECORD_AUDIO) },
@@ -150,6 +168,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 }
             },
         )
+        }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (focused == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -1,4 +1,5 @@
 import { interfaceTheme } from '../lib/interface-theme';
+import { nativeSettingsHost } from '../lib/native-settings-host';
 import { InterfaceAppearance } from './InterfaceAppearance';
 import { PasskeySettings } from './PasskeySettings';
 import { QrScanDialog } from './QrLoginDialog';
@@ -284,6 +285,16 @@ export function SettingsPanel({
       return '';
     });
     try {
+      const native = nativeSettingsHost();
+      if (native) {
+        setRecording(true);
+        try {
+          setRecordingUrl(await native.request<string>('microphone.sample'));
+        } finally {
+          setRecording(false);
+        }
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: false,
         audio: {

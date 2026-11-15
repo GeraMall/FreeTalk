@@ -297,6 +297,8 @@ export async function clearAccountMediaCache(accountId: string) {
 }
 
 export async function getAccountMediaCacheStats(accountId: string) {
+  const native = (await import('./native-settings-host')).nativeSettingsHost();
+  if (native) return { bytes: 0, entries: 0 }; // Native MediaCache is counted by the image-cache adapter.
   const database = await openDatabase();
   if (!database) return { bytes: 0, entries: 0 };
   const transaction = database.transaction(STORE_NAME, 'readonly');

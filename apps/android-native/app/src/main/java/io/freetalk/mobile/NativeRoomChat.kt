@@ -115,7 +115,7 @@ internal fun NativeRoomChat(signaling: RoomSignaling) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             WebIconButton(enabled = !busy && editing == null && files != null, onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.size(36.dp)) { WebIcon(WebIcons.AttachFile, "Прикрепить файл") }
-            WebTextField(draft, { if (it.length <= 2000) draft = it }, enabled = !busy, modifier = Modifier.weight(1f), placeholder = { MobileText("Сообщение", fontSize = 13.sp) }, maxLines = 3, shape = RoundedCornerShape(14.dp))
+            WebTextField(draft, { if (it.length <= 2000) { NativeSettingsStore.markTyping(); draft = it } }, enabled = !busy, modifier = Modifier.weight(1f), placeholder = { MobileText("Сообщение", fontSize = 13.sp) }, maxLines = 3, shape = RoundedCornerShape(14.dp))
             WebIconButton(enabled = !busy && draft.isNotBlank(), onClick = {
                 val ok = if (editing != null) signaling.send(JSONObject().put("type", "room-chat-action").put("action", JSONObject().put("kind", "edit").put("id", editing!!.id).put("text", draft.trim()))) else send(draft.trim())
                 if (ok) { draft = ""; reply = null; editing = null } else error = "Нет соединения"

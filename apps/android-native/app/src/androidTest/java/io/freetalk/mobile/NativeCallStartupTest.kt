@@ -26,6 +26,7 @@ class NativeCallStartupTest {
     @Test fun twoNativeParticipantsCompleteAudioNegotiation() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = compose.activity
+        val savedSettings = NativeSettingsStore.snapshot()
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
         val a = "11111111-1111-4111-8111-111111111111"
         val b = "22222222-2222-4222-8222-222222222222"
@@ -78,12 +79,27 @@ class NativeCallStartupTest {
                 !(pair[0].connections[b] == "Подключён" && pair[1].connections[a] == "Подключён")) Thread.sleep(100)
             assertTrue("No connected audio pair: left=${pair[0].connections}/${pair[0].error}; right=${pair[1].connections}/${pair[1].error}; messages=$counts",
                 pair[0].connections[b] == "Подключён" && pair[1].connections[a] == "Подключён")
+            // A closed soft gate must keep recording, and live processing changes must keep the peers connected.
+            val before = pair.map { it.microphoneFrames }
+            instrumentation.runOnMainSync {
+                NativeSettingsStore.save(context, JSONObject().put("transmissionMode", "push-to-talk").put("echoCancellation", false).put("noiseSuppression", false))
+                pair.forEach { it.applySettings(); it.changeMuted(false) }
+            }
+            Thread.sleep(1500)
+            pair.forEachIndexed { index, engine -> assertTrue("Capture stopped behind PTT: index=$index before=${before[index]} after=${engine.microphoneFrames} muted=${engine.muted} error=${engine.error}", engine.microphoneFrames > before[index] + 20) }
+            instrumentation.runOnMainSync {
+                NativeSettingsStore.save(context, JSONObject().put("transmissionMode", "voice-activation").put("echoCancellation", true).put("noiseSuppression", true))
+                pair.forEach { it.applySettings() }
+            }
+            Thread.sleep(1000)
+            assertTrue(pair[0].connections[b] == "Подключён" && pair[1].connections[a] == "Подключён")
         } finally {
             instrumentation.runOnMainSync {
                 engines.get().forEach { it.close() }
                 left.dispose(); right.dispose()
                 CallService.afterStart = null
                 context.stopService(Intent(context, CallService::class.java))
+                NativeSettingsStore.reset(context); NativeSettingsStore.save(context, savedSettings)
             }
             instrumentation.waitForIdleSync()
         }

@@ -245,7 +245,15 @@ internal fun NativeChatScreen(
         }
     }
     BackHandler { if (selected.isNotEmpty()) selected = emptySet() else onBack() }
-    Column(Modifier.fillMaxSize().background(MobileDesign.canvas).safeDrawingPadding().imePadding()) {
+    val compact = remember(NativeSettingsStore.revision) { NativeSettingsStore.string("chatMessageStyle", "bubbles") == "compact" }
+    val wallpaper = remember(NativeSettingsStore.revision) {
+        NativeSettingsStore.string("chatWallpaperDataUrl").takeIf { it.startsWith("data:image/") }?.let {
+            runCatching { android.util.Base64.decode(it.substringAfter(','), android.util.Base64.DEFAULT) }.getOrNull()
+        }
+    }
+    Box(Modifier.fillMaxSize().background(MobileDesign.canvas).safeDrawingPadding().imePadding()) {
+    if (wallpaper != null) AsyncImage(wallpaper, null, Modifier.fillMaxSize(), contentScale = if (NativeSettingsStore.string("chatWallpaperFit") == "contain") ContentScale.Fit else ContentScale.Crop)
+    Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(MobileDesign.header).height(66.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             WebIconButton(onClick = onBack) { WebIcon(WebIcons.ArrowBack, "Назад") }
             ChatAvatar(chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl, chat.displayTitle(user.id), 40.dp)
@@ -316,17 +324,20 @@ internal fun NativeChatScreen(
                     return@items
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val bubbleWidth = minOf(maxWidth * .84f, maxWidth - 40.dp, 640.dp)
-                    Row(Modifier.fillMaxWidth().background(if (message.id in selected) MobileDesign.accent.copy(alpha = .12f) else Color.Transparent), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
-                        if (!mine) { MobileAvatar(message.senderName, message.avatarUrl, 32.dp); Spacer(Modifier.width(8.dp)) }
-                        Column(Modifier.widthIn(max = bubbleWidth), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                        MobileMessage(if (message.deleted) "Сообщение удалено" else if (message.gif == null) message.body else "", mobileMessageTime(message.createdAt), mine, Modifier.widthIn(max = bubbleWidth).combinedClickable(
+                    val bubbleWidth = if (compact) maxWidth - 40.dp else minOf(maxWidth * .84f, maxWidth - 40.dp, 640.dp)
+                    Row(Modifier.fillMaxWidth().background(if (message.id in selected) MobileDesign.accent.copy(alpha = .12f) else Color.Transparent), horizontalArrangement = if (mine && !compact) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
+                        if (!mine || compact) { MobileAvatar(message.senderName, message.avatarUrl, 32.dp); Spacer(Modifier.width(8.dp)) }
+                        Column(Modifier.widthIn(max = bubbleWidth), horizontalAlignment = if (mine && !compact) Alignment.End else Alignment.Start) {
+                        MobileMessage(if (message.deleted) "Сообщение удалено" else if (message.gif == null) message.body else "", if (compact) "" else mobileMessageTime(message.createdAt), mine, Modifier.widthIn(max = bubbleWidth).combinedClickable(
                             onClick = { if (selected.isNotEmpty()) selected = if (message.id in selected) selected - message.id else selected + message.id },
                             onLongClick = { if (selected.isNotEmpty()) selected = selected + message.id else actionTarget = message },
-                        ), onLink = { link -> roomCodeFromLink(link)?.let { onJoinCall(it); true } ?: false }, afterText = {
+                        ), compact = compact, onLink = { link -> roomCodeFromLink(link)?.let { onJoinCall(it); true } ?: false }, afterText = {
                             if (!message.deleted && message.gif == null && preview == null) NativeVideoPreview(api, cache, user.id, message.body)
                         }) {
-                            if (chat.type == "group" && !mine && !message.deleted) MobileText(message.senderName, localize = false, color = MobileDesign.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            if (compact && !message.deleted) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                MobileText(message.senderName, localize = false, color = MobileDesign.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                MobileText(mobileMessageTime(message.createdAt), localize = false, color = MobileDesign.muted, fontSize = 10.sp)
+                            } else if (chat.type == "group" && !mine && !message.deleted) MobileText(message.senderName, localize = false, color = MobileDesign.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             message.reply?.let { MobileText(it.take(120), localize = false, fontSize = 12.sp, color = MobileDesign.muted) }
                             if (!message.deleted) message.gif?.let { gif ->
                                 NativeGifImage(gif, api, cache, user.id, true, message.expiresAt,
@@ -360,7 +371,7 @@ internal fun NativeChatScreen(
                             }
                         }
                         }
-                        if (mine) { Spacer(Modifier.width(8.dp)); MobileAvatar(user.displayName, user.avatarUrl, 32.dp) }
+                        if (mine && !compact) { Spacer(Modifier.width(8.dp)); MobileAvatar(user.displayName, user.avatarUrl, 32.dp) }
                     }
                 }
             }
@@ -428,6 +439,7 @@ internal fun NativeChatScreen(
                 }
             }
         }
+    }
     }
     actionTarget?.let { message -> ModalBottomSheet(onDismissRequest = { actionTarget = null }, containerColor = MobileDesign.canvas) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {

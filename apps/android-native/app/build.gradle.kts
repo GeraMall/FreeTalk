@@ -22,8 +22,8 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 229
-        versionName = "0.4.0-beta.229"
+        versionCode = 230
+        versionName = "0.4.0-beta.230"
         buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
         buildConfigField("String", "TURNSTILE_SITE_KEY", "\"$turnstileSiteKey\"")
         testInstrumentationRunner = providers.gradleProperty("callProbeRunner")
@@ -75,7 +75,21 @@ val bundleNativeTranslations by tasks.registering(Exec::class) {
     outputs.file("src/main/assets/native-translations.json")
     outputs.file("src/main/assets/registration-legal.json")
 }
-tasks.named("preBuild") { dependsOn(bundleTablet, bundleNativeTranslations) }
+val bundleSettings by tasks.registering(Exec::class) {
+    workingDir = repositoryRoot
+    commandLine(if (System.getProperty("os.name").startsWith("Windows")) "pnpm.cmd" else "pnpm",
+        "--filter", "@freetalk/desktop", "exec", "vite", "build", "--config", "vite.android-settings.config.ts")
+    inputs.dir(File(repositoryRoot, "apps/desktop/src"))
+    inputs.dir(File(repositoryRoot, "apps/desktop/public/sounds"))
+    inputs.dir(File(repositoryRoot, "apps/desktop/public/mediapipe"))
+    inputs.file(File(repositoryRoot, "apps/desktop/android-settings.html"))
+    inputs.file(File(repositoryRoot, "apps/desktop/vite.android-settings.config.ts"))
+    inputs.file(File(repositoryRoot, "apps/desktop/vite.config.ts"))
+    inputs.file(File(repositoryRoot, "pnpm-lock.yaml"))
+    inputs.property("sourceCommit", sourceCommit)
+    outputs.dir("src/main/assets/settings")
+}
+tasks.named("preBuild") { dependsOn(bundleTablet, bundleNativeTranslations, bundleSettings) }
 
 dependencies {
     implementation("io.github.webrtc-sdk:android:144.7559.09")

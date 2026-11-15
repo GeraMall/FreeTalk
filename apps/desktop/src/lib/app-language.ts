@@ -1,6 +1,7 @@
 import gameTranslations from './game-translations.json';
 import interactionTranslations from './interaction-translations.json';
 import { isTauri } from '@tauri-apps/api/core';
+import { nativeSettingsHost } from './native-settings-host';
 import reviewTranslations from './review-translations.json';
 import belarusian from './app-language.be.json';
 import spanish from './app-language.es.json';
@@ -38,6 +39,12 @@ export async function changeAppLanguage(language: AppLanguage) {
   const previous = localStorage.getItem(languageKey);
   localStorage.setItem(languageKey, language);
   try {
+    const native = nativeSettingsHost();
+    if (native) {
+      await native.request('language', { language });
+      window.location.reload();
+      return;
+    }
     if (isTauri()) {
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();

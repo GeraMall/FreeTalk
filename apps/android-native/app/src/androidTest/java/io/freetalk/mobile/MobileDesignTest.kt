@@ -29,10 +29,10 @@ class MobileDesignTest {
         compose.onNodeWithContentDescription("Назад").performClick()
         compose.onNodeWithText("Поиск по чатам").assertIsDisplayed()
         show("settings")
-        compose.onNodeWithText("Чаты").performClick()
-        compose.onNodeWithText("Размер текста").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Назад").performClick()
-        compose.onNodeWithText("Видео и звук").assertIsDisplayed()
+        SharedSettingsUi.click("Чаты")
+        SharedSettingsUi.wait("Размер текста сообщений")
+        SharedSettingsUi.back()
+        SharedSettingsUi.wait("Видео и звуки")
     }
     @Test fun callTilesExpandAndReturnAndCallCanBeMinimized() {
         show("video")

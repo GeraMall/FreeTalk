@@ -29,6 +29,9 @@ data class SignedInUser(
     val avatarUrl: String? = null,
     val bio: String = "",
     val coverUrl: String? = null,
+    val emailVerified: Boolean = false,
+    val registeredAt: String = "",
+    val canAccessStore: Boolean = false,
 )
 data class SignedInSession(val user: SignedInUser, val accessToken: String, val refreshToken: String)
 data class ChatMember(val id: String, val displayName: String, val avatarUrl: String?, val username: String = "")
@@ -385,6 +388,24 @@ class FreeTalkApi(private val sessions: SessionStore) {
     }
 
     @Synchronized fun cachedProfile(userId: String) = profileCache[userId]
+    internal suspend fun settingsRequest(path: String, method: String = "GET", body: JSONObject? = null): JSONObject {
+        require(NativeSettingsPolicy.allows(path, method)) { "Неподдерживаемый запрос настроек" }
+        return authorizedJson(path, method, body)
+    }
+    internal suspend fun saveSettingsProfile(name: String, username: String?, bio: String): JSONObject =
+        authorizedJson("/v1/me", "PATCH", JSONObject().put("displayName", name).put("bio", bio).apply { username?.let { put("username", it) } })
+
+    internal suspend fun settingsImage(kind: String, dataUrl: String): JSONObject {
+        require(kind == "avatar" || kind == "cover")
+        if (dataUrl.isEmpty()) return authorizedJson("/v1/me/$kind", "DELETE")
+        require(dataUrl.length <= 6_000_000)
+        val match = Regex("^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$").matchEntire(dataUrl)
+            ?: throw IllegalArgumentException("Выберите фотографию PNG, JPEG или WebP")
+        val bytes = android.util.Base64.decode(match.groupValues[2], android.util.Base64.DEFAULT)
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart(kind, "$kind.${match.groupValues[1].substringAfter('/')}", bytes.toRequestBody(match.groupValues[1].toMediaType())).build()
+        return authorizedUpload("/v1/me/$kind", body)
+    }
+    internal fun settingsUser(json: JSONObject): SignedInUser = parseUser(json)
     suspend fun appearance(): JSONObject = authorizedJson("/v1/me/appearance").getJSONObject("appearance")
     suspend fun saveAppearance(theme: String, syncEnabled: Boolean) {
         require(theme in listOf("default", "light", "black"))
@@ -556,6 +577,7 @@ class FreeTalkApi(private val sessions: SessionStore) {
         json.optString("displayName", json.optString("display_name", "Пользователь")),
         json.optString("email"), json.nullableString("avatarUrl"),
         json.optString("bio"), json.nullableString("coverUrl"),
+        json.optBoolean("emailVerified"), json.optString("registeredAt"), json.optBoolean("canAccessStore"),
     )
 
     private fun parseChat(json: JSONObject): ChatSummary {

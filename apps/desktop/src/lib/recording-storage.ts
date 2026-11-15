@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { join, videoDir } from '@tauri-apps/api/path';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { BaseDirectory, create, mkdir, type FileHandle } from '@tauri-apps/plugin-fs';
+import { nativeSettingsHost } from './native-settings-host';
 
 const DEFAULT_DIRECTORY_NAME = 'Trlka';
 
@@ -12,10 +13,14 @@ export interface RecordingDestination {
 }
 
 export async function defaultRecordingDirectory() {
+  const native = nativeSettingsHost();
+  if (native) return native.request<string>('directory.default');
   return join(await videoDir(), DEFAULT_DIRECTORY_NAME);
 }
 
 export async function chooseRecordingDirectory(current = '') {
+  const native = nativeSettingsHost();
+  if (native) return native.request<string | undefined>('directory.choose', { current });
   const selected = await openDialog({
     directory: true,
     multiple: false,
@@ -65,11 +70,19 @@ export async function createRecordingDestination(
 }
 
 export async function openRecordingDirectory(configuredDirectory = '') {
+  const native = nativeSettingsHost();
+  if (native) {
+    await native.request('directory.open', { directory: configuredDirectory });
+    return;
+  }
   const directory = configuredDirectory || (await defaultRecordingDirectory());
   await invoke('open_recordings_directory', { path: directory });
 }
 
 export async function recordingStorageAvailable(configuredDirectory = '') {
+  const native = nativeSettingsHost();
+  if (native)
+    return native.request<number>('directory.available', { directory: configuredDirectory });
   const directory = configuredDirectory || (await defaultRecordingDirectory());
   return invoke<number>('recording_storage_available', { path: directory });
 }

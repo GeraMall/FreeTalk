@@ -1,5 +1,24 @@
 # Проверка изменений дизайна
 
+15.11.2026 Android230 PRIVATE: профиль и все8разделов настроек используют настоящий
+React SettingsPanel и CSS мобильного веба в bundled WebView, звонки остаются native.
+Restricted Kotlin bridge без токенов в JS, page nonce, нативные фото/профиль/API/
+themes/language/cache/SAF/diagnostics/mic WAV; VAD/PTT PCM soft gate, live audio prefs,
+chat wallpaper/compact/size. 932JS/TS+workspace checks/builds,47JVM,13UI/native прошли.
+16dark/lightlayouts безoverflow,4secWAV иобеphotoоперации проверены offlinefixture.
+docs/ANDROID_SETTINGS_BETA230.md. Native recording/camera backgrounds/some sound/
+decoration/update capabilities НЕ реализованы этим переносом; физическийтелефон
+не проверен. Ветка preview/android-settings-web-230; public Android НЕ выпускать
+до просмотра владельцем. Веб-hotfix опубликован отдельно, см. запись ниже.
+
+15.11.2026 WEB CALL/CHAT HOTFIX PUBLISHED по прямому запросу владельца.
+Public web теперь910b338 (isolated release/web-call-chat-20261115 от7811583):
+переход к переписке из звонка без размонтирования media/signaling, mobile keyboard.
+66 targeted tests/typecheck/build, public HTTPS index+JS/CSS hashes проверены;
+primary/reserve healthy, PG streaming0lag, API/signaling PID/starttime прежние.
+docs/WEB_CALL_CHAT_HOTFIX_20261115.md. Desktop/Mac/public feeds остаются224;
+НЕ считать текущую Android-preview ветку опубликованной на сайте.
+
 15.11.2026 Android229 PRIVATE: общий дизайн элементов управления из мобильного
 веба, 55 Lucide-векторов, компактный composer/навигация/настройки/звонок.
 Добавлена видимая кнопка открытия связанной переписки во время звонка в Android

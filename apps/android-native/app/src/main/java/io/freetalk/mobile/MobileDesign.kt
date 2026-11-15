@@ -52,7 +52,7 @@ internal object MobilePreferences {
     var theme by mutableStateOf("default")
     fun load(context: Context) {
         val prefs = context.getSharedPreferences("mobile-design", Context.MODE_PRIVATE)
-        textScale = prefs.getFloat("textScale", 1f).coerceIn(.9f, 1.3f)
+        textScale = prefs.getFloat("textScale", 1f).coerceIn(.85f, 1.55f)
         mirrorSelf = prefs.getBoolean("mirrorSelf", true)
         shareQuality = ScreenShareQuality(
             prefs.getInt("shareResolution", 1080).takeIf { it in listOf(720, 1080, 1440) } ?: 1080,
@@ -121,7 +121,7 @@ internal fun MobileComposer(text: String, onText: (String) -> Unit, sending: Boo
             }
             Row(Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp))
                 .background(MobileDesign.input).border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)), verticalAlignment = Alignment.CenterVertically) {
-                BasicTextField(text, { onText(it.take(4000)) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 120.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+                BasicTextField(text, { NativeSettingsStore.markTyping(); onText(it.take(4000)) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 120.dp).padding(horizontal = 12.dp, vertical = 10.dp),
                     textStyle = LocalTextStyle.current.copy(color = MobileDesign.text, fontSize = 16.sp, lineHeight = 22.sp),
                     maxLines = 4, cursorBrush = SolidColorBrush(), enabled = !sending,
                     decorationBox = { inner -> Box { if (text.isEmpty()) MobileText(placeholder, color = MobileDesign.muted, fontSize = 16.sp, lineHeight = 22.sp); inner() } })
@@ -140,11 +140,11 @@ internal fun MobileComposer(text: String, onText: (String) -> Unit, sending: Boo
 }
 
 @Composable
-internal fun MobileMessage(text: String, date: String, own: Boolean, modifier: Modifier = Modifier, onLink: ((String) -> Boolean)? = null, afterText: (@Composable () -> Unit)? = null, content: (@Composable () -> Unit)? = null) {
+internal fun MobileMessage(text: String, date: String, own: Boolean, modifier: Modifier = Modifier, onLink: ((String) -> Boolean)? = null, compact: Boolean = false, afterText: (@Composable () -> Unit)? = null, content: (@Composable () -> Unit)? = null) {
     val shape = RoundedCornerShape(topStart = if (own) 14.dp else 0.dp, topEnd = if (own) 0.dp else 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp)
-    Surface(modifier, color = if (own) MobileDesign.outgoing else MobileDesign.incoming, shape = shape,
-        border = BorderStroke(1.dp, if (own) Color(0xFF3D5073) else MobileDesign.stroke)) {
-        Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Surface(modifier, color = if (compact) Color.Transparent else if (own) MobileDesign.outgoing else MobileDesign.incoming, shape = shape,
+        border = if (compact) null else BorderStroke(1.dp, if (own) Color(0xFF3D5073) else MobileDesign.stroke)) {
+        Column(Modifier.padding(horizontal = if (compact) 0.dp else 11.dp, vertical = if (compact) 2.dp else 7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             content?.invoke()
             if (text.isNotBlank()) LinkedMessageText(text, onLink, date)
             afterText?.invoke()

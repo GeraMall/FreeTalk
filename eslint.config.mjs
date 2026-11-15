@@ -24,6 +24,7 @@ export default tseslint.config(
       '**/.gradle/**',
       'previews/**',
       'apps/android-native/app/src/main/assets/tablet/**',
+      'apps/android-native/app/src/main/assets/settings/**',
       'apps/desktop/public/**/*.js',
     ],
   },

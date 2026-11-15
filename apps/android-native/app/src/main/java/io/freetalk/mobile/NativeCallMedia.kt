@@ -31,8 +31,16 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         .setOnAudioFocusChangeListener { change -> if (change < 0) post { changeMuted(true); error = "Микрофон выключен: звук занят другим звонком" } }.build()
     private val module: JavaAudioDeviceModule
     private val factory: PeerConnectionFactory
-    private val audioSource: AudioSource
-    private val audio: AudioTrack
+    private var audioSource: AudioSource
+    private var audio: AudioTrack
+    private var processingKey = ""
+    private var inputPreference = ""
+    private var outputPreference = ""
+    @Volatile private var pushToTalk = false
+    private val microphoneGate = NativeMicrophoneGate()
+    @Volatile private var transmitting = false
+    @Volatile internal var microphoneFrames = 0; private set
+    private var lastOutputGain = -1.0
     private var stopped = false
     @Volatile private var lastSpeechAt = 0L
     @Volatile private var microphoneLevel = 0f
@@ -73,27 +81,27 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         selectDefaultRoute()
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions())
-        module = JavaAudioDeviceModule.builder(context).setSamplesReadyCallback { sample ->
-            var peak = 0
-            if (sample.audioFormat == android.media.AudioFormat.ENCODING_PCM_16BIT) {
-                val bytes = sample.data
-                for (i in 0 until bytes.size - 1 step 2) {
-                    val value = ((bytes[i].toInt() and 255) or (bytes[i + 1].toInt() shl 8)).toShort().toInt()
-                    peak = maxOf(peak, kotlin.math.abs(value))
-                }
-            }
-            if (peak > 700) lastSpeechAt = android.os.SystemClock.elapsedRealtime()
-            microphoneLevel = (peak / 10000f).coerceIn(0f, 1f)
-        }.createAudioDeviceModule()
+        module = JavaAudioDeviceModule.builder(context).setAudioFormat(android.media.AudioFormat.ENCODING_PCM_16BIT)
+            .setUseHardwareAcousticEchoCanceler(false).setUseHardwareNoiseSuppressor(false)
+            .setAudioBufferCallback { buffer, _, _, _, bytes, timestamp ->
+                val now = android.os.SystemClock.elapsedRealtime()
+                transmitting = microphoneGate.process(buffer, bytes, now, NativeSettingsStore.number("vadThreshold", .015),
+                    NativeSettingsStore.string("transmissionMode", "voice-activation"), pushToTalk, muted || deafened,
+                    NativeSettingsStore.boolean("typingAttenuation") && now < NativeSettingsStore.typingUntil,
+                    NativeSettingsStore.boolean("comfortNoise", false))
+                microphoneLevel = (microphoneGate.level * 3.2f).coerceIn(0f, 1f)
+                NativeSettingsStore.inputLevel = microphoneGate.level
+                lastSpeechAt = microphoneGate.lastSpeechAt
+                microphoneFrames++
+                timestamp
+            }.createAudioDeviceModule()
         factory = PeerConnectionFactory.builder().setAudioDeviceModule(module)
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext)).createPeerConnectionFactory()
-        audioSource = factory.createAudioSource(MediaConstraints().apply {
-            listOf("googEchoCancellation", "googAutoGainControl", "googNoiseSuppression").forEach {
-                optional.add(MediaConstraints.KeyValuePair(it, "true"))
-            }
-        })
+        processingKey = processingPreferences()
+        audioSource = configuredAudioSource()
         audio = factory.createAudioTrack("microphone", audioSource)
+        applySettings()
         if (audioManager.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) changeMuted(true)
         signal.onSignal = ::accept
         signal.pendingSignals.toList().forEach(::accept); signal.pendingSignals.clear()
@@ -146,7 +154,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             override fun onRenegotiationNeeded() = post { negotiate(id) }
             override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = post {
                 val track = receiver.track()
-                if (track is AudioTrack) track.setEnabled(!deafened)
+                if (track is AudioTrack) { track.setEnabled(!deafened); track.setVolume(outputGain()) }
                 if (track is VideoTrack) { peers[id]?.remoteTracks?.put(track.id(), track); refreshRemoteVideo(id) }
             }
         }) ?: error("Не удалось создать медиасоединение")
@@ -341,8 +349,47 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         }
         return SenderBinding(sender, transceiver)
     }
+    private fun processingPreferences() = listOf("echoCancellation", "autoGainControl", "noiseSuppression").joinToString { NativeSettingsStore.boolean(it).toString() }
+    private fun configuredAudioSource() = factory.createAudioSource(MediaConstraints().apply {
+        mapOf("googEchoCancellation" to "echoCancellation", "googAutoGainControl" to "autoGainControl", "googNoiseSuppression" to "noiseSuppression").forEach { (constraint, setting) ->
+            optional.add(MediaConstraints.KeyValuePair(constraint, NativeSettingsStore.boolean(setting).toString()))
+        }
+    })
+    // Hard mute can disable the track; VAD/PTT/typing keep capture alive and gate PCM.
+    private fun updateMicrophoneGate() { audio.setEnabled(!muted && !deafened) }
+    private fun outputGain(): Double = NativeSettingsStore.number("outputVolume", .85) *
+        (if (NativeSettingsStore.boolean("echoDucking") && transmitting && !muted && android.os.SystemClock.elapsedRealtime() - lastSpeechAt < 400)
+            NativeSettingsStore.number("echoDuckingLevel", .4) else 1.0)
+    fun pushToTalk(value: Boolean) { pushToTalk = value; updateMicrophoneGate() }
+    fun applySettings() {
+        val selectedInput = NativeSettingsStore.string("inputDeviceId")
+        if (selectedInput != inputPreference) {
+            module.setPreferredInputDevice(audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { "native:${it.id}" == selectedInput })
+            inputPreference = selectedInput
+        }
+        val selectedOutput = NativeSettingsStore.string("outputDeviceId")
+        if (selectedOutput != outputPreference) {
+            selectedOutput.removePrefix("native:").toIntOrNull()?.let(::route) ?: selectDefaultRoute()
+            outputPreference = selectedOutput
+        }
+        val nextProcessing = processingPreferences()
+        if (nextProcessing != processingKey) {
+            val source = configuredAudioSource(); val track = factory.createAudioTrack("microphone", source)
+            val senders = peers.values.flatMap { it.pc.senders }.filter { it.track()?.kind() == "audio" }
+            try {
+                senders.forEach { check(it.setTrack(track, false)) }
+                val oldTrack = audio; val oldSource = audioSource
+                audio = track; audioSource = source; processingKey = nextProcessing
+                oldTrack.dispose(); oldSource.dispose()
+            } catch (_: Exception) {
+                senders.forEach { it.setTrack(audio, false) }; track.dispose(); source.dispose()
+                error = "Не удалось применить настройки микрофона. Повторите подключение."
+            }
+        }
+        updateMicrophoneGate()
+    }
     private fun publishAudioState() {
-        audio.setEnabled(!muted && !deafened)
+        updateMicrophoneGate()
         peers.values.forEach { peer -> peer.pc.receivers.forEach { receiver ->
             (receiver.track() as? AudioTrack)?.setEnabled(!deafened)
         } }
@@ -362,7 +409,9 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     fun startCamera() {
         runCatching {
             val enumerator = Camera2Enumerator(context)
-            val name = enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) } ?: enumerator.deviceNames.first()
+            val selected = NativeSettingsStore.string("cameraDeviceId")
+            val name = enumerator.deviceNames.firstOrNull { "native:$it" == selected }
+                ?: enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) } ?: enumerator.deviceNames.first()
             startCapture("camera", enumerator.createCapturer(name, null), 640, 480, 24); camera = true
         }.onFailure { error = it.message ?: "Камера недоступна" }
     }
@@ -475,8 +524,14 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     private val stats: Runnable = object : Runnable {
         override fun run() {
             if (stopped) return
-            levels = levels + (signal.room.selfId to if (muted) 0f else microphoneLevel)
-            speaking = (speaking - signal.room.selfId) + if (!muted && android.os.SystemClock.elapsedRealtime() - lastSpeechAt < 400) setOf(signal.room.selfId) else emptySet()
+            updateMicrophoneGate()
+            val gain = outputGain()
+            if (gain != lastOutputGain) {
+                peers.values.forEach { it.pc.receivers.forEach { receiver -> (receiver.track() as? AudioTrack)?.setVolume(gain) } }
+                lastOutputGain = gain
+            }
+            levels = levels + (signal.room.selfId to if (muted || !transmitting) 0f else microphoneLevel)
+            speaking = (speaking - signal.room.selfId) + if (!muted && transmitting && android.os.SystemClock.elapsedRealtime() - lastSpeechAt < 400) setOf(signal.room.selfId) else emptySet()
             peers.forEach { (id, p) -> p.pc.getStats { report ->
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - p.lastRtpSnapshotAt >= 5_000) {
@@ -510,6 +565,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         trace.event("media-closed")
         stopped = true; signal.onSignal = null; main.removeCallbacksAndMessages(null)
         videos = emptyMap()
+        NativeSettingsStore.inputLevel = 0f
         peers.values.forEach { it.operations.close(); it.pc.close() }; peers.clear()
         captures.keys.toList().forEach(::stopCapture)
         audio.dispose(); audioSource.dispose(); factory.dispose(); module.release()

@@ -251,6 +251,7 @@ private fun LoadingScreen(label: String) {
 private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     navigation: android.content.Intent?, consumeNavigation: () -> Unit, onLogout: () -> Unit) {
     val nativeContext = LocalContext.current
+    LaunchedEffect(user.id) { NativeSettingsStore.load(nativeContext, user.id) }
     val appearance = remember(user.id) { NativeAppearance(nativeContext.applicationContext) }
     val appearanceLifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(appearance) { onDispose { appearance.close() } }

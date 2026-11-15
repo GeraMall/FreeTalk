@@ -274,6 +274,8 @@ export async function clearChatImageCache(accountId: string) {
 }
 
 export async function getChatImageCacheStats(accountId: string) {
+  const native = (await import('./native-settings-host')).nativeSettingsHost();
+  if (native) return native.request<{ bytes: number; entries: number }>('cache.stats');
   const database = await openDatabase();
   if (!database) return { bytes: 0, entries: 0 };
   const transaction = database.transaction(STORE_NAME, 'readonly');

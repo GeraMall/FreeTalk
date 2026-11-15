@@ -1,4 +1,5 @@
 import { connectionDiagnostics } from './connection-diagnostics';
+import { nativeSettingsHost } from './native-settings-host';
 import { configureMacScreenCapture } from './macos-screen-quality';
 import {
   defaultVideoPreferences,
@@ -44,8 +45,10 @@ export class ScreenCaptureCancelledError extends Error {}
 
 export function cameraConstraints(deviceId = ''): MediaTrackConstraints {
   const android = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+  const nativeFacing = nativeSettingsHost()?.cameraFacing?.[deviceId];
   return {
-    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    ...(deviceId && !nativeFacing ? { deviceId: { exact: deviceId } } : {}),
+    ...(nativeFacing ? { facingMode: { ideal: nativeFacing } } : {}),
     ...(!deviceId && android ? { facingMode: { ideal: 'user' } } : {}),
     width: { ideal: android ? 1280 : 1920 },
     height: { ideal: android ? 720 : 1080 },

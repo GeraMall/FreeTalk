@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.sp
 /** Offline screen review. No session restore, socket, push registration or media capture. */
 class DesignPreviewActivity : ComponentActivity() {
     var screen by mutableStateOf("home")
+    var previewProfile by mutableStateOf(SignedInUser("11111111-1111-4111-8111-111111111111", "alexey_1", "Alex",
+        email = "alexey@example.invalid", bio = "Всегда на связи", emailVerified = true, registeredAt = "2026-01-01T00:00:00Z"))
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge(statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         screen = intent.getStringExtra("mode") ?: "home"
@@ -31,7 +33,7 @@ class DesignPreviewActivity : ComponentActivity() {
     @Composable
     private fun Content(api: FreeTalkApi, cache: MediaCache) {
         MobileSystemBars(screen in listOf("login", "recovery") || MobilePreferences.theme != "light")
-        val self = SignedInUser("11111111-1111-4111-8111-111111111111", "alex", "Alex", bio = "Всегда на связи")
+        val self = previewProfile
         val friend = ChatMember("22222222-2222-4222-8222-222222222222", "Макс", null, "max")
         val chat = ChatSummary("33333333-3333-4333-8333-333333333333", "direct", null, listOf(ChatMember(self.id, self.displayName, null, self.username), friend), "Давай созвонимся вечером", "2026-11-02T12:00:00Z", null)
         val call = CallSummary("history-1", "PREVIEW", "2026-11-01T12:00:00Z", 2400, listOf(CallParticipant(friend.id, "Макс", null)))
@@ -73,7 +75,9 @@ class DesignPreviewActivity : ComponentActivity() {
                 ChatMessage("m4", "Да, я уже здесь", self.id, "Alex", "2026-11-02T12:02:00Z"))) }
             }
             "bot" -> ServiceBotScreen(api, back, listOf(ServiceEntry("s1", "Я служебный бот TRLKA. Здесь появляются уведомления о звонках и обращения в поддержку.\n\n/bug — сообщить об ошибке\n/idea — предложить улучшение\n/subscription — подписка", "bot", "2026-11-02T12:00:00Z"), ServiceEntry("s2", "Звонок завершён: за пять минут никто не подключился.", "bot", "2026-11-02T12:01:00Z")))
-            "settings" -> AccountSettingsScreen(api, cache, self, emptyList(), { screen = "home" }, {}, { screen = "login" })
+            "settings", "settings-profile", "settings-audio", "settings-interface", "settings-video", "settings-devices", "settings-recording", "settings-chats", "settings-about" ->
+                AccountSettingsScreen(api, cache, self, emptyList(), { screen = "home" }, { previewProfile = it }, { screen = "login" },
+                    preview = true, initialTab = screen.removePrefix("settings-").takeIf { screen != "settings" })
             "call", "video" -> Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp)) {
                 CallHeader("Комната с друзьями", "Проверяем связь…", "01:05",
                     onMinimize = { minimized = true; screen = "home" },
