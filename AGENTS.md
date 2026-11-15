@@ -10,6 +10,11 @@ docs/ANDROID_SETTINGS_BETA230.md. Native recording/camera backgrounds/some sound
 decoration/update capabilities НЕ реализованы этим переносом; физическийтелефон
 не проверен. Ветка preview/android-settings-web-230; public Android НЕ выпускать
 до просмотра владельцем. Веб-hotfix опубликован отдельно, см. запись ниже.
+Финальный APK230 sourcee80a753: outputs/mobile/beta230/Trlka_0.4.0-beta.230_android.apk,
+87812186bytes, SHA05d27e7fa8162d12ebf872a9e924a1849a87a0f0dda29881e4fca36a342ae68f.
+R8/JNI/lint0errors48warnings/3exactreleaseaudio probes passed, crashbufferempty.
+229→230sameUID10270/UIprefshash;52settingsassets debug/release identical.
+320pxrealkeyboard/nativephotopicker/languagepersist/blacktheme проверены.
 
 15.11.2026 WEB CALL/CHAT HOTFIX PUBLISHED по прямому запросу владельца.
 Public web теперь910b338 (isolated release/web-call-chat-20261115 от7811583):
