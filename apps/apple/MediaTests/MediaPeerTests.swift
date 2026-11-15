@@ -20,11 +20,7 @@ final class MediaPeerTests: XCTestCase {
     @MainActor
     func testNativePeersHandleGlareAndReceiveVideoAfterCameraRestart() async throws {
         RTCInitializeSSL()
-        // Hosted Macs lack a working hardware encoder. Exercise the real RTP path
-        // with the software codec shared by every supported client.
-        let encoder = RTCDefaultVideoEncoderFactory()
-        encoder.preferredCodec = RTCVideoCodecInfo(name: "VP8")
-        let factory = RTCPeerConnectionFactory(encoderFactory: encoder, decoderFactory: RTCDefaultVideoDecoderFactory())
+        let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
         let first = try MediaPeer(id: "bbbb", localID: "aaaa", factory: factory, audio: nil, ice: [], camera: nil)
         let second = try MediaPeer(id: "aaaa", localID: "bbbb", factory: factory, audio: nil, ice: [], camera: nil)
         defer { first.close(); second.close() }
@@ -59,8 +55,10 @@ final class MediaPeerTests: XCTestCase {
             let capture = RTCVideoCapturer(delegate: source)
             let track = factory.videoTrack(with: source, trackId: "\(kind)-\(index)")
             var attached = false
+            var renderedTrack: RTCVideoTrack?
             second.changed = {
                 if !attached, let remote = second.video(source: kind) {
+                    renderedTrack = remote
                     remote.add(probe); attached = true
                 }
             }
@@ -94,7 +92,8 @@ final class MediaPeerTests: XCTestCase {
                 }
             }
             sending.cancel()
-            second.tracks.values.forEach { $0.remove(probe) }
+            renderedTrack?.remove(probe)
+            renderedTrack = nil
             let stopped = expectation(description: "\(kind) is removed from the remote view")
             var removed = false
             second.changed = {

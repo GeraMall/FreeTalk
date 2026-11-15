@@ -267,9 +267,16 @@ final class MediaPeer: NSObject {
         if let sources {
             guard let value = sources[source] as? [String: Any], value["active"] as? Bool == true,
                   let trackID = value["trackId"] as? String else { return nil }
+            if let track = tracks[trackID] { return track }
             if let mid = value["mid"] as? String,
-               let receiver = connection.transceivers.first(where: { $0.mid == mid })?.receiver.track as? RTCVideoTrack { return receiver }
-            return tracks[trackID]
+               let receiver = connection.transceivers.first(where: { $0.mid == mid })?.receiver.track as? RTCVideoTrack {
+                // WebRTC can return a new Swift wrapper for the same native track.
+                // Keep one wrapper alive so UI updates preserve its renderers.
+                if let track = tracks[receiver.trackId] { return track }
+                tracks[receiver.trackId] = receiver
+                return receiver
+            }
+            return nil
         }
         return source == (legacyVideoSource ?? "camera") ? tracks.values.first : nil
     }
