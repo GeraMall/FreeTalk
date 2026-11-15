@@ -246,7 +246,13 @@ final class MediaPeer: NSObject {
 
     private func opened(_ channel: RTCDataChannel) {
         if channel.label == "trlka-native-screen-v1" { sendData(["kind": "ready"], channel: channel) }
-        else { sendData(["version": 2, "request": "video-state"], channel: channel); publishVideo() }
+        else {
+            // Published desktop builds compare this request byte-for-byte.
+            // Keep their field order while accepting arbitrary JSON order on receive.
+            let request = Data(#"{"version":2,"request":"video-state"}"#.utf8)
+            _ = channel.sendData(RTCDataBuffer(data: request, isBinary: false))
+            publishVideo()
+        }
     }
     private func sendData(_ json: [String: Any], channel: RTCDataChannel) {
         guard let data = try? JSONSerialization.data(withJSONObject: json) else { return }
