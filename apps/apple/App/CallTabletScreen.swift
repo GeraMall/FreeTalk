@@ -129,8 +129,13 @@ private struct TabletRenderer: UIViewRepresentable {
             evaluate("window.TRLKATablet.receive(raw)", raw: snapshot)
         }
         private func evaluate(_ body: String, raw: String) {
-            view?.callAsyncJavaScript(body, arguments: ["raw": raw], in: nil, in: .page) { [weak self] result in
-                if case .failure = result, let self, attached { onFailure() }
+            // JSON quoting keeps participant text out of executable JavaScript.
+            // The older evaluation API also works on iOS 18.5's simulator runtime.
+            guard let data = try? JSONSerialization.data(withJSONObject: [raw]),
+                  let arguments = String(data: data, encoding: .utf8) else { return }
+            let script = "(function(raw) { \(body) })(\(arguments)[0]);"
+            view?.evaluateJavaScript(script) { [weak self] _, error in
+                if error != nil, let self, attached { onFailure() }
             }
         }
         func stop() {
