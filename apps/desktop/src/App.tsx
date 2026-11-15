@@ -2353,6 +2353,16 @@ export function App() {
         conversationWorkspaceActive && !mobileLayout ? setCallToolbarTarget : undefined
       }
       onConversationToggle={() => setConversationHidden((value) => !value)}
+      onOpenConversationChat={
+        mobileFocusedCall && callChatId
+          ? () => {
+              setMobileCallMinimized(true);
+              setConversationHidden(false);
+              setRoomDestination('chats');
+              void roomSidebarState?.openChat(callChatId);
+            }
+          : undefined
+      }
       cameraPreviewRequest={cameraPreviewRequest}
       embedded={Boolean(accountUser)}
       viewerId={accountUser?.id}
