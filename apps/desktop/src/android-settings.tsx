@@ -193,6 +193,31 @@ async function start() {
   });
   installInteractionGuards();
   installMobileViewport();
+  // Android resizes the native view for the keyboard. Keep the focused field
+  // between the shared fixed header and footer after that resize settles.
+  let inputFrame = 0;
+  const revealInput = () => {
+    cancelAnimationFrame(inputFrame);
+    inputFrame = requestAnimationFrame(() => {
+      const input = document.activeElement;
+      if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return;
+      if (
+        input instanceof HTMLInputElement &&
+        !['text', 'email', 'password', 'search', 'tel', 'url', 'number'].includes(input.type)
+      )
+        return;
+      const bounds = input.getBoundingClientRect();
+      const top = document.querySelector('.settings-header')?.getBoundingClientRect().bottom ?? 0;
+      const bottom =
+        document.querySelector('.settings-footer, .profile-sticky-actions')?.getBoundingClientRect()
+          .top ?? innerHeight - 76;
+      if (bounds.top < top + 8 || bounds.bottom > bottom - 8)
+        input.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
+  };
+  document.addEventListener('focusin', revealInput);
+  window.addEventListener('resize', revealInput);
+  window.visualViewport?.addEventListener('resize', revealInput);
   let typedAt = 0;
   document.addEventListener('input', () => {
     if (Date.now() - typedAt > 150) {

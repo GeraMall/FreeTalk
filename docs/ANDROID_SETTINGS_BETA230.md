@@ -15,6 +15,7 @@ Validation before packaging:
 - 13 emulator UI/native tests passed: all eight sections, profile editing/saving, chat during a minimized call, native audio negotiation/live preferences, three call start/close cycles and existing navigation/contrast checks. A subsequent first-paint check exercises the final loader change separately.
 - Sixteen actual Android section/theme layouts were captured at approximately 393 CSS pixels in dark and light themes without horizontal overflow. Profile and video screenshots were visually reviewed.
 - The native microphone produced a real four-second WAV (512082 data-URL characters). Both prepared avatar and cover images survived the Kotlin profile bridge in the offline fixture. This does not claim an authenticated production upload was performed.
+- At 320 CSS pixels, the focused profile field and Done action remain above the real Android keyboard. The native photo picker opened and returned safely; changing language through the shared control persisted across reload; the black theme was checked separately.
 
 Evidence and preview images are under `outputs/doc-review/android230-*` and `outputs/mobile/beta230/previews/`. The final APK and signed package manifest are under `outputs/mobile/beta230/`.
 
