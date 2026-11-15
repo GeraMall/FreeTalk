@@ -23,7 +23,7 @@ final class MediaPeerTests: XCTestCase {
         // Hosted Macs lack a working hardware encoder. Exercise the real RTP path
         // with the software codec shared by every supported client.
         let encoder = RTCDefaultVideoEncoderFactory()
-        encoder.preferredCodec = RTCVideoCodecInfo(name: kRTCVideoCodecVp8Name)
+        encoder.preferredCodec = RTCVideoCodecInfo(name: "VP8")
         let factory = RTCPeerConnectionFactory(encoderFactory: encoder, decoderFactory: RTCDefaultVideoDecoderFactory())
         let first = try MediaPeer(id: "bbbb", localID: "aaaa", factory: factory, audio: nil, ice: [], camera: nil)
         let second = try MediaPeer(id: "aaaa", localID: "bbbb", factory: factory, audio: nil, ice: [], camera: nil)

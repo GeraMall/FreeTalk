@@ -874,7 +874,12 @@ export class PeerManager {
     }
   }
 
-  private handleVideoStateMessage(peerId: string, context: PeerContext, channel: RTCDataChannel, raw: unknown) {
+  private handleVideoStateMessage(
+    peerId: string,
+    context: PeerContext,
+    channel: RTCDataChannel,
+    raw: unknown,
+  ) {
     if (typeof raw !== 'string' || raw.length > 512) return;
     try {
       const value = JSON.parse(raw) as {
