@@ -1,8 +1,9 @@
 # FreeTalk Android
 
 Native Android client built with Kotlin and Jetpack Compose. It reuses the existing FreeTalk
-account API, signaling protocol and production infrastructure; it does not embed the desktop
-frontend or a WebView.
+account API, signaling protocol and production infrastructure. Navigation, chat and
+calls use native Android views. Shared tablet games run in an isolated WebView
+with bundled assets and the same game protocol as the desktop client.
 
 Beta.228 adds paginated cached chat history, read receipts, reactions, GIFs and
 stickers, group creation, password recovery/CAPTCHA, QR approval of computer
