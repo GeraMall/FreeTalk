@@ -14,19 +14,25 @@ import androidx.compose.ui.unit.sp
 
 @Suppress("DEPRECATION")
 @Composable
-internal fun LinkedMessageText(text: String, onLink: ((String) -> Boolean)? = null) {
+internal fun LinkedMessageText(text: String, onLink: ((String) -> Boolean)? = null, timestamp: String = "") {
     val context = LocalContext.current
     val color = MobileDesign.accent
-    val annotated = remember(text, color) { buildAnnotatedString {
+    val annotated = remember(text, color, timestamp) { buildAnnotatedString {
         append(text)
         Regex("(?:https?://|freetalk://)[^\\s<>]+", RegexOption.IGNORE_CASE).findAll(text).forEach {
             val url = it.value.trimEnd('.', ',', ';', ')', ']')
             addStringAnnotation("URL", url, it.range.first, it.range.first + url.length)
             addStyle(SpanStyle(color = color, textDecoration = TextDecoration.Underline), it.range.first, it.range.first + url.length)
         }
+        if (timestamp.isNotBlank()) {
+            append("  ")
+            val start = length
+            append(timestamp)
+            addStyle(SpanStyle(color = MobileDesign.muted, fontSize = 10.sp), start, length)
+        }
     } }
     ClickableText(annotated, style = LocalTextStyle.current.copy(color = MobileDesign.text,
-        fontSize = (14 * MobilePreferences.textScale).sp, lineHeight = (20 * MobilePreferences.textScale).sp)) { offset ->
+        fontSize = (12 * MobilePreferences.textScale).sp, lineHeight = (22.4f * MobilePreferences.textScale).sp)) { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { link ->
             if (onLink?.invoke(link.item) != true && Uri.parse(link.item).scheme?.lowercase() in listOf("https", "http"))
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.item))) }

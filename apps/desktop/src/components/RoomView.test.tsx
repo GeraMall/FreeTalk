@@ -108,6 +108,7 @@ function view(
     conversationHidden?: boolean;
     embedded?: boolean;
     onConversationToggle?: () => void;
+    onOpenConversationChat?: () => void;
     waitingParticipants?: WaitingCallParticipant[];
     roomStartedAt?: number;
     mirrorSelfVideo?: boolean;
@@ -126,6 +127,7 @@ function view(
       embedded={handlers.embedded}
       conversationHidden={handlers.conversationHidden}
       onConversationToggle={handlers.onConversationToggle}
+      onOpenConversationChat={handlers.onOpenConversationChat}
       viewerId={handlers.viewerId}
       roomId="ABCDEF123456"
       selfId={selfId}
@@ -193,6 +195,29 @@ function view(
 }
 
 describe('RoomView media layouts', () => {
+  it.each(['direct', 'group'] as const)(
+    'opens the existing %s conversation from a phone call without leaving the call',
+    (conversationType) => {
+      const openChat = vi.fn();
+      const leave = vi.fn();
+      const roomSend = vi.fn(() => true);
+      const page = render(
+        view('none', {}, false, vi.fn(), vi.fn(), vi.fn(), {
+          conversation: true,
+          conversationType,
+          onOpenConversationChat: openChat,
+          onLeave: leave,
+          onRoomChatSend: roomSend,
+        }),
+      );
+      fireEvent.click(page.container.querySelector('.mobile-conversation-chat-button')!);
+      expect(openChat).toHaveBeenCalledTimes(1);
+      expect(leave).not.toHaveBeenCalled();
+      expect(roomSend).not.toHaveBeenCalled();
+      expect(page.container.querySelector('.room-chat-panel')).toBeNull();
+    },
+  );
+
   it.each([false, true])(
     'restores chat visibility when closing a tablet (initially hidden: %s)',
     (initialHidden) => {

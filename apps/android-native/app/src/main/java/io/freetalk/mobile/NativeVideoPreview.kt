@@ -5,8 +5,6 @@ import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +41,7 @@ internal fun NativeVideoPreview(api: FreeTalkApi, cache: MediaCache, accountId: 
         Column(Modifier.widthIn(max = 420.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MobileDesign.input), contentAlignment = Alignment.Center) {
                 image?.let { AsyncImage(ImageRequest.Builder(context).data(it).diskCachePolicy(CachePolicy.DISABLED).build(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                Icon(Icons.Outlined.PlayCircle, "Открыть видео", Modifier.size(42.dp), tint = androidx.compose.ui.graphics.Color.White)
+                WebIcon(WebIcons.PlayCircle, "Открыть видео", Modifier.size(42.dp), tint = androidx.compose.ui.graphics.Color.White)
             }
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 MobileText(preview.optString("provider"), localize = false, color = MobileDesign.muted, fontSize = 11.sp)

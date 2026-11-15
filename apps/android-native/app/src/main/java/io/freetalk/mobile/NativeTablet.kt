@@ -137,7 +137,7 @@ internal fun NativeTablet(signaling: RoomSignaling, media: NativeCallMedia?, onC
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             if (!failed) CircularProgressIndicator() else {
                 MobileText("Не удалось открыть планшет. Звонок продолжается.")
-                TextButton(onClick = latestClose) { MobileText("Вернуться в звонок") }
+                WebTextButton(onClick = latestClose) { MobileText("Вернуться в звонок") }
             }
         }
     }

@@ -1,7 +1,6 @@
 package io.freetalk.mobile
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
@@ -20,9 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +42,8 @@ import java.util.UUID
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signaling: RoomSignaling, api: FreeTalkApi,
-    chats: List<ChatSummary>, friends: List<FriendSummary>, onLeave: () -> Unit, expanded: Boolean = true, onMinimize: () -> Unit = {}, onQuality: (String) -> Unit = {}) {
+    chats: List<ChatSummary>, friends: List<FriendSummary>, onLeave: () -> Unit, expanded: Boolean = true, onMinimize: () -> Unit = {}, onQuality: (String) -> Unit = {},
+    onConversationChat: ((String) -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = signaling.room
@@ -118,16 +115,23 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     LaunchedEffect(state.closed) { if (state.closed) onLeave() }
     LaunchedEffect(roomId, expanded) { if (expanded) while (true) { now = System.currentTimeMillis(); delay(1000) } }
     val elapsed = ((now - state.startedAt.coerceAtLeast(1)) / 1000).coerceAtLeast(0)
+    var conversationChatId by remember(roomId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(roomId) {
+        // A room link and an incoming invitation can also belong to an existing chat.
+        conversationChatId = runCatching { api.callContext(roomId)?.chatId }.getOrNull()
+    }
+    val openChat = {
+        sheet = null
+        val chatId = conversationChatId
+        if (chatId != null && onConversationChat != null) onConversationChat(chatId)
+        else sheet = "chat"
+    }
     if (!expanded) return
     Scaffold(containerColor = MobileDesign.canvas, topBar = {
-        if (focused == null) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { sheet = null; onMinimize() }, modifier = Modifier.background(MobileDesign.incoming, RoundedCornerShape(14.dp))) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Свернуть звонок") }
-            Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MobileText("Комната с друзьями", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                MobileText(if (media?.connections?.values?.any { it == "Подключён" } == true) "Связь установлена" else if (state.peers.size < 2) "Ожидаем участников" else "Проверяем связь…", color = secondary, fontSize = 11.sp)
-            }
-            MobileText(if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "…", color = secondary, fontSize = 11.sp)
-        }
+        if (focused == null) CallHeader("Комната с друзьями",
+            if (media?.connections?.values?.any { it == "Подключён" } == true) "Связь установлена" else if (state.peers.size < 2) "Ожидаем участников" else "Проверяем связь…",
+            if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "…",
+            onMinimize = { sheet = null; onMinimize() }, onChat = openChat)
     }, bottomBar = {
         CallToolbar(
             muted = media?.muted != false, camera = media?.camera == true, sharing = media?.sharing == true, mediaReady = media != null,
@@ -136,7 +140,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             onCamera = { if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) },
             onCameraOptions = { sheet = "camera" },
             onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else sheet = "share" },
-            onReaction = { sheet = "reactions" }, onChat = { sheet = "chat" }, onMore = { sheet = "menu" }, onLeave = onLeave,
+            onReaction = { sheet = "reactions" }, onChat = openChat, onMore = { sheet = "menu" }, onLeave = onLeave,
             onActivity = {
                 if (state.activity == null) feedback = "Подключаем общий планшет…"
                 else {
@@ -150,12 +154,12 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (focused == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 MobileText("Участники · ${state.peers.size} из 8", Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = { sheet = "invite" }, enabled = state.peers.size < 8) { Icon(Icons.Outlined.PersonAdd, null, Modifier.size(16.dp)); MobileText("Добавить", Modifier.padding(start = 6.dp), fontSize = 12.sp) }
+                WebTextButton(onClick = { sheet = "invite" }, enabled = state.peers.size < 8) { WebIcon(WebIcons.PersonAdd, null, Modifier.size(16.dp)); MobileText("Добавить", Modifier.padding(start = 6.dp), fontSize = 12.sp) }
             }
             if (feedback.isNotBlank() || media?.error?.isNotBlank() == true) MobileText(feedback.ifBlank { media?.error.orEmpty() }, color = MobileDesign.red, fontSize = 12.sp)
             if (media != null && state.peers.size > 1 && now - enteredAt > 15_000 &&
                 media?.connections?.values?.none { it == "Подключён" } == true) {
-                OutlinedButton(onClick = { media?.retryConnection() }) { MobileText("Повторить подключение") }
+                WebOutlinedButton(onClick = { media?.retryConnection() }) { MobileText("Повторить подключение") }
             }
             CallParticipants(state.peers, state.selfId, media, videoMode, focused, { focused = it }, Modifier.weight(1f))
         }
@@ -174,51 +178,51 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 "share" -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     MobileText("Демонстрация экрана", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     ScreenShareOptions()
-                    Button(onClick = {
+                    WebButton(onClick = {
                         sheet = null
                         screenPermission.launch(context.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
                     }, modifier = Modifier.fillMaxWidth(), enabled = media != null) { MobileText("Показать экран") }
                 }
                 "camera" -> {
                     MobileText("Камера", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(enabled = media != null, onClick = { sheet = null; if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) }) {
+                    WebTextButton(enabled = media != null, onClick = { sheet = null; if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) }) {
                         MobileText(if (media?.camera == true) "Выключить камеру" else "Включить камеру")
                     }
-                    TextButton(enabled = media?.camera == true, onClick = { media?.switchCamera(); sheet = null }) { MobileText("Переключить переднюю / заднюю камеру") }
+                    WebTextButton(enabled = media?.camera == true, onClick = { media?.switchCamera(); sheet = null }) { MobileText("Переключить переднюю / заднюю камеру") }
                 }
                 "menu" -> {
                     MobileText("Функции звонка", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { sheet = "camera" }) { MobileText("Камера и переключение объектива") }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { MobileText("Зеркалить свою камеру", Modifier.weight(1f)); Switch(MobilePreferences.mirrorSelf, { MobilePreferences.mirrorSelf = it; MobilePreferences.save(context) }) }
-                    TextButton(onClick = { sheet = "chat" }) { MobileText("Чат комнаты · ${state.messages.size}") }
-                    TextButton(onClick = { sheet = "reactions" }) { MobileText("Отправить реакцию") }
-                    TextButton(onClick = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" }) { MobileText("Выбрать устройство звука") }
-                    TextButton(enabled = media != null, onClick = {
+                    WebTextButton(onClick = { sheet = "camera" }) { MobileText("Камера и переключение объектива") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { MobileText("Зеркалить свою камеру", Modifier.weight(1f)); WebSwitch(MobilePreferences.mirrorSelf, { MobilePreferences.mirrorSelf = it; MobilePreferences.save(context) }) }
+                    WebTextButton(onClick = openChat) { MobileText(if (conversationChatId != null) "Показать чат" else "Чат комнаты · ${state.messages.size}") }
+                    WebTextButton(onClick = { sheet = "reactions" }) { MobileText("Отправить реакцию") }
+                    WebTextButton(onClick = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" }) { MobileText("Выбрать устройство звука") }
+                    WebTextButton(enabled = media != null, onClick = {
                         sheet = null
                         if (media?.sharing == true) media?.stopCapture("screen")
                         else sheet = "share"
                     }) { MobileText(if (media?.sharing == true) "Остановить показ экрана" else "Показать экран") }
-                    TextButton(onClick = { sheet = "invite" }) { MobileText("Пригласить друзей") }
+                    WebTextButton(onClick = { sheet = "invite" }) { MobileText("Пригласить друзей") }
                 }
                 "audio" -> {
                     MobileText("Выход звука", fontWeight = FontWeight.Bold)
-                    media?.routes()?.forEach { (id, name) -> TextButton(onClick = { media?.route(id); sheet = null }) { MobileText(name) } }
+                    media?.routes()?.forEach { (id, name) -> WebTextButton(onClick = { media?.route(id); sheet = null }) { MobileText(name) } }
                     if (media == null) MobileText("Сначала разрешите доступ к микрофону")
                 }
                 "reactions" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf("👍", "❤️", "😂", "🎉", "🔥").forEach { emoji -> TextButton(onClick = {
+                    listOf("👍", "❤️", "😂", "🎉", "🔥").forEach { emoji -> WebTextButton(onClick = {
                         if (!signaling.send(JSONObject().put("type", "reaction").put("id", UUID.randomUUID().toString()).put("reaction", emoji))) feedback = "Нет соединения"
                         sheet = null
                     }) { MobileText(emoji, fontSize = 27.sp) } }
                 }
                 "invite" -> {
                     MobileText("Пригласить в звонок", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение Trlka", link)); feedback = "Ссылка скопирована"; sheet = null }) { MobileText("Скопировать ссылку") }
-                    TextButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), "Пригласить в звонок")) }) { MobileText("Поделиться ссылкой…") }
+                    WebTextButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Приглашение Trlka", link)); feedback = "Ссылка скопирована"; sheet = null }) { MobileText("Скопировать ссылку") }
+                    WebTextButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), "Пригласить в звонок")) }) { MobileText("Поделиться ссылкой…") }
                     LazyColumn(Modifier.heightIn(max = 300.dp)) {
                         item { MobileText("Друзья", color = secondary) }
                         items(friends, key = { "friend:${it.id}" }) { friend ->
-                            TextButton(enabled = !pendingInvite, onClick = { pendingInvite = true; scope.launch {
+                            WebTextButton(enabled = !pendingInvite, onClick = { pendingInvite = true; scope.launch {
                                 runCatching { api.inviteToCall(roomId, listOf(friend.id)) }.onSuccess { feedback = "Приглашение в звонок отправлено"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }
                                 pendingInvite = false
                             } }) { MobileText(friend.displayName) }
@@ -226,7 +230,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                         item { MobileText("Чаты и группы", color = secondary) }
                         items(chats, key = { it.id }) { chat ->
                         val invitees = chat.members.map { it.id }.filter { it != user.id && state.peers.none { peer -> peer.id == it } }
-                        TextButton(enabled = !pendingInvite && invitees.isNotEmpty(), onClick = { pendingInvite = true; scope.launch { runCatching { api.inviteToCall(roomId, invitees) }.onSuccess { feedback = "Участники приглашены"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { MobileText(chat.displayTitle(user.id)) }
+                        WebTextButton(enabled = !pendingInvite && invitees.isNotEmpty(), onClick = { pendingInvite = true; scope.launch { runCatching { api.inviteToCall(roomId, invitees) }.onSuccess { feedback = "Участники приглашены"; sheet = null }.onFailure { feedback = it.message ?: "Не удалось отправить" }; pendingInvite = false } }) { MobileText(chat.displayTitle(user.id)) }
                     } }
                 }
                 "chat" -> NativeRoomChat(signaling)

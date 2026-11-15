@@ -1,6 +1,9 @@
 package io.freetalk.mobile
 
 import androidx.compose.material3.Typography
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -22,6 +25,8 @@ private val geist = FontFamily(
 )
 
 private val defaults = Typography()
+val freeTalkShapes = Shapes(extraSmall = RoundedCornerShape(4.dp), small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp), large = RoundedCornerShape(16.dp), extraLarge = RoundedCornerShape(18.dp))
 val freeTalkTypography = Typography(
     displayLarge = defaults.displayLarge.copy(fontFamily = geist, letterSpacing = 0.sp),
     displayMedium = defaults.displayMedium.copy(fontFamily = geist, letterSpacing = 0.sp),

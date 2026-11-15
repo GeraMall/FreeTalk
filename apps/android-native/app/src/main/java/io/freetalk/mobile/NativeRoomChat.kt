@@ -11,9 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,8 +88,8 @@ internal fun NativeRoomChat(signaling: RoomSignaling) {
                                 message.replyTo?.let { id -> state.messages.find { it.id == id }?.let { MobileText(it.text.take(60), localize = false, fontSize = 11.sp, color = MobileDesign.muted) } }
                                 if (!message.deleted) message.attachment?.let { file ->
                                     if (file.image && files != null) RoomFileImage(files, file)
-                                    TextButton(enabled = download == null, onClick = { download = file; saver.launch(file.name) }, contentPadding = PaddingValues(0.dp)) {
-                                        Icon(if (file.id in downloaded) Icons.Outlined.Check else Icons.Outlined.Download, null, Modifier.size(18.dp))
+                                    WebTextButton(enabled = download == null, onClick = { download = file; saver.launch(file.name) }, contentPadding = PaddingValues(0.dp)) {
+                                        WebIcon(if (file.id in downloaded) WebIcons.Check else WebIcons.Download, null, Modifier.size(18.dp))
                                         MobileText(file.name, localize = false, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp))
                                     }
                                 }
@@ -114,25 +111,25 @@ internal fun NativeRoomChat(signaling: RoomSignaling) {
         if (error.isNotBlank()) MobileText(error, color = MobileDesign.red, fontSize = 12.sp)
         if (reply != null || editing != null) Row(verticalAlignment = Alignment.CenterVertically) {
             MobileText((editing ?: reply)!!.text.take(70), localize = false, fontSize = 12.sp, modifier = Modifier.weight(1f), color = MobileDesign.muted)
-            IconButton(onClick = { reply = null; editing = null; draft = "" }, Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, "Отмена", Modifier.size(16.dp)) }
+            WebIconButton(onClick = { reply = null; editing = null; draft = "" }, Modifier.size(30.dp)) { WebIcon(WebIcons.Close, "Отмена", Modifier.size(16.dp)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            IconButton(enabled = !busy && editing == null && files != null, onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.AttachFile, "Прикрепить файл") }
-            OutlinedTextField(draft, { if (it.length <= 2000) draft = it }, enabled = !busy, modifier = Modifier.weight(1f), placeholder = { MobileText("Сообщение", fontSize = 13.sp) }, maxLines = 3, shape = RoundedCornerShape(14.dp))
-            IconButton(enabled = !busy && draft.isNotBlank(), onClick = {
+            WebIconButton(enabled = !busy && editing == null && files != null, onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.size(36.dp)) { WebIcon(WebIcons.AttachFile, "Прикрепить файл") }
+            WebTextField(draft, { if (it.length <= 2000) draft = it }, enabled = !busy, modifier = Modifier.weight(1f), placeholder = { MobileText("Сообщение", fontSize = 13.sp) }, maxLines = 3, shape = RoundedCornerShape(14.dp))
+            WebIconButton(enabled = !busy && draft.isNotBlank(), onClick = {
                 val ok = if (editing != null) signaling.send(JSONObject().put("type", "room-chat-action").put("action", JSONObject().put("kind", "edit").put("id", editing!!.id).put("text", draft.trim()))) else send(draft.trim())
                 if (ok) { draft = ""; reply = null; editing = null } else error = "Нет соединения"
-            }) { if (busy) CircularProgressIndicator(Modifier.size(20.dp)) else Icon(Icons.AutoMirrored.Outlined.Send, "Отправить") }
+            }) { if (busy) CircularProgressIndicator(Modifier.size(20.dp)) else WebIcon(WebIcons.Send, "Отправить") }
         }
     }
     target?.let { message -> AlertDialog(onDismissRequest = { target = null }, confirmButton = {}, containerColor = MobileDesign.canvas, text = {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row { listOf("❤️", "👍", "😂", "😮", "🔥").forEach { emoji -> TextButton(onClick = { action("react", message, emoji); target = null }, contentPadding = PaddingValues(3.dp), modifier = Modifier.weight(1f)) { MobileText(emoji, localize = false, fontSize = 20.sp) } } }
-            TextButton(onClick = { reply = message; editing = null; target = null }) { MobileText("Ответить") }
-            TextButton(onClick = { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("", message.text)); target = null }) { MobileText("Копировать текст") }
+            Row { listOf("❤️", "👍", "😂", "😮", "🔥").forEach { emoji -> WebTextButton(onClick = { action("react", message, emoji); target = null }, contentPadding = PaddingValues(3.dp), modifier = Modifier.weight(1f)) { MobileText(emoji, localize = false, fontSize = 20.sp) } } }
+            WebTextButton(onClick = { reply = message; editing = null; target = null }) { MobileText("Ответить") }
+            WebTextButton(onClick = { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("", message.text)); target = null }) { MobileText("Копировать текст") }
             if (message.participantId == state.selfId) {
-                TextButton(onClick = { editing = message; reply = null; draft = message.text; target = null }) { MobileText("Изменить") }
-                TextButton(onClick = { action("delete", message); target = null }) { MobileText("Удалить", color = MobileDesign.red) }
+                WebTextButton(onClick = { editing = message; reply = null; draft = message.text; target = null }) { MobileText("Изменить") }
+                WebTextButton(onClick = { action("delete", message); target = null }) { MobileText("Удалить", color = MobileDesign.red) }
             }
         }
     }) }

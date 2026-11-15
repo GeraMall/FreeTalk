@@ -6,8 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,7 +23,7 @@ class DesignPreviewActivity : ComponentActivity() {
         val api = FreeTalkApi(SessionStore(this))
         val cache = MediaCache(java.io.File(cacheDir, "design-preview"))
         intent.getStringExtra("theme")?.takeIf { it in listOf("default", "light", "black") }?.let { MobilePreferences.theme = it }
-        setContent { MaterialTheme(colorScheme = if (screen in listOf("login", "recovery")) colors else mobileColorScheme(), typography = freeTalkTypography) {
+        setContent { MaterialTheme(colorScheme = if (screen in listOf("login", "recovery")) colors else mobileColorScheme(), typography = freeTalkTypography, shapes = freeTalkShapes) {
             Surface(color = MobileDesign.background) { Content(api, cache) }
         } }
     }
@@ -57,32 +55,44 @@ class DesignPreviewActivity : ComponentActivity() {
             }
             "login" -> BrandedAuthScreen(AuthPage.Login, "", "", {}, { _, _ -> }, { _, _, _, _, _, _ -> }, { _, _ -> }, {}, { screen = "recovery" })
             "recovery" -> PasswordRecoveryScreen(api) { screen = "login" }
-            "conversation" -> NativeChatScreen(api, cache, self, chat, back, {}, { screen = "call" }, { screen = "call" }, preview = listOf(
+            "web-conversation" -> {
+                val avatar = "android.resource://$packageName/${R.drawable.freetalk_mascot}"
+                val webSelf = self.copy(displayName = "Гера", username = "german_1", avatarUrl = avatar)
+                val webChat = chat.copy(members = listOf(ChatMember(self.id, "Гера", avatar, "german_1"),
+                    ChatMember(friend.id, "Алексей", avatar, "alexey_1")))
+                NativeChatScreen(api, cache, webSelf, webChat, back, {}, {}, {}, preview = listOf(
+                    ChatMessage("web1", "Привет! Проверяем новый интерфейс чатов?", friend.id, "Алексей", "2026-08-26T12:18:00Z", avatarUrl = avatar),
+                    ChatMessage("web2", "Да. Теперь список, переписка и профиль стоят вплотную.", self.id, "Гера", "2026-08-26T12:19:00Z", avatarUrl = avatar)))
+            }
+            "conversation" -> Column(Modifier.fillMaxSize()) {
+                if (minimized) WebTextButton(onClick = { screen = "call" }, modifier = Modifier.fillMaxWidth().statusBarsPadding()) { Text("Перейти к звонку", color = MobileDesign.green) }
+                Box(Modifier.weight(1f)) { NativeChatScreen(api, cache, self, chat, back, {}, { screen = "call" }, { screen = "call" }, preview = listOf(
                 ChatMessage("m1", "Привет! Как дела?", friend.id, "Макс", "2026-11-02T12:00:00Z"),
                 ChatMessage("m2", "Привет, всё отлично", self.id, "Alex", "2026-11-02T12:00:01Z"),
                 ChatMessage("m3", "Давай созвонимся вечером", friend.id, "Макс", "2026-11-02T12:01:00Z"),
-                ChatMessage("m4", "Да, я уже здесь", self.id, "Alex", "2026-11-02T12:02:00Z")))
+                ChatMessage("m4", "Да, я уже здесь", self.id, "Alex", "2026-11-02T12:02:00Z"))) }
+            }
             "bot" -> ServiceBotScreen(api, back, listOf(ServiceEntry("s1", "Я служебный бот TRLKA. Здесь появляются уведомления о звонках и обращения в поддержку.\n\n/bug — сообщить об ошибке\n/idea — предложить улучшение\n/subscription — подписка", "bot", "2026-11-02T12:00:00Z"), ServiceEntry("s2", "Звонок завершён: за пять минут никто не подключился.", "bot", "2026-11-02T12:01:00Z")))
             "settings" -> AccountSettingsScreen(api, cache, self, emptyList(), { screen = "home" }, {}, { screen = "login" })
             "call", "video" -> Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { minimized = true; screen = "home" }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Свернуть звонок") }
-                    Column { Text("Комната с друзьями", fontWeight = FontWeight.SemiBold); Text("Проверяем связь…", color = MobileDesign.muted, fontSize = 11.sp) }
-                }
+                CallHeader("Комната с друзьями", "Проверяем связь…", "01:05",
+                    onMinimize = { minimized = true; screen = "home" },
+                    onChat = { minimized = true; screen = "conversation" })
                 Text("Участники · 2 из 8", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
                 CallParticipants(listOf(RoomPeer(self.id, self.displayName, null, false, true), RoomPeer(friend.id, "Макс", null, false, false)), self.id, null, screen == "video", focused, { focused = it }, Modifier.weight(1f))
                 CallToolbar(mic, false, false, true, { mic = !mic }, {}, { screen = "video" }, {}, {}, {}, {}, {}, { minimized = false; screen = "home" })
             }
             else -> {
-                val page = listOf("home", "chats", "friends", "history").indexOf(screen).coerceAtLeast(0)
-                Scaffold(containerColor = MobileDesign.background, bottomBar = { MobileBottomNavigation(page) { screen = listOf("home", "chats", "friends", "history")[it] } }) { padding ->
+                val page = listOf("home", "chats", "friends", "history", "store").indexOf(screen).coerceAtLeast(0)
+                Scaffold(containerColor = MobileDesign.background, bottomBar = { MobileBottomNavigation(page) { screen = listOf("home", "chats", "friends", "history", "store")[it] } }) { padding ->
                     Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                        if (minimized) TextButton(onClick = { screen = "call" }, modifier = Modifier.fillMaxWidth()) { Text("Перейти к звонку", color = MobileDesign.green) }
+                        if (minimized) WebTextButton(onClick = { screen = "call" }, modifier = Modifier.fillMaxWidth()) { Text("Перейти к звонку", color = MobileDesign.green) }
                         AppHeader(self) { screen = "settings" }
                         when (page) {
                             0 -> HomePage(self, data, null, "", { screen = "call" }, { screen = "call" })
-                            1 -> ChatsPage(self, listOf(chat), { screen = "conversation" }, {}, { screen = "bot" })
+                            1 -> ChatsPage(self, listOf(chat), { screen = "conversation" }, {}, { screen = "bot" }, friends = friends)
                             2 -> FriendsPage(api, self, friends, emptyList(), {}, { screen = "conversation" })
+                            4 -> StoreLockedPage()
                             else -> HistoryPage(listOf(call), emptyList(), cache)
                         }
                     }

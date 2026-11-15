@@ -3,13 +3,16 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RoomActivity, RoomActivityAction, ServerMessage } from '@freetalk/protocol';
 import { App } from './App';
+import type { HomeSidebarState } from './components/HomeView';
 
 const harness = vi.hoisted(() => ({
+  mobile: false,
   home: undefined as
     | undefined
     | {
         onJoinRoom(code: string, chatId?: string): void;
         onActiveChatChange?(id: string): void;
+        onSidebarStateChange?(state: HomeSidebarState): void;
       },
   room: undefined as
     | undefined
@@ -18,6 +21,7 @@ const harness = vi.hoisted(() => ({
         activityUnlocked?: boolean;
         conversationHidden?: boolean;
         conversation?: boolean;
+        onOpenConversationChat?(): void;
         onTabletVisibilityChange?(visible: boolean): void;
         onActivity?(action: RoomActivityAction): void;
       },
@@ -51,7 +55,7 @@ vi.mock('./lib/account-media-cache', () => ({
   warmAccountMediaCache: async () => {},
   clearAccountMediaCache: async () => {},
 }));
-vi.mock('./lib/mobile-layout', () => ({ useMobileLayout: () => false }));
+vi.mock('./lib/mobile-layout', () => ({ useMobileLayout: () => harness.mobile }));
 vi.mock('./lib/chat-realtime', () => ({
   ChatRealtimeClient: class {
     start() {}
@@ -147,6 +151,7 @@ vi.mock('./components/BrowserNotificationPrompt', () => ({
 }));
 
 beforeEach(() => {
+  harness.mobile = false;
   harness.home = undefined;
   harness.room = undefined;
   harness.send.mockReset().mockReturnValue(true);
@@ -169,6 +174,48 @@ afterEach(() => {
 });
 
 describe('application call ownership', () => {
+  it('opens the phone conversation while retaining the active audio and signaling session', async () => {
+    harness.mobile = true;
+    harness.request.mockImplementation(async (path: string) =>
+      path.endsWith('/context')
+        ? {
+            call: {
+              roomId: 'ABCDEFGH2345',
+              chatId: 'actual-chat',
+              title: 'QA',
+              memberIds: [],
+              participants: [],
+            },
+          }
+        : { chats: [], friends: [], calls: [] },
+    );
+    const page = render(<App />);
+    await page.findByTestId('home');
+    const openChat = vi.fn(async () => {});
+    act(() => harness.home!.onJoinRoom('ABCDEFGH2345', 'actual-chat'));
+    await waitFor(() => expect(harness.room?.onOpenConversationChat).toBeTypeOf('function'));
+    await waitFor(() => expect(harness.clients).toHaveLength(1));
+    act(() =>
+      harness.home!.onSidebarStateChange!({
+        chats: [],
+        friends: [],
+        chatsLoading: false,
+        openChat,
+      } as unknown as HomeSidebarState),
+    );
+    const stopCount = harness.stop.mock.calls.length;
+    const client = harness.clients[0];
+    act(() => harness.room!.onOpenConversationChat!());
+    expect(openChat).toHaveBeenCalledWith('actual-chat');
+    expect(
+      page.container.querySelector('.mobile-conversation-call-workspace.call-minimized'),
+    ).not.toBeNull();
+    expect(page.container.querySelector('.account-page-slot.is-hidden')).toBeNull();
+    expect(harness.stop).toHaveBeenCalledTimes(stopCount);
+    expect(harness.clients).toEqual([client]);
+    expect(harness.start).toHaveBeenCalledTimes(1);
+  });
+
   it.each([null, 'actual-chat'])(
     'uses authoritative call context %s instead of the personal chat containing an invitation',
     async (chatId) => {

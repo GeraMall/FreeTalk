@@ -2,6 +2,7 @@ package io.freetalk.mobile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.graphics.toPixelMap
 import org.junit.Rule
 import org.junit.Test
 
@@ -24,7 +25,7 @@ class MobileDesignTest {
     }
     @Test fun conversationBackAndSettingsNavigation() {
         show("conversation")
-        compose.onNodeWithText("Привет! Как дела?").assertIsDisplayed()
+        compose.onNodeWithText("Привет! Как дела?", substring = true).assertIsDisplayed()
         compose.onNodeWithContentDescription("Назад").performClick()
         compose.onNodeWithText("Поиск по чатам").assertIsDisplayed()
         show("settings")
@@ -42,10 +43,44 @@ class MobileDesignTest {
         compose.onNodeWithText("Чаты").performClick()
         compose.onNodeWithText("Поиск по чатам").assertIsDisplayed()
     }
+    @Test fun callChatCanBeOpenedAndTypedIntoWithoutLeavingTheCallView() {
+        show("call")
+        compose.onNodeWithText("Чат").performClick()
+        compose.onNodeWithText("Перейти к звонку").assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("Написать сообщение…")).performClick().performTextInput("Пишу во время звонка")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Перейти к звонку").performClick()
+        compose.onNodeWithContentDescription("Микрофон").assertIsDisplayed()
+        compose.onNodeWithText("Чат").assertIsDisplayed()
+    }
     @Test fun passwordVisibilityCanBeToggled() {
         show("login")
         compose.onNodeWithContentDescription("Показать пароль").performClick()
         compose.onNodeWithContentDescription("Скрыть пароль").assertIsDisplayed().performClick()
+    }
+    @Test fun loginBrandStaysLegibleInLightTheme() {
+        val previousTheme = MobilePreferences.theme
+        try {
+            compose.activity.runOnUiThread { MobilePreferences.theme = "light" }
+            show("login")
+            val pixels = compose.onNodeWithText("TRLKA").captureToImage().toPixelMap()
+            var bright = 0
+            for (y in 0 until pixels.height) for (x in 0 until pixels.width) {
+                val pixel = pixels[x, y]
+                if (pixel.red > .85f && pixel.green > .85f && pixel.blue > .85f) bright++
+            }
+            org.junit.Assert.assertTrue("Login wordmark must remain white on its dark background", bright > pixels.width * pixels.height * .05f)
+        } finally {
+            compose.activity.runOnUiThread { MobilePreferences.theme = previousTheme }
+        }
+    }
+    @Test fun groupFriendCanBeSelectedByTappingTheCheckbox() {
+        show("chats")
+        compose.onNodeWithContentDescription("Новый чат").performClick()
+        compose.onNodeWithText("Создать группу").performClick()
+        val checkbox = compose.onNode(isToggleable(), useUnmergedTree = true)
+        checkbox.assertIsOff().performTouchInput { click() }
+        checkbox.assertIsOn()
     }
     @Test fun roomChatHasCompactActionsWithoutReadersOrPinning() {
         show("room-chat")

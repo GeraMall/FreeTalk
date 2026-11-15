@@ -8,14 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Call
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.AccountBox
-import androidx.compose.material.icons.outlined.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -253,24 +245,24 @@ internal fun NativeChatScreen(
         }
     }
     BackHandler { if (selected.isNotEmpty()) selected = emptySet() else onBack() }
-    Column(Modifier.fillMaxSize().background(MobileDesign.background).safeDrawingPadding().imePadding()) {
-        Row(Modifier.fillMaxWidth().background(MobileDesign.header).padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Назад") }
-            ChatAvatar(chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl, chat.displayTitle(user.id))
+    Column(Modifier.fillMaxSize().background(MobileDesign.canvas).safeDrawingPadding().imePadding()) {
+        Row(Modifier.fillMaxWidth().background(MobileDesign.header).height(66.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            WebIconButton(onClick = onBack) { WebIcon(WebIcons.ArrowBack, "Назад") }
+            ChatAvatar(chat.avatarUrl ?: chat.members.firstOrNull { it.id != user.id }?.avatarUrl, chat.displayTitle(user.id), 40.dp)
             Column(Modifier.weight(1f).clickable { showProfile = true }.padding(start = 10.dp)) {
-                MobileText(chat.displayTitle(user.id), localize = chat.isSaved, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                MobileText(if (chat.type == "group") "${chat.members.size} участников" else "@${chat.members.firstOrNull { it.id != user.id }?.username.orEmpty()}", color = MobileDesign.muted, fontSize = 12.sp)
+                MobileText(chat.displayTitle(user.id), localize = chat.isSaved, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MobileText(if (chat.type == "group") "${chat.members.size} участников" else "@${chat.members.firstOrNull { it.id != user.id }?.username.orEmpty()}", color = MobileDesign.muted, fontSize = 10.sp)
             }
-            if (!chat.isSaved) IconButton(onClick = { activeCall?.let { onJoinCall(it.roomId) } ?: onStartCall() }, modifier = Modifier.background(Color(0xFF0B2B39), CircleShape)) {
-                Icon(Icons.Outlined.Call, if (activeCall == null) "Начать звонок" else "Вернуться в звонок", tint = Color(0xFF55EFB7))
+            if (!chat.isSaved) WebIconButton(onClick = { activeCall?.let { onJoinCall(it.roomId) } ?: onStartCall() }, modifier = Modifier) {
+                WebIcon(WebIcons.Call, if (activeCall == null) "Начать звонок" else "Вернуться в звонок", tint = MobileDesign.muted)
             }
-            IconButton(onClick = { showProfile = true }) { Icon(Icons.Outlined.AccountBox, "Профиль собеседника") }
+            WebIconButton(onClick = { showProfile = true }) { WebIcon(WebIcons.AccountBox, "Профиль собеседника") }
         }
         if (selected.isNotEmpty()) Row(Modifier.fillMaxWidth().background(MobileDesign.incoming).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             MobileText("${selected.size} выбрано", Modifier.weight(1f))
-            IconButton(onClick = { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TRLKA", messages.filter { it.id in selected }.joinToString("\n\n") { it.body })) }) { Icon(Icons.Outlined.ContentCopy, "Копировать") }
-            IconButton(onClick = { forwardTargets = messages.filter { it.id in selected } }) { Icon(Icons.AutoMirrored.Outlined.Send, "Переслать") }
-            IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Outlined.Close, "Отмена") }
+            WebIconButton(onClick = { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TRLKA", messages.filter { it.id in selected }.joinToString("\n\n") { it.body })) }) { WebIcon(WebIcons.ContentCopy, "Копировать") }
+            WebIconButton(onClick = { forwardTargets = messages.filter { it.id in selected } }) { WebIcon(WebIcons.Send, "Переслать") }
+            WebIconButton(onClick = { selected = emptySet() }) { WebIcon(WebIcons.Close, "Отмена") }
         }
         HorizontalDivider(color = Color(0xFF102839))
         activeCall?.let { call ->
@@ -299,7 +291,7 @@ internal fun NativeChatScreen(
             }
         }
         if (error.isNotBlank()) MobileText(error, color = Color(0xFFFF8096), modifier = Modifier.padding(12.dp), fontSize = 12.sp)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, reverseLayout = true, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, reverseLayout = true, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp, Alignment.Bottom)) {
             if (loading) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) } }
             if (!loading && messages.isEmpty()) item { MobileText("Начните разговор", color = Color(0xFF9AABC1), modifier = Modifier.padding(24.dp)) }
             items(messages.asReversed(), key = { it.id }) { message ->
@@ -311,20 +303,20 @@ internal fun NativeChatScreen(
                         border = BorderStroke(1.dp, Color(0xFF29384E)),
                     ) {
                         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Groups, null, tint = Color(0xFF55EFB7))
+                            WebIcon(WebIcons.Groups, null, tint = Color(0xFF55EFB7))
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                 MobileText(message.body.ifBlank { "Звонок Trlka" }, fontWeight = FontWeight.SemiBold)
                                 MobileText(chatDate(message.createdAt), color = Color(0xFF9AABC1), fontSize = 10.sp)
                             }
                             activeCall?.takeIf { !message.callEnded && message.callRoomId == it.roomId }?.let { current ->
-                                TextButton(onClick = { onJoinCall(current.roomId) }) { MobileText("Войти") }
+                                WebTextButton(onClick = { onJoinCall(current.roomId) }) { MobileText("Войти") }
                             }
                         }
                     }
                     return@items
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val bubbleWidth = (maxWidth * .78f).coerceAtMost(640.dp)
+                    val bubbleWidth = minOf(maxWidth * .84f, maxWidth - 40.dp, 640.dp)
                     Row(Modifier.fillMaxWidth().background(if (message.id in selected) MobileDesign.accent.copy(alpha = .12f) else Color.Transparent), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                         if (!mine) { MobileAvatar(message.senderName, message.avatarUrl, 32.dp); Spacer(Modifier.width(8.dp)) }
                         Column(Modifier.widthIn(max = bubbleWidth), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
@@ -334,7 +326,7 @@ internal fun NativeChatScreen(
                         ), onLink = { link -> roomCodeFromLink(link)?.let { onJoinCall(it); true } ?: false }, afterText = {
                             if (!message.deleted && message.gif == null && preview == null) NativeVideoPreview(api, cache, user.id, message.body)
                         }) {
-                            if (chat.type == "group" && !mine) MobileText(message.senderName, localize = false, color = MobileDesign.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            if (chat.type == "group" && !mine && !message.deleted) MobileText(message.senderName, localize = false, color = MobileDesign.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             message.reply?.let { MobileText(it.take(120), localize = false, fontSize = 12.sp, color = MobileDesign.muted) }
                             if (!message.deleted) message.gif?.let { gif ->
                                 NativeGifImage(gif, api, cache, user.id, true, message.expiresAt,
@@ -349,11 +341,11 @@ internal fun NativeChatScreen(
                                 if (selected.isEmpty()) viewer = message
                                 else selected = if (message.id in selected) selected - message.id else selected + message.id
                             }
-                            if (message.kind == "file" && !message.deleted) OutlinedButton(enabled = downloading == null, onClick = {
+                            if (message.kind == "file" && !message.deleted) WebOutlinedButton(enabled = downloading == null, onClick = {
                                 downloading = message.id
                                 saveFile.launch(message.filename.ifBlank { "file" })
                             }) {
-                                Icon(if (message.id in downloaded) Icons.Outlined.Check else Icons.Outlined.Download, "Скачать файл", Modifier.size(20.dp))
+                                WebIcon(if (message.id in downloaded) WebIcons.Check else WebIcons.Download, "Скачать файл", Modifier.size(20.dp))
                                 Column(Modifier.padding(start = 8.dp)) {
                                     MobileText(message.filename, localize = false, maxLines = 2, fontWeight = FontWeight.SemiBold)
                                     MobileText("${message.size / 1024} KB", fontSize = 11.sp, color = MobileDesign.muted)
@@ -362,7 +354,7 @@ internal fun NativeChatScreen(
                         }
                         if (message.reactions.isNotEmpty() && !message.deleted) FlowRow(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             message.reactions.forEach { reaction ->
-                                OutlinedButton(enabled = preview == null, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 0.dp), modifier = Modifier.height(30.dp), onClick = {
+                                WebOutlinedButton(enabled = preview == null, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 0.dp), modifier = Modifier.height(30.dp), onClick = {
                                     toggleReaction(message, reaction.emoji)
                                 }) { MobileText("${reaction.emoji} ${reaction.count}", localize = false, fontSize = 12.sp) }
                             }
@@ -373,7 +365,7 @@ internal fun NativeChatScreen(
                 }
             }
             if (hasEarlier && preview == null) item(key = "older") {
-                TextButton(enabled = !loadingEarlier, onClick = {
+                WebTextButton(enabled = !loadingEarlier, onClick = {
                     if (!loadingEarlier) {
                         loadingEarlier = true
                         scope.launch {
@@ -394,20 +386,23 @@ internal fun NativeChatScreen(
             }
         }
         val typing = typingPeers.values.filter { it.second > typingClock }.map { it.first }.take(2)
+        Box(Modifier.fillMaxWidth().height(22.dp)) {
         androidx.compose.animation.AnimatedVisibility(typing.isNotEmpty()) {
             MobileText(MobileTranslations.text("{name} печатает…", MobilePreferences.language).replace("{name}", typing.joinToString(", ")),
                 localize = false, modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp), fontSize = 12.sp, color = MobileDesign.text)
+        }
         }
         if (replyTo != null || editTarget != null) Row(Modifier.fillMaxWidth().background(MobileDesign.incoming).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 MobileText(if (editTarget != null) "Изменить сообщение" else "Ответить", fontSize = 12.sp, color = MobileDesign.accent)
                 MobileText((editTarget ?: replyTo)?.body.orEmpty().take(100), localize = false, fontSize = 12.sp, maxLines = 1)
             }
-            IconButton(onClick = { replyTo = null; editTarget = null }) { Icon(Icons.Outlined.Close, "Отмена") }
+            WebIconButton(onClick = { replyTo = null; editTarget = null }) { WebIcon(WebIcons.Close, "Отмена") }
         }
         MobileComposer(input, { input = it }, sending, enabled = preview == null, placeholder = "Написать сообщение…",
             onAttach = if (editTarget != null) null else ({ attachment.launch(arrayOf("*/*")) }),
-            onGif = if (editTarget != null) null else ({ stickerTab = false; chooseGif = true })) {
+            onGif = if (editTarget != null) null else ({ stickerTab = false; chooseGif = true }),
+            onSticker = if (editTarget != null) null else ({ stickerTab = true; chooseGif = true })) {
             val body = input.trim()
             if (body.isNotEmpty() && !sending) {
                 sending = true
@@ -437,25 +432,25 @@ internal fun NativeChatScreen(
     actionTarget?.let { message -> ModalBottomSheet(onDismissRequest = { actionTarget = null }, containerColor = MobileDesign.canvas) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf("❤️", "👍", "😂", "😮", "😢", "🔥").forEach { emoji -> TextButton(enabled = preview == null, onClick = {
+                listOf("❤️", "👍", "😂", "😮", "😢", "🔥").forEach { emoji -> WebTextButton(enabled = preview == null, onClick = {
                     actionTarget = null
                     toggleReaction(message, emoji)
                 }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) { MobileText(emoji, fontSize = 23.sp) } }
             }
-            TextButton(onClick = { replyTo = message; editTarget = null; actionTarget = null }) { MobileText("Ответить") }
-            if (message.senderId == user.id && message.kind == "text" && message.gif == null) TextButton(onClick = { editTarget = message; replyTo = null; input = message.body; actionTarget = null }) { MobileText("Изменить") }
-            if (message.gif != null) TextButton(enabled = preview == null, onClick = {
+            WebTextButton(onClick = { replyTo = message; editTarget = null; actionTarget = null }) { MobileText("Ответить") }
+            if (message.senderId == user.id && message.kind == "text" && message.gif == null) WebTextButton(onClick = { editTarget = message; replyTo = null; input = message.body; actionTarget = null }) { MobileText("Изменить") }
+            if (message.gif != null) WebTextButton(enabled = preview == null, onClick = {
                 actionTarget = null
                 scope.launch { runCatching { api.favoriteGif(message.id) }.onFailure { error = it.message.orEmpty() } }
             }) { MobileText("Добавить GIF в избранное") }
-            TextButton(onClick = { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TRLKA", message.body)); actionTarget = null }) { MobileText("Копировать текст") }
-            TextButton(onClick = { forwardTargets = listOf(message); actionTarget = null }) { MobileText("Переслать") }
-            TextButton(onClick = { selected = setOf(message.id); actionTarget = null }) { MobileText("Выделить") }
+            WebTextButton(onClick = { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("TRLKA", message.body)); actionTarget = null }) { MobileText("Копировать текст") }
+            WebTextButton(onClick = { forwardTargets = listOf(message); actionTarget = null }) { MobileText("Переслать") }
+            WebTextButton(onClick = { selected = setOf(message.id); actionTarget = null }) { MobileText("Выделить") }
             if (message.senderId == user.id) {
-                TextButton(enabled = preview == null, onClick = { actionTarget = null; scope.launch {
+                WebTextButton(enabled = preview == null, onClick = { actionTarget = null; scope.launch {
                     runCatching { api.readers(chat.id, message.id) }.onSuccess { readers = it }.onFailure { error = it.message.orEmpty() }
                 } }) { MobileText(if (chat.type == "group") "Просмотры" else "Просмотрено") }
-                TextButton(enabled = preview == null, onClick = { actionTarget = null; scope.launch {
+                WebTextButton(enabled = preview == null, onClick = { actionTarget = null; scope.launch {
                     runCatching { api.deleteMessage(message.id) }.onSuccess { messages = messages.filterNot { it.id == message.id } }.onFailure { error = it.message.orEmpty() }
                 } }) { MobileText("Удалить", color = MobileDesign.red) }
             }
@@ -476,7 +471,7 @@ internal fun NativeChatScreen(
             if (stickerTab) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     chatStickers.forEach { emoji ->
-                        TextButton(enabled = !sending, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp), onClick = {
+                        WebTextButton(enabled = !sending, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp), onClick = {
                             if (!sending) {
                                 val caption = input
                                 val reply = replyTo?.id
@@ -499,9 +494,9 @@ internal fun NativeChatScreen(
             } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MobileText("Избранные GIF", Modifier.weight(1f), fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { gifUpload.launch(arrayOf("image/gif")) }) { MobileText("Свой GIF") }
+                WebTextButton(onClick = { gifUpload.launch(arrayOf("image/gif")) }) { MobileText("Свой GIF") }
             }
-            if (gifError) TextButton(onClick = { favoriteAttempt++ }) { MobileText("Повторить") }
+            if (gifError) WebTextButton(onClick = { favoriteAttempt++ }) { MobileText("Повторить") }
             else if (favorites == null) CircularProgressIndicator(Modifier.size(24.dp))
             else if (favorites!!.isEmpty()) MobileText("Здесь появятся ваши GIF", color = MobileDesign.muted)
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
@@ -548,16 +543,16 @@ internal fun NativeChatScreen(
             if (forwardDestination != null) {
                 MobileText(forwardDestination!!.displayTitle(user.id), localize = false)
                 if (forwarding) CircularProgressIndicator(Modifier.size(20.dp))
-                else TextButton(onClick = { sendTo(forwardDestination) }) { MobileText("Повторить") }
+                else WebTextButton(onClick = { sendTo(forwardDestination) }) { MobileText("Повторить") }
             } else {
-                TextButton(enabled = !forwarding && preview == null, onClick = { sendTo(null) }) {
-                    Icon(Icons.Outlined.Bookmark, null)
+                WebTextButton(enabled = !forwarding && preview == null, onClick = { sendTo(null) }) {
+                    WebIcon(WebIcons.Bookmark, null)
                     MobileText("Избранное", Modifier.padding(start = 8.dp))
                 }
-                if (forwardError.isNotEmpty()) TextButton(onClick = { loadAttempt++ }) { MobileText("Повторить") }
+                if (forwardError.isNotEmpty()) WebTextButton(onClick = { loadAttempt++ }) { MobileText("Повторить") }
                 LazyColumn(Modifier.heightIn(max = 360.dp)) {
                     items(forwardingChats.filterNot { it.isSaved }.sortedByDescending { it.lastMessageAt }, key = { it.id }) { destination ->
-                        TextButton(enabled = !forwarding, onClick = { sendTo(destination) }, modifier = Modifier.fillMaxWidth()) {
+                        WebTextButton(enabled = !forwarding, onClick = { sendTo(destination) }, modifier = Modifier.fillMaxWidth()) {
                             MobileAvatar(destination.displayTitle(user.id), destination.avatarUrl)
                             MobileText(destination.displayTitle(user.id), localize = false, modifier = Modifier.padding(start = 12.dp))
                         }
@@ -600,7 +595,7 @@ internal fun NativeChatScreen(
         Dialog(onDismissRequest = { viewer = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(Modifier.fillMaxSize().background(Color(0xF5010811)), contentAlignment = Alignment.Center) {
                 CachedChatPhoto(api, cache, user.id, message, true) {}
-                IconButton(onClick = { viewer = null }, modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding()) { Icon(Icons.Outlined.Close, "Закрыть", tint = Color.White) }
+                WebIconButton(onClick = { viewer = null }, modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding()) { WebIcon(WebIcons.Close, "Закрыть", tint = Color.White) }
             }
         }
     }
@@ -628,16 +623,16 @@ private fun CachedChatPhoto(api: FreeTalkApi, cache: MediaCache, accountId: Stri
             contentDescription = "Фотография", contentScale = if (full) ContentScale.Fit else ContentScale.Crop, modifier = Modifier.matchParentSize(),
             onSuccess = { decoding = false }, onError = { failed = true },
         )
-        if (failed) TextButton(onClick = { bytes = null; attempt++ }) { MobileText("Фото не загрузилось · Повторить") }
+        if (failed) WebTextButton(onClick = { bytes = null; attempt++ }) { MobileText("Фото не загрузилось · Повторить") }
         else if (bytes == null || decoding) CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
     }
 }
 
 @Composable
-private fun ChatAvatar(url: String?, name: String) {
-    Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFF153547)), contentAlignment = Alignment.Center) {
+private fun ChatAvatar(url: String?, name: String, size: androidx.compose.ui.unit.Dp = 32.dp) {
+    Box(Modifier.size(size).clip(CircleShape).background(Color(0xFF153547)), contentAlignment = Alignment.Center) {
         if (url != null) AsyncImage(url, name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else MobileText(name.take(1).uppercase(), fontSize = 12.sp, color = Color(0xFF77E5E8))
+        else MobileText(name.take(1).uppercase(), fontSize = 12.sp, color = MobileDesign.text)
     }
 }
 

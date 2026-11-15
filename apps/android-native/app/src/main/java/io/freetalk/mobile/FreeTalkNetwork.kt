@@ -444,6 +444,9 @@ class FreeTalkApi(private val sessions: SessionStore) {
     suspend fun activeCall(chatId: String): ActiveCall? =
         authorizedJson("/v1/chats/$chatId/active-call").optJSONObject("call")?.let(::parseActiveCall)
 
+    suspend fun callContext(roomId: String): ActiveCall? =
+        authorizedJson("/v1/calls/$roomId/context").optJSONObject("call")?.let(::parseActiveCall)
+
     suspend fun startChatCall(chatId: String, roomId: String) {
         authorizedJson("/v1/chats/$chatId/calls", "POST", JSONObject().put("roomId", roomId))
     }

@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
 internal object MobileTranslations {
@@ -39,5 +40,6 @@ internal fun MobileText(
     remember { MobileTranslations.load(context.applicationContext); true }
     androidx.compose.material3.Text(if (localize) MobileTranslations.text(text, MobilePreferences.language) else text, modifier = modifier,
         color = color, fontSize = fontSize, fontWeight = fontWeight, letterSpacing = letterSpacing,
-        lineHeight = lineHeight, textAlign = textAlign, overflow = overflow, maxLines = maxLines, style = style)
+        lineHeight = if (lineHeight == TextUnit.Unspecified && fontSize != TextUnit.Unspecified) (fontSize.value * 1.4f).sp else lineHeight,
+        textAlign = textAlign, overflow = overflow, maxLines = maxLines, style = style)
 }

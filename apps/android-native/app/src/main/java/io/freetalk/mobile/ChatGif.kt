@@ -89,7 +89,7 @@ internal fun NativeGifImage(gif: ChatGif, api: FreeTalkApi, cache: MediaCache, a
         catch (_: Exception) { failed = true }
     }
     Box(modifier.background(MobileDesign.input), contentAlignment = Alignment.Center) {
-        if (failed) TextButton(onClick = { bytes = null; attempt++ }) { MobileText("Повторить") }
+        if (failed) WebTextButton(onClick = { bytes = null; attempt++ }) { MobileText("Повторить") }
         else bytes?.let { data ->
             val model = remember(context, data, full) { ImageRequest.Builder(context).data(data)
                 .apply { if (full) decoderFactory(ImageDecoderDecoder.Factory()) }.memoryCachePolicy(CachePolicy.DISABLED)

@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,42 +44,42 @@ internal fun ServiceBotScreen(api: FreeTalkApi, onBack: () -> Unit, preview: Lis
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(MobileDesign.canvas).safeDrawingPadding().imePadding()) {
         Column(Modifier.background(MobileDesign.header)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Назад к чатам") }
+            Row(Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                WebIconButton(onClick = onBack) { WebIcon(WebIcons.ArrowBack, "Назад к чатам") }
                 MobileAvatar("TRLKA", null, bot = true)
                 Column(Modifier.weight(1f).clickable { profile = true }.padding(horizontal = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MobileText("TRLKA", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        MobileText("TRLKA", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         MobileText("БОТ", fontSize = 9.sp, color = MobileDesign.accent, modifier = Modifier.background(MobileDesign.outgoing, RoundedCornerShape(4.dp)).padding(4.dp))
                     }
-                    MobileText("Уведомления и поддержка", fontSize = 11.sp, color = MobileDesign.muted)
+                    MobileText("Уведомления и поддержка", fontSize = 10.sp, color = MobileDesign.muted)
                 }
-                IconButton(onClick = { profile = true }) { Icon(Icons.Outlined.AccountBox, "Профиль бота") }
+                WebIconButton(onClick = { profile = true }) { WebIcon(WebIcons.AccountBox, "Профиль бота") }
             }
             MobileSearch(query, { query = it.take(200) }, "Искать в «TRLKA»", Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 10.dp))
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp, Alignment.Bottom)) {
             if (error.isNotEmpty()) item { MobileText(error, color = MobileDesign.red, fontSize = 12.sp) }
             items(messages.filter { preview == null || it.body.contains(query, true) }.asReversed(), key = { it.id }) { entry ->
                 val own = entry.author == "user"
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (own) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
-                    if (!own) { MobileAvatar("TRLKA", null, 28.dp, bot = true); Spacer(Modifier.width(8.dp)) }
+                    if (!own) { MobileAvatar("TRLKA", null, 32.dp, bot = true); Spacer(Modifier.width(8.dp)) }
                     MobileMessage(entry.body, mobileMessageTime(entry.createdAt), own, Modifier.widthIn(max = 640.dp).weight(1f, fill = false))
                 }
             }
             if (loading) item { CircularProgressIndicator(Modifier.size(24.dp)) }
             if (!loading && messages.isEmpty()) item {
                 Column(Modifier.padding(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Outlined.Forum, null, Modifier.size(36.dp), tint = MobileDesign.accent)
+                    WebIcon(WebIcons.Forum, null, Modifier.size(36.dp), tint = MobileDesign.accent)
                     MobileText("На связи — TRLKA", fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     MobileText("Здесь уведомления о звонках, сообщения об ошибках и ваши предложения.", fontSize = 13.sp, color = MobileDesign.muted)
                 }
             }
         }
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(Triple("/bug", "Сообщить об ошибке", Icons.Outlined.BugReport), Triple("/idea", "Предложить улучшение", Icons.Outlined.Lightbulb), Triple("/subscription", "Подписка", Icons.Outlined.AutoAwesome), Triple("/cancel", "Отмена", Icons.Outlined.Close)).forEach { (command, label, icon) ->
-                OutlinedButton(onClick = { input = command }, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, MobileDesign.stroke), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)) {
-                    Icon(icon, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); MobileText(label, fontSize = 11.sp)
+            listOf(Triple("/bug", "Сообщить об ошибке", WebIcons.BugReport), Triple("/idea", "Предложить улучшение", WebIcons.Lightbulb), Triple("/subscription", "Подписка", WebIcons.AutoAwesome), Triple("/cancel", "Отмена", WebIcons.Close)).forEach { (command, label, icon) ->
+                WebOutlinedButton(onClick = { input = command }, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, MobileDesign.stroke), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)) {
+                    WebIcon(icon, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); MobileText(label, fontSize = 11.sp)
                 }
             }
         }

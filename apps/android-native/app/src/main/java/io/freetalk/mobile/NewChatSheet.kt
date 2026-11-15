@@ -32,9 +32,9 @@ internal fun NewChatSheet(friends: List<FriendSummary>, onDismiss: () -> Unit, o
         Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MobileText(if (group) "Создать группу" else "Новый чат", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             if (group) {
-                OutlinedTextField(title, { title = it.take(80) }, Modifier.fillMaxWidth(), singleLine = true, enabled = !busy, label = { MobileText("Название группы") })
+                WebTextField(title, { title = it.take(80) }, Modifier.fillMaxWidth(), singleLine = true, enabled = !busy, label = { MobileText("Название группы") })
             } else {
-                OutlinedButton(onClick = { group = true }) { MobileText("Создать группу") }
+                WebOutlinedButton(onClick = { group = true }) { MobileText("Создать группу") }
             }
             MobileSearch(query, { query = it }, if (group) "Поиск друзей для группы" else "Найти друга", Modifier.fillMaxWidth())
             if (friends.isEmpty()) MobileText("Добавьте друзей, чтобы начать переписку.", color = MobileDesign.muted)
@@ -50,13 +50,13 @@ internal fun NewChatSheet(friends: List<FriendSummary>, onDismiss: () -> Unit, o
                             MobileText(friend.displayName, localize = false)
                             MobileText("@${friend.username}", localize = false, color = MobileDesign.muted, fontSize = 12.sp)
                         }
-                        if (group) Checkbox(checked, onCheckedChange = null)
+                        if (group) WebCheckbox(checked, onCheckedChange = null)
                     }
                 }
             }
             if (error.isNotBlank()) MobileText(error, color = MobileDesign.red)
-            if (group) Button(onClick = {
-                if (busy) return@Button
+            if (group) WebButton(onClick = {
+                if (busy) return@WebButton
                 busy = true
                 scope.launch {
                     try { onGroup(title.trim(), picked); onDismiss() }

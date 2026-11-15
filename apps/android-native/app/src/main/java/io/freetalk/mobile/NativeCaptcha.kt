@@ -103,8 +103,8 @@ internal fun NativeCaptchaDialog(onResult: (String?) -> Unit) {
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { attempt++ }) { MobileText("Повторить") } },
-        dismissButton = { TextButton(onClick = { finish(null) }) { MobileText("Отмена") } },
+        confirmButton = { WebTextButton(onClick = { attempt++ }) { MobileText("Повторить") } },
+        dismissButton = { WebTextButton(onClick = { finish(null) }) { MobileText("Отмена") } },
     )
 }
 

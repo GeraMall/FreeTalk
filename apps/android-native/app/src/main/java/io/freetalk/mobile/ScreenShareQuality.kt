@@ -42,7 +42,7 @@ private fun <T> ShareChoice(label: String, selected: T, values: List<T>, text: (
     var open by remember { mutableStateOf(false) }
     MobileText(label)
     Box {
-        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) { MobileText(text(selected)) }
+        WebOutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) { MobileText(text(selected)) }
         DropdownMenu(open, { open = false }) {
             values.forEach { value -> DropdownMenuItem(text = { MobileText(text(value)) }, onClick = { onSelect(value); open = false }) }
         }

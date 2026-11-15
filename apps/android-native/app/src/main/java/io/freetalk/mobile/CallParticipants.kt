@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,19 +25,31 @@ internal fun CallParticipants(peers: List<RoomPeer>, selfId: String, media: Nati
     focused: String?, onFocus: (String?) -> Unit, modifier: Modifier = Modifier) {
     val selected = peers.firstOrNull { it.id == focused }
     if (!videoMode) {
-        LazyColumn(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(peers, key = { it.id }) { peer ->
-                Surface(color = MobileDesign.incoming.copy(alpha = .7f), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MobileDesign.stroke)) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        MobileAvatar(peer.name, peer.avatar, 46.dp)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            MobileText(peer.name + if (peer.id == selfId) " · вы" else "", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            MobileText(if (peer.id == selfId) "Вы в звонке" else media?.connections?.get(peer.id) ?: "Подключение…", color = MobileDesign.muted, fontSize = 12.sp)
+        BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val columns = if (peers.size > 2) 2 else 1
+            val cardHeight = if (columns == 1) (maxHeight * .26f).coerceIn(136.dp, 168.dp) else 140.dp
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                peers.chunked(columns).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { peer ->
+                            Surface(modifier = Modifier.weight(1f).height(cardHeight), color = MobileDesign.incoming.copy(alpha = .7f),
+                                shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MobileDesign.stroke)) {
+                                Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    MobileAvatar(peer.name, peer.avatar, if (columns == 1) 62.dp else 40.dp)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        MobileText(peer.name + if (peer.id == selfId) " · вы" else "", fontSize = if (columns == 1) 14.sp else 12.sp,
+                                            fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        MobileText(if (peer.id == selfId) "Вы в звонке" else media?.connections?.get(peer.id) ?: "Подключение…",
+                                            color = MobileDesign.muted, fontSize = 11.sp, maxLines = 2)
+                                    }
+                                    if (peer.deafened) WebIcon(WebIcons.HeadsetOff, "Наушники выключены", Modifier.size(16.dp), tint = MobileDesign.red)
+                                    else if (peer.muted) WebIcon(WebIcons.MicOff, "Микрофон выключен", Modifier.size(16.dp), tint = MobileDesign.red)
+                                    else if (columns == 1) VoiceLevelIndicator(media?.levels?.get(peer.id) ?: 0f, media?.speaking?.contains(peer.id) == true)
+                                }
+                            }
                         }
-                        if (peer.owner) Icon(Icons.Outlined.WorkspacePremium, "Создатель комнаты", Modifier.size(16.dp), tint = Color(0xFFE6C46A))
-                        if (peer.deafened) Icon(Icons.Outlined.HeadsetOff, "Наушники выключены", Modifier.size(18.dp), tint = MobileDesign.red)
-                        else if (peer.muted) Icon(Icons.Outlined.MicOff, "Микрофон выключен", Modifier.size(18.dp), tint = MobileDesign.red)
-                        else VoiceLevelIndicator(media?.levels?.get(peer.id) ?: 0f, media?.speaking?.contains(peer.id) == true)
+                        if (row.size < columns) Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -51,8 +60,8 @@ internal fun CallParticipants(peers: List<RoomPeer>, selfId: String, media: Nati
         val width = maxWidth; val height = maxHeight
         if (selected != null) {
             ParticipantTile(selected, selfId, media, Modifier.fillMaxSize())
-            IconButton(onClick = { onFocus(null) }, modifier = Modifier.align(Alignment.TopStart).padding(10.dp).background(MobileDesign.background.copy(alpha = .8f), RoundedCornerShape(12.dp))) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Вернуться к участникам")
+            WebIconButton(onClick = { onFocus(null) }, modifier = Modifier.align(Alignment.TopStart).padding(10.dp).background(MobileDesign.background.copy(alpha = .8f), RoundedCornerShape(12.dp))) {
+                WebIcon(WebIcons.ArrowBack, "Вернуться к участникам")
             }
             val self = peers.firstOrNull { it.id == selfId }
             val mini = if (selected.id != selfId) self else peers.firstOrNull { it.id != selfId }

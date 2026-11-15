@@ -7,6 +7,8 @@ outputs/**
 .playwright-cli/**
 .build-tmp/**
 **/build/**
+**/.gradle/**
+previews/**
 pnpm-lock.yaml
 apps/android-native/app/src/main/assets/tablet/**
 apps/android-native/app/src/main/assets/native-translations.json

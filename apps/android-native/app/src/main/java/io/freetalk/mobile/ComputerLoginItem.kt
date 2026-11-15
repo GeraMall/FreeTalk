@@ -1,11 +1,13 @@
 package io.freetalk.mobile
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.CancellationException
@@ -26,10 +28,13 @@ internal fun ComputerLoginItem(api: FreeTalkApi) {
             if (pending == null) feedback = "Наведите камеру на QR-код на экране компьютера."
         }
     }
-    SettingsItem("Сканировать QR для входа", "Войти в TRLKA на компьютере", Icons.Outlined.QrCodeScanner) {
+    WebOutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {
         scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
             .setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false)
             .setPrompt(MobileTranslations.text("Наведите камеру на QR-код на экране компьютера.", MobilePreferences.language)))
+    }) {
+        WebIcon(WebIcons.QrCodeScanner, null, Modifier.size(17.dp))
+        Spacer(Modifier.width(8.dp)); MobileText("Сканировать QR для входа", fontSize = 13.sp)
     }
     pending?.let { challenge ->
         AlertDialog(onDismissRequest = { if (!approving) pending = null },
@@ -40,7 +45,7 @@ internal fun ComputerLoginItem(api: FreeTalkApi) {
                     MobileText(challenge.take(5).uppercase(java.util.Locale.ROOT), localize = false)
                 }
             },
-            confirmButton = { TextButton(enabled = !approving, onClick = {
+            confirmButton = { WebTextButton(enabled = !approving, onClick = {
                 if (!approving) {
                     approving = true
                     scope.launch {
@@ -57,10 +62,10 @@ internal fun ComputerLoginItem(api: FreeTalkApi) {
                     }
                 }
             }) { MobileText("Подтвердить вход") } },
-            dismissButton = { TextButton(enabled = !approving, onClick = { pending = null }) { MobileText("Отмена") } })
+            dismissButton = { WebTextButton(enabled = !approving, onClick = { pending = null }) { MobileText("Отмена") } })
     }
     feedback?.let { text ->
         AlertDialog(onDismissRequest = { feedback = null }, text = { MobileText(text) },
-            confirmButton = { TextButton(onClick = { feedback = null }) { MobileText("Готово") } })
+            confirmButton = { WebTextButton(onClick = { feedback = null }) { MobileText("Готово") } })
     }
 }

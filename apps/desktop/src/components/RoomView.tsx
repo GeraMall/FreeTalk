@@ -106,6 +106,7 @@ interface RoomViewProps {
   conversationHidden?: boolean;
   onCallToolbarTarget?(target: HTMLDivElement | null): void;
   onConversationToggle?(): void;
+  onOpenConversationChat?(): void;
   cameraPreviewRequest?: number;
   embedded?: boolean;
   viewerId?: string;
@@ -175,6 +176,7 @@ export function RoomView({
   conversationHidden: preferredConversationHidden = false,
   onCallToolbarTarget,
   onConversationToggle,
+  onOpenConversationChat,
   cameraPreviewRequest = 0,
   embedded = false,
   viewerId,
@@ -830,6 +832,17 @@ export function RoomView({
       className={`room-shell ${conversation ? `conversation-room${conversationType ? ` conversation-${conversationType}` : ''}` : ''} ${conversation && !conversationHidden ? 'conversation-call-compact' : ''} ${conversationHidden ? 'conversation-chat-hidden' : ''} ${embedded ? 'room-shell-embedded' : ''} ${roomChatVisible ? 'room-chat-open' : ''} ${screenFocusMode ? 'screen-focus-mode' : ''} ${roomMode === 'presentation' ? 'has-presentation' : ''} ${callFullscreen ? 'call-fullscreen' : ''} ${callControlsVisible || deviceMenu || reactionMenuOpen || mobileActionsOpen || activityHint ? 'call-controls-visible' : ''}`}
       onPointerMove={revealCallControls}
     >
+      {onOpenConversationChat && (
+        <button
+          type="button"
+          className="mobile-conversation-chat-button"
+          aria-label={t('Показать чат')}
+          onClick={onOpenConversationChat}
+        >
+          <MessageCircle aria-hidden="true" />
+          <span>{t('Чат')}</span>
+        </button>
+      )}
       <ActivitySwitchVote
         activity={activity}
         selfId={selfId}
@@ -1455,7 +1468,7 @@ export function RoomView({
               </div>
             )}
           </div>
-          {!conversation && (
+          {(!conversation || onOpenConversationChat) && (
             <button
               className={`dock-control dock-control-secondary room-chat-control ${roomChatVisible ? 'active' : ''}`}
               aria-label={
@@ -1468,7 +1481,8 @@ export function RoomView({
               aria-expanded={roomChatVisible}
               data-tooltip={conversation ? t('Показать чат') : t('Чат комнаты')}
               onClick={() => {
-                if (tabletVisible) setJoinedActivity(undefined);
+                if (conversation && onOpenConversationChat) onOpenConversationChat();
+                else if (tabletVisible) setJoinedActivity(undefined);
                 else toggleRoomChat();
               }}
             >

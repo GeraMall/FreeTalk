@@ -6,14 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.PeopleOutline
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
 import coil.compose.AsyncImage
 
-// Shared with iPhone 0.3.0 build 10; semantic call/presence colors stay distinct.
+// Mobile web palette and geometry, shared by the Android screens.
 internal object MobileDesign {
     private val light get() = MobilePreferences.theme == "light"
     private val black get() = MobilePreferences.theme == "black"
@@ -49,7 +41,7 @@ internal object MobileDesign {
     val text get() = Color(if (light) 0xFF182A43 else 0xFFF4F8FF)
     val green = Color(0xFF55DFAD)
     val red = Color(0xFFEF7290)
-    val gradient get() = Brush.horizontalGradient(listOf(Color(0xFF8DA6DC), Color(0xFF4B7FFF)))
+    val gradient get() = Brush.horizontalGradient(listOf(Color(0xFF8DA6DC), Color(0xFF95ADE2), Color(0xFF4B7FFF)))
 }
 
 internal object MobilePreferences {
@@ -94,10 +86,10 @@ internal fun MobileAvatar(name: String, url: String?, size: Dp = 40.dp, bot: Boo
 
 @Composable
 internal fun MobileSearch(value: String, onValue: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
-    Row(modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp)).background(MobileDesign.input)
+    Row(modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).background(MobileDesign.input)
         .border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Icon(Icons.Outlined.Search, null, Modifier.size(18.dp), tint = MobileDesign.muted)
+        WebIcon(WebIcons.Search, null, Modifier.size(18.dp), tint = MobileDesign.muted)
         BasicTextField(value, onValue, modifier = Modifier.weight(1f), singleLine = true,
             textStyle = TextStyle(color = MobileDesign.text, fontSize = 16.sp), cursorBrush = SolidColorBrush(),
             decorationBox = { inner -> Box { if (value.isEmpty()) MobileText(placeholder, color = MobileDesign.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } })
@@ -108,20 +100,41 @@ private fun SolidColorBrush() = androidx.compose.ui.graphics.SolidColor(MobileDe
 
 @Composable
 internal fun MobileComposer(text: String, onText: (String) -> Unit, sending: Boolean, enabled: Boolean = true,
-    placeholder: String = "Сообщение", onAttach: (() -> Unit)? = null, onGif: (() -> Unit)? = null, onSend: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(MobileDesign.canvas).padding(12.dp),
-        verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (onAttach != null) IconButton(onClick = onAttach, enabled = enabled && !sending, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.AttachFile, "Прикрепить файл", tint = MobileDesign.muted) }
-        if (onGif != null) TextButton(onClick = onGif, enabled = enabled && !sending, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { MobileText("GIF", color = MobileDesign.accent, fontWeight = FontWeight.Bold) }
-        BasicTextField(text, { onText(it.take(4000)) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 120.dp)
-            .clip(RoundedCornerShape(12.dp)).background(MobileDesign.input)
-            .border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)).padding(horizontal = 13.dp, vertical = 12.dp),
-            textStyle = TextStyle(color = MobileDesign.text, fontSize = 16.sp), maxLines = 4, cursorBrush = SolidColorBrush(),
-            decorationBox = { inner -> Box { if (text.isEmpty()) MobileText(placeholder, color = MobileDesign.muted, fontSize = 16.sp); inner() } })
-        IconButton(onClick = onSend, enabled = enabled && !sending && text.isNotBlank(),
-            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MobileDesign.gradient)) {
-            if (sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MobileDesign.input)
-            else Icon(Icons.AutoMirrored.Outlined.Send, "Отправить", tint = MobileDesign.input)
+    placeholder: String = "Сообщение", onAttach: (() -> Unit)? = null, onGif: (() -> Unit)? = null,
+    onSticker: (() -> Unit)? = null, onSend: () -> Unit) {
+    var emojiOpen by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().background(MobileDesign.canvas)) {
+        if (emojiOpen) {
+            Column(Modifier.fillMaxWidth().padding(10.dp).border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)).padding(8.dp)) {
+                listOf("😀", "😎", "😂", "🥰", "🤔", "😢", "🔥", "❤️", "👍", "🎉", "👋", "🙏", "💯", "✨", "😴", "🤝").chunked(8).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        row.forEach { emoji -> WebTextButton(onClick = { onText(text + emoji); emojiOpen = false }, contentPadding = PaddingValues(4.dp)) { MobileText(emoji, fontSize = 22.sp) } }
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            if (onAttach != null) WebIconButton(onClick = onAttach, enabled = enabled && !sending,
+                modifier = Modifier.size(38.dp, 44.dp).border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp))) {
+                WebIcon(WebIcons.ImagePlus, "Добавить файл или фотографию", Modifier.size(18.dp))
+            }
+            Row(Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp))
+                .background(MobileDesign.input).border(1.dp, MobileDesign.stroke, RoundedCornerShape(12.dp)), verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(text, { onText(it.take(4000)) }, modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 120.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+                    textStyle = LocalTextStyle.current.copy(color = MobileDesign.text, fontSize = 16.sp, lineHeight = 22.sp),
+                    maxLines = 4, cursorBrush = SolidColorBrush(), enabled = !sending,
+                    decorationBox = { inner -> Box { if (text.isEmpty()) MobileText(placeholder, color = MobileDesign.muted, fontSize = 16.sp, lineHeight = 22.sp); inner() } })
+                if (onGif != null) WebTextButton(onClick = onGif, enabled = enabled && !sending,
+                    modifier = Modifier.width(26.dp), contentPadding = PaddingValues(0.dp)) { MobileText("GIF", color = MobileDesign.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                if (onSticker != null) WebIconButton(onClick = onSticker, enabled = enabled && !sending, modifier = Modifier.size(26.dp, 32.dp)) { WebIcon(WebIcons.Sticker, "Стикеры", Modifier.size(17.dp)) }
+                WebIconButton(onClick = { emojiOpen = !emojiOpen }, enabled = enabled && !sending, modifier = Modifier.size(26.dp, 32.dp).padding(end = 2.dp)) { WebIcon(WebIcons.Smile, "Эмодзи", Modifier.size(17.dp)) }
+            }
+            WebIconButton(onClick = onSend, enabled = enabled && !sending && text.isNotBlank(),
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MobileDesign.gradient)) {
+                if (sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MobileDesign.input)
+                else WebIcon(WebIcons.Send, "Отправить", Modifier.size(19.dp), tint = Color(0xFF01050D))
+            }
         }
     }
 }
@@ -131,25 +144,26 @@ internal fun MobileMessage(text: String, date: String, own: Boolean, modifier: M
     val shape = RoundedCornerShape(topStart = if (own) 14.dp else 0.dp, topEnd = if (own) 0.dp else 14.dp, bottomStart = 14.dp, bottomEnd = 14.dp)
     Surface(modifier, color = if (own) MobileDesign.outgoing else MobileDesign.incoming, shape = shape,
         border = BorderStroke(1.dp, if (own) Color(0xFF3D5073) else MobileDesign.stroke)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             content?.invoke()
-            if (text.isNotBlank()) LinkedMessageText(text, onLink)
+            if (text.isNotBlank()) LinkedMessageText(text, onLink, date)
             afterText?.invoke()
-            if (date.isNotBlank()) MobileText(date, fontSize = 10.sp, color = MobileDesign.muted)
+            if (text.isBlank() && date.isNotBlank()) MobileText(date, fontSize = 10.sp, color = MobileDesign.muted)
         }
     }
 }
 
 @Composable
 internal fun MobileBottomNavigation(page: Int, onPage: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().background(MobileDesign.background).navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        val icons = listOf(Icons.Outlined.Home, Icons.Outlined.ChatBubbleOutline, Icons.Outlined.PeopleOutline, Icons.Outlined.History)
-        listOf("Главная", "Чаты", "Друзья", "История").forEachIndexed { index, label ->
-            val selected = page == index
+    Row(Modifier.fillMaxWidth().background(MobileDesign.background).navigationBarsPadding().padding(horizontal = 7.dp, vertical = 7.dp)) {
+        val icons = listOf(WebIcons.Home, WebIcons.ChatBubbleOutline, WebIcons.PeopleOutline, WebIcons.Lock, WebIcons.History)
+        val pages = listOf(0, 1, 2, 4, 3)
+        listOf("Главная", "Чаты", "Друзья", "Магазин", "История").forEachIndexed { index, label ->
+            val selected = page == pages[index]
             val color = if (selected) MobileDesign.accent else MobileDesign.muted
-            Column(Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) MobileDesign.incoming else Color.Transparent)
-                .selectable(selected, role = Role.Tab, onClick = { onPage(index) }), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Icon(icons[index], null, Modifier.size(22.dp), tint = color)
+            Column(Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) MobileDesign.accent.copy(alpha = .08f) else Color.Transparent)
+                .selectable(selected, role = Role.Tab, onClick = { onPage(pages[index]) }), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                WebIcon(icons[index], null, Modifier.size(21.dp), tint = color)
                 MobileText(label, fontSize = 10.sp, color = color, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
             }
         }
