@@ -106,6 +106,11 @@ jobs:
                           break
                       print(result.stderr, flush=True)
                       if attempt == 3 or 'SBMainWorkspace' not in result.stderr:
+                          reports = os.path.expanduser('~/Library/Logs/DiagnosticReports')
+                          import glob, shutil
+                          for report in glob.glob(os.path.join(reports, 'TRLKA*.ips')):
+                              shutil.copy2(report, 'build/previews/')
+                              print(open(report).read()[:24000], flush=True)
                           subprocess.run(['xcrun','simctl','spawn',uid,'log','show','--last','1m','--style','compact',
                               '--predicate','eventMessage CONTAINS[c] "com.trlka.ios"'])
                           result.check_returncode()
@@ -137,5 +142,6 @@ jobs:
           path: |
             apps/apple/build/TRLKA-macOS-preview.zip
             apps/apple/build/previews/*.png
+            apps/apple/build/previews/*.ips
             apps/apple/build/UITests.xcresult
           retention-days: 14

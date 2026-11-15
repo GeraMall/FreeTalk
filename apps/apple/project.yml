@@ -18,6 +18,7 @@ settings:
     CURRENT_PROJECT_VERSION: '228'
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: YES
+    ENABLE_DEBUG_DYLIB: NO
     INFOPLIST_FILE: Configuration/Info.plist
     INFOPLIST_KEY_CFBundleDisplayName: TRLKA
     TRLKA_API_BASE_URL: https://freetalk.185-225-201-129.sslip.io/api
