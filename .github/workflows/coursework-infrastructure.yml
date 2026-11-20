@@ -1,0 +1,23 @@
+name: Coursework isolated infrastructure lab
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install isolated lab tools
+        run: sudo apt-get update -qq && sudo apt-get install -y openssh-server iptables
+      - name: Run isolated network namespaces and access checks
+        run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_RUN_ID,RUNNER_TEMP,GITHUB_WORKSPACE env TRLKA_COURSE_LAB=isolated-ci bash scripts/coursework/infrastructure-lab.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coursework-infrastructure-evidence
+          path: output/coursework/
+          if-no-files-found: warn
