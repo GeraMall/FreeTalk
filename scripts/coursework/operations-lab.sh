@@ -69,7 +69,7 @@ else
   exit 1
 fi
 EOF
-systemd-run --unit="$unit" --on-active=2s --timer-property=AccuracySec=1s /bin/bash "$scratch/check.sh"
+systemd-run --unit="$unit" --on-active=2s --timer-property=AccuracySec=1s --remain-after-exit /bin/bash "$scratch/check.sh"
 for attempt in {1..15}; do
   journalctl -u "$unit.service" -o cat --no-pager | grep '^COURSE_HEALTH_OK$' > "$out/health-journal.txt" && break
   sleep 1
@@ -78,9 +78,13 @@ grep -qx COURSE_HEALTH_OK "$out/health-journal.txt"
 pass '03 systemd timer ran probe and journal recorded success'
 kill "$health_pid"
 wait "$health_pid" 2>/dev/null || true
-if systemctl start "$unit.service"; then exit 1; fi
+if systemctl restart "$unit.service"; then exit 1; fi
 test "$(systemctl show "$unit.service" -p ExecMainStatus --value)" = 1
-journalctl -u "$unit.service" -o cat --no-pager | grep '^COURSE_HEALTH_' > "$out/health-journal.txt"
+for attempt in {1..10}; do
+  journalctl -u "$unit.service" -o cat --no-pager | grep '^COURSE_HEALTH_' > "$out/health-journal.txt"
+  grep -qx COURSE_HEALTH_FAILED "$out/health-journal.txt" && break
+  sleep 1
+done
 grep -qx COURSE_HEALTH_FAILED "$out/health-journal.txt"
 pass '04 Stopped service detected and failure recorded'
 
