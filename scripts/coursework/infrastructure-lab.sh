@@ -4,7 +4,7 @@ set -euo pipefail
 test "${GITHUB_ACTIONS:-}" = true
 test "${TRLKA_COURSE_LAB:-}" = isolated-ci
 test "$(id -u)" = 0
-lab="${RUNNER_TEMP:?}/trlka-course-lab"
+lab="/var/tmp/trlka-course-lab-${GITHUB_RUN_ID:?}"
 out="${GITHUB_WORKSPACE:?}/output/coursework"
 mkdir -p "$lab" "$out" /run/sshd
 chmod 755 "$lab"
@@ -102,7 +102,7 @@ if ip netns exec "$client" ssh "${ssh_opts[@]}" -o PubkeyAuthentication=no cours
 printf 'PASS 02 Password-only SSH login rejected\n' >> "$report"
 if ip netns exec "$client" ssh "${ssh_opts[@]}" root@10.222.0.2 true 2>/dev/null; then exit 1; fi
 printf 'PASS 03 Root SSH login rejected\n' >> "$report"
-ip netns exec "$client" curl --fail --silent --show-error --max-time 5 --noproxy '*' --cacert "$lab/tls-cert.pem" --resolve lab.trlka.test:8443:10.222.0.2 https://lab.trlka.test:8443/health > "$out/health.json"
+ip netns exec "$client" curl --fail --silent --show-error --max-time 5 --noproxy '*' --cacert "$lab/tls-cert.pem" --resolve lab.trlka.test:8443:10.222.0.2 https://lab.trlka.test:8443/health > "$out/health.json" || { cat "$lab/backend.log" "$lab/proxy.log"; exit 1; }
 grep -q '"status":"ok"' "$out/health.json"
 printf 'PASS 04 HTTPS through proxy with certificate verification\n' >> "$report"
 if ip netns exec "$client" curl --fail --silent --max-time 2 --noproxy '*' http://10.222.0.2:8790/health >/dev/null 2>&1; then exit 1; fi

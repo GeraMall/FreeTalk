@@ -16,7 +16,7 @@ jobs:
       - name: Install isolated lab tools
         run: sudo apt-get update -qq && sudo apt-get install -y openssh-server iptables
       - name: Run isolated network namespaces and access checks
-        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_TEMP,GITHUB_WORKSPACE env TRLKA_COURSE_LAB=isolated-ci bash scripts/coursework/infrastructure-lab.sh
+        run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_RUN_ID,RUNNER_TEMP,GITHUB_WORKSPACE env TRLKA_COURSE_LAB=isolated-ci bash scripts/coursework/infrastructure-lab.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
