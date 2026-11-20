@@ -1,6 +1,8 @@
 name: Coursework isolated infrastructure lab
 on:
   workflow_dispatch:
+  push:
+    branches: [coursework/stages-1-2-20261120]
 permissions:
   contents: read
 jobs:
