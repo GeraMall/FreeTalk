@@ -19,6 +19,29 @@ const xdo = promisify(execFile);
 const version = JSON.parse(await readFile(new URL('../../package.json', import.meta.url))).version;
 const profile = await mkdtemp(join(tmpdir(), 'trlka-linux-smoke-'));
 const productProfile = join(profile, 'config');
+const microphone = join(profile, 'microphone.wav');
+const sampleRate = 48_000;
+const pcmSize = sampleRate * 2;
+const wav = Buffer.alloc(44 + pcmSize);
+wav.write('RIFF', 0);
+wav.writeUInt32LE(wav.length - 8, 4);
+wav.write('WAVEfmt ', 8);
+wav.writeUInt32LE(16, 16);
+wav.writeUInt16LE(1, 20);
+wav.writeUInt16LE(1, 22);
+wav.writeUInt32LE(sampleRate, 24);
+wav.writeUInt32LE(sampleRate * 2, 28);
+wav.writeUInt16LE(2, 32);
+wav.writeUInt16LE(16, 34);
+wav.write('data', 36);
+wav.writeUInt32LE(pcmSize, 40);
+for (let sample = 0; sample < sampleRate; sample += 1) {
+  wav.writeInt16LE(
+    Math.round(8_192 * Math.sin((2 * Math.PI * 440 * sample) / sampleRate)),
+    44 + sample * 2,
+  );
+}
+await writeFile(microphone, wav);
 const logs = [];
 const app = spawn(
   resolve(binary),
@@ -27,6 +50,7 @@ const app = spawn(
     '--remote-debugging-port=0',
     '--ozone-platform=x11',
     '--use-fake-device-for-media-stream',
+    `--use-file-for-fake-audio-capture=${microphone}`,
     '--allow-loopback-in-peer-connection',
     '--disable-features=WebRtcHideLocalIpsWithMdns',
     '--disable-background-networking',
@@ -161,6 +185,8 @@ async function verifyMedia() {
   ];
   const [sender, receiver] = peers;
   const audioOutput = new window.AudioContext({ sinkId: { type: 'none' } });
+  const audioInputs = new Map();
+  const samples = new Float32Array(2_048);
 
   async function gatherDescription(peer) {
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -174,10 +200,14 @@ async function verifyMedia() {
     const stats = Array.from((await peer.getStats()).values());
     const audio = stats.find((entry) => entry.type === 'inbound-rtp' && entry.kind === 'audio');
     const video = stats.find((entry) => entry.type === 'inbound-rtp' && entry.kind === 'video');
+    const input = audioInputs.get(peer);
+    samples.fill(0);
+    input?.getFloatTimeDomainData(samples);
+    const audioPeak = samples.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0);
     return {
       state: peer.connectionState,
       audioPackets: audio?.packetsReceived ?? 0,
-      audioSamples: audio?.totalSamplesReceived ?? 0,
+      audioPeak,
       videoFrames: video?.framesDecoded ?? 0,
       width: video?.frameWidth ?? 0,
       height: video?.frameHeight ?? 0,
@@ -194,7 +224,9 @@ async function verifyMedia() {
       peer.addEventListener('track', ({ track }) => {
         if (track.kind !== 'audio') return;
         const source = audioOutput.createMediaStreamSource(new window.MediaStream([track]));
-        source.connect(audioOutput.destination);
+        const analyser = audioOutput.createAnalyser();
+        source.connect(analyser).connect(audioOutput.destination);
+        audioInputs.set(peer, analyser);
       });
       for (const track of tracks) peer.addTrack(track, stream);
     }
@@ -211,7 +243,7 @@ async function verifyMedia() {
           (peer) =>
             peer.state === 'connected' &&
             peer.audioPackets >= 5 &&
-            peer.audioSamples > 0 &&
+            peer.audioPeak > 0.01 &&
             peer.videoFrames >= 5 &&
             peer.width > 0 &&
             peer.height > 0,
