@@ -37,7 +37,7 @@ jobs:
             $NF == "./opt/Trlka/" || $NF == "./opt/Trlka/resources/" {
               print
               verified++
-              if ($2 != "root/root" || substr($1, 1, 1) != "d" ||
+              if (($2 != "root/root" && $2 != "0/0") || substr($1, 1, 1) != "d" ||
                   substr($1, 6, 1) == "w" || substr($1, 9, 1) == "w") invalid = 1
             }
             $NF ~ /resources\/(install-update|linux-updater-key.txt|LICENSE)$/ { print }
