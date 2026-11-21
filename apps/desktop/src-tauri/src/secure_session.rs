@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "android"))]
 const SERVICE: &str = "io.freetalk.desktop.refresh-token";
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "linux")))]
 #[tauri::command]
 pub fn secure_session_set(refresh_token: String) -> Result<(), String> {
     if refresh_token.len() < 32 || refresh_token.len() > 256 {
@@ -10,7 +10,7 @@ pub fn secure_session_set(refresh_token: String) -> Result<(), String> {
     platform::set(refresh_token.as_bytes())
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "linux")))]
 #[tauri::command]
 pub fn secure_session_get() -> Result<Option<String>, String> {
     platform::get()?
@@ -19,10 +19,41 @@ pub fn secure_session_get() -> Result<Option<String>, String> {
         .map_err(|_| "invalid stored token".into())
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "linux")))]
 #[tauri::command]
 pub fn secure_session_clear() -> Result<(), String> {
     platform::delete()
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn secure_session_set(refresh_token: String) -> Result<(), String> {
+    if !(32..=256).contains(&refresh_token.len()) {
+        return Err("invalid refresh token".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || platform::set(refresh_token.as_bytes()))
+        .await
+        .map_err(|_| platform::STORAGE_ERROR.to_string())?
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn secure_session_get() -> Result<Option<String>, String> {
+    let stored = tauri::async_runtime::spawn_blocking(platform::get)
+        .await
+        .map_err(|_| platform::STORAGE_ERROR.to_string())??;
+    stored
+        .map(String::from_utf8)
+        .transpose()
+        .map_err(|_| "invalid stored token".into())
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+pub async fn secure_session_clear() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(platform::delete)
+        .await
+        .map_err(|_| platform::STORAGE_ERROR.to_string())?
 }
 
 #[cfg(target_os = "android")]
@@ -321,7 +352,65 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "android")))]
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::SERVICE;
+    use keyring::{Entry, Error};
+    use std::sync::Mutex;
+
+    pub const STORAGE_ERROR: &str =
+        "Разблокируйте системное хранилище паролей Linux, чтобы сохранить вход в TRLKA.";
+    static KEYRING_OPERATIONS: Mutex<()> = Mutex::new(());
+
+    fn with_entry<T>(operation: impl FnOnce(&Entry) -> Result<T, Error>) -> Result<T, String> {
+        let _guard = KEYRING_OPERATIONS.lock().map_err(|_| STORAGE_ERROR)?;
+        let entry = Entry::new(SERVICE, "Trlka").map_err(|_| STORAGE_ERROR)?;
+        operation(&entry).map_err(|_| STORAGE_ERROR.to_string())
+    }
+
+    pub fn set(secret: &[u8]) -> Result<(), String> {
+        with_entry(|entry| entry.set_secret(secret))
+    }
+
+    pub fn get() -> Result<Option<Vec<u8>>, String> {
+        with_entry(|entry| match entry.get_secret() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(Error::NoEntry) => Ok(None),
+            Err(error) => Err(error),
+        })
+    }
+
+    pub fn delete() -> Result<(), String> {
+        with_entry(|entry| match entry.delete_credential() {
+            Err(Error::NoEntry) => Ok(()),
+            result => result,
+        })
+    }
+
+    #[cfg(test)]
+    #[test]
+    #[ignore = "Requires the isolated Secret Service created by Linux CI"]
+    fn linux_secret_service_round_trip() {
+        assert_eq!(
+            std::env::var("TRLKA_TEST_LINUX_KEYRING").as_deref(),
+            Ok("isolated")
+        );
+        let token = b"trlka-linux-test-token-with-no-account-credentials";
+        assert_eq!(get().unwrap(), None);
+        set(token).unwrap();
+        assert_eq!(get().unwrap().as_deref(), Some(token.as_slice()));
+        delete().unwrap();
+        assert_eq!(get().unwrap(), None);
+        delete().unwrap();
+    }
+}
+
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "android"
+)))]
 mod platform {
     pub fn set(_: &[u8]) -> Result<(), String> {
         Err("secure storage is unsupported".into())

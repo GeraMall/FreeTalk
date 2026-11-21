@@ -8,6 +8,8 @@ import {
   type ScreenQuality,
 } from './video-quality';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
+import { captureLinuxScreen, linuxScreenCaptureError } from './linux-screen';
+import { usesLinuxDesktop } from './window-chrome';
 import {
   startNativeWindowsScreen,
   usesNativeWindowsCapture,
@@ -264,6 +266,7 @@ export class VideoManager {
     if (this.disposed) return;
     connectionDiagnostics.record('screen-capture:start');
     const macOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+    const linuxDesktop = usesLinuxDesktop();
     let stream: MediaStream;
     try {
       if (usesNativeWindowsCapture()) {
@@ -278,6 +281,8 @@ export class VideoManager {
           this.onScreenQuality(this.nativeWindowsScreen.quality);
         }
         stream = this.nativeWindowsScreen.stream;
+      } else if (linuxDesktop) {
+        stream = await captureLinuxScreen();
       } else
         stream = await navigator.mediaDevices.getDisplayMedia({
           audio: includeAudio
@@ -300,9 +305,10 @@ export class VideoManager {
       connectionDiagnostics.record('screen-capture:error', undefined, {
         errorName: error instanceof DOMException ? error.name : 'unknown',
       });
+      const message = (linuxDesktop && linuxScreenCaptureError(error)) || screenErrorMessage(error);
       if (error instanceof DOMException && error.name === 'NotAllowedError')
-        throw new ScreenCaptureCancelledError(screenErrorMessage(error));
-      throw new Error(screenErrorMessage(error));
+        throw new ScreenCaptureCancelledError(message);
+      throw new Error(message);
     }
     const track = stream.getVideoTracks()[0];
     if (!track) {
@@ -352,11 +358,14 @@ export class VideoManager {
       displaySurface: track.getSettings().displaySurface ?? 'unknown',
     });
     if (includeAudio && !audioTrack) {
-      this.onNotice(
-        macOS
-          ? 'macOS не запустила нативный захват системного звука. Установите macOS 13 или новее и повторно разрешите Trlka запись экрана и системного аудио.'
-          : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
-      );
+      if (linuxDesktop)
+        this.onNotice('Демонстрация запущена. Передача звука экрана на Linux пока недоступна.');
+      else
+        this.onNotice(
+          macOS
+            ? 'macOS не запустила нативный захват системного звука. Установите macOS 13 или новее и повторно разрешите Trlka запись экрана и системного аудио.'
+            : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
+        );
     }
     try {
       await this.publish(track, 'screen', stream);

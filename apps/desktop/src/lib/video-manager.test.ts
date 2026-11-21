@@ -358,6 +358,54 @@ describe('VideoManager', () => {
     userAgent.mockRestore();
   });
 
+  it('shares via the Linux portal and keeps the voice call independent of unavailable system audio', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    const userAgent = vi
+      .spyOn(navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15');
+    try {
+      const track = new FakeTrack();
+      const stream = new FakeStream([track]) as unknown as MediaStream;
+      vi.mocked(navigator.mediaDevices.getDisplayMedia).mockResolvedValueOnce(stream);
+      const publish = vi.fn(async () => undefined);
+      const notice = vi.fn();
+      const manager = new VideoManager(publish, vi.fn(), vi.fn(), notice);
+      await manager.toggleScreen(true);
+      expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith({
+        video: true,
+        audio: false,
+      });
+      expect(publish).toHaveBeenCalledWith(track, 'screen', stream);
+      expect(notice).toHaveBeenCalledWith(expect.stringContaining('звука экрана на Linux'));
+      await manager.toggleScreen(true);
+      expect(track.stop).toHaveBeenCalledOnce();
+    } finally {
+      userAgent.mockRestore();
+    }
+  });
+
+  it('offers the existing browser capture settings on Linux outside the native app', async () => {
+    const userAgent = vi
+      .spyOn(navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (X11; Linux x86_64) Chrome/146');
+    try {
+      const manager = new VideoManager(
+        vi.fn(async () => undefined),
+        vi.fn(),
+      );
+      await manager.toggleScreen(true);
+      expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+        expect.objectContaining({
+          video: expect.objectContaining({ width: expect.any(Object) }),
+          audio: expect.objectContaining({ echoCancellation: false }),
+        }),
+      );
+      manager.dispose();
+    } finally {
+      userAgent.mockRestore();
+    }
+  });
+
   it('falls back to native ScreenCaptureKit audio when macOS WebKit returns video only', async () => {
     const userAgent = vi
       .spyOn(navigator, 'userAgent', 'get')

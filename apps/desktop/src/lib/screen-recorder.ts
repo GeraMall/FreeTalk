@@ -2,6 +2,8 @@ import type { LocalSettings } from './settings';
 import { startNativeMacScreenAudio, stopNativeMacScreenAudio } from './macos-screen-audio';
 import { createRecordingDestination, type RecordingDestination } from './recording-storage';
 import { connectionDiagnostics } from './connection-diagnostics';
+import { captureLinuxScreen, linuxScreenCaptureError } from './linux-screen';
+import { usesLinuxDesktop } from './window-chrome';
 
 export type ScreenRecordingPhase = 'idle' | 'recording' | 'saving';
 
@@ -283,6 +285,14 @@ function drawRecordingOverlays(
 }
 
 async function captureScreenForRecording() {
+  if (usesLinuxDesktop()) {
+    try {
+      return await captureLinuxScreen();
+    } catch (error) {
+      const message = linuxScreenCaptureError(error);
+      throw message ? new Error(message) : error;
+    }
+  }
   const macOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
   return navigator.mediaDevices.getDisplayMedia({
     audio: macOS

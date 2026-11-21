@@ -16,3 +16,12 @@ export function usesMacDesktop() {
     /Macintosh|Mac OS X/i.test(navigator.userAgent)
   );
 }
+
+export function usesLinuxDesktop() {
+  return (
+    typeof window !== 'undefined' &&
+    Boolean(window.__TAURI_INTERNALS__) &&
+    /Linux/i.test(navigator.userAgent) &&
+    !/Android/i.test(navigator.userAgent)
+  );
+}

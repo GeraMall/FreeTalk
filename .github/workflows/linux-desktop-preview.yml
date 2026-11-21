@@ -1,0 +1,118 @@
+name: Linux desktop preview
+
+on:
+  push:
+    branches: [preview/linux-desktop-232]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-desktop-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: linux-x86_64-ubuntu22-v1-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: linux-x86_64-ubuntu22-v1-
+      - name: Install desktop and media dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config file libssl-dev patchelf libfuse2 \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev xdg-utils \
+            libdbus-1-dev libsecret-1-dev gnome-keyring libpipewire-0.3-dev \
+            xdg-desktop-portal gstreamer1.0-pipewire \
+            dbus-daemon gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-nice gstreamer1.0-libav
+      - run: pnpm install --frozen-lockfile
+      - name: Build unsigned .deb and AppImage previews
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":false}}' > "$RUNNER_TEMP/trlka-linux-preview.json"
+          pnpm --filter @freetalk/desktop tauri build \
+            --target x86_64-unknown-linux-gnu --bundles deb,appimage \
+            --config "$RUNNER_TEMP/trlka-linux-preview.json"
+      - name: Verify and collect Linux packages
+        run: |
+          bundle=apps/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
+          mkdir -p linux-assets
+          cp "$bundle"/deb/*.deb "$bundle"/appimage/*.AppImage linux-assets/
+          cd linux-assets
+          test "$(dpkg-deb -f ./*.deb Architecture)" = amd64
+          file ./*.AppImage | tee appimage-type.log
+          grep -Eq 'ELF 64-bit.*x86-64' appimage-type.log
+          sha256sum ./*.deb ./*.AppImage > SHA256SUMS.txt
+          dpkg-deb -I ./*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-x86_64-preview
+          path: |
+            linux-assets/*.deb
+            linux-assets/*.AppImage
+            linux-assets/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Verify TRLKA secure session through an isolated Linux keyring
+        run: |
+          keyring_profile=$(mktemp -d "$RUNNER_TEMP/trlka-keyring.XXXXXX")
+          export XDG_CONFIG_HOME="$keyring_profile/config"
+          export XDG_DATA_HOME="$keyring_profile/data"
+          export XDG_CACHE_HOME="$keyring_profile/cache"
+          export XDG_RUNTIME_DIR="$keyring_profile/run"
+          install -d -m 700 "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"
+          unset GNOME_KEYRING_CONTROL
+          dbus-run-session -- bash -eu -o pipefail -c '
+            printf "%s" "trlka-ephemeral-ci-keyring" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            TRLKA_TEST_LINUX_KEYRING=isolated cargo test \
+              --manifest-path apps/desktop/src-tauri/Cargo.toml \
+              --release --target x86_64-unknown-linux-gnu --locked --lib \
+              linux_secret_service_round_trip -- --ignored | tee "$1/result.log"
+            grep -Fq "test secure_session::platform::linux_secret_service_round_trip ... ok" "$1/result.log"
+          ' bash "$keyring_profile"
+
+  linux-deb-startup:
+    needs: linux-x86_64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: trlka-linux-x86_64-preview, path: linux-assets }
+      - name: Install the Debian package and launch offline
+        run: |
+          (cd linux-assets; sha256sum --check SHA256SUMS.txt)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus-x11 xvfb xauth xdotool imagemagick
+          sudo apt-get install -y --no-install-recommends "$PWD"/linux-assets/*.deb
+          mkdir -p linux-smoke
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 \
+              xvfb-run -a -s "-screen 0 1600x1000x24" \
+              dbus-run-session -- bash "$2/scripts/linux/verify-installed-preview.sh" "$2/linux-smoke"
+          ' bash "$(id -un)" "$PWD"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trlka-linux-x86_64-startup
+          path: linux-smoke/
+          if-no-files-found: ignore

@@ -2,6 +2,8 @@
 mod diagnostics;
 #[cfg(desktop)]
 mod food_webview;
+#[cfg(target_os = "linux")]
+mod linux_media;
 #[cfg(desktop)]
 mod macos_screen_audio;
 mod secure_session;
@@ -565,6 +567,8 @@ pub fn run() {
             }
 
             let main_window = window.build()?;
+            #[cfg(target_os = "linux")]
+            main_window.with_webview(|platform| linux_media::configure(&platform.inner()))?;
 
             let _notification_window = internal_webview(
                 app,
