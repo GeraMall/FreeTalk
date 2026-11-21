@@ -35,6 +35,17 @@ export async function subscribeToRoomDeepLinks(
   onRoom: (roomCode: string) => void,
   baseUrl = DEFAULT_INVITE_BASE_URL,
 ) {
+  const linuxInvites = window.trlkaLinuxDesktop?.invites;
+  if (linuxInvites) {
+    const receiveInvite = async () => {
+      const url = await linuxInvites.pending().catch(() => null);
+      const code = url && parseRoomDeepLink(url, baseUrl);
+      if (code) onRoom(code);
+    };
+    const unlisten = linuxInvites.onOpen(() => void receiveInvite());
+    await receiveInvite();
+    return unlisten;
+  }
   if (!(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
     return () => undefined;
   const { getCurrent, onOpenUrl } = await import('@tauri-apps/plugin-deep-link');

@@ -282,7 +282,7 @@ try {
   const title = await waitFor('rendered TRLKA sign-in form', 20_000, () =>
     page.evaluate(() => {
       const welcome = document.querySelector('.welcome-shell');
-      const form = welcome?.querySelector('form');
+      const form = welcome?.querySelector('.auth-form-login');
       if (
         form?.getBoundingClientRect().height > 80 &&
         form.querySelector('input[type="password"]')
@@ -403,7 +403,32 @@ try {
   console.log(json);
 } catch (error) {
   const log = logs.join('');
-  if (reportDir) await writeFile(join(reportDir, 'app.log'), log).catch(() => undefined);
+  if (reportDir) {
+    await writeFile(join(reportDir, 'app.log'), log).catch(() => undefined);
+    if (page) {
+      await Promise.allSettled([
+        page
+          .command('Page.captureScreenshot', { format: 'png' }, 3_000)
+          .then(({ data }) =>
+            writeFile(join(reportDir, 'failure.png'), Buffer.from(data, 'base64')),
+          ),
+        page
+          .evaluate(
+            () => ({
+              url: location.href,
+              ready: document.readyState,
+              root: document.getElementById('root')?.outerHTML.slice(0, 2_000),
+              loginPresent: Boolean(document.getElementById('login-password')),
+            }),
+            undefined,
+            3_000,
+          )
+          .then((state) =>
+            writeFile(join(reportDir, 'renderer.json'), JSON.stringify(state, null, 2)),
+          ),
+      ]);
+    }
+  }
   console.error(log);
   throw error;
 } finally {

@@ -13,6 +13,10 @@ declare global {
         show: (preview: { chatId: string; senderName: string; body: string }) => Promise<boolean>;
         onOpen: (onOpen: (chatId: string) => void) => () => void;
       };
+      invites: {
+        pending: () => Promise<string | null>;
+        onOpen: (onOpen: () => void) => () => void;
+      };
     };
   }
 }

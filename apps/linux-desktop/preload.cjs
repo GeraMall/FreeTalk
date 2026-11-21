@@ -15,4 +15,12 @@ contextBridge.exposeInMainWorld('trlkaLinuxDesktop', {
       return () => ipcRenderer.removeListener('trlka:notification-open', listener);
     },
   },
+  invites: {
+    pending: () => ipcRenderer.invoke('trlka:invite-pending'),
+    onOpen: (onOpen) => {
+      const listener = () => onOpen();
+      ipcRenderer.on('trlka:invite-open', listener);
+      return () => ipcRenderer.removeListener('trlka:invite-open', listener);
+    },
+  },
 });

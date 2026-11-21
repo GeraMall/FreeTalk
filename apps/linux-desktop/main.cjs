@@ -28,6 +28,8 @@ const allowedAppPermissions = new Set([
   'notifications',
 ]);
 let mainWindow;
+const roomInvitePattern = /^freetalk:\/\/(room|join)\/[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}\/?$/i;
+let pendingRoomInvite = process.argv.find((arg) => roomInvitePattern.test(arg)) ?? null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -308,10 +310,13 @@ if (app.commandLine.hasSwitch('no-sandbox')) {
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, args) => {
+    const invite = args.find((arg) => roomInvitePattern.test(arg));
+    if (invite) pendingRoomInvite = invite;
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
+    if (invite) mainWindow.webContents.send('trlka:invite-open');
   });
   app.on('window-all-closed', () => app.quit());
   void app
@@ -319,6 +324,12 @@ if (app.commandLine.hasSwitch('no-sandbox')) {
     .then(async () => {
       installFrontendProtocol();
       installPermissions(session.defaultSession);
+      ipcMain.handle('trlka:invite-pending', (event) => {
+        if (!isTrustedMainFrame(event.senderFrame)) throw new Error('Untrusted TRLKA window');
+        const invite = pendingRoomInvite;
+        pendingRoomInvite = null;
+        return invite;
+      });
       registerDesktopBridge(
         (event) =>
           event.sender === mainWindow?.webContents && isTrustedMainFrame(event.senderFrame),
