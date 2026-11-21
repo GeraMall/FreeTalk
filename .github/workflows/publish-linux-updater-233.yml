@@ -77,12 +77,12 @@ jobs:
 
           Проверено обновление тестовой сборки на точные пакеты beta.233 в Ubuntu 22.04.
           EOF
-          gh release create "$LINUX_TAG" release-assets/* --draft --prerelease +            --target "$PACKAGE_SOURCE" --title 'TRLKA beta.233 для Linux x86-64' +            --notes-file "$RUNNER_TEMP/notes.md"
+          gh release create "$LINUX_TAG" release-assets/* --draft --prerelease --target "$PACKAGE_SOURCE" --title 'TRLKA beta.233 для Linux x86-64' --notes-file "$RUNNER_TEMP/notes.md"
           gh release view "$LINUX_TAG" --json assets > "$RUNNER_TEMP/release-assets.json"
           for file in release-assets/*; do
             name=$(basename "$file")
             hash=$(sha256sum "$file" | cut -d' ' -f1)
-            jq -e --arg name "$name" --arg hash "sha256:$hash" +              'any(.assets[]; .name == $name and .digest == $hash and .state == "uploaded")' +              "$RUNNER_TEMP/release-assets.json"
+            jq -e --arg name "$name" --arg hash "sha256:$hash" 'any(.assets[]; .name == $name and .digest == $hash and .state == "uploaded")' "$RUNNER_TEMP/release-assets.json"
           done
           gh release edit "$LINUX_TAG" --draft=false --prerelease --latest=false
           test "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" = desktop-v0.4.0-beta.232
