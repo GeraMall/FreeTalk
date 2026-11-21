@@ -496,6 +496,10 @@ const translations: Record<string, readonly [string, string]> = {
   'Войти по QR-коду': ['Sign in with a QR code', '使用二维码登录'],
   'Сканировать QR для входа': ['Scan QR code to sign in', '扫描二维码登录'],
   'Кнопка QR в нижней панели': ['QR shortcut in the bottom bar', '在底部栏显示二维码入口'],
+  'Системный звук и адаптивное качество пока недоступны на Android.': [
+    'System audio and adaptive quality are not yet available on Android.',
+    'Android 暂不支持系统音频和自适应画质。',
+  ],
   'Вход по QR останется доступен в настройках.': [
     'QR sign-in remains available in Settings.',
     '仍可在设置中打开扫描器。',

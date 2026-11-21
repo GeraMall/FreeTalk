@@ -114,6 +114,7 @@ export function SharedAndroidSettings({ initial }: { initial: Bootstrap }) {
         updateStatus={update}
         turnAvailable
         outputSupported
+        nativeAndroid
         guestMode={false}
         onClose={() => {
           void host.request('close');

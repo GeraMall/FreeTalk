@@ -121,6 +121,7 @@ interface SettingsPanelProps {
   onClearChatCache(): Promise<void>;
   onNativeQrScan?(): void;
   interfaceExtras?: React.ReactNode;
+  nativeAndroid?: boolean;
 }
 
 interface ProfileDraft {
@@ -190,12 +191,14 @@ export function SettingsPanel({
   onClearChatCache,
   onNativeQrScan,
   interfaceExtras,
+  nativeAndroid = false,
 }: SettingsPanelProps) {
-  const mobileLayout = useMobileLayout();
+  const mobileLayout = useMobileLayout(nativeAndroid);
   const [scanQr, setScanQr] = useState(false);
-  const [tab, setTab] = useState<SettingsTab | null>(() =>
+  const [selectedTab, setTab] = useState<SettingsTab | null>(() =>
     mobileLayout && initialTab === 'audio' ? null : initialTab,
   );
+  const tab = selectedTab ?? (nativeAndroid && !mobileLayout ? initialTab : null);
   const [capturing, setCapturing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
@@ -560,6 +563,7 @@ export function SettingsPanel({
                   onCamera={onCamera}
                   onVideoSetting={onVideoSetting}
                   locked={guestMode}
+                  nativeAndroid={nativeAndroid}
                 />
               )}
               {tab === 'devices' && (
@@ -1317,12 +1321,14 @@ function VideoTab({
   onCamera,
   onVideoSetting,
   locked,
+  nativeAndroid,
 }: {
   settings: LocalSettings;
   cameras: MediaDeviceInfo[];
   onCamera(value: string): void;
   onVideoSetting(patch: Partial<LocalSettings>): void;
   locked: boolean;
+  nativeAndroid: boolean;
 }) {
   const participantSounds = useRef<NotificationSounds | null>(null);
   const previewParticipant = async (joined: boolean) => {
@@ -1374,30 +1380,40 @@ function VideoTab({
             </button>
           </div>
         )}
-        <div className="video-toggle-list">
-          <Toggle
-            label={t('Передавать звук по умолчанию')}
-            description={t('Запрашивает звук выбранного окна или экрана при запуске демонстрации.')}
-            checked={settings.screenAudioByDefault}
-            onChange={(value) => onVideoSetting({ screenAudioByDefault: value })}
-          />
-          <Toggle
-            label={t('Адаптивное качество')}
-            description={t(
-              'Подстраивает FPS, разрешение и битрейт под сеть с учётом выбранного типа содержимого.',
-            )}
-            checked={settings.screenAdaptiveQuality}
-            onChange={(value) => onVideoSetting({ screenAdaptiveQuality: value })}
-          />
-        </div>
-        <div className="adaptive-quality-note">
-          <strong>{t('Без остановок на слабой сети')}</strong>
-          <small>
-            {t(
-              'Каждый собеседник получает индивидуальное качество. После восстановления соединения Trlka автоматически возвращает выбранные параметры.',
-            )}
+        {nativeAndroid ? (
+          <small className="video-apply-note">
+            {t('Системный звук и адаптивное качество пока недоступны на Android.')}
           </small>
-        </div>
+        ) : (
+          <>
+            <div className="video-toggle-list">
+              <Toggle
+                label={t('Передавать звук по умолчанию')}
+                description={t(
+                  'Запрашивает звук выбранного окна или экрана при запуске демонстрации.',
+                )}
+                checked={settings.screenAudioByDefault}
+                onChange={(value) => onVideoSetting({ screenAudioByDefault: value })}
+              />
+              <Toggle
+                label={t('Адаптивное качество')}
+                description={t(
+                  'Подстраивает FPS, разрешение и битрейт под сеть с учётом выбранного типа содержимого.',
+                )}
+                checked={settings.screenAdaptiveQuality}
+                onChange={(value) => onVideoSetting({ screenAdaptiveQuality: value })}
+              />
+            </div>
+            <div className="adaptive-quality-note">
+              <strong>{t('Без остановок на слабой сети')}</strong>
+              <small>
+                {t(
+                  'Каждый собеседник получает индивидуальное качество. После восстановления соединения Trlka автоматически возвращает выбранные параметры.',
+                )}
+              </small>
+            </div>
+          </>
+        )}
         <small className="video-apply-note">
           {t(
             'Разрешение и FPS применятся при следующем запуске демонстрации. По умолчанию — 1080p/30 FPS; максимум — 2K/60 FPS.',

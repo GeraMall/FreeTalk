@@ -59,6 +59,7 @@ function renderProfile(
     ],
   },
   onNativeQrScan?: () => void,
+  nativeAndroid = false,
 ) {
   const onClose = vi.fn();
   const onSaveProfile = vi.fn().mockResolvedValue(undefined);
@@ -99,6 +100,7 @@ function renderProfile(
       onChangePassword={vi.fn().mockResolvedValue(undefined)}
       onClearChatCache={vi.fn().mockResolvedValue(undefined)}
       onNativeQrScan={onNativeQrScan}
+      nativeAndroid={nativeAndroid}
     />,
   );
   return { ...view, onClose, onSaveProfile, onSetting, onVideoSetting };
@@ -106,11 +108,16 @@ function renderProfile(
 
 describe('SettingsPanel profile actions', () => {
   it('offers the native QR scanner even in a wide settings window', () => {
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Android WebView');
     const onNativeQrScan = vi.fn();
-    const view = renderProfile(undefined, onNativeQrScan);
+    const view = renderProfile(undefined, onNativeQrScan, true);
+    expect(view.container.querySelector('.mobile-settings-modal')).toBeNull();
     fireEvent.click(view.getByRole('button', { name: 'Сканировать QR для входа' }));
     expect(onNativeQrScan).toHaveBeenCalledOnce();
     expect(view.container.querySelector('.qr-auth-dialog')).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: 'Видео и звуки' }));
+    expect(view.queryByRole('switch', { name: 'Адаптивное качество' })).toBeNull();
+    expect(view.getByText(/Системный звук и адаптивное качество пока недоступны/)).toBeTruthy();
   });
 
   it('can restore the Mac screen preset without changing the camera or sound choices', () => {
