@@ -30,6 +30,8 @@ const downloadHosts = new Set([
 ]);
 const invalidUpdate = 'Подпись или контрольная сумма обновления не совпала.';
 
+class UpdateAuthorizationError extends Error {}
+
 function decodeBase64(value, limit) {
   if (typeof value !== 'string' || value.length > Math.ceil(limit / 3) * 4)
     throw new Error(invalidUpdate);
@@ -209,9 +211,21 @@ async function appImageFile(value) {
 
 async function replaceAppImage(source, verifiedTarget, asset) {
   const { path, stats } = verifiedTarget;
-  const next = await appImageFile(path);
-  if (next.stats.ino !== stats.ino || next.stats.dev !== stats.dev)
-    throw new Error('Файл AppImage изменился. Перезапустите приложение и повторите обновление.');
+  const changed = 'Файл AppImage изменился. Перезапустите приложение и повторите обновление.';
+  const checkTarget = async () => {
+    const current = await lstat(path);
+    if (
+      !current.isFile() ||
+      current.ino !== stats.ino ||
+      current.dev !== stats.dev ||
+      current.size !== stats.size ||
+      current.mtimeMs !== stats.mtimeMs ||
+      current.ctimeMs !== stats.ctimeMs
+    ) {
+      throw new Error(changed);
+    }
+  };
+  await checkTarget();
   const folder = await mkdtemp(join(dirname(path), '.trlka-update-'));
   try {
     const temporary = join(folder, 'Trlka.AppImage');
@@ -231,6 +245,7 @@ async function replaceAppImage(source, verifiedTarget, asset) {
     } finally {
       await file.close();
     }
+    await checkTarget();
     await rename(temporary, path);
   } finally {
     await rm(folder, { recursive: true, force: true }).catch(() => undefined);
@@ -247,9 +262,11 @@ function installDeb(folder) {
     );
     process.once('close', (code) => {
       if (code === 0) resolve();
-      else if (code === 126) reject(new Error('Установка обновления отменена.'));
+      else if (code === 126) reject(new UpdateAuthorizationError('Установка обновления отменена.'));
       else if (code === 127)
-        reject(new Error('Система не предоставила права на установку обновления.'));
+        reject(
+          new UpdateAuthorizationError('Система не предоставила права на установку обновления.'),
+        );
       else
         reject(new Error('Системный установщик не смог обновить Trlka. Можно повторить попытку.'));
     });
@@ -359,8 +376,16 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
     if (installed) return;
     if (!prepared) throw new Error('Сначала загрузите обновление.');
     applying ??= (async ({ folder, packagePath, target, update }) => {
-      if (target) await replaceAppImage(packagePath, target, update.asset);
-      else await installDeb(folder);
+      try {
+        if (target) await replaceAppImage(packagePath, target, update.asset);
+        else await installDeb(folder);
+      } catch (error) {
+        if (!(error instanceof UpdateAuthorizationError)) await discard();
+        if (error.code === 'EACCES' || error.code === 'EROFS') {
+          throw new Error('Для обновления AppImage нужен доступ на запись в папку с программой.');
+        }
+        throw error;
+      }
       installed = { ...update, imagePath: target?.path };
       await discard();
     })(prepared).finally(() => {
