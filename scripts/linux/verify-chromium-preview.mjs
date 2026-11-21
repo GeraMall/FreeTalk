@@ -160,6 +160,7 @@ async function verifyMedia() {
     new RTCPeerConnection({ iceServers: [] }),
   ];
   const [sender, receiver] = peers;
+  const audioOutput = new window.AudioContext({ sinkId: { type: 'none' } });
 
   async function gatherDescription(peer) {
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -184,11 +185,17 @@ async function verifyMedia() {
   }
 
   try {
+    await audioOutput.resume();
     const tracks = stream.getTracks();
     if (tracks.length !== 2 || tracks.some((track) => track.readyState !== 'live')) {
       throw new Error('Expected live audio and video tracks from the synthetic capture devices');
     }
     for (const peer of peers) {
+      peer.addEventListener('track', ({ track }) => {
+        if (track.kind !== 'audio') return;
+        const source = audioOutput.createMediaStreamSource(new window.MediaStream([track]));
+        source.connect(audioOutput.destination);
+      });
       for (const track of tracks) peer.addTrack(track, stream);
     }
     await sender.setLocalDescription(await sender.createOffer());
@@ -218,6 +225,7 @@ async function verifyMedia() {
   } finally {
     for (const peer of peers) peer.close();
     for (const track of stream.getTracks()) track.stop();
+    await audioOutput.close();
   }
 }
 
@@ -226,7 +234,7 @@ async function verifyDisplayCapture(cancel) {
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   } catch (error) {
-    if (cancel && error.name === 'NotAllowedError') return { canceled: true };
+    if (cancel && ['AbortError', 'NotAllowedError'].includes(error.name)) return { canceled: true };
     throw error;
   }
 
@@ -415,7 +423,7 @@ try {
         page
           .evaluate(
             () => ({
-              url: location.href,
+              url: window.location.href,
               ready: document.readyState,
               root: document.getElementById('root')?.outerHTML.slice(0, 2_000),
               loginPresent: Boolean(document.getElementById('login-password')),
