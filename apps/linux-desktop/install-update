@@ -1,6 +1,8 @@
 #!/usr/bin/python3 -I
 """Install a locally staged, signed TRLKA update after PolicyKit authorization."""
 
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -18,6 +20,9 @@ MAX_PACKAGE = 400 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 PACKAGE = "trlka"
 ARCHITECTURE = "amd64"
+ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
+UNTRUSTED_COMMENT = b"untrusted comment: "
+TRUSTED_COMMENT = b"trusted comment: "
 VERSION_PATTERN = re.compile(
     r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?"
 )
@@ -103,7 +108,58 @@ def trusted_key():
             raise UpdateError("Untrusted update signing key location")
     if not 0 < location.stat().st_size <= MAX_SIGNATURE:
         raise UpdateError("Invalid update signing key")
-    return str(location)
+    return location
+
+
+def minisign_packet(encoded, expected_size):
+    try:
+        packet = base64.b64decode(encoded, validate=True)
+    except binascii.Error:
+        raise UpdateError("Update manifest signature is invalid") from None
+    if len(packet) != expected_size or base64.b64encode(packet) != encoded:
+        raise UpdateError("Update manifest signature is invalid")
+    return packet
+
+
+def parse_minisign(public_key, signature):
+    key_lines = public_key.splitlines()
+    signature_lines = signature.splitlines()
+    if (
+        len(key_lines) != 2
+        or len(signature_lines) != 4
+        or not key_lines[0].startswith(UNTRUSTED_COMMENT)
+        or not signature_lines[0].startswith(UNTRUSTED_COMMENT)
+        or not signature_lines[2].startswith(TRUSTED_COMMENT)
+    ):
+        raise UpdateError("Update manifest signature is invalid")
+    key = minisign_packet(key_lines[1], 42)
+    packet = minisign_packet(signature_lines[1], 74)
+    global_signature = minisign_packet(signature_lines[3], 64)
+    if key[:2] != b"Ed" or packet[:2] != b"ED" or key[2:10] != packet[2:10]:
+        raise UpdateError("Update manifest signature is invalid")
+    verified_comment = packet[10:] + signature_lines[2][len(TRUSTED_COMMENT):]
+    return key[10:], packet[10:], verified_comment, global_signature
+
+
+def verify_minisign(payload, signature, public_key, directory):
+    key, content_signature, signed_comment, global_signature = parse_minisign(public_key, signature)
+    key_file = directory / "verify-key.der"
+    data_file = directory / "verify-data.bin"
+    signature_file = directory / "verify-signature.bin"
+    key_file.write_bytes(ED25519_SPKI + key)
+    for data, detached in (
+        (hashlib.blake2b(payload).digest(), content_signature),
+        (signed_comment, global_signature),
+    ):
+        data_file.write_bytes(data)
+        signature_file.write_bytes(detached)
+        verification = command([
+            "/usr/bin/openssl", "pkeyutl", "-verify", "-rawin", "-pubin",
+            "-keyform", "DER", "-inkey", str(key_file),
+            "-in", str(data_file), "-sigfile", str(signature_file),
+        ])
+        if verification.returncode:
+            raise UpdateError("Update manifest signature is invalid")
 
 
 def unique_fields(pairs):
@@ -214,13 +270,9 @@ def install(path, uid):
             package = root / "package.deb"
             copy_verified_input(directory, manifest.name, manifest, uid, MAX_MANIFEST)
             copy_verified_input(directory, signature.name, signature, uid, MAX_SIGNATURE)
-            verification = command([
-                "/usr/bin/minisign", "-V", "-q", "-p", public_key,
-                "-x", str(signature), "-m", str(manifest),
-            ])
-            if verification.returncode:
-                raise UpdateError("Update manifest signature is invalid")
-            version, expected_size, expected_hash = update_metadata(manifest.read_bytes())
+            payload = manifest.read_bytes()
+            verify_minisign(payload, signature.read_bytes(), public_key.read_bytes(), root)
+            version, expected_size, expected_hash = update_metadata(payload)
             size, digest = copy_verified_input(directory, package.name, package, uid, expected_size)
             if (size, digest) != (expected_size, expected_hash):
                 raise UpdateError("Debian package failed integrity verification")

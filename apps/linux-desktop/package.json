@@ -42,7 +42,8 @@
       "capture-picker.*",
       "app-config.json",
       "app-icon.png",
-      "frontend/**"
+      "frontend/**",
+      "node_modules/@noble/hashes/**"
     ],
     "extraResources": [
       {
@@ -74,7 +75,7 @@
         "libgbm1",
         "libasound2 | libasound2t64",
         "libcups2 | libcups2t64",
-        "minisign",
+        "openssl (>= 3.0)",
         "python3",
         "pkexec | policykit-1"
       ],
@@ -87,5 +88,8 @@
     "appImage": {
       "artifactName": "Trlka_${version}_x86_64.${ext}"
     }
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0"
   }
 }

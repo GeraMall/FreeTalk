@@ -1,4 +1,4 @@
-const { createHash, createPublicKey, verify } = require('node:crypto');
+const { createHash, createPublicKey, getHashes, verify } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { createReadStream, createWriteStream, rmSync } = require('node:fs');
 const {
@@ -29,6 +29,7 @@ const downloadHosts = new Set([
   'objects.githubusercontent.com',
 ]);
 const invalidUpdate = 'Подпись или контрольная сумма обновления не совпала.';
+const hasBlake2b = getHashes().includes('blake2b512');
 
 class UpdateAuthorizationError extends Error {}
 
@@ -62,16 +63,21 @@ function verifyFeed(envelope, publicKey) {
     throw new Error(invalidUpdate);
   }
   const key = createPublicKey({
-    format: 'jwk',
-    key: { kty: 'OKP', crv: 'Ed25519', x: keyPacket.subarray(10).toString('base64url') },
+    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), keyPacket.subarray(10)]),
+    format: 'der',
+    type: 'spki',
   });
   const signatureBytes = packet.subarray(10);
   const authenticatedComment = Buffer.concat([
     signatureBytes,
     Buffer.from(comment.slice(commentPrefix.length), 'utf8'),
   ]);
+  // Electron's BoringSSL may omit BLAKE2, which Minisign uses to prehash the payload.
+  const digest = hasBlake2b
+    ? createHash('blake2b512').update(payload).digest()
+    : require('@noble/hashes/blake2b').blake2b(payload);
   if (
-    !verify(null, createHash('blake2b512').update(payload).digest(), key, signatureBytes) ||
+    !verify(null, digest, key, signatureBytes) ||
     !verify(null, authenticatedComment, key, globalSignature)
   ) {
     throw new Error(invalidUpdate);
@@ -327,6 +333,8 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
       return candidate ? available(candidate) : { kind: 'current', version };
     } catch (error) {
       candidate = undefined;
+      if (error.message !== invalidUpdate)
+        console.warn('Linux update check failed:', error.message);
       return {
         kind: 'error',
         message:

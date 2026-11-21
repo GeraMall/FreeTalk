@@ -2,17 +2,30 @@ import hashlib
 import json
 import os
 import runpy
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 
 HELPER = runpy.run_path(str(Path(__file__).with_name("install-update")))
 update_error = HELPER["UpdateError"]
 fixture = b"test package content"
+OPENSSL = shutil.which("openssl")
+SIGNED_PAYLOAD = b"TRLKA updater verification test\n"
+MINISIGN_KEY = (
+    b"untrusted comment: test public key\n"
+    b"RWQBI0VniavN78PMOYVRDW0ZHz/Q2gRRuzBksRbYZTszzWzz+VchHN9R\n"
+)
+MINISIGN_SIGNATURE = (
+    b"untrusted comment: test signature\n"
+    b"RUQBI0VniavN74Do9Ba+KhQgigh8lRkOmyvtWsL70llt0gZ6Sp5lhkaAeG5HcZcDTo1/pX5bVErcvFTn3Olk3blm5Jz9LiXZQQ8=\n"
+    b"trusted comment: timestamp:1795300000\tfile:manifest.json\n"
+    b"HSRbmJ+UqFgCqjAWn07o1Lz9rnBt2kt+zyWBs8JYdYku+jttW2wnl34KhcEzseLWvKVIW2P535Qx7M6iJzQVDg==\n"
+)
 
 
 def manifest(**changes):
@@ -43,6 +56,25 @@ class SignedMetadataTest(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(update_error):
                 HELPER["update_metadata"](invalid)
 
+    @unittest.skipUnless(OPENSSL, "OpenSSL command-line tool")
+    def test_openssl_checks_both_minisign_signatures(self):
+        verify = HELPER["verify_minisign"]
+
+        def command(arguments):
+            self.assertEqual(arguments[0], "/usr/bin/openssl")
+            return subprocess.run([OPENSSL, *arguments[1:]], capture_output=True, check=False)
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(verify.__globals__, {
+            "command": command,
+        }):
+            directory = Path(temporary)
+            verify(SIGNED_PAYLOAD, MINISIGN_SIGNATURE, MINISIGN_KEY, directory)
+            with self.assertRaises(update_error):
+                verify(SIGNED_PAYLOAD + b"!", MINISIGN_SIGNATURE, MINISIGN_KEY, directory)
+            with self.assertRaises(update_error):
+                edited_comment = MINISIGN_SIGNATURE.replace(b"file:manifest.json", b"file:other.json")
+                verify(SIGNED_PAYLOAD, edited_comment, MINISIGN_KEY, directory)
+
 
 @unittest.skipUnless(sys.platform == "linux", "Linux file descriptor semantics")
 class InstallStagingTest(unittest.TestCase):
@@ -71,20 +103,27 @@ class InstallStagingTest(unittest.TestCase):
 
     def test_does_not_touch_apt_if_signature_or_package_is_invalid(self):
         install = HELPER["install"]
+        key = self.directory / "fixture.pub"
+        key.write_bytes(MINISIGN_KEY)
         for signature_status in (1, 0):
             calls = []
 
+            def verify(*_arguments):
+                calls.append("verify")
+                if signature_status:
+                    raise update_error("test signature invalid")
+
             def command(arguments, **_options):
-                calls.append(arguments[0])
-                return SimpleNamespace(returncode=signature_status)
+                self.fail(f"Unexpected system command: {arguments[0]}")
 
             (self.stage / "package.deb").write_bytes(b"x" * len(fixture))
             with patch.dict(install.__globals__, {
-                "trusted_key": lambda: "/fixture/public-key",
+                "trusted_key": lambda: key,
+                "verify_minisign": verify,
                 "command": command,
             }), self.assertRaises(update_error):
                 install(str(self.stage), self.uid)
-            self.assertEqual(calls, ["/usr/bin/minisign"])
+            self.assertEqual(calls, ["verify"])
 
 
 if __name__ == "__main__":
