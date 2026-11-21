@@ -497,6 +497,7 @@ pub fn run() {
             windows_screen::windows_screen_close_peer,
             windows_screen::windows_screen_restart_peer,
             windows_screen::windows_screen_stats,
+            windows_screen::windows_screen_require_compatibility,
             open_recordings_directory,
             recording_storage_available,
             notification_overlay_show,

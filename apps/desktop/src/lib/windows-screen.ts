@@ -274,6 +274,15 @@ class NativeScreenSession {
         () => undefined,
       );
     };
+    const fallback = () => {
+      if (closed || this.disposed) return;
+      close();
+      void invoke('windows_screen_require_compatibility', { sessionId: this.id })
+        .catch(() => undefined)
+        .then(() => {
+          if (!this.disposed) onUnsupported();
+        });
+    };
     this.closers.add(close);
     channel.onmessage = ({ data }) => {
       const message = parseSignal(data);
@@ -319,18 +328,11 @@ class NativeScreenSession {
     };
     channel.onopen = () => {
       compatibilityTimer = setTimeout(() => {
-        if (!closed && !starting) {
-          close();
-          onUnsupported();
-        }
+        if (!starting) fallback();
       }, 2_500);
     };
     if (channel.readyState === 'open') channel.onopen(new Event('open'));
-    channel.onclose = () => {
-      if (closed || this.disposed) return;
-      close();
-      onUnsupported();
-    };
+    channel.onclose = fallback;
     return close;
   }
 
@@ -373,6 +375,7 @@ export function receiveNativeScreen(
     },
     onTrack,
     () => close(),
+    usesNativeWindowsCapture(),
   );
   let closed = false;
   const close = () => {
@@ -394,6 +397,24 @@ export function receiveNativeScreen(
   return close;
 }
 
+interface InboundScreenReport extends RTCStats {
+  kind?: string;
+  mediaType?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesDecoded?: number;
+  lastPacketReceivedTimestamp?: number;
+}
+
+interface DecodedScreenSample {
+  id: string;
+  timestamp: number;
+  frames: number;
+  width: number;
+  height: number;
+  lastPacketAt: number;
+}
+
 export class ScreenReceiver {
   private readonly connection: RTCPeerConnection;
   private readonly pending: RTCIceCandidateInit[] = [];
@@ -401,19 +422,34 @@ export class ScreenReceiver {
   private stream = new MediaStream();
   private restartTimer: ReturnType<typeof setTimeout> | undefined;
   private restarts = 0;
+  private statsTimer?: ReturnType<typeof setInterval>;
+  private statsPending = false;
+  private videoReceiver?: RTCRtpReceiver;
+  private previousDecoded?: DecodedScreenSample;
   constructor(
     servers: RTCIceServer[],
     private readonly send: (message: Signal) => Promise<void>,
     onTrack: (stream: MediaStream, track: MediaStreamTrack) => void,
     private readonly onFailure: () => void = () => undefined,
+    sampleVideo = false,
   ) {
     this.connection = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle' });
     this.connection.onicecandidate = ({ candidate }) => {
       if (candidate)
         void send({ kind: 'ice', candidate: candidate.toJSON() }).catch(() => undefined);
     };
-    this.connection.ontrack = ({ track }) => {
+    this.connection.ontrack = ({ track, receiver }) => {
       this.stream.addTrack(track);
+      if (
+        sampleVideo &&
+        track.kind === 'video' &&
+        this.connection.signalingState !== 'closed' &&
+        this.videoReceiver !== receiver
+      ) {
+        this.videoReceiver = receiver;
+        this.previousDecoded = undefined;
+        this.statsTimer ??= setInterval(() => void this.pollDecodedVideo(), 2_000);
+      }
       onTrack(this.stream, track);
     };
     this.connection.onconnectionstatechange = () => {
@@ -422,6 +458,77 @@ export class ScreenReceiver {
       if (state === 'disconnected' || state === 'failed')
         this.scheduleRestart(state === 'failed' ? 500 : 3_000);
     };
+  }
+  private async pollDecodedVideo() {
+    const receiver = this.videoReceiver;
+    const track = receiver?.track;
+    if (!receiver || track?.readyState === 'ended') {
+      this.stopVideoStats();
+      return;
+    }
+    if (this.statsPending) return;
+    this.statsPending = true;
+    try {
+      const reports = await receiver.getStats();
+      if (receiver !== this.videoReceiver || receiver.track.readyState === 'ended') return;
+      let selected: DecodedScreenSample | undefined;
+      for (const report of reports.values() as Iterable<InboundScreenReport>) {
+        if (report.type !== 'inbound-rtp' || (report.kind ?? report.mediaType) !== 'video')
+          continue;
+        const { framesDecoded, frameWidth, frameHeight, timestamp } = report;
+        if (
+          framesDecoded === undefined ||
+          !Number.isSafeInteger(framesDecoded) ||
+          framesDecoded < 1 ||
+          !frameWidth ||
+          !frameHeight ||
+          !Number.isSafeInteger(frameWidth) ||
+          !Number.isSafeInteger(frameHeight) ||
+          frameWidth < 1 ||
+          frameHeight < 1 ||
+          !Number.isFinite(timestamp)
+        )
+          continue;
+        const lastPacketAt = report.lastPacketReceivedTimestamp ?? -Infinity;
+        if (!selected || lastPacketAt > selected.lastPacketAt)
+          selected = {
+            id: report.id,
+            timestamp,
+            frames: framesDecoded,
+            width: frameWidth,
+            height: frameHeight,
+            lastPacketAt,
+          };
+      }
+      if (!selected) {
+        this.previousDecoded = undefined;
+        return;
+      }
+      const { id, timestamp, frames, width, height } = selected;
+      const previous = this.previousDecoded;
+      const elapsed = timestamp - (previous?.timestamp ?? timestamp);
+      const fps =
+        previous?.id === id && elapsed > 0 && frames >= previous.frames
+          ? Math.round(((frames - previous.frames) * 10_000) / elapsed) / 10
+          : null;
+      this.previousDecoded = selected;
+      connectionDiagnostics.record('native-screen:receiver-sample', undefined, {
+        width,
+        height,
+        framesDecoded: frames,
+        fps,
+      });
+    } catch {
+      // Diagnostics must not affect the active share if the browser rejects a sample.
+    } finally {
+      this.statsPending = false;
+    }
+  }
+  private stopVideoStats() {
+    clearInterval(this.statsTimer);
+    this.statsTimer = undefined;
+    this.videoReceiver = undefined;
+    this.previousDecoded = undefined;
   }
   private scheduleRestart(delay: number) {
     this.restartTimer = setTimeout(() => {
@@ -460,6 +567,7 @@ export class ScreenReceiver {
   }
   close() {
     clearTimeout(this.restartTimer);
+    this.stopVideoStats();
     this.connection.close();
     this.stream.getTracks().forEach((track) => track.stop());
   }

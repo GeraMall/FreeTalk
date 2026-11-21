@@ -194,6 +194,23 @@ pub async fn windows_screen_stats(
     { let _ = (state, session_id); Err("Unsupported platform".into()) }
 }
 
+#[tauri::command]
+pub fn windows_screen_require_compatibility(
+    state: tauri::State<'_, State>,
+    session_id: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        native::session(&state, &session_id)?.require_compatibility();
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (state, session_id);
+        Err("Unsupported platform".into())
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod native {
     use super::*;
@@ -209,7 +226,8 @@ mod native {
             native::PeerConnectionFactoryExt, PeerConnectionFactory, RtcConfiguration,
         },
         session_description::{SdpType, SessionDescription},
-        video_frame::{I420Buffer, VideoFrame, VideoRotation},
+        rtp_sender::VideoEncoderBackend,
+        video_frame::{I420Buffer, VideoBuffer, VideoFrame, VideoRotation},
         video_source::{native::NativeVideoSource, VideoResolution},
     };
     use std::{
@@ -296,13 +314,28 @@ mod native {
         stop: Arc<AtomicBool>,
         factory: PeerConnectionFactory,
         video: NativeVideoSource,
+        preview_video: NativeVideoSource,
+        full_preview: Arc<AtomicBool>,
         audio: Option<NativeAudioSource>,
         pub peers: Mutex<HashMap<String, PeerConnection>>,
         bitrate: u64,
         fps: u32,
         started: Instant,
-        captured_frames: Arc<AtomicU64>,
-        processing_us: Arc<AtomicU64>,
+        capture: Arc<CaptureCounters>,
+    }
+    impl Session {
+        pub fn require_compatibility(&self) {
+            self.full_preview.store(true, Ordering::Release);
+        }
+    }
+    #[derive(Default)]
+    struct CaptureCounters {
+        captured: AtomicU64,
+        accepted: AtomicU64,
+        preview: AtomicU64,
+        temporary_errors: AtomicU64,
+        processing_us: AtomicU64,
+        source_size: AtomicU64,
     }
     impl Drop for Session {
         fn drop(&mut self) {
@@ -315,14 +348,11 @@ mod native {
     fn error(e: impl std::fmt::Display) -> String {
         e.to_string()
     }
-    fn deliver_frame(
-        video: &NativeVideoSource,
+    fn convert_frame(
         frame: &libwebrtc::desktop_capturer::DesktopFrame,
+        target: &VideoResolution,
         timestamp_us: i64,
-    ) {
-        if frame.width() <= 0 || frame.height() <= 0 {
-            return;
-        }
+    ) -> VideoFrame<I420Buffer> {
         let mut buffer = I420Buffer::new(frame.width() as u32, frame.height() as u32);
         let (sy, su, sv) = buffer.strides();
         let (y, u, v) = buffer.data_mut();
@@ -338,21 +368,23 @@ mod native {
             frame.width(),
             frame.height(),
         );
-        let target = video.video_resolution();
-        let scale = (target.width as f64 / frame.width() as f64)
-            .min(target.height as f64 / frame.height() as f64)
-            .min(1.0);
-        if scale < 1.0 {
-            let width = ((frame.width() as f64 * scale) as i32 / 2 * 2).max(2);
-            let height = ((frame.height() as f64 * scale) as i32 / 2 * 2).max(2);
-            buffer = buffer.scale(width, height);
-        }
-        video.capture_frame(&VideoFrame {
+        VideoFrame {
             rotation: VideoRotation::VideoRotation0,
             timestamp_us,
             frame_metadata: None,
-            buffer,
-        });
+            buffer: fit_buffer(buffer, target.width, target.height),
+        }
+    }
+    fn fit_buffer(mut buffer: I420Buffer, max_width: u32, max_height: u32) -> I420Buffer {
+        let width = f64::from(buffer.width());
+        let height = f64::from(buffer.height());
+        let scale = (f64::from(max_width) / width).min(f64::from(max_height) / height);
+        if scale >= 1.0 {
+            return buffer;
+        }
+        let width = ((width * scale) as i32 / 2 * 2).max(2);
+        let height = ((height * scale) as i32 / 2 * 2).max(2);
+        buffer.scale(width, height)
     }
     fn capturer(kind: &str) -> Result<DesktopCapturer, String> {
         let source_type = match kind {
@@ -483,13 +515,22 @@ mod native {
                 .map_err(error)?
                 .as_nanos()
         );
-        let video = NativeVideoSource::new(
-            VideoResolution {
-                width: options.width,
-                height: options.height,
-            },
-            true,
-        );
+        let resolution = VideoResolution {
+            width: options.width,
+            height: options.height,
+        };
+        let video = NativeVideoSource::new(resolution.clone(), true);
+        let reduce_preview = options.width > 1920 || options.height > 1080 || options.fps > 30;
+        let preview_resolution = if reduce_preview {
+            VideoResolution { width: 1280, height: 720 }
+        } else {
+            resolution.clone()
+        };
+        // Keep local preview adaptation independent from the remote video source.
+        // Older clients use the preview as their source, so restore full quality
+        // for the rest of the share as soon as one needs that route.
+        let preview_video = NativeVideoSource::new(preview_resolution, true);
+        let full_preview = Arc::new(AtomicBool::new(!reduce_preview));
         let audio = options.audio.then(|| {
             NativeAudioSource::new(
                 AudioSourceOptions {
@@ -511,13 +552,14 @@ mod native {
                 .get_or_init(PeerConnectionFactory::default)
                 .clone(),
             video: video.clone(),
+            preview_video: preview_video.clone(),
+            full_preview: full_preview.clone(),
             audio: audio.clone(),
             peers: Mutex::new(HashMap::new()),
             bitrate: options.bitrate,
             fps: options.fps,
             started: Instant::now(),
-            captured_frames: Arc::new(AtomicU64::new(0)),
-            processing_us: Arc::new(AtomicU64::new(0)),
+            capture: Arc::new(CaptureCounters::default()),
         });
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let capture_stop = stop.clone();
@@ -525,8 +567,7 @@ mod native {
         let event_id = id.clone();
         let capture_kind = options.kind.clone();
         let capture_id = options.source_id.clone();
-        let frame_counter = session.captured_frames.clone();
-        let processing_counter = session.processing_us.clone();
+        let counters = session.capture.clone();
         std::thread::Builder::new().name("trlka-screen-capture".into()).spawn(move || {
             let setup=(|| {
                 let mut capture=capturer(&capture_kind)?;
@@ -535,17 +576,48 @@ mod native {
                 let first_frame=Arc::new(AtomicBool::new(false));
                 let callback_first_frame=first_frame.clone();
                 let callback_failed=failed.clone();
-                let start=Instant::now();
-                capture.start_capture(Some(source),move |frame| {
+                let start = Instant::now();
+                let mut next_preview = start;
+                let preview_interval = Duration::from_secs_f64(1.0 / 15.0);
+                capture.start_capture(Some(source), move |frame| {
                     match frame {
                         Ok(frame) if frame.width()>0 && frame.height()>0 => {
-                            frame_counter.fetch_add(1,Ordering::Relaxed);
-                            let processing=Instant::now();
-                            deliver_frame(&video,&frame,start.elapsed().as_micros() as i64);
-                            processing_counter.fetch_add(processing.elapsed().as_micros() as u64,Ordering::Relaxed);
+                            counters.source_size.store(
+                                (frame.width() as u64) << 32 | frame.height() as u64,
+                                Ordering::Relaxed,
+                            );
+                            counters.captured.fetch_add(1, Ordering::Relaxed);
+                            let processing = Instant::now();
+                            let timestamp = processing.duration_since(start).as_micros().max(1) as i64;
+                            let mut frame = convert_frame(&frame, &resolution, timestamp);
+                            if video.capture_frame(&frame) {
+                                counters.accepted.fetch_add(1, Ordering::Relaxed);
+                            }
+                            let preview_sent = if full_preview.load(Ordering::Acquire) {
+                                preview_video.capture_frame(&frame)
+                            } else if processing >= next_preview {
+                                next_preview += preview_interval;
+                                if next_preview < processing {
+                                    next_preview = processing + preview_interval;
+                                }
+                                frame.buffer = fit_buffer(frame.buffer, 1280, 720);
+                                preview_video.capture_frame(&frame)
+                            } else {
+                                false
+                            };
+                            if preview_sent {
+                                counters.preview.fetch_add(1, Ordering::Relaxed);
+                            }
+                            counters.processing_us.fetch_add(
+                                processing.elapsed().as_micros() as u64,
+                                Ordering::Relaxed,
+                            );
                             callback_first_frame.store(true,Ordering::Release);
                         },
                         Err(CaptureError::Permanent) => { callback_failed.store(true,Ordering::Release); },
+                        Err(CaptureError::Temporary) => {
+                            counters.temporary_errors.fetch_add(1, Ordering::Relaxed);
+                        },
                         _ => {},
                     }
                 });
@@ -566,7 +638,7 @@ mod native {
                     while !capture_stop.load(Ordering::Acquire) && !failed.load(Ordering::Acquire) {
                         let began=Instant::now();
                         capture.capture_frame();
-                        std::thread::sleep(Duration::from_millis(1000/options.fps as u64).saturating_sub(began.elapsed()));
+                        std::thread::sleep(Duration::from_secs_f64(1.0 / f64::from(options.fps)).saturating_sub(began.elapsed()));
                     }
                     if failed.load(Ordering::Acquire) {
                         capture_stop.store(true,Ordering::Release);
@@ -708,13 +780,14 @@ mod native {
         pc.on_ice_candidate(Some(Box::new(move |candidate| {
             let _=app.emit("windows-screen-ice",serde_json::json!({"sessionId":sid,"peerId":pid,"candidate":candidate.candidate(),"mid":candidate.sdp_mid(),"mline":candidate.sdp_mline_index()}));
         })));
-        let track = session
-            .factory
-            .create_video_track("trlka-native-screen", session.video.clone());
+        let source = if peer_id == "preview" { &session.preview_video } else { &session.video };
+        let track = session.factory.create_video_track("trlka-native-screen", source.clone());
         let sender = pc
             .add_track(track.into(), &["trlka-native-screen"])
             .map_err(error)?;
-        sender.set_video_encoder_backend(libwebrtc::rtp_sender::VideoEncoderBackend::Hardware);
+        if VideoEncoderBackend::list_available().into_iter().any(|backend| backend == VideoEncoderBackend::Hardware) {
+            sender.set_video_encoder_backend(VideoEncoderBackend::Hardware);
+        }
         let mut codecs = session
             .factory
             .get_rtp_sender_capabilities(libwebrtc::MediaType::Video)
@@ -801,10 +874,17 @@ mod native {
                 }
             }
         }
+        let source_size = s.capture.source_size.load(Ordering::Relaxed);
         Ok(serde_json::json!({
             "capture": {"elapsedMs":s.started.elapsed().as_millis() as u64,
-                "frames":s.captured_frames.load(Ordering::Relaxed),
-                "processingMs":s.processing_us.load(Ordering::Relaxed) as f64/1000.0,
+                "frames":s.capture.captured.load(Ordering::Relaxed),
+                "acceptedFrames":s.capture.accepted.load(Ordering::Relaxed),
+                "previewFrames":s.capture.preview.load(Ordering::Relaxed),
+                "temporaryErrors":s.capture.temporary_errors.load(Ordering::Relaxed),
+                "sourceWidth":source_size >> 32,
+                "sourceHeight":source_size as u32,
+                "fullPreview":s.full_preview.load(Ordering::Relaxed),
+                "processingMs":s.capture.processing_us.load(Ordering::Relaxed) as f64/1000.0,
                 "requestedFps":s.fps},
             "senders":senders,"routes":routes
         }))
@@ -1111,7 +1191,11 @@ mod native {
                     capture.start_capture(Some(selected), move |frame| {
                         if let Ok(frame) = frame {
                             capture_count.fetch_add(1, Ordering::Relaxed);
-                            deliver_frame(&source, &frame, start.elapsed().as_micros() as i64);
+                            source.capture_frame(&convert_frame(
+                                &frame,
+                                &source.video_resolution(),
+                                start.elapsed().as_micros() as i64,
+                            ));
                         }
                     });
                     while !capture_stop.load(Ordering::Acquire) {
