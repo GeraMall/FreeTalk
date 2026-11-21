@@ -47,6 +47,7 @@ internal object MobileDesign {
 internal object MobilePreferences {
     var textScale by mutableStateOf(1f)
     var mirrorSelf by mutableStateOf(true)
+    var showQrShortcut by mutableStateOf(true)
     var shareQuality by mutableStateOf(ScreenShareQuality())
     var language by mutableStateOf("ru")
     var theme by mutableStateOf("default")
@@ -54,6 +55,7 @@ internal object MobilePreferences {
         val prefs = context.getSharedPreferences("mobile-design", Context.MODE_PRIVATE)
         textScale = prefs.getFloat("textScale", 1f).coerceIn(.85f, 1.55f)
         mirrorSelf = prefs.getBoolean("mirrorSelf", true)
+        showQrShortcut = prefs.getBoolean("showQrShortcut", true)
         shareQuality = ScreenShareQuality(
             prefs.getInt("shareResolution", 1080).takeIf { it in listOf(720, 1080, 1440) } ?: 1080,
             prefs.getInt("shareFps", 30).takeIf { it in listOf(15, 30, 60) } ?: 30,
@@ -64,7 +66,7 @@ internal object MobilePreferences {
     }
     fun save(context: Context) {
         context.getSharedPreferences("mobile-design", Context.MODE_PRIVATE).edit()
-            .putFloat("textScale", textScale).putBoolean("mirrorSelf", mirrorSelf)
+            .putFloat("textScale", textScale).putBoolean("mirrorSelf", mirrorSelf).putBoolean("showQrShortcut", showQrShortcut)
             .putInt("shareResolution", shareQuality.shortEdge).putInt("shareFps", shareQuality.fps).putString("shareContent", shareQuality.content.name)
             .putString("language", language).putString("theme", theme).apply()
     }
@@ -154,17 +156,97 @@ internal fun MobileMessage(text: String, date: String, own: Boolean, modifier: M
 }
 
 @Composable
-internal fun MobileBottomNavigation(page: Int, onPage: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().background(MobileDesign.background).navigationBarsPadding().padding(horizontal = 7.dp, vertical = 7.dp)) {
-        val icons = listOf(WebIcons.Home, WebIcons.ChatBubbleOutline, WebIcons.PeopleOutline, WebIcons.Lock, WebIcons.History)
-        val pages = listOf(0, 1, 2, 4, 3)
-        listOf("Главная", "Чаты", "Друзья", "Магазин", "История").forEachIndexed { index, label ->
-            val selected = page == pages[index]
-            val color = if (selected) MobileDesign.accent else MobileDesign.muted
-            Column(Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(12.dp)).background(if (selected) MobileDesign.accent.copy(alpha = .08f) else Color.Transparent)
-                .selectable(selected, role = Role.Tab, onClick = { onPage(pages[index]) }), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                WebIcon(icons[index], null, Modifier.size(21.dp), tint = color)
-                MobileText(label, fontSize = 10.sp, color = color, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+private fun MobileNavItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean,
+    modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val color = if (selected) MobileDesign.accent else MobileDesign.muted
+    Column(modifier.height(52.dp).clip(RoundedCornerShape(12.dp))
+        .background(if (selected) MobileDesign.accent.copy(alpha = .08f) else Color.Transparent)
+        .selectable(selected, role = Role.Tab, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        WebIcon(icon, null, Modifier.size(21.dp), tint = color)
+        MobileText(label, fontSize = 10.sp, color = color, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+private data class MobileDestination(
+    val index: Int,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+)
+
+private val mobileDestinations by lazy {
+    listOf(
+        MobileDestination(0, "Главная", WebIcons.Home),
+        MobileDestination(1, "Чаты", WebIcons.ChatBubbleOutline),
+        MobileDestination(2, "Друзья", WebIcons.PeopleOutline),
+        MobileDestination(4, "Магазин", WebIcons.Lock),
+        MobileDestination(3, "История", WebIcons.History),
+    )
+}
+
+@Composable
+private fun ComputerLoginShortcut(modifier: Modifier = Modifier, onScan: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    WebIconButton(onClick = onScan, modifier = modifier.size(48.dp)
+        .clip(shape).background(MobileDesign.accent.copy(alpha = .12f)).border(1.dp, MobileDesign.stroke, shape)) {
+        WebIcon(WebIcons.QrCodeScanner, "Сканировать QR для входа", Modifier.size(23.dp), tint = MobileDesign.accent)
+    }
+}
+
+@Composable
+internal fun MobileBottomNavigation(page: Int, onScan: (() -> Unit)? = null, onPage: (Int) -> Unit) {
+    var moreOpen by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().background(MobileDesign.background).navigationBarsPadding().padding(horizontal = 7.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        val shortcut = onScan.takeIf { MobilePreferences.showQrShortcut }
+        if (shortcut == null) {
+            mobileDestinations.forEach { tab ->
+                MobileNavItem(tab.icon, tab.label, page == tab.index, Modifier.weight(1f)) { onPage(tab.index) }
+            }
+        } else {
+            mobileDestinations.take(2).forEach { tab ->
+                MobileNavItem(tab.icon, tab.label, page == tab.index, Modifier.weight(1f)) { onPage(tab.index) }
+            }
+            ComputerLoginShortcut(onScan = shortcut)
+            val friends = mobileDestinations[2]
+            MobileNavItem(friends.icon, friends.label, page == friends.index, Modifier.weight(1f)) { onPage(friends.index) }
+            Box(Modifier.weight(1f)) {
+                MobileNavItem(WebIcons.MoreHoriz, "Ещё", page in setOf(3, 4), Modifier.fillMaxWidth()) { moreOpen = true }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    mobileDestinations.drop(3).forEach { tab ->
+                        DropdownMenuItem(text = { MobileText(tab.label) }, leadingIcon = { WebIcon(tab.icon, null, Modifier.size(18.dp)) },
+                            onClick = { moreOpen = false; onPage(tab.index) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AdaptiveMobileScaffold(page: Int, onScan: (() -> Unit)? = null, onPage: (Int) -> Unit,
+    content: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(MobileDesign.background)) {
+        val showRail = maxWidth >= 720.dp
+        Scaffold(containerColor = Color.Transparent,
+            bottomBar = { if (!showRail) MobileBottomNavigation(page, onScan, onPage) }) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                if (showRail) {
+                    Column(Modifier.fillMaxHeight().width(92.dp).background(MobileDesign.background)
+                        .padding(horizontal = 10.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        mobileDestinations.forEach { tab ->
+                            MobileNavItem(tab.icon, tab.label, page == tab.index, Modifier.fillMaxWidth()) { onPage(tab.index) }
+                        }
+                        if (onScan != null && MobilePreferences.showQrShortcut) {
+                            Spacer(Modifier.weight(1f))
+                            ComputerLoginShortcut(onScan = onScan)
+                        }
+                    }
+                    Box(Modifier.fillMaxHeight().width(1.dp).background(MobileDesign.stroke))
+                }
+                Box(Modifier.weight(1f).fillMaxHeight()) { content() }
             }
         }
     }

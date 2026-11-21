@@ -49,6 +49,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     var deafened by mutableStateOf(false); private set
     private var mutedBeforeDeafen = false
     var camera by mutableStateOf(false); private set
+    var cameraStarting by mutableStateOf(false); private set
     var sharing by mutableStateOf(false); private set
     var error by mutableStateOf(""); private set
     var speaking by mutableStateOf(emptySet<String>()); private set
@@ -62,6 +63,8 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
     private var displayListener: DisplayManager.DisplayListener? = null
     private var screenQuality = ScreenShareQuality()
     private var screenSize: Pair<Int, Int>? = null
+    private var cameraAttempt = 0
+    private var cameraTimeout: Runnable? = null
     private data class Capture(val capturer: VideoCapturer, val source: VideoSource, val helper: SurfaceTextureHelper, val track: VideoTrack)
     private data class SenderBinding(val sender: RtpSender, val transceiver: RtpTransceiver)
     private class Peer(val pc: PeerConnection) {
@@ -161,7 +164,9 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         val peer = Peer(pc); peers[id] = peer
         trace.event("peer-created", id)
         pc.addTrack(audio, listOf("audio"))
-        captures.forEach { (source, c) -> peer.senders[source] = addVideoSender(pc, source, c.track) }
+        captures.forEach { (source, c) ->
+            if (videos.containsKey("self:$source")) peer.senders[source] = addVideoSender(pc, source, c.track)
+        }
         if (signal.room.selfId < id) channel(id, pc.createDataChannel("freetalk-video-state-v1", DataChannel.Init()))
         return peer
     }
@@ -320,7 +325,8 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         listOf("camera", "screen").forEach { source ->
             val binding = p.senders[source]
             val mid = binding?.transceiver?.mid
-            sources.put(source, JSONObject().put("active", captures.containsKey(source)).put("mid", mid ?: JSONObject.NULL).put("trackId", captures[source]?.track?.id() ?: JSONObject.NULL))
+            val track = videos["self:$source"]
+            sources.put(source, JSONObject().put("active", track != null).put("mid", mid ?: JSONObject.NULL).put("trackId", track?.id() ?: JSONObject.NULL))
         }
         val message = JSONObject().put("version", 2).put("sources", sources)
         p.channels.filter { it.state() == DataChannel.State.OPEN }.forEach { sendData(it, message) }
@@ -407,18 +413,57 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         publishAudioState()
     }
     fun startCamera() {
+        if (stopped || camera || cameraStarting) return
+        val attempt = ++cameraAttempt
+        cameraStarting = true
+        error = ""
         runCatching {
-            val enumerator = Camera2Enumerator(context)
+            val enumerator = if (Camera2Enumerator.isSupported(context)) Camera2Enumerator(context) else Camera1Enumerator(true)
             val selected = NativeSettingsStore.string("cameraDeviceId")
             val name = enumerator.deviceNames.firstOrNull { "native:$it" == selected }
-                ?: enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) } ?: enumerator.deviceNames.first()
-            startCapture("camera", enumerator.createCapturer(name, null), 640, 480, 24); camera = true
-        }.onFailure { error = it.message ?: "Камера недоступна" }
+                ?: enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) }
+                ?: enumerator.deviceNames.firstOrNull() ?: error("Камера недоступна")
+            val format = preferredCameraFormat(enumerator.getSupportedFormats(name).orEmpty().map {
+                CameraCaptureFormat(it.width, it.height, it.framerate.min / 1000, it.framerate.max / 1000)
+            }) ?: CameraCaptureFormat(640, 480, 24, 24)
+            val capturer = checkNotNull(enumerator.createCapturer(name, object : CameraVideoCapturer.CameraEventsHandler {
+                override fun onCameraOpening(cameraName: String) = Unit
+                override fun onCameraClosed() = Unit
+                override fun onCameraError(message: String) = post { failCamera(attempt) }
+                override fun onCameraDisconnected() = post { failCamera(attempt) }
+                override fun onCameraFreezed(message: String) = post { failCamera(attempt) }
+                override fun onFirstFrameAvailable() = post {
+                    if (cameraAttempt == attempt && cameraStarting) {
+                        captures["camera"]?.let {
+                            clearCameraTimeout()
+                            cameraStarting = false
+                            camera = true
+                            publishCapture("camera", it.track)
+                        }
+                    }
+                }
+            }))
+            startCapture("camera", capturer, format.width, format.height, format.fps, publish = false)
+            cameraTimeout = Runnable { failCamera(attempt) }.also { main.postDelayed(it, 10_000) }
+        }.onFailure { failCamera(attempt) }
     }
+
+    private fun clearCameraTimeout() {
+        cameraTimeout?.let(main::removeCallbacks)
+        cameraTimeout = null
+    }
+
+    private fun failCamera(attempt: Int) {
+        if (attempt != cameraAttempt || stopped) return
+        stopCapture("camera")
+        error = "Камера недоступна"
+    }
+
     fun switchCamera() {
+        val attempt = cameraAttempt
         (captures["camera"]?.capturer as? CameraVideoCapturer)?.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
-            override fun onCameraSwitchDone(isFrontCamera: Boolean) {}
-            override fun onCameraSwitchError(message: String?) = post { error = message ?: "Не удалось переключить камеру" }
+            override fun onCameraSwitchDone(isFrontCamera: Boolean) = post { if (attempt == cameraAttempt) error = "" }
+            override fun onCameraSwitchError(message: String?) = post { if (attempt == cameraAttempt) error = "Не удалось переключить камеру" }
         })
     }
     fun startScreen(data: Intent) {
@@ -467,7 +512,7 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
             displays.getDisplay(Display.DEFAULT_DISPLAY)?.getRealSize(it)
         }
     }
-    private fun startCapture(name: String, capturer: VideoCapturer, width: Int, height: Int, fps: Int) {
+    private fun startCapture(name: String, capturer: VideoCapturer, width: Int, height: Int, fps: Int, publish: Boolean = true) {
         if (captures.containsKey(name)) return
         val source = factory.createVideoSource(name == "screen")
         val helper = SurfaceTextureHelper.create("capture-$name", egl.eglBaseContext)
@@ -479,20 +524,32 @@ class NativeCallMedia(private val context: Context, private val signal: RoomSign
         }
         catch (e: Exception) { capturer.dispose(); helper.dispose(); track.dispose(); source.dispose(); throw e }
         captures[name] = Capture(capturer, source, helper, track)
+        if (publish) publishCapture(name, track)
+    }
+    private fun publishCapture(name: String, track: VideoTrack) {
         videos = videos + ("self:$name" to track)
         peers.forEach { (id, p) -> p.senders[name] = addVideoSender(p.pc, name, track); negotiate(id); publishVideo(p) }
     }
     fun stopCapture(name: String) {
+        if (name == "camera") {
+            cameraAttempt++
+            clearCameraTimeout()
+            cameraStarting = false
+            camera = false
+        }
         val c = captures.remove(name) ?: return
         if (name == "screen") {
             displayListener?.let(displays::unregisterDisplayListener)
             displayListener = null
             screenSize = null
         }
-        videos = videos - "self:$name"
-        peers.forEach { (id, p) -> p.senders.remove(name)?.let { p.pc.removeTrack(it.sender) }; publishVideo(p); negotiate(id) }
+        val key = "self:$name"
+        if (videos.containsKey(key)) {
+            videos = videos - key
+            peers.forEach { (id, p) -> p.senders.remove(name)?.let { p.pc.removeTrack(it.sender) }; publishVideo(p); negotiate(id) }
+        }
         runCatching { c.capturer.stopCapture() }; c.capturer.dispose(); c.helper.dispose(); c.track.dispose(); c.source.dispose()
-        if (name == "camera") camera = false else sharing = false
+        if (name == "screen") sharing = false
     }
     @Suppress("DEPRECATION")
     private fun selectDefaultRoute() {

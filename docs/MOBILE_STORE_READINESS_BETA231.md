@@ -1,0 +1,24 @@
+# TRLKA 0.4.0 build 231
+
+Mobile review candidate for Android phones and tablets, iPhone and iPad.
+
+The review build groups settings by purpose, puts QR sign-in in the center of phone navigation, and keeps the scanner available in Settings when the shortcut is hidden. The wide layout gives navigation and call controls their own space. Camera changes should preserve the call and prevent empty video tiles from taking focus while the first frame is arriving.
+
+## Packages and signing
+
+| Platform | Local review                                                                                          | Store submission                                                                                                                                                                                                                                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android  | The release APK for existing preview testers uses their existing preview certificate.                 | `io.freetalk.mobile`, versionCode 231, target API 36. Build an AAB with `:app:bundleRelease -PtrlkaStoreRelease=true`. Supply the Play upload keystore and its alias/passwords through `TRLKA_PLAY_KEYSTORE`, `TRLKA_PLAY_STORE_PASSWORD`, `TRLKA_PLAY_KEY_ALIAS` and `TRLKA_PLAY_KEY_PASSWORD`. With no credentials the AAB is unsigned. |
+| Apple    | The unsigned arm64 IPA targets iPhone and iPad. Use a provisioning profile to install it on hardware. | `com.trlka.ios`, 0.4.0 (231). From a Mac with Xcode 26 or later and a configured Apple team, set `DEVELOPMENT_TEAM` and run `bash apps/apple/script/build_store_archive.sh`. The signed archive can be validated in Xcode Organizer.                                                                                                      |
+
+The stores choose the distribution certificates. Android previews signed with a different app-signing certificate may have to be uninstalled before installing the Play version. Such an uninstall clears local app data.
+
+## Before submitting
+
+- Create and verify the developer accounts and register the app identifiers. A new personal Play account created after November 13, 2023 needs at least 12 opted-in closed testers for 14 continuous days before requesting production access. [Google Play testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465)
+- Provide a publicly accessible privacy policy, accurate privacy and data safety declarations, a support contact, and a public account deletion resource for Play. The app contains account deletion via the profile. The backend revokes sessions and removes profile information while preserving past chat entries under the deleted-user record. Confirm all remaining data and retention disclosures before submission. At the time of review the service API serves the policy, while `https://trlka.com/privacy` and `https://trlka.com/delete-account` return HTTP 404. [Apple account deletion](https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion), [Google Play account deletion](https://support.google.com/googleplay/android-developer/answer/13327111)
+- Verify the reporting, blocking and moderation paths for chat content, and provide a working reviewer account and contact in the store listing. [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/), [Google Play Developer Program Policy](https://support.google.com/googleplay/android-developer/answer/18265346)
+- On physical Android and Apple phones and tablets, compare one-to-one and group calls, camera permissions, first frame, repeated camera off/on, front/rear camera where supported, rotation, foreground return and incoming calls. Confirm remote playback on a second device. iOS background incoming calls still require APNs/CallKit integration. iOS QR scanning also depends on VisionKit device support.
+- For the review listing, use screenshots from the actual release UI at the dimensions requested by each console. Simulator previews help review layout.
+
+[Play target API](https://support.google.com/googleplay/android-developer/answer/11926878) · [Android 16 KiB compatibility](https://developer.android.com/guide/practices/page-sizes) · [Apple SDK requirements](https://developer.apple.com/news/upcoming-requirements/?id=04282026a)

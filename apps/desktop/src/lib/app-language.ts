@@ -495,6 +495,11 @@ const translations: Record<string, readonly [string, string]> = {
   'Не удалось скопировать фото': ['Could not copy the photo', '无法复制照片'],
   'Войти по QR-коду': ['Sign in with a QR code', '使用二维码登录'],
   'Сканировать QR для входа': ['Scan QR code to sign in', '扫描二维码登录'],
+  'Кнопка QR в нижней панели': ['QR shortcut in the bottom bar', '在底部栏显示二维码入口'],
+  'Вход по QR останется доступен в настройках.': [
+    'QR sign-in remains available in Settings.',
+    '仍可在设置中打开扫描器。',
+  ],
   'Вход по QR-коду': ['QR code sign-in', '二维码登录'],
   'Создаём QR-код…': ['Creating QR code…', '正在生成二维码…'],
   'Откройте настройки TRLKA на телефоне и нажмите «Сканировать QR для входа».': [

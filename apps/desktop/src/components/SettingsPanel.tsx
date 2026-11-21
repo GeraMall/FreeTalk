@@ -119,6 +119,8 @@ interface SettingsPanelProps {
   onDeleteAccount(password: string): Promise<void>;
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
   onClearChatCache(): Promise<void>;
+  onNativeQrScan?(): void;
+  interfaceExtras?: React.ReactNode;
 }
 
 interface ProfileDraft {
@@ -186,6 +188,8 @@ export function SettingsPanel({
   onDeleteAccount,
   onChangePassword,
   onClearChatCache,
+  onNativeQrScan,
+  interfaceExtras,
 }: SettingsPanelProps) {
   const mobileLayout = useMobileLayout();
   const [scanQr, setScanQr] = useState(false);
@@ -410,8 +414,11 @@ export function SettingsPanel({
               onClick={() => setTab('about')}
             />
           </nav>
-          {mobileLayout && accountUser && (
-            <button className="qr-login-trigger qr-scan-trigger" onClick={() => setScanQr(true)}>
+          {(mobileLayout || onNativeQrScan) && accountUser && (
+            <button
+              className="qr-login-trigger qr-scan-trigger"
+              onClick={onNativeQrScan ?? (() => setScanQr(true))}
+            >
               <QrCode size={17} /> {t('Сканировать QR для входа')}
             </button>
           )}
@@ -500,6 +507,7 @@ export function SettingsPanel({
                     </div>
                     <LanguagePicker />
                   </div>
+                  {interfaceExtras}
                   <InterfaceAppearance />
                   <CallCardDesigner
                     name={accountUser?.displayName || settings.displayName}

@@ -13,6 +13,17 @@ val sourceCommit = providers.exec {
     workingDir = repositoryRoot
     commandLine("git", "rev-parse", "--short=12", "HEAD")
 }.standardOutput.asText.get().trim()
+val storeRelease = providers.gradleProperty("trlkaStoreRelease")
+    .map { it.toBooleanStrict() }.getOrElse(false)
+val storeSigning = listOf(
+    "TRLKA_PLAY_KEYSTORE",
+    "TRLKA_PLAY_STORE_PASSWORD",
+    "TRLKA_PLAY_KEY_ALIAS",
+    "TRLKA_PLAY_KEY_PASSWORD",
+).map { providers.environmentVariable(it).orNull?.takeIf(String::isNotBlank) }
+if (storeRelease && storeSigning.any { it != null }) {
+    require(storeSigning.all { it != null }) { "Provide all four TRLKA_PLAY signing variables." }
+}
 
 android {
     namespace = "io.freetalk.mobile"
@@ -22,18 +33,30 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 230
-        versionName = "0.4.0-beta.230"
+        versionCode = 231
+        versionName = if (storeRelease) "0.4.0" else "0.4.0-beta.231"
         buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
         buildConfigField("String", "TURNSTILE_SITE_KEY", "\"$turnstileSiteKey\"")
         testInstrumentationRunner = providers.gradleProperty("callProbeRunner")
             .orElse("androidx.test.runner.AndroidJUnitRunner").get()
     }
 
+    signingConfigs {
+        if (storeRelease && storeSigning.all { it != null }) {
+            create("playUpload") {
+                storeFile = file(checkNotNull(storeSigning[0]))
+                storePassword = storeSigning[1]
+                keyAlias = storeSigning[2]
+                keyPassword = storeSigning[3]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Preserve upgrades from the native previews already installed by testers.
-            signingConfig = signingConfigs.getByName("debug")
+            // Preserve preview upgrades, but never use that key for Play.
+            signingConfig = if (storeRelease) signingConfigs.findByName("playUpload")
+                else signingConfigs.getByName("debug")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

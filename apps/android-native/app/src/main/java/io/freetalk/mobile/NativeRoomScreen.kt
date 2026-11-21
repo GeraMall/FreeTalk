@@ -33,12 +33,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import org.webrtc.SurfaceViewRenderer
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +56,6 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     val enteredAt = remember(roomId) { System.currentTimeMillis() }
     var pendingInvite by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf<String?>(null) }
-    var videoMode by remember { mutableStateOf(false) }
     val hasVideo = media?.videos?.isNotEmpty() == true
     LaunchedEffect(state.activity) {
         if (state.activity?.let { JSONObject(it).optBoolean("open") } == false) tabletVisible = false
@@ -67,13 +64,14 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     LaunchedEffect(media?.videos?.keys?.toSet()) {
         if (media?.videos?.keys?.any { it.endsWith(":screen") } == true) tabletVisible = false
     }
-    LaunchedEffect(hasVideo) { if (hasVideo) videoMode = true else { delay(550); videoMode = false; focused = null } }
+    LaunchedEffect(hasVideo) { if (!hasVideo) focused = null }
     LaunchedEffect(state.peers.map { it.id }) { if (focused != null && state.peers.none { it.id == focused }) focused = null }
     LaunchedEffect(media?.connections?.toMap()) { onQuality(when { media?.connections?.values?.any { it.contains("Ошибка") } == true -> "poor"; media?.connections?.values?.any { it.contains("потер", ignoreCase = true) } == true -> "weak"; media?.connections?.values?.any { it == "Подключён" } == true -> "good"; else -> "connecting" }) }
     BackHandler(enabled = expanded) { if (focused != null) focused = null else { sheet = null; onMinimize() } }
     val secondary = MobileDesign.muted
     val link = "https://trlka.com/join/$roomId"
     val latestLeave by rememberUpdatedState(onLeave)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     fun startService(extraTypes: Int = 0, action: () -> Unit) {
         if (CallService.afterStart != null) return
         CallService.afterStart = { runCatching(action).onSuccess { feedback = "" }.onFailure { feedback = it.message ?: "Не удалось подключить медиа" } }
@@ -91,7 +89,9 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         else feedback = "Разрешите доступ к микрофону, чтобы подключить звук"
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
-        if (allowed) startService(ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or (if (media?.sharing == true) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)) { media?.startCamera() }
+        if (allowed) startService(ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or (if (media?.sharing == true) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)) {
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) media?.startCamera()
+        }
         else feedback = "Доступ к камере не разрешён"
     }
     val screenPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -101,6 +101,14 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         }
     }
     val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { sheet = "audio" }
+    DisposableEffect(lifecycle, media) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && (media?.camera == true || media?.cameraStarting == true))
+                media?.stopCapture("camera")
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     DisposableEffect(roomId) {
         val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
             .filterIsInstance<Activity>().firstOrNull()
@@ -129,6 +137,11 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         if (chatId != null && onConversationChat != null) onConversationChat(chatId)
         else sheet = "chat"
     }
+    val toggleCamera = {
+        if (media?.camera == true || media?.cameraStarting == true) media?.stopCapture("camera")
+        else cameraPermission.launch(Manifest.permission.CAMERA)
+        Unit
+    }
     if (!expanded) return
     Scaffold(containerColor = MobileDesign.canvas, topBar = {
         if (focused == null) CallHeader("Комната с друзьями",
@@ -155,7 +168,8 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             muted = media?.muted != false, camera = media?.camera == true, sharing = media?.sharing == true, mediaReady = media != null,
             onMic = { media?.let { it.changeMuted(!it.muted) } ?: micPermission.launch(Manifest.permission.RECORD_AUDIO) },
             onAudio = { if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) else sheet = "audio" },
-            onCamera = { if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) },
+            onCamera = toggleCamera,
+            cameraStarting = media?.cameraStarting == true,
             onCameraOptions = { sheet = "camera" },
             onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else sheet = "share" },
             onReaction = { sheet = "reactions" }, onChat = openChat, onMore = { sheet = "menu" }, onLeave = onLeave,
@@ -180,7 +194,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 media?.connections?.values?.none { it == "Подключён" } == true) {
                 WebOutlinedButton(onClick = { media?.retryConnection() }) { MobileText("Повторить подключение") }
             }
-            CallParticipants(state.peers, state.selfId, media, videoMode, focused, { focused = it }, Modifier.weight(1f))
+            CallParticipants(state.peers, state.selfId, media, hasVideo, focused, { focused = it }, Modifier.weight(1f))
         }
     }
     if (tabletVisible) androidx.compose.ui.window.Dialog(
@@ -204,8 +218,8 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 }
                 "camera" -> {
                     MobileText("Камера", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    WebTextButton(enabled = media != null, onClick = { sheet = null; if (media?.camera == true) media?.stopCapture("camera") else cameraPermission.launch(Manifest.permission.CAMERA) }) {
-                        MobileText(if (media?.camera == true) "Выключить камеру" else "Включить камеру")
+                    WebTextButton(enabled = media != null, onClick = { sheet = null; toggleCamera() }) {
+                        MobileText(if (media?.camera == true || media?.cameraStarting == true) "Выключить камеру" else "Включить камеру")
                     }
                     WebTextButton(enabled = media?.camera == true, onClick = { media?.switchCamera(); sheet = null }) { MobileText("Переключить переднюю / заднюю камеру") }
                 }
@@ -255,24 +269,5 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
                 "chat" -> NativeRoomChat(signaling)
             }
         }
-    }
-}
-
-@Composable
-internal fun RoomVideo(track: org.webrtc.VideoTrack, engine: NativeCallMedia, mirror: Boolean, modifier: Modifier = Modifier) {
-    key(track.id()) {
-        AndroidView(
-            factory = { ctx ->
-                SurfaceViewRenderer(ctx).apply {
-                    init(engine.egl.eglBaseContext, null)
-                    setEnableHardwareScaler(true)
-                    setMirror(mirror)
-                    track.addSink(this)
-                }
-            },
-            modifier = modifier.background(Color.Black),
-            update = { it.setMirror(mirror) },
-            onRelease = { renderer -> runCatching { track.removeSink(renderer) }; renderer.release() },
-        )
     }
 }

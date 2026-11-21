@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 /** Offline screen review. No session restore, socket, push registration or media capture. */
 class DesignPreviewActivity : ComponentActivity() {
     var screen by mutableStateOf("home")
+    internal var previewCallMedia by mutableStateOf<NativeCallMedia?>(null)
     var previewProfile by mutableStateOf(SignedInUser("11111111-1111-4111-8111-111111111111", "alexey_1", "Alex",
         email = "alexey@example.invalid", bio = "Всегда на связи", emailVerified = true, registeredAt = "2026-01-01T00:00:00Z"))
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,13 +84,16 @@ class DesignPreviewActivity : ComponentActivity() {
                     onMinimize = { minimized = true; screen = "home" },
                     onChat = { minimized = true; screen = "conversation" })
                 Text("Участники · 2 из 8", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
-                CallParticipants(listOf(RoomPeer(self.id, self.displayName, null, false, true), RoomPeer(friend.id, "Макс", null, false, false)), self.id, null, screen == "video", focused, { focused = it }, Modifier.weight(1f))
+                CallParticipants(listOf(RoomPeer(self.id, self.displayName, null, false, true), RoomPeer(friend.id, "Макс", null, false, false)),
+                    self.id, previewCallMedia, previewCallMedia?.videos?.isNotEmpty() ?: (screen == "video"),
+                    focused, { focused = it }, Modifier.weight(1f))
                 CallToolbar(mic, false, false, true, { mic = !mic }, {}, { screen = "video" }, {}, {}, {}, {}, {}, { minimized = false; screen = "home" })
             }
             else -> {
                 val page = listOf("home", "chats", "friends", "history", "store").indexOf(screen).coerceAtLeast(0)
-                Scaffold(containerColor = MobileDesign.background, bottomBar = { MobileBottomNavigation(page) { screen = listOf("home", "chats", "friends", "history", "store")[it] } }) { padding ->
-                    Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                val openScanner = rememberComputerLoginScan(api, preview = true)
+                AdaptiveMobileScaffold(page, onScan = openScanner, onPage = { screen = listOf("home", "chats", "friends", "history", "store")[it] }) {
+                    Column(Modifier.fillMaxSize()) {
                         if (minimized) WebTextButton(onClick = { screen = "call" }, modifier = Modifier.fillMaxWidth()) { Text("Перейти к звонку", color = MobileDesign.green) }
                         AppHeader(self) { screen = "settings" }
                         when (page) {

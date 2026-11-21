@@ -251,6 +251,7 @@ private fun LoadingScreen(label: String) {
 private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
     navigation: android.content.Intent?, consumeNavigation: () -> Unit, onLogout: () -> Unit) {
     val nativeContext = LocalContext.current
+    val scanComputerLogin = rememberComputerLoginScan(api)
     LaunchedEffect(user.id) { NativeSettingsStore.load(nativeContext, user.id) }
     val appearance = remember(user.id) { NativeAppearance(nativeContext.applicationContext) }
     val appearanceLifecycle = LocalLifecycleOwner.current.lifecycle
@@ -498,14 +499,8 @@ private fun NativeShell(api: FreeTalkApi, cache: MediaCache, user: SignedInUser,
             reading = readingChatId == chat.id,
         ) }
     }
-    else Scaffold(
-        modifier = Modifier.background(appBackground),
-        containerColor = Color.Transparent,
-        bottomBar = {
-            MobileBottomNavigation(page) { page = it }
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+    else AdaptiveMobileScaffold(page, onScan = scanComputerLogin, onPage = { page = it }) {
+        Column(Modifier.fillMaxSize()) {
             AppHeader(profile) { settingsOpen = true }
             if (error.isNotBlank()) ErrorCard(error, load)
             when {

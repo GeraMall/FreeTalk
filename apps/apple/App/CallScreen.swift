@@ -24,7 +24,7 @@ struct CallScreen: View {
         #endif
         let showTileGrid = videoMode || (wideLayout && (!call.participants.isEmpty || !call.waiting.isEmpty))
         VStack(spacing: 16) {
-            if focusedID == nil {
+            if focusedID == nil || !showTileGrid {
             HStack(spacing: 14) {
                 Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44).trlkaPanel(14) }
                     .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
@@ -102,6 +102,9 @@ struct CallScreen: View {
         .background(Brand.background)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: showTileGrid)
         .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: focusedID)
+        .onChange(of: showTileGrid) { _, show in
+            if !show { focusedID = nil }
+        }
         .task(id: hasVideo) {
             if hasVideo { videoMode = true }
             else {

@@ -45,6 +45,7 @@ internal fun NativeSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Sig
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val offline = preview && BuildConfig.DEBUG
+    val openComputerLogin by rememberUpdatedState(rememberComputerLoginScan(api, preview = offline))
     val close by rememberUpdatedState(onClose)
     val userChanged by rememberUpdatedState(onUser)
     val logout by rememberUpdatedState(onLogout)
@@ -117,7 +118,8 @@ internal fun NativeSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Sig
                 settings.put("screenAudioByDefault", false)
                 JSONObject().put("user", accountJson(pageUser)).put("settings", settings).put("theme", MobilePreferences.theme)
                     .put("language", MobilePreferences.language).put("version", BuildConfig.VERSION_NAME).put("devices", devices())
-                    .put("cameraFacing", cameraFacing).apply { initialTab?.let { put("initialTab", it) } }
+                    .put("cameraFacing", cameraFacing).put("showQrShortcut", MobilePreferences.showQrShortcut)
+                    .apply { initialTab?.let { put("initialTab", it) } }
             }
             "api" -> {
                 val path = payload.getString("path"); val method = payload.optString("method", "GET")
@@ -147,6 +149,14 @@ internal fun NativeSettingsScreen(api: FreeTalkApi, cache: MediaCache, user: Sig
                 NativeSettingsStore.save(context, payload); JSONObject()
             }
             "typing" -> { NativeSettingsStore.markTyping(); JSONObject() }
+            "qr.shortcut" -> {
+                val visible = payload.get("visible")
+                require(visible is Boolean)
+                MobilePreferences.showQrShortcut = visible
+                MobilePreferences.save(context)
+                JSONObject()
+            }
+            "qr.scan" -> { openComputerLogin(); JSONObject() }
             "ui.ready" -> JSONObject()
             "level" -> NativeSettingsStore.inputLevel
             "theme" -> { val theme = payload.getString("theme"); require(theme in setOf("default", "light", "black")); MobilePreferences.theme = theme; MobilePreferences.save(context); JSONObject() }

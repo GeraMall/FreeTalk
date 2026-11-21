@@ -58,6 +58,7 @@ function renderProfile(
       },
     ],
   },
+  onNativeQrScan?: () => void,
 ) {
   const onClose = vi.fn();
   const onSaveProfile = vi.fn().mockResolvedValue(undefined);
@@ -97,12 +98,21 @@ function renderProfile(
       onDeleteAccount={vi.fn().mockResolvedValue(undefined)}
       onChangePassword={vi.fn().mockResolvedValue(undefined)}
       onClearChatCache={vi.fn().mockResolvedValue(undefined)}
+      onNativeQrScan={onNativeQrScan}
     />,
   );
   return { ...view, onClose, onSaveProfile, onSetting, onVideoSetting };
 }
 
 describe('SettingsPanel profile actions', () => {
+  it('offers the native QR scanner even in a wide settings window', () => {
+    const onNativeQrScan = vi.fn();
+    const view = renderProfile(undefined, onNativeQrScan);
+    fireEvent.click(view.getByRole('button', { name: 'Сканировать QR для входа' }));
+    expect(onNativeQrScan).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('.qr-auth-dialog')).toBeNull();
+  });
+
   it('can restore the Mac screen preset without changing the camera or sound choices', () => {
     vi.spyOn(windowChrome, 'usesMacDesktop').mockReturnValue(true);
     const view = renderProfile();

@@ -1,8 +1,13 @@
 name: Android iPhone-style preview
 on:
   push:
-    branches: [preview/android-iphone-style]
-    paths: ['apps/android-native/**', '.github/workflows/android-preview.yml']
+    branches: [preview/android-iphone-style, preview/mobile-store-readiness-231]
+    paths:
+      - 'apps/android-native/**'
+      - 'apps/desktop/src/android-settings.*'
+      - 'apps/desktop/src/components/SettingsPanel.tsx'
+      - 'scripts/android/verify-store-pages.py'
+      - '.github/workflows/android-preview.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -58,12 +63,18 @@ jobs:
           adb shell input keyevent 82
           for setting in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$setting" 0; done
           bash apps/android-native/scripts/capture-preview.sh
+      - name: Build and verify Android App Bundle for signing
+        if: github.ref_name == 'preview/mobile-store-readiness-231'
+        run: |
+          apps/desktop/src-tauri/gen/android/gradlew -p apps/android-native :app:bundleRelease -PtrlkaStoreRelease=true --console=plain
+          python3 scripts/android/verify-store-pages.py apps/android-native/app/build/outputs/bundle/release/app-release.aab
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: TRLKA-Android-preview
           path: |
             apps/android-native/app/build/outputs/apk/debug/*.apk
+            apps/android-native/app/build/outputs/bundle/release/*.aab
             apps/android-native/app/build/reports/
             apps/android-native/app/build/outputs/androidTest-results/
             apps/android-native/build/previews/

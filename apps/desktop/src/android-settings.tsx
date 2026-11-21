@@ -5,7 +5,7 @@ import { AppTooltips } from './components/AppTooltips';
 import { accountClient, ApiError, type AccountUser } from './lib/api-client';
 import { defaultSettings, type LocalSettings } from './lib/settings';
 import { interfaceTheme } from './lib/interface-theme';
-import { appLanguage } from './lib/app-language';
+import { appLanguage, t } from './lib/app-language';
 import { installInteractionGuards } from './lib/interaction-guards';
 import { installMobileViewport } from './lib/mobile-viewport';
 import { createNativeSettingsBridge } from './lib/native-settings-bridge';
@@ -17,6 +17,7 @@ import './theme-steel.css';
 import './chat-theme.css';
 import './control-motion.css';
 import './interface-themes.css';
+import './android-settings.css';
 
 interface Bootstrap {
   user: AccountUser;
@@ -25,6 +26,7 @@ interface Bootstrap {
   language: string;
   version: string;
   initialTab?: SettingsTab;
+  showQrShortcut?: boolean;
   devices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   cameraFacing: Record<string, 'user' | 'environment'>;
 }
@@ -54,6 +56,8 @@ export function SharedAndroidSettings({ initial }: { initial: Bootstrap }) {
   const [update, setUpdate] = useState<UpdateStatus>({ kind: 'idle' });
   const [notice, setNotice] = useState('');
   const [inputLevel, setInputLevel] = useState(0);
+  const [qrVisible, setQrVisible] = useState(initial.showQrShortcut ?? true);
+  const [savingQr, setSavingQr] = useState(false);
   useEffect(() => {
     let frame = requestAnimationFrame(function painted() {
       const bounds = document.querySelector('.settings-modal')?.getBoundingClientRect();
@@ -86,6 +90,17 @@ export function SharedAndroidSettings({ initial }: { initial: Bootstrap }) {
       }));
       setNotice(error.message);
     });
+  }
+  async function setQrShortcut(visible: boolean) {
+    setSavingQr(true);
+    try {
+      await host.request('qr.shortcut', { visible });
+      setQrVisible(visible);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : t('Не удалось сохранить настройки'));
+    } finally {
+      setSavingQr(false);
+    }
   }
   return (
     <>
@@ -163,6 +178,30 @@ export function SharedAndroidSettings({ initial }: { initial: Bootstrap }) {
           });
         }}
         onClearChatCache={() => host.request<void>('cache.clear')}
+        onNativeQrScan={() => {
+          void host.request('qr.scan').catch((error) => setNotice(error.message));
+        }}
+        interfaceExtras={
+          <div className="chat-settings-group">
+            <div className="setting-row">
+              <div>
+                <strong>{t('Кнопка QR в нижней панели')}</strong>
+                <small>{t('Вход по QR останется доступен в настройках.')}</small>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-label={t('Кнопка QR в нижней панели')}
+                aria-checked={qrVisible}
+                disabled={savingQr}
+                className={`switch ${qrVisible ? 'on' : ''}`}
+                onClick={() => void setQrShortcut(!qrVisible)}
+              >
+                <span />
+              </button>
+            </div>
+          </div>
+        }
       />
       {notice && (
         <div className="app-toast" role="status" onClick={() => setNotice('')}>
@@ -180,7 +219,7 @@ async function start() {
   localStorage.setItem('trlka.ui-language', initial.language);
   localStorage.setItem('trlka.interface-theme', initial.theme);
   document.documentElement.lang = appLanguage();
-  document.documentElement.classList.add('standalone-web-app');
+  document.documentElement.classList.add('standalone-web-app', 'android-settings-app');
   interfaceTheme.receiveDeviceTheme(initial.theme);
   interfaceTheme.connect(initial.user.id);
   let deviceTheme = initial.theme;
