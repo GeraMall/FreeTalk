@@ -1,0 +1,59 @@
+name: Publish verified Linux AppImage beta.232
+
+on:
+  push:
+    branches: [release/stage-linux-appimage-232]
+    paths: [.github/workflows/publish-linux-appimage-232.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  append-verified-portable:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      LINUX_TAG: linux-v0.4.0-beta.232
+      LINUX_SOURCE: 3f1f49f0cc008a05968e33562d6278ecc89326d3
+      SMOKE_SOURCE: 4b0a9c19cf8f59c3b05ce9fd3020972cf767042c
+      IMAGE_SHA256: f0e00273cf5c07fa357abf78ddb60bbf8089b57ab088fb3fd18d3288a1e7b96f
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44930785510
+          name: trlka-linux-chromium-x86_64-candidate
+          path: candidate
+      - name: Verify package and run provenance
+        run: |
+          gh run view 44930785510 --json headSha | jq -e --arg sha "$LINUX_SOURCE" '.headSha == $sha'
+          gh run view 44931788368 --json headSha,conclusion,jobs | jq -e --arg sha "$SMOKE_SOURCE" '
+            .headSha == $sha and .conclusion == "success" and
+            ([.jobs[] | select(.conclusion == "success")] | length) == 2'
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$LINUX_TAG" --jq .object.sha)" = "$LINUX_SOURCE"
+          gh release view "$LINUX_TAG" --json isDraft,isPrerelease | jq -e '.isPrerelease and (.isDraft | not)'
+          (
+            cd candidate
+            sha256sum --strict --check SHA256SUMS.txt
+            image=Trlka_0.4.0-beta.232_x86_64.AppImage
+            printf '%s  %s\n' "$IMAGE_SHA256" "$image" > "$image.sha256"
+            sha256sum --strict --check "$image.sha256"
+          )
+      - name: Publish portable package
+        run: |
+          image=Trlka_0.4.0-beta.232_x86_64.AppImage
+          gh release upload "$LINUX_TAG" "candidate/$image" "candidate/$image.sha256"
+          gh release view "$LINUX_TAG" --json assets | jq -e --arg name "$image" --arg hash "sha256:$IMAGE_SHA256" '
+            any(.assets[]; .name == $name and .digest == $hash and .state == "uploaded")'
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          Первая сборка TRLKA для Linux x86‑64. Пакет `.deb` устанавливает приложение, а AppImage запускается как переносимый файл. Linux-клиент использует настольный интерфейс TRLKA и Chromium для звонков, камеры и демонстрации экрана.
+
+          Оба пакета проверены на Ubuntu 22.04 в X11. Тесты подтвердили запуск, хранение и очистку тестовой сессии, двусторонний звук и видео с тестовыми устройствами, отмену и повторный запуск показа экрана.
+
+          Обновления устанавливаются вручную. При демонстрации передаётся изображение, а голос идёт с микрофона. Захват на Wayland ещё ждёт проверки.
+          EOF
+          gh release edit "$LINUX_TAG" --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" = desktop-v0.4.0-beta.232
