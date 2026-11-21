@@ -1,6 +1,6 @@
 const { createHash, createPublicKey, verify } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { createReadStream, createWriteStream } = require('node:fs');
+const { createReadStream, createWriteStream, rmSync } = require('node:fs');
 const {
   access,
   chmod,
@@ -290,6 +290,7 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
   let candidate;
   let prepared;
   let preparing;
+  let downloadingFolder;
   let applying;
   let installed;
 
@@ -342,7 +343,8 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
     if (!candidate) throw new Error('Сначала проверьте наличие обновлений.');
     preparing = (async (update) => {
       const target = image ? await appImageFile(image) : undefined;
-      const folder = await mkdtemp(join(app.getPath('temp'), 'trlka-update-'));
+      const folder = await mkdtemp(join(await realpath(app.getPath('temp')), 'trlka-update-'));
+      downloadingFolder = folder;
       const packagePath = join(folder, format === 'deb' ? 'package.deb' : 'Trlka.AppImage');
       try {
         const report = (progress) => {
@@ -365,6 +367,8 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
       } catch (error) {
         await rm(folder, { recursive: true, force: true }).catch(() => undefined);
         throw error;
+      } finally {
+        downloadingFolder = undefined;
       }
     })(candidate).finally(() => {
       preparing = undefined;
@@ -396,13 +400,22 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
 
   guard('restart', () => {
     if (!installed) throw new Error('Сначала установите обновление.');
-    app.relaunch(
+    const launched = app.relaunch(
       installed.imagePath ? { execPath: installed.imagePath, args: process.argv.slice(1) } : {},
     );
+    if (launched === false) {
+      throw new Error('Обновление установлено. Закройте и снова откройте Trlka.');
+    }
     app.quit();
   });
-  app.on('quit', () => {
-    if (!applying) void discard();
+  app.once('quit', () => {
+    const folder = prepared?.folder ?? downloadingFolder;
+    if (!folder || applying) return;
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // The OS can clean a leftover temporary download.
+    }
   });
 }
 
