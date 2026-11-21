@@ -8,7 +8,6 @@ const {
   lstat,
   mkdtemp,
   open,
-  readFile,
   realpath,
   rename,
   rm,
@@ -325,9 +324,8 @@ function registerLinuxUpdater({ app, ipcMain, isTrusted }) {
     if (preparing) return preparing;
     try {
       if (format === 'deb') await access(installer);
-      const publicKey = await readFile(join(__dirname, 'linux-updater.pub'), 'utf8');
       const response = await fetchUpdate(feed, testOrigin, AbortSignal.timeout(12_000));
-      const signed = verifyFeed(await readEnvelope(response), publicKey);
+      const signed = verifyFeed(await readEnvelope(response), config.publicKey);
       const asset = selectPackage(signed.manifest, format, testOrigin);
       candidate = newer(signed.manifest.version, version) ? { ...signed, asset } : undefined;
       return candidate ? available(candidate) : { kind: 'current', version };

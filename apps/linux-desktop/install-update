@@ -100,7 +100,7 @@ def copy_verified_input(directory, name, destination, uid, limit):
 
 def trusted_key():
     directory = Path(__file__).absolute().parent
-    location = directory / "linux-updater.pub"
+    location = directory / "linux-updater-key.txt"
     for candidate in (location, *location.parents):
         info = candidate.lstat()
         expected = stat.S_ISREG(info.st_mode) if candidate == location else stat.S_ISDIR(info.st_mode)

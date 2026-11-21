@@ -37,7 +37,6 @@
       "preload.cjs",
       "desktop-bridge.cjs",
       "linux-updater.cjs",
-      "linux-updater.pub",
       "update-config.json",
       "capture-picker.*",
       "app-config.json",

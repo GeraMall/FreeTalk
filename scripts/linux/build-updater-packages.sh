@@ -39,11 +39,16 @@ assert(keyLines[0].startsWith('untrusted comment:'));
 const publicKey = Buffer.from(keyLines[1], 'base64');
 assert.equal(publicKey.length, 42);
 assert.equal(publicKey.toString('ascii', 0, 2), 'Ed');
-fs.writeFileSync(path.join(stage, 'linux-updater.pub'), key + '\n', { mode: 0o644 });
-if (fixtureKey) {
-  const updateConfig = { feedUrl: 'http://127.0.0.1:41230/latest.json', allowLoopback: true };
-  fs.writeFileSync(path.join(stage, 'update-config.json'), JSON.stringify(updateConfig) + '\n');
-}
+const publicKeyText = key + '\n';
+const updaterConfigPath = path.join(stage, 'update-config.json');
+const updateConfig = fixtureKey
+  ? { feedUrl: 'http://127.0.0.1:41230/latest.json', allowLoopback: true }
+  : JSON.parse(fs.readFileSync(updaterConfigPath, 'utf8'));
+fs.writeFileSync(
+  updaterConfigPath,
+  JSON.stringify({ ...updateConfig, publicKey: publicKeyText }) + '\n',
+);
+fs.writeFileSync(path.join(stage, 'linux-updater-key.txt'), publicKeyText, { mode: 0o644 });
 NODE
 
 (
@@ -58,7 +63,7 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 pkg.build.directories.output = `packages/${format}`;
 pkg.build.extraResources = pkg.build.extraResources.filter(({ from }) => from === 'LICENSE');
 if (format === 'deb') {
-  for (const file of ['install-update', 'linux-updater.pub']) {
+  for (const file of ['install-update', 'linux-updater-key.txt']) {
     pkg.build.extraResources.push({ from: file, to: file });
   }
 }

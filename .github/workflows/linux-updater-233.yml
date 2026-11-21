@@ -99,7 +99,7 @@ jobs:
             sudo apt-get install -y --no-install-recommends "$PWD"/fixtures/old/*.deb
             cmp LICENSE /opt/Trlka/resources/LICENSE
             test "$(stat -c '%u:%a' /opt/Trlka/resources/install-update)" = 0:755
-            test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater.pub)" = 0:644
+            test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater-key.txt)" = 0:644
             cat > "$RUNNER_TEMP/trlka-install-test.policy" <<'POLICY'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
