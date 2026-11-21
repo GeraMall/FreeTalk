@@ -1,5 +1,10 @@
 {
+  "productName": "Trlka Screen Test",
+  "identifier": "io.freetalk.desktop.screenprobe",
   "bundle": {
     "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": { "desktop": { "schemes": [] } }
   }
 }
