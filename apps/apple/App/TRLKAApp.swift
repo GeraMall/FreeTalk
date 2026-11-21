@@ -19,6 +19,9 @@ struct TRLKAApp: App {
                 .task(id: account.user?.id) { await account.appearance.refresh(user: account.user?.id, client: account.client) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { Task { await account.appearance.refresh(user: account.user?.id, client: account.client) } }
+                    #if os(iOS)
+                    if phase == .background { account.calls.stopCamera() }
+                    #endif
                 }
                 #if os(macOS)
                 .frame(minWidth: 720, minHeight: 500)

@@ -84,6 +84,65 @@ final class InterfaceTests: XCTestCase {
         XCTAssertTrue((restored.value as? String)?.contains("Test message") == true, "Draft must survive back navigation")
     }
 
+    func testQRShortcutCanBeHiddenAndSettingsStillOpenScanner() {
+        let app = launch("home")
+        let shortcut = app.buttons["tab.qr"]
+        let profile = app.buttons["app.profile"]
+        let appearance = app.buttons["settings.appearance"]
+        let toggle = app.switches["settings.qr-shortcut"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 10))
+        if !shortcut.exists {
+            profile.tap()
+            appearance.tap()
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            toggle.tap()
+            app.terminate()
+            app.launch()
+        }
+        XCTAssertTrue(shortcut.waitForExistence(timeout: 10))
+        XCTAssertEqual(shortcut.frame.midX, app.frame.midX, accuracy: 4)
+        shortcut.tap()
+        let close = app.buttons["qr.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        profile.tap()
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
+        appearance.tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(profile.waitForExistence(timeout: 10))
+        XCTAssertFalse(shortcut.exists)
+        profile.tap()
+        let settingsShortcut = app.buttons["settings.qr"]
+        XCTAssertTrue(settingsShortcut.waitForExistence(timeout: 5))
+        settingsShortcut.tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        appearance.tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.tap()
+    }
+
+    func testAccountDeletionRequiresAPasswordAndCanBeCancelled() {
+        let app = launch("home")
+        let settings = app.buttons["app.profile"]
+        let profile = app.buttons["settings.profile"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(profile.waitForExistence(timeout: 5))
+        profile.tap()
+        let delete = app.buttons["settings.delete-account"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        delete.tap()
+        let review = app.buttons["delete-account.review"]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertFalse(review.isEnabled)
+        app.buttons["Отмена"].tap()
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+    }
+
     func testMinimizedCallKeepsChatUsableAndCanReturnAndEnd() {
         let app = launch("call")
         XCTAssertTrue(app.buttons["call.microphone"].waitForExistence(timeout: 10))

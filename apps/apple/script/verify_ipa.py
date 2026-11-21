@@ -43,16 +43,26 @@ def verify(path):
         assert magic == 0xFEEDFACF and cpu == 0x0100000C and filetype == 2, "Expected arm64 Mach-O executable"
         position = 32
         platforms = []
+        sdk_versions = []
         assert position + command_bytes <= len(binary), "Truncated commands"
         for _ in range(commands):
             command, size = struct.unpack_from("<II", binary, position)
             assert size >= 8 and position + size <= 32 + command_bytes, "Invalid load command"
             if command == 0x32:  # LC_BUILD_VERSION
                 platforms.append(struct.unpack_from("<I", binary, position + 8)[0])
+                sdk_versions.append(struct.unpack_from("<I", binary, position + 16)[0])
             if command in (0x21, 0x2C):  # LC_ENCRYPTION_INFO[_64]
                 assert struct.unpack_from("<I", binary, position + 16)[0] == 0, "Encrypted executable"
             position += size
         assert platforms == [2], "Expected iOS platform, not Simulator or Mac Catalyst"
+        if int(info["CFBundleVersion"]) >= 231:
+            assert len(sdk_versions) == 1 and sdk_versions[0] >> 16 >= 26, "App Store upload requires the iOS 26 SDK or later"
+            privacy = plistlib.loads(archive.read(prefix + "PrivacyInfo.xcprivacy"))
+            assert any(
+                item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryUserDefaults"
+                and "CA92.1" in item["NSPrivacyAccessedAPITypeReasons"]
+                for item in privacy["NSPrivacyAccessedAPITypes"]
+            ), "Missing app preferences privacy declaration"
         assert position == 32 + command_bytes, "Load command size mismatch"
         assert prefix + "embedded.mobileprovision" not in names, "Unexpected provisioning profile"
         assert not any(name.endswith((".p12", ".p8", ".pem", ".key")) for name in names), "Unexpected signing material"

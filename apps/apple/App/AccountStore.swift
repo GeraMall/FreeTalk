@@ -89,12 +89,30 @@ final class AccountStore {
     }
 
     func logout() async {
+        guard !working else { return }
         working = true
         defer { working = false }
-        calls.end(); realtime.stop(); clearIncoming()
-        drafts.removeAll(); chatRevisions.removeAll(); typists.removeAll()
+        clearSessionActivity()
         do { try await client.logout() }
         catch { /* Local tokens were cleared before the server request. */ }
+        showLogin()
+    }
+
+    func deleteAccount(password: String) async throws {
+        guard !working, phase == .signedIn else { throw CancellationError() }
+        working = true
+        defer { working = false }
+        try await client.deleteAccount(password: password)
+        clearSessionActivity()
+        showLogin()
+    }
+
+    private func clearSessionActivity() {
+        calls.end(); realtime.stop(); clearIncoming()
+        drafts.removeAll(); chatRevisions.removeAll(); typists.removeAll()
+    }
+
+    private func showLogin() {
         user = nil
         error = nil
         phase = .signedOut

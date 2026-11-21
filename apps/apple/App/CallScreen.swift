@@ -10,10 +10,19 @@ struct CallScreen: View {
     @State private var videoMode = false
     @State private var focusedID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @AppStorage("trlka.mirrorSelfCamera") private var mirrorSelf = true
     var body: some View {
         let call = account.calls
         let hasVideo = call.participants.contains { call.video(participantID: $0.id) != nil || call.video(participantID: $0.id, source: "screen") != nil }
+        #if os(iOS)
+        let wideLayout = horizontalSizeClass == .regular
+        #else
+        let wideLayout = false
+        #endif
+        let showTileGrid = videoMode || (wideLayout && (!call.participants.isEmpty || !call.waiting.isEmpty))
         VStack(spacing: 16) {
             if focusedID == nil {
             HStack(spacing: 14) {
@@ -40,9 +49,11 @@ struct CallScreen: View {
                     .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
             }
             }
-            if videoMode {
-                VideoCallCanvas(account: account, mirrorSelf: mirrorSelf, focusedID: $focusedID)
-            } else {
+            ZStack {
+                if showTileGrid {
+                    VideoCallCanvas(account: account, mirrorSelf: mirrorSelf, focusedID: $focusedID)
+                        .transition(.opacity)
+                } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         ForEach(call.participants) { participant in
@@ -58,7 +69,8 @@ struct CallScreen: View {
                         }
                         if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").padding(32) }
                     }.padding(.vertical, 2)
-                }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list")
+                }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list").transition(.opacity)
+                }
             }
             #if os(iOS)
             if call.sharingScreen {
@@ -72,6 +84,7 @@ struct CallScreen: View {
                     .accessibilityIdentifier("call.microphone")
                 CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
                     .accessibilityIdentifier("call.camera")
+                    .accessibilityValue(call.cameraOn ? "Включена" : "Выключена")
                     .disabled(call.cameraBusy)
                 #if os(iOS)
                 CallButton(title: "Игры", icon: "gamecontroller", color: Brand.accent, highlighted: call.tablet?["open"] as? Bool == true) { call.openTablet() }
@@ -87,14 +100,15 @@ struct CallScreen: View {
         .padding(.horizontal, 16).padding(.top, 8).frame(maxWidth: 900)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Brand.background)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: videoMode)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: showTileGrid)
         .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: focusedID)
         .task(id: hasVideo) {
             if hasVideo { videoMode = true }
             else {
-                try? await Task.sleep(for: .milliseconds(550))
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 260))
                 guard !Task.isCancelled else { return }
-                focusedID = nil; videoMode = false
+                if !wideLayout { focusedID = nil }
+                videoMode = false
             }
         }
         .sheet(isPresented: $more) {
@@ -145,6 +159,7 @@ struct ParticipantCard: View {
     var side: CGFloat = 170
     var tileSize: CGSize?
     var compact = false
+    var expanded = false
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
@@ -158,14 +173,21 @@ struct ParticipantCard: View {
                 identity.font(.system(size: compact ? 10 : side < 150 ? 12 : 14, weight: .semibold))
                 if !compact && side >= 150 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
                 if !compact { activity }
-            }.padding(compact ? 6 : 12).opacity(video == nil ? 1 : 0)
+            }.padding(compact ? 6 : 12)
             if let video {
-                RTCVideoSurface(track: video, mirrored: screen == nil && participant.id == call.selfID && mirrorSelf)
-                    #if os(macOS)
-                    .scaleEffect(x: screen == nil && participant.id == call.selfID && mirrorSelf ? -1 : 1, y: 1)
+                let mirrored = screen == nil && participant.id == call.selfID && mirrorSelf
+                Group {
+                    #if os(iOS)
+                    FadingVideoSurface(track: video, mirrored: mirrored, fillsTile: screen == nil && !expanded)
+                        .id(video.trackId)
+                    #else
+                    RTCVideoSurface(track: video, mirrored: mirrored)
+                        .scaleEffect(x: mirrored ? -1 : 1, y: 1)
+                        .background(.black)
                     #endif
-                    .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side).clipped().allowsHitTesting(false)
-                    .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.97)))
+                }
+                .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side).clipped().allowsHitTesting(false)
+                .transition(.opacity)
                 VStack { Spacer(); HStack { identity.font(.system(size: compact ? 10 : 12, weight: .semibold)); Spacer(minLength: 4); if !compact { activity } }.padding(compact ? 6 : 10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
                     .transition(.opacity)
             }
@@ -252,23 +274,86 @@ struct InviteToCallScreen: View {
 }
 
 #if os(iOS)
-struct RTCVideoSurface: UIViewRepresentable {
+private struct FadingVideoSurface: View {
     let track: RTCVideoTrack
     let mirrored: Bool
+    let fillsTile: Bool
+    @State private var ready = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        RTCVideoSurface(track: track, mirrored: mirrored, fillsTile: fillsTile) {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { ready = true }
+        }
+        .background(.black)
+        .opacity(ready ? 1 : 0)
+    }
+}
+
+private struct RTCVideoSurface: UIViewRepresentable {
+    let track: RTCVideoTrack
+    let mirrored: Bool
+    let fillsTile: Bool
+    let onFirstFrame: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeUIView(context: Context) -> RTCMTLVideoView {
-        let view = RTCMTLVideoView(frame: .zero); view.videoContentMode = .scaleAspectFit
-        context.coordinator.attach(track, view); return view
+        let view = RTCMTLVideoView(frame: .zero)
+        configure(view, coordinator: context.coordinator)
+        return view
     }
     func updateUIView(_ view: RTCMTLVideoView, context: Context) {
-        context.coordinator.attach(track, view)
-        view.transform = CGAffineTransform(scaleX: mirrored ? -1 : 1, y: 1)
+        configure(view, coordinator: context.coordinator)
     }
-    static func dismantleUIView(_ view: RTCMTLVideoView, coordinator: Coordinator) { coordinator.detach(view) }
+    private func configure(_ view: RTCMTLVideoView, coordinator: Coordinator) {
+        view.videoContentMode = fillsTile ? .scaleAspectFill : .scaleAspectFit
+        view.transform = CGAffineTransform(scaleX: mirrored ? -1 : 1, y: 1)
+        coordinator.onFirstFrame = onFirstFrame
+        coordinator.attach(track, view)
+    }
+    static func dismantleUIView(_ view: RTCMTLVideoView, coordinator: Coordinator) { coordinator.detach() }
     final class Coordinator {
-        var track: RTCVideoTrack?
-        func attach(_ value: RTCVideoTrack, _ view: RTCMTLVideoView) { if track !== value { track?.remove(view); track = value; value.add(view) } }
-        func detach(_ view: RTCMTLVideoView) { track?.remove(view); track = nil }
+        private var track: RTCVideoTrack?
+        private var renderer: Renderer?
+        var onFirstFrame: (() -> Void)?
+
+        func attach(_ value: RTCVideoTrack, _ view: RTCMTLVideoView) {
+            guard track !== value else { return }
+            detach()
+            let renderer = Renderer(view: view)
+            renderer.firstFrame = { [weak self, weak renderer] in
+                DispatchQueue.main.async { [weak self, weak renderer] in
+                    guard let self, let renderer, self.renderer === renderer else { return }
+                    self.onFirstFrame?()
+                }
+            }
+            track = value
+            self.renderer = renderer
+            value.add(renderer)
+        }
+
+        func detach() {
+            if let renderer { track?.remove(renderer) }
+            track = nil
+            renderer = nil
+        }
+    }
+
+    private final class Renderer: NSObject, RTCVideoRenderer {
+        private weak var view: RTCMTLVideoView?
+        private let lock = NSLock()
+        var firstFrame: (() -> Void)?
+
+        init(view: RTCMTLVideoView) { self.view = view }
+        func setSize(_ size: CGSize) { view?.setSize(size) }
+        func renderFrame(_ frame: RTCVideoFrame?) {
+            view?.renderFrame(frame)
+            guard frame != nil else { return }
+            lock.lock()
+            let notify = firstFrame
+            firstFrame = nil
+            lock.unlock()
+            notify?()
+        }
     }
 }
 #else

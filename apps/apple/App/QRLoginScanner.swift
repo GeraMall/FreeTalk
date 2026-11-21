@@ -56,9 +56,13 @@ struct QRLoginScanner: View {
             .background(Brand.webBackground)
             .navigationTitle("Сканировать QR для входа")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem { Button("Закрыть") { dismiss() } } }
+            .toolbar { ToolbarItem { Button("Закрыть") { dismiss() }.accessibilityIdentifier("qr.close") } }
         }
         .task {
+            guard !account.calls.cameraOn, !account.calls.cameraBusy else {
+                error = "Выключите камеру в звонке, чтобы сканировать QR-код."
+                return
+            }
             guard DataScannerViewController.isSupported else {
                 error = "Сканер QR недоступен на этом устройстве."
                 return

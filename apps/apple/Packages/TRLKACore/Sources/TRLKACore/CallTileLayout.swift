@@ -16,15 +16,22 @@ public struct CallTileLayout: Sendable {
     public init(width: Double, height: Double, count: Int) {
         let width = max(1, width.isFinite ? width : 1)
         let height = max(1, height.isFinite ? height : 1)
-        let count = max(1, count)
+        guard count > 0 else {
+            frames = []
+            canvasHeight = height
+            needsScroll = false
+            return
+        }
         let gap = 10.0
-        let possibleColumns = max(1, Int(width / 122))
+        let wide = width >= 640
+        let possibleColumns = min(wide ? 4 : 2, max(1, Int(width / 122)))
+        let targetAspectRatio = wide ? 1.6 : 1.0
         let minimumRows = Int(ceil(Double(count) / Double(possibleColumns)))
         canvasHeight = max(height, Double(minimumRows) * 112 + Double(minimumRows - 1) * gap)
         needsScroll = canvasHeight > height + 1
         var best: [CallTileFrame] = []
         var bestScore = Double.infinity
-        for rows in 1...count {
+        for rows in minimumRows...count {
             let counts = (0..<rows).map { count / rows + ($0 < count % rows ? 1 : 0) }
             let widths = counts.map { (width - gap * Double($0 - 1)) / Double($0) }
             guard widths.allSatisfy({ $0 > 0 }), canvasHeight > gap * Double(rows - 1) else { continue }
@@ -33,7 +40,7 @@ public struct CallTileLayout: Sendable {
             var score = 0.0, worst = 0.0
             for row in 0..<rows {
                 let tileWidth = widths[row], tileHeight = area / widths[row]
-                let distortion = abs(log(tileWidth / tileHeight))
+                let distortion = abs(log(tileWidth / tileHeight / targetAspectRatio))
                 worst = max(worst, distortion)
                 score += distortion * Double(counts[row])
                 if min(tileWidth, tileHeight) < 90 { score += 20 }

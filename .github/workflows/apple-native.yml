@@ -2,7 +2,7 @@ name: Apple native preview
 
 on:
   push:
-    branches: [feat/apple-native]
+    branches: [feat/apple-native, preview/mobile-store-readiness-231]
     paths: ['apps/apple/**', '.github/workflows/apple-native.yml']
   workflow_dispatch:
     inputs:

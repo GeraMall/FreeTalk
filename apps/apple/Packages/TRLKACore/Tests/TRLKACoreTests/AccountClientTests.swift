@@ -141,6 +141,34 @@ final class AccountClientTests: XCTestCase {
         XCTAssertNil(vault.read())
     }
 
+    func testAccountDeletionKeepsSessionOnRejectionAndClearsItOnSuccess() async throws {
+        let vault = MemoryVault("saved-token")
+        let api = try client(vault: vault)
+        var reject = true
+        StubProtocol.handle = { request in
+            if request.url?.path == "/api/v1/auth/refresh" {
+                return (200, "{\"session\":\(self.sessionJSON)}")
+            }
+            XCTAssertEqual(request.url?.path, "/api/v1/me")
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-new")
+            if reject { return (403, #"{"code":"INVALID_PASSWORD","message":"Неверный пароль"}"#) }
+            return (204, "")
+        }
+        do {
+            try await api.deleteAccount(password: "incorrect")
+            XCTFail("Deletion must stay pending when the server rejects the password")
+        } catch let error as APIError {
+            XCTAssertEqual(error.code, "INVALID_PASSWORD")
+            XCTAssertEqual(vault.read(), "refresh-new")
+        }
+        reject = false
+        try await api.deleteAccount(password: "fixture-password")
+        XCTAssertNil(vault.read())
+        let restored = try await api.restore()
+        XCTAssertNil(restored)
+    }
+
     func testLogoutDuringRefreshCannotResurrectSession() async throws {
         let vault = MemoryVault("saved-token")
         let started = expectation(description: "Refresh started")

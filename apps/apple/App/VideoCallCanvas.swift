@@ -35,60 +35,91 @@ struct VideoCallCanvas: View {
     let mirrorSelf: Bool
     @Binding var focusedID: String?
     @State private var secondaryID: String?
-    @Namespace private var tiles
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var transition: Animation? { reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88) }
 
     var body: some View {
         GeometryReader { geometry in
             let call = account.calls
-            ZStack(alignment: .topLeading) {
-                if let focused = call.participants.first(where: { $0.id == focusedID }) {
-                    ParticipantCard(participant: focused, account: account, mirrorSelf: mirrorSelf,
-                                    side: min(geometry.size.width, geometry.size.height), tileSize: geometry.size)
-                        .matchedGeometryEffect(id: focused.id, in: tiles)
-                    Button {
-                        withAnimation(transition) { focusedID = nil; secondaryID = nil }
-                    } label: {
-                        Image(systemName: "arrow.down.right.and.arrow.up.left").font(.system(size: 18, weight: .semibold))
-                            .frame(width: 44, height: 44).background(Brand.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 13))
-                    }.padding(10).buttonStyle(CompactControlStyle()).accessibilityLabel("Вернуться к участникам").accessibilityIdentifier("call.return-grid")
-                    if call.cameraOn, let mini = miniParticipant(focused: focused) {
-                        FloatingCallPreview(participant: mini, account: account, mirrorSelf: mirrorSelf, bounds: geometry.size) {
-                            withAnimation(transition) { secondaryID = focused.id; focusedID = mini.id }
-                        }
-                    }
-                } else {
-                    let layout = CallTileLayout(width: geometry.size.width, height: geometry.size.height, count: call.participants.count + call.waiting.count)
+            let focused = call.participants.first { $0.id == focusedID }
+            let width = max(1, geometry.size.width)
+            let height = max(1, geometry.size.height)
+            let bounds = CGSize(width: width, height: height)
+            let layout = CallTileLayout(width: width, height: height, count: call.participants.count + call.waiting.count)
+            ScrollViewReader { scroll in
+                ZStack(alignment: .topLeading) {
                     ScrollView {
                         ZStack(alignment: .topLeading) {
                             ForEach(Array(call.participants.enumerated()), id: \.element.id) { index, participant in
                                 let frame = layout.frames[index]
+                                let expanded = participant.id == focused?.id
+                                let hidden = focused != nil && !expanded
+                                let size = expanded ? bounds : CGSize(width: frame.width, height: frame.height)
                                 ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf,
-                                                side: min(frame.width, frame.height), tileSize: CGSize(width: frame.width, height: frame.height))
-                                    .matchedGeometryEffect(id: participant.id, in: tiles)
+                                                side: min(size.width, size.height), tileSize: size, expanded: expanded)
                                     .contentShape(RoundedRectangle(cornerRadius: 20))
-                                    .onTapGesture {
-                                        withAnimation(transition) {
-                                            focusedID = participant.id
-                                            secondaryID = participant.id == call.selfID ? call.participants.first(where: { $0.id != call.selfID })?.id : call.selfID
-                                        }
-                                    }
+                                    .onTapGesture { focus(participant, replacing: focused == nil) }
+                                    .accessibilityAction { focus(participant, replacing: focused == nil) }
                                     .accessibilityAddTraits(.isButton)
-                                    .position(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+                                    .opacity(hidden ? 0 : 1)
+                                    .accessibilityHidden(hidden)
+                                    .allowsHitTesting(!hidden && !expanded)
+                                    .position(x: expanded ? width / 2 : frame.x + frame.width / 2,
+                                              y: expanded ? height / 2 : frame.y + frame.height / 2)
+                                    .zIndex(expanded ? 1 : 0)
                             }
                             ForEach(Array(call.waiting.enumerated()), id: \.element.id) { index, person in
                                 let frame = layout.frames[call.participants.count + index]
                                 WaitingPersonCard(person: person, account: account, side: min(frame.width, frame.height), tileSize: CGSize(width: frame.width, height: frame.height))
+                                    .opacity(focused == nil ? 1 : 0)
+                                    .accessibilityHidden(focused != nil)
+                                    .allowsHitTesting(focused == nil)
                                     .position(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
                             }
-                        }.frame(width: geometry.size.width, height: layout.canvasHeight)
-                    }.scrollDisabled(!layout.needsScroll).scrollIndicators(.hidden).accessibilityIdentifier("call.video-grid")
+                        }
+                        .frame(width: width, height: focused == nil ? layout.canvasHeight : height)
+                        .id("participants")
+                    }
+                    .scrollDisabled(focused != nil || !layout.needsScroll)
+                    .scrollIndicators(.hidden)
+                    .accessibilityIdentifier("call.video-grid")
+                    if let focused {
+                        Button {
+                            withAnimation(transition) { focusedID = nil; secondaryID = nil }
+                        } label: {
+                            Image(systemName: "arrow.down.right.and.arrow.up.left").font(.system(size: 18, weight: .semibold))
+                                .frame(width: 44, height: 44).background(Brand.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 13))
+                        }
+                        .padding(10)
+                        .buttonStyle(CompactControlStyle())
+                        .accessibilityLabel("Вернуться к участникам")
+                        .accessibilityIdentifier("call.return-grid")
+                        if let mini = miniParticipant(focused: focused), call.video(participantID: mini.id) != nil || call.video(participantID: mini.id, source: "screen") != nil || call.cameraOn {
+                            FloatingCallPreview(participant: mini, account: account, mirrorSelf: mirrorSelf, bounds: bounds) {
+                                withAnimation(transition) { secondaryID = focused.id; focusedID = mini.id }
+                            }.transition(.opacity)
+                        }
+                    }
                 }
-            }.frame(width: geometry.size.width, height: geometry.size.height)
-                .onChange(of: call.participants.map(\.id)) { _, ids in
-                    if let focusedID, !ids.contains(focusedID) { withAnimation(transition) { self.focusedID = nil; secondaryID = nil } }
+                .frame(width: width, height: height)
+                .clipped()
+                .onChange(of: focusedID) { _, value in
+                    if value != nil { scroll.scrollTo("participants", anchor: .top) }
                 }
+            }
+            .animation(transition, value: call.participants.map(\.id))
+            .animation(transition, value: call.waiting.map(\.id))
+            .onChange(of: call.participants.map(\.id)) { _, ids in
+                if let focusedID, !ids.contains(focusedID) { withAnimation(transition) { self.focusedID = nil; secondaryID = nil } }
+            }
+        }
+    }
+    private func focus(_ participant: RoomParticipant, replacing: Bool) {
+        guard replacing else { return }
+        let call = account.calls
+        withAnimation(transition) {
+            focusedID = participant.id
+            secondaryID = participant.id == call.selfID ? call.participants.first(where: { $0.id != call.selfID })?.id : call.selfID
         }
     }
     private func miniParticipant(focused: RoomParticipant) -> RoomParticipant? {
@@ -109,8 +140,8 @@ private struct FloatingCallPreview: View {
     @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
-        let base = min(140, bounds.width * 0.38)
-        let maximum = max(64, min(240, min(bounds.width * 0.7, (bounds.height - 24) / 0.75)))
+        let maximum = max(1, min(240, bounds.width - 24, (bounds.height - 24) / 0.75))
+        let base = max(1, min(maximum, bounds.width > 650 ? 164 : 140, bounds.width * 0.38))
         let width = min(maximum, max(min(96, maximum), base * scale * pinch))
         let height = width * 0.75
         let origin = CGPoint(x: bounds.width - width / 2 - 12, y: height / 2 + 12)

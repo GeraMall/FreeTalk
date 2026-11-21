@@ -213,6 +213,13 @@ public actor AccountClient {
         }
     }
 
+    public func deleteAccount(password: String) async throws {
+        let _: EmptyResponse = try await request("v1/me", method: "DELETE",
+            body: ["password": password, "confirmation": "УДАЛИТЬ"])
+        // The server has already revoked the account's sessions after success.
+        try? clear()
+    }
+
     public func chats() async throws -> [Chat] {
         let response: ChatsResponse = try await request("v1/chats")
         return response.chats

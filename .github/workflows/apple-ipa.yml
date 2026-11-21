@@ -2,7 +2,7 @@ name: iPhone IPA preview
 
 on:
   push:
-    branches: [feat/apple-native]
+    branches: [feat/apple-native, preview/mobile-store-readiness-231]
     paths:
       - '.github/workflows/apple-ipa.yml'
       - 'apps/apple/script/build_ipa.sh'
@@ -10,6 +10,7 @@ on:
       - 'apps/apple/project.yml'
       - 'apps/apple/Configuration/Info.plist'
       - 'apps/apple/Configuration/iOS-Info.plist'
+      - 'apps/apple/Configuration/PrivacyInfo.xcprivacy'
       - 'apps/apple/App/**'
       - 'apps/apple/Packages/**'
   workflow_dispatch:
@@ -31,7 +32,10 @@ jobs:
           version: 11.19.0
       - run: brew install xcodegen
       - name: Build and verify unsigned release IPA for iPhone and iPad
-        run: bash apps/apple/script/build_ipa.sh
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          bash apps/apple/script/build_ipa.sh
       - uses: actions/upload-artifact@v4
         with:
           name: TRLKA-iPhone-IPA

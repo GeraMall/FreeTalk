@@ -49,7 +49,7 @@ final class CallController {
     private var audio: RTCAudioTrack?
     private var cameraSource: RTCVideoSource?
     private var capturer: RTCCameraVideoCapturer?
-    private var cameraDevice: AVCaptureDevice?
+    private var cameraRelease: Task<Void, Never>?
     private var peers: [String: MediaPeer] = [:]
     private var ice: [RTCIceServer] = [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"])]
     private var generation = 0
@@ -429,43 +429,84 @@ final class CallController {
         guard active, !cameraBusy, let factory else { return }
         cameraBusy = true
         defer { cameraBusy = false }
-        if cameraOn { stopCamera(); return }
+        if cameraOn {
+            stopCamera()
+            await cameraRelease?.value
+            return
+        }
         cameraGeneration += 1
         let expected = cameraGeneration
-        guard await AVCaptureDevice.requestAccess(for: .video) else { error = "Разрешите доступ к камере в настройках TRLKA."; return }
-        guard active && expected == cameraGeneration else { return }
+        await cameraRelease?.value
+        cameraRelease = nil
+        guard active, expected == cameraGeneration else { return }
+        let authorized = await AVCaptureDevice.requestAccess(for: .video)
+        guard active, expected == cameraGeneration else { return }
+        guard authorized else { error = "Разрешите доступ к камере в настройках TRLKA."; return }
         let source = factory.videoSource()
         let capture = RTCCameraVideoCapturer(delegate: source)
-        guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == .front }) ?? RTCCameraVideoCapturer.captureDevices().first else { error = "Камера недоступна"; return }
+        let devices = RTCCameraVideoCapturer.captureDevices()
+        guard let device = devices.first(where: { $0.position == .front }) ?? devices.first else { error = "Камера недоступна"; return }
         let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        #if os(iOS)
+        let profiles = formats.map { format in
+            let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return CameraCaptureProfile.Format(width: Int(dimensions.width), height: Int(dimensions.height),
+                frameRates: format.videoSupportedFrameRateRanges.map { $0.minFrameRate...$0.maxFrameRate })
+        }
+        guard let profile = CameraCaptureProfile.choose(profiles) else { error = "Формат камеры недоступен"; return }
+        let format = formats[profile.index]
+        let fps = profile.fps
+        #else
         guard let format = formats.min(by: { abs(Int(CMVideoFormatDescriptionGetDimensions($0.formatDescription).width) - 640) < abs(Int(CMVideoFormatDescriptionGetDimensions($1.formatDescription).width) - 640) }) else { error = "Формат камеры недоступен"; return }
         let fps = min(24, Int(format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 24))
+        #endif
+        let track = factory.videoTrack(with: source, trackId: "camera-\(UUID().uuidString.lowercased())")
         do {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 capture.startCapture(with: device, format: format, fps: fps) { error in
                     if let error { continuation.resume(throwing: error) } else { continuation.resume() }
                 }
             }
-            guard active && expected == cameraGeneration else { capture.stopCapture {}; return }
+            guard active, expected == cameraGeneration else {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    capture.stopCapture { continuation.resume() }
+                }
+                return
+            }
             for output in capture.captureSession.outputs {
                 for connection in output.connections where connection.isVideoMirroringSupported {
                     connection.automaticallyAdjustsVideoMirroring = false
                     connection.isVideoMirrored = false
                 }
             }
-            cameraSource = source; capturer = capture; cameraDevice = device
-            localVideo = factory.videoTrack(with: source, trackId: "camera-\(UUID().uuidString.lowercased())")
+            cameraSource = source; capturer = capture
+            localVideo = track
             cameraOn = true
-            peers.values.forEach { $0.setCamera(localVideo) }; revision += 1
-        } catch { self.error = error.localizedDescription }
+            peers.values.forEach { $0.setCamera(track) }; revision += 1
+        } catch {
+            guard active, expected == cameraGeneration else { return }
+            self.error = error.localizedDescription
+        }
     }
-    private func stopCamera() {
+    func stopCamera() {
         #if DEBUG
         previewFrames?.cancel(); previewFrames = nil
         #endif
-        cameraGeneration += 1; cameraOn = false
+        cameraGeneration += 1
+        guard cameraOn || localVideo != nil || capturer != nil else { return }
+        cameraOn = false
         peers.values.forEach { $0.setCamera(nil) }
-        capturer?.stopCapture {}; capturer = nil; cameraSource = nil; localVideo = nil; cameraDevice = nil; revision += 1
+        if let capture = capturer {
+            let source = cameraSource
+            cameraRelease = Task {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    capture.stopCapture {
+                        withExtendedLifetime(source) { continuation.resume() }
+                    }
+                }
+            }
+        }
+        capturer = nil; cameraSource = nil; localVideo = nil; revision += 1
     }
 
     #if os(iOS)
