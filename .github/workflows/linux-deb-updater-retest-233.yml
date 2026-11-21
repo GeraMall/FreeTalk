@@ -1,0 +1,123 @@
+name: Verify and sign the exact Linux updater candidate
+
+on:
+  push:
+    branches: [preview/linux-deb-updater-retest-233]
+    paths: ['.github/workflows/linux-deb-updater-retest-233.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upgrade-deb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44951194888
+          name: trlka-linux-updater-candidate
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44951194888
+          name: trlka-linux-updater-test-fixtures
+          path: fixtures
+      - name: Install the exact old Debian package and inspect permissions
+        run: |
+          deb=$(realpath fixtures/old/*.deb)
+          dpkg-deb --contents "$deb" | grep -E 'resources/(install-update|linux-updater-key.txt|LICENSE)$'
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-x11 openbox xauth xdotool xvfb "$deb"
+          cmp LICENSE /opt/Trlka/resources/LICENSE
+          stat -c '%u:%a %n' /opt/Trlka/resources/{install-update,linux-updater-key.txt}
+          test "$(stat -c '%u:%a' /opt/Trlka/resources/install-update)" = 0:755
+          test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater-key.txt)" = 0:644
+      - name: Set up the narrowly scoped CI-only authorization action
+        run: |
+          cat > "$RUNNER_TEMP/trlka-install-test.policy" <<'POLICY'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+            "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+          <policyconfig>
+            <action id="io.freetalk.desktop.install-update-ci">
+              <description>Install the verified TRLKA update in this CI task</description>
+              <message>Install the verified TRLKA update in this CI task</message>
+              <defaults>
+                <allow_any>yes</allow_any>
+                <allow_inactive>yes</allow_inactive>
+                <allow_active>yes</allow_active>
+              </defaults>
+              <annotate key="org.freedesktop.policykit.exec.path">/opt/Trlka/resources/install-update</annotate>
+            </action>
+          </policyconfig>
+          POLICY
+          sudo install -m 644 "$RUNNER_TEMP/trlka-install-test.policy" \
+            /usr/share/polkit-1/actions/io.freetalk.desktop.install-update-ci.policy
+          sudo systemctl restart polkit || echo "Polkit service restart unavailable"
+          pkaction --verbose --action-id io.freetalk.desktop.install-update-ci ||
+            echo "CI Polkit action not detected; the update smoke will report its actual install path."
+      - name: Verify the signed offline Debian update end to end
+        run: |
+          next=$(realpath candidate/*.deb)
+          mkdir -p updater-report
+          launcher="$RUNNER_TEMP/trlka-update-smoke.sh"
+          cat > "$launcher" <<'BASH'
+          set -euo pipefail
+          openbox > "$PWD/updater-report/openbox.log" 2>&1 &
+          wm=$!
+          trap 'kill "$wm" 2>/dev/null || true' EXIT
+          timeout --signal=TERM --kill-after=10s 7m "$@"
+          BASH
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 \
+              xvfb-run -a -s "-screen 0 1600x1000x24 -noreset" dbus-run-session -- \
+              bash "$2" "$3" "$4/scripts/linux/verify-in-app-update.mjs" deb \
+                /opt/Trlka/trlka "$5" "$4/fixtures/cases" "$4/updater-report"
+          ' bash "$(id -un)" "$launcher" "$(command -v node)" "$PWD" "$next"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trlka-linux-updater-deb-retest-report
+          path: updater-report/
+          if-no-files-found: ignore
+
+  signed-stage:
+    needs: upgrade-deb
+    if: github.repository == 'GeraMall/FreeTalk' && github.ref == 'refs/heads/preview/linux-deb-updater-retest-233'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44951194888
+          name: trlka-linux-updater-candidate
+          path: signed-linux
+      - name: Sign and verify the exact packages and Linux feed
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: |
+          version=$(node -p 'require("./apps/linux-desktop/package.json").version')
+          node scripts/linux/create-update-feed.mjs \
+            --assets signed-linux --output signed-linux --version "$version"
+          (cd signed-linux; sha256sum ./*.deb ./*.AppImage ./*.sig latest.json > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-update-signed
+          path: signed-linux/
+          if-no-files-found: error
