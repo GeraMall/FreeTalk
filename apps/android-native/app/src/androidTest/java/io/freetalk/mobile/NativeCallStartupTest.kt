@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.ConcurrentHashMap
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import okhttp3.Request
 import okhttp3.WebSocket
 import okio.ByteString
@@ -85,7 +86,12 @@ class NativeCallStartupTest {
                 NativeSettingsStore.save(context, JSONObject().put("transmissionMode", "push-to-talk").put("echoCancellation", false).put("noiseSuppression", false))
                 pair.forEach { it.applySettings(); it.changeMuted(false) }
             }
-            Thread.sleep(1500)
+            // Require sustained capture from each engine without assuming the emulator's callback rate.
+            val captureDeadline = SystemClock.elapsedRealtime() + 10_000L
+            while (SystemClock.elapsedRealtime() < captureDeadline &&
+                pair.indices.any { pair[it].microphoneFrames <= before[it] + 20 }) {
+                Thread.sleep(100L)
+            }
             pair.forEachIndexed { index, engine -> assertTrue("Capture stopped behind PTT: index=$index before=${before[index]} after=${engine.microphoneFrames} muted=${engine.muted} error=${engine.error}", engine.microphoneFrames > before[index] + 20) }
             instrumentation.runOnMainSync {
                 NativeSettingsStore.save(context, JSONObject().put("transmissionMode", "voice-activation").put("echoCancellation", true).put("noiseSuppression", true))
