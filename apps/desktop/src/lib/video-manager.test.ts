@@ -17,15 +17,18 @@ vi.mock('./macos-screen-audio', () => ({
   stopNativeMacScreenAudio: vi.fn(async () => undefined),
 }));
 
-class FakeTrack {
+class FakeTrack extends EventTarget {
   id = crypto.randomUUID();
   contentHint = '';
   onended: (() => void) | null = null;
   stop = vi.fn();
+  applyConstraints = vi.fn(async () => undefined);
   getSettings() {
     return { width: 1920, height: 1080, frameRate: 60, deviceId: 'camera-1' };
   }
-  constructor(public readonly kind: 'audio' | 'video' = 'video') {}
+  constructor(public readonly kind: 'audio' | 'video' = 'video') {
+    super();
+  }
 }
 
 class FakeStream {
@@ -45,6 +48,23 @@ class FakeStream {
   addTrack(track: FakeTrack) {
     this.tracks.push(track);
   }
+}
+
+function mockMacScreenPlayback() {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15',
+  );
+  return vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+}
+
+function deliverMacScreenFrame(video: HTMLVideoElement) {
+  Object.defineProperties(video, {
+    readyState: { value: video.HAVE_CURRENT_DATA },
+    videoWidth: { value: 2560 },
+    videoHeight: { value: 1440 },
+  });
+  video.dispatchEvent(new Event('loadeddata'));
 }
 
 describe('VideoManager', () => {
@@ -356,6 +376,89 @@ describe('VideoManager', () => {
       expect.objectContaining({ audio: true, systemAudio: 'include' }),
     );
     userAgent.mockRestore();
+  });
+
+  it('waits for Mac video data, releases the source before unpublishing, and can share again', async () => {
+    const play = mockMacScreenPlayback();
+    try {
+      const publish = vi.fn(async (track: MediaStreamTrack | null, source: string) => {
+        if (!track && source === 'screen') expect(screenTracks[0]!.stop).toHaveBeenCalledOnce();
+      });
+      const manager = new VideoManager(publish, vi.fn());
+      await manager.toggleCamera();
+      const starting = manager.toggleScreen(false);
+      await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+      expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ video: true, audio: false }),
+      );
+      expect(publish).toHaveBeenCalledOnce();
+      expect(screenTracks[0]!.applyConstraints).not.toHaveBeenCalled();
+      const firstVideo = play.mock.instances[0] as HTMLVideoElement;
+      deliverMacScreenFrame(firstVideo);
+      await starting;
+      expect(screenTracks[0]!.applyConstraints).toHaveBeenCalledOnce();
+      expect(firstVideo.srcObject).toBeNull();
+      expect(manager.getTracks().screen).toBe(screenTracks[0]);
+
+      await manager.toggleScreen(false);
+      expect(manager.getCurrent().source).toBe('camera');
+      const restarting = manager.toggleScreen(false);
+      await vi.waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+      deliverMacScreenFrame(play.mock.instances[1] as HTMLVideoElement);
+      await restarting;
+      expect(manager.getTracks().screen).toBe(screenTracks[1]);
+      expect(cameraTracks[0]!.stop).not.toHaveBeenCalled();
+      manager.dispose();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('releases a Mac capture that delivers no video data so a later attempt can start', async () => {
+    vi.useFakeTimers();
+    const play = mockMacScreenPlayback();
+    try {
+      const publish = vi.fn(async () => undefined);
+      const manager = new VideoManager(publish, vi.fn());
+      const failed = expect(manager.toggleScreen(true)).rejects.toThrow(
+        'Не удалось получить изображение',
+      );
+      await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+      await vi.advanceTimersByTimeAsync(5000);
+      await failed;
+      expect((play.mock.instances[0] as HTMLVideoElement).srcObject).toBeNull();
+      expect(screenTracks[0]!.stop).toHaveBeenCalledOnce();
+      expect(screenAudioTracks[0]!.stop).toHaveBeenCalledOnce();
+      expect(publish).not.toHaveBeenCalled();
+
+      const restarting = manager.toggleScreen(true);
+      await vi.waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+      deliverMacScreenFrame(play.mock.instances[1] as HTMLVideoElement);
+      await restarting;
+      expect(manager.getTracks().screen).toBe(screenTracks[1]);
+      manager.dispose();
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('aborts a pending Mac video probe immediately when the caller leaves', async () => {
+    const play = mockMacScreenPlayback();
+    try {
+      const publish = vi.fn(async () => undefined);
+      const manager = new VideoManager(publish, vi.fn());
+      const starting = manager.toggleScreen(true);
+      await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+      manager.dispose();
+      await starting;
+      expect((play.mock.instances[0] as HTMLVideoElement).srcObject).toBeNull();
+      expect(screenTracks[0]!.stop).toHaveBeenCalledOnce();
+      expect(screenAudioTracks[0]!.stop).toHaveBeenCalledOnce();
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('falls back to native ScreenCaptureKit audio when macOS WebKit returns video only', async () => {

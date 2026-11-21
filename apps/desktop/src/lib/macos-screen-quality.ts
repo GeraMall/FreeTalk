@@ -2,6 +2,56 @@ import { connectionDiagnostics } from './connection-diagnostics';
 import { screenResolutionSize, type VideoPreferences } from './video-quality';
 import { usesMacDesktop } from './window-chrome';
 
+const FIRST_FRAME_TIMEOUT_MS = 5000;
+
+type MacScreenFrame =
+  | { status: 'frame'; width: number; height: number }
+  | { status: 'timeout' | 'ended' | 'playback-error' | 'aborted' };
+
+export function waitForMacScreenFrame(track: MediaStreamTrack, signal: AbortSignal) {
+  return new Promise<MacScreenFrame>((resolve) => {
+    if (signal.aborted || track.readyState === 'ended') {
+      resolve({ status: signal.aborted ? 'aborted' : 'ended' });
+      return;
+    }
+
+    // Track dimensions can exist before the source delivers any video data.
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    const finish = (result: MacScreenFrame) => {
+      clearTimeout(timeout);
+      video.removeEventListener('loadeddata', readFrame);
+      video.removeEventListener('error', onError);
+      track.removeEventListener('ended', onEnded);
+      signal.removeEventListener('abort', onAbort);
+      video.srcObject = null;
+      resolve(result);
+    };
+    const readFrame = () => {
+      if (video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight)
+        finish({ status: 'frame', width: video.videoWidth, height: video.videoHeight });
+    };
+    const onError = () => finish({ status: 'playback-error' });
+    const onEnded = () => finish({ status: 'ended' });
+    const onAbort = () => finish({ status: 'aborted' });
+    const timeout = setTimeout(() => finish({ status: 'timeout' }), FIRST_FRAME_TIMEOUT_MS);
+    video.addEventListener('loadeddata', readFrame);
+    video.addEventListener('error', onError);
+    track.addEventListener('ended', onEnded);
+    signal.addEventListener('abort', onAbort);
+    video.srcObject = new MediaStream([track]);
+    void video.play().then(
+      () => {
+        if (video.srcObject) readFrame();
+      },
+      () => {
+        if (video.srcObject) onError();
+      },
+    );
+  });
+}
+
 const positive = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 32768
     ? value

@@ -51,6 +51,24 @@ describe('Mac source capture quality', () => {
       macScreenCaptureTarget(preferences, {}, { width: { max: 2560 }, height: { max: 1600 } }),
     ).toEqual({ width: 1728, height: 1080, frameRate: 30 });
   });
+  it.each([
+    { sourceWidth: 2560, sourceHeight: 1440, outputWidth: 2560 },
+    { sourceWidth: 2560, sourceHeight: 1600, outputWidth: 2304 },
+  ])(
+    'fits $sourceWidth×$sourceHeight within the 2K preset',
+    ({ sourceWidth, sourceHeight, outputWidth }) => {
+      expect(
+        macScreenCaptureTarget(
+          { ...preferences, screenResolution: '1440p' },
+          {},
+          {
+            width: { max: sourceWidth },
+            height: { max: sourceHeight },
+          },
+        ),
+      ).toEqual({ width: outputWidth, height: 1440, frameRate: 30 });
+    },
+  );
   it('does not upscale a genuinely small selected window or force 30 FPS over a manual choice', () => {
     expect(
       macScreenCaptureTarget(

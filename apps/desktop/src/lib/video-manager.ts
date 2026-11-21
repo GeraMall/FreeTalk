@@ -1,5 +1,6 @@
 import { connectionDiagnostics } from './connection-diagnostics';
-import { configureMacScreenCapture } from './macos-screen-quality';
+import { configureMacScreenCapture, waitForMacScreenFrame } from './macos-screen-quality';
+import { usesMacDesktop } from './window-chrome';
 import {
   defaultVideoPreferences,
   normalizeVideoPreferences,
@@ -60,6 +61,7 @@ export class VideoManager {
   private screenStream?: MediaStream;
   private nativeScreenAudio = false;
   private nativeWindowsScreen?: NativeScreenCapture;
+  private pendingMacScreen?: { stream: MediaStream; controller: AbortController };
   private operationQueue = Promise.resolve();
   private disposed = false;
   private preferences: VideoPreferences;
@@ -122,6 +124,11 @@ export class VideoManager {
 
   dispose() {
     this.disposed = true;
+    if (this.pendingMacScreen) {
+      this.pendingMacScreen.controller.abort();
+      this.stopStream(this.pendingMacScreen.stream);
+      this.pendingMacScreen = undefined;
+    }
     cancelNativeScreenSelection();
     void this.nativeWindowsScreen?.stop();
     this.nativeWindowsScreen = undefined;
@@ -265,6 +272,7 @@ export class VideoManager {
     if (this.disposed) return;
     connectionDiagnostics.record('screen-capture:start');
     const macOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+    const macDesktop = usesMacDesktop();
     let stream: MediaStream;
     try {
       if (usesNativeWindowsCapture()) {
@@ -292,7 +300,7 @@ export class VideoManager {
                   restrictOwnAudio: true,
                 }
             : false,
-          video: screenCaptureConstraints(this.preferences),
+          video: macDesktop ? true : screenCaptureConstraints(this.preferences),
           selfBrowserSurface: 'exclude',
           systemAudio: includeAudio ? 'include' : 'exclude',
           windowAudio: includeAudio ? 'window' : 'exclude',
@@ -322,10 +330,26 @@ export class VideoManager {
         stream.removeTrack(item);
       });
     }
-    await configureMacScreenCapture(track, this.preferences);
-    if (this.disposed) {
-      stream.getTracks().forEach((item) => item.stop());
-      return;
+    if (macDesktop) {
+      const controller = new AbortController();
+      this.pendingMacScreen = { stream, controller };
+      let ready = false;
+      try {
+        // WebKit can report placeholder dimensions until the first captured frame.
+        const frame = await waitForMacScreenFrame(track, controller.signal);
+        if (controller.signal.aborted) return;
+        connectionDiagnostics.record('screen-capture:first-frame', undefined, frame);
+        if (frame.status !== 'frame')
+          throw new Error('Не удалось получить изображение. Выберите экран или окно ещё раз.');
+        await configureMacScreenCapture(track, this.preferences);
+        if (controller.signal.aborted) return;
+        if (track.readyState === 'ended')
+          throw new Error('Захват экрана завершился. Выберите экран или окно ещё раз.');
+        ready = true;
+      } finally {
+        if (!ready && !controller.signal.aborted) this.stopStream(stream);
+        this.pendingMacScreen = undefined;
+      }
     }
     this.screenTrack = track;
     this.screenStream = stream;
@@ -338,6 +362,11 @@ export class VideoManager {
     if (includeAudio && macOS && !audioTrack) {
       try {
         audioTrack = await startNativeMacScreenAudio();
+        if (macDesktop && this.disposed) {
+          audioTrack.stop();
+          await stopNativeMacScreenAudio();
+          return;
+        }
         stream.addTrack(audioTrack);
         this.nativeScreenAudio = true;
       } catch (error) {
@@ -346,6 +375,7 @@ export class VideoManager {
         });
       }
     }
+    if (macDesktop && this.disposed) return;
     if (audioTrack) audioTrack.contentHint = 'music';
     track.onended = () => {
       void this.enqueue(() => this.finishScreen(track, false));
@@ -387,12 +417,20 @@ export class VideoManager {
     this.screenStream = undefined;
     this.nativeScreenAudio = false;
     track.onended = null;
+    const stopTracks = () => {
+      if (stopTrack) this.stopStream(stream);
+      else stream?.getAudioTracks().forEach((item) => item.stop());
+    };
+    const macDesktop = usesMacDesktop();
+    if (macDesktop) {
+      if (stream) stream.onremovetrack = null;
+      stopTracks();
+    }
     try {
       await this.publish(null, 'screen');
     } finally {
       await nativeWindowsScreen?.stop();
-      if (stopTrack) this.stopStream(stream);
-      else stream?.getAudioTracks().forEach((item) => item.stop());
+      if (!macDesktop) stopTracks();
       if (nativeScreenAudio) await stopNativeMacScreenAudio();
       this.emitState();
     }
