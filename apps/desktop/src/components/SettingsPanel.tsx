@@ -2005,6 +2005,7 @@ function AboutTab({
   const [autostartBusy, setAutostartBusy] = useState(true);
   const [autostartError, setAutostartError] = useState('');
   const supported = autostartSupported();
+  const linuxUpdates = Boolean(window.trlkaLinuxDesktop?.updates);
   useEffect(() => {
     let disposed = false;
     void getAutostartEnabled()
@@ -2110,16 +2111,22 @@ function AboutTab({
       </div>
       <div className="about-autostart">
         <Toggle
-          label={t('Автоматически обновлять Trlka')}
+          label={t(
+            linuxUpdates
+              ? 'Автоматически проверять обновления Trlka'
+              : 'Автоматически обновлять Trlka',
+          )}
           description={
-            supported
-              ? t(
-                  'Проверять и устанавливать обновления автоматически, когда нет звонка или записи.',
-                )
-              : t('Настройка доступна в установленной версии Trlka.')
+            linuxUpdates
+              ? t('Сообщать о новых версиях. Установка начинается после нажатия «Обновить».')
+              : supported
+                ? t(
+                    'Проверять и устанавливать обновления автоматически, когда нет звонка или записи.',
+                  )
+                : t('Настройка доступна в установленной версии Trlka.')
           }
           checked={settings.autoUpdate}
-          disabled={!supported}
+          disabled={!supported && !linuxUpdates}
           onChange={(enabled) => onSetting({ autoUpdate: enabled }, false)}
         />
       </div>

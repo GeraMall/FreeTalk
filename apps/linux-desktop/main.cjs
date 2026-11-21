@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { registerDesktopBridge } = require('./desktop-bridge.cjs');
+const { registerLinuxUpdater } = require('./linux-updater.cjs');
 
 const appUrl = 'tauri://localhost/index.html';
 const frontend = path.join(__dirname, 'frontend');
@@ -330,10 +331,10 @@ if (app.commandLine.hasSwitch('no-sandbox')) {
         pendingRoomInvite = null;
         return invite;
       });
-      registerDesktopBridge(
-        (event) =>
-          event.sender === mainWindow?.webContents && isTrustedMainFrame(event.senderFrame),
-      );
+      const trustedIpc = (event) =>
+        event.sender === mainWindow?.webContents && isTrustedMainFrame(event.senderFrame);
+      registerDesktopBridge(trustedIpc);
+      registerLinuxUpdater({ app, ipcMain, isTrusted: trustedIpc });
       await openMainWindow();
     })
     .catch((error) => {

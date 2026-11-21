@@ -1,0 +1,188 @@
+name: Stage and verify Linux updates
+
+on:
+  push:
+    branches: [preview/linux-updater-233]
+    paths:
+      - '.github/workflows/linux-updater-233.yml'
+      - 'apps/linux-desktop/**'
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'scripts/linux/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-updater-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: linux-updater-ubuntu22-x64-${{ hashFiles('apps/linux-desktop/package-lock.json') }}
+      - name: Install package tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends file libfuse2 squashfs-tools
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @freetalk/desktop build
+      - run: python3 -I apps/linux-desktop/install-update.test.py -v
+      - name: Build the exact production packages and isolated older clients
+        run: |
+          version=$(node -p 'require("./apps/linux-desktop/package.json").version')
+          bash scripts/linux/build-updater-packages.sh "$PWD/candidate" "$RUNNER_TEMP/trlka-production" "$version"
+          test "$(dpkg-deb -f candidate/*.deb Architecture)" = amd64
+          file candidate/*.AppImage | grep -E 'ELF 64-bit.*x86-64'
+          mkdir -m 700 "$RUNNER_TEMP/trlka-test-key"
+          key="$RUNNER_TEMP/trlka-test-key/private"
+          trap 'rm -f "$key" "$key.pub"' EXIT
+          node apps/desktop/node_modules/@tauri-apps/cli/tauri.js signer generate \
+            --ci --write-keys "$key" >/dev/null
+          bash scripts/linux/build-updater-packages.sh "$PWD/fixtures/old" \
+            "$RUNNER_TEMP/trlka-isolated" 0.4.0-beta.232 "$key.pub"
+          node scripts/linux/create-update-feed.mjs --assets candidate \
+            --output fixtures/cases --version "$version" \
+            --notes 'Offline test release' --fixture-key "$key"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-updater-candidate
+          path: candidate/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-updater-test-fixtures
+          path: fixtures/
+          if-no-files-found: error
+
+  upgrade:
+    needs: package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [deb, appimage]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: trlka-linux-updater-candidate, path: candidate }
+      - uses: actions/download-artifact@v4
+        with: { name: trlka-linux-updater-test-fixtures, path: fixtures }
+      - name: Install test tools and prepare the old package
+        env:
+          PACKAGE_FORMAT: ${{ matrix.format }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus-x11 libfuse2 openbox xauth xdotool xvfb \
+            libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libatspi2.0-0 \
+            libuuid1 libsecret-1-0 libgbm1 libasound2 libcups2
+          if [[ "$PACKAGE_FORMAT" == deb ]]; then
+            sudo apt-get install -y --no-install-recommends "$PWD"/fixtures/old/*.deb
+            cmp LICENSE /opt/Trlka/resources/LICENSE
+            test "$(stat -c '%u:%a' /opt/Trlka/resources/install-update)" = 0:755
+            test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater.pub)" = 0:644
+            cat > "$RUNNER_TEMP/trlka-install-test.policy" <<'POLICY'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+            "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+          <policyconfig>
+            <action id="io.freetalk.desktop.install-update-ci">
+              <description>Install the verified TRLKA update in this CI task</description>
+              <message>Install the verified TRLKA update in this CI task</message>
+              <defaults>
+                <allow_any>yes</allow_any>
+                <allow_inactive>yes</allow_inactive>
+                <allow_active>yes</allow_active>
+              </defaults>
+              <annotate key="org.freedesktop.policykit.exec.path">/opt/Trlka/resources/install-update</annotate>
+            </action>
+          </policyconfig>
+          POLICY
+            sudo install -m 644 "$RUNNER_TEMP/trlka-install-test.policy" \
+              /usr/share/polkit-1/actions/io.freetalk.desktop.install-update-ci.policy
+            sudo systemctl restart polkit
+            pkaction --action-id io.freetalk.desktop.install-update-ci >/dev/null
+          else
+            chmod u+x fixtures/old/*.AppImage candidate/*.AppImage
+          fi
+      - name: Verify the installed client upgrades from a signed offline feed
+        env:
+          PACKAGE_FORMAT: ${{ matrix.format }}
+        run: |
+          if [[ "$PACKAGE_FORMAT" == deb ]]; then
+            old=/opt/Trlka/trlka
+            next=$(realpath candidate/*.deb)
+          else
+            old=$(realpath fixtures/old/*.AppImage)
+            next=$(realpath candidate/*.AppImage)
+          fi
+          mkdir -p updater-report
+          launcher="$RUNNER_TEMP/trlka-update-smoke.sh"
+          cat > "$launcher" <<'BASH'
+          set -euo pipefail
+          openbox > "$PWD/updater-report/openbox.log" 2>&1 &
+          wm=$!
+          trap 'kill "$wm" 2>/dev/null || true' EXIT
+          timeout --signal=TERM --kill-after=10s 7m "$@"
+          BASH
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 APPIMAGE_EXTRACT_AND_RUN=1 \
+              xvfb-run -a -s "-screen 0 1600x1000x24 -noreset" dbus-run-session -- \
+              bash "$2" "$3" "$4/scripts/linux/verify-in-app-update.mjs" "$5" "$6" "$7" \
+                "$4/fixtures/cases" "$4/updater-report"
+          ' bash "$(id -un)" "$launcher" "$(command -v node)" "$PWD" "$PACKAGE_FORMAT" "$old" "$next"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trlka-linux-updater-${{ matrix.format }}-test
+          path: updater-report/
+          if-no-files-found: ignore
+
+  signed-stage:
+    needs: [package, upgrade]
+    if: github.repository == 'GeraMall/FreeTalk' && github.ref == 'refs/heads/preview/linux-updater-233'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with: { name: trlka-linux-updater-candidate, path: signed-linux }
+      - name: Sign and verify both packages and the Linux feed
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: |
+          version=$(node -p 'require("./apps/linux-desktop/package.json").version')
+          node scripts/linux/create-update-feed.mjs \
+            --assets signed-linux --output signed-linux --version "$version"
+          (cd signed-linux; sha256sum ./*.deb ./*.AppImage ./*.sig latest.json > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-update-signed
+          path: signed-linux/
+          if-no-files-found: error

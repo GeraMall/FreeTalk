@@ -1,6 +1,6 @@
 {
   "name": "trlka",
-  "version": "0.4.0-beta.232",
+  "version": "0.4.0-beta.233",
   "description": "TRLKA desktop voice chat, messaging and screen sharing",
   "private": true,
   "license": "MIT",
@@ -36,6 +36,9 @@
       "main.cjs",
       "preload.cjs",
       "desktop-bridge.cjs",
+      "linux-updater.cjs",
+      "linux-updater.pub",
+      "update-config.json",
       "capture-picker.*",
       "app-config.json",
       "app-icon.png",
@@ -70,7 +73,10 @@
         "libsecret-1-0",
         "libgbm1",
         "libasound2 | libasound2t64",
-        "libcups2 | libcups2t64"
+        "libcups2 | libcups2t64",
+        "minisign",
+        "python3",
+        "pkexec | policykit-1"
       ],
       "recommends": [
         "gnome-keyring",

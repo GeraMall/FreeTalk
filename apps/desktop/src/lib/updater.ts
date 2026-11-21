@@ -28,12 +28,17 @@ export async function currentVersion() {
 }
 
 export async function checkForUpdate(): Promise<UpdateStatus> {
-  if (window.trlkaLinuxDesktop) {
-    return { kind: 'unavailable', message: 'Обновления для Linux устанавливаются вручную.' };
-  }
-  if (!isTauri()) return { kind: 'unavailable' };
+  const linux = window.trlkaLinuxDesktop?.updates;
+  if (!linux && !isTauri()) return { kind: 'unavailable' };
   if (installing && downloadStatus) return downloadStatus;
-  checking ??= performUpdateCheck().finally(() => {
+  checking ??= (
+    linux
+      ? linux.check().catch(() => ({
+          kind: 'error' as const,
+          message: 'Не удалось проверить обновления Linux. Можно повторить попытку.',
+        }))
+      : performUpdateCheck()
+  ).finally(() => {
     checking = undefined;
   });
   return checking;
@@ -80,12 +85,48 @@ export async function installPendingUpdate(
       return await installing;
     }
     if (checking) await checking;
-    installing ??= downloadPendingUpdate(canInstall).finally(() => {
+    const linux = window.trlkaLinuxDesktop?.updates;
+    installing ??= (
+      linux ? installLinuxUpdate(linux, canInstall) : downloadPendingUpdate(canInstall)
+    ).finally(() => {
       installing = undefined;
     });
     return await installing;
   } finally {
     progressListeners.delete(onProgress);
+  }
+}
+
+async function installLinuxUpdate(
+  updater: NonNullable<Window['trlkaLinuxDesktop']>['updates'],
+  canInstall: () => boolean,
+): Promise<boolean> {
+  const publish = (status: UpdateStatus) => {
+    downloadStatus = status;
+    for (const listener of progressListeners) listener(status);
+  };
+  const unlisten = updater.onProgress(publish);
+  try {
+    const ready = await updater.prepare();
+    if (!canInstall()) {
+      publish(ready);
+      return false;
+    }
+    await updater.apply();
+    if (!canInstall()) {
+      publish(ready);
+      return false;
+    }
+    await updater.restart();
+    return true;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')
+        : 'Не удалось установить обновление.';
+    throw new Error(message);
+  } finally {
+    unlisten();
   }
 }
 

@@ -619,7 +619,7 @@ export function App() {
           if (disposed) return;
           setUpdateStatus(candidate);
         }
-        if (candidate?.kind === 'available' && !disposed) {
+        if (candidate?.kind === 'available' && !disposed && !window.trlkaLinuxDesktop?.updates) {
           const installed = await installPendingUpdate(
             (status) => {
               candidate = status;

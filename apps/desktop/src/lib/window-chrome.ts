@@ -1,9 +1,18 @@
+import type { UpdateStatus } from './updater';
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
     __FREETALK_CALL_PLACEHOLDER__?: boolean;
     trlkaLinuxDesktop?: {
       version: () => Promise<string>;
+      updates: {
+        check: () => Promise<UpdateStatus>;
+        prepare: () => Promise<Extract<UpdateStatus, { kind: 'available' }>>;
+        apply: () => Promise<void>;
+        restart: () => Promise<void>;
+        onProgress: (onProgress: (status: UpdateStatus) => void) => () => void;
+      };
       session: {
         read: () => Promise<string | null>;
         save: (token: string) => Promise<void>;

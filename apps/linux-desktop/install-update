@@ -1,0 +1,262 @@
+#!/usr/bin/python3 -I
+"""Install a locally staged, signed TRLKA update after PolicyKit authorization."""
+
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+MAX_MANIFEST = 64 * 1024
+MAX_SIGNATURE = 4 * 1024
+MAX_PACKAGE = 400 * 1024 * 1024
+CHUNK_SIZE = 1024 * 1024
+PACKAGE = "trlka"
+ARCHITECTURE = "amd64"
+VERSION_PATTERN = re.compile(
+    r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?"
+)
+CHILD_ENV = {
+    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    "LC_ALL": "C",
+    "DEBIAN_FRONTEND": "noninteractive",
+}
+
+
+class UpdateError(Exception):
+    pass
+
+
+def user_stage(path, uid):
+    components = path.split("/")[1:]
+    if (
+        not path.startswith("/")
+        or len(path) > 4096
+        or not components
+        or any(part in ("", ".", "..") for part in components)
+    ):
+        raise UpdateError("Invalid update directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open("/", flags)
+    try:
+        for component in components:
+            child = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        info = os.fstat(descriptor)
+        if info.st_uid != uid or stat.S_IMODE(info.st_mode) != 0o700:
+            raise UpdateError("Update directory must be private to the invoking user")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def file_state(info):
+    return info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def copy_verified_input(directory, name, destination, uid, limit):
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+    descriptor = os.open(name, flags, dir_fd=directory)
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != uid
+            or info.st_nlink != 1
+            or info.st_mode & 0o022
+            or not 0 < info.st_size <= limit
+        ):
+            raise UpdateError("Invalid staged update file")
+        output = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(output, "wb") as target:
+            while block := os.read(descriptor, CHUNK_SIZE):
+                size += len(block)
+                if size > limit:
+                    raise UpdateError("Staged update file exceeds its allowed size")
+                digest.update(block)
+                target.write(block)
+        if size != info.st_size or file_state(info) != file_state(os.fstat(descriptor)):
+            raise UpdateError("Staged update file changed while being copied")
+    finally:
+        os.close(descriptor)
+    os.replace(temporary, destination)
+    return size, digest.hexdigest()
+
+
+def trusted_key():
+    directory = Path(__file__).absolute().parent
+    location = directory / "linux-updater.pub"
+    for candidate in (location, *location.parents):
+        info = candidate.lstat()
+        expected = stat.S_ISREG(info.st_mode) if candidate == location else stat.S_ISDIR(info.st_mode)
+        if not expected or info.st_uid != 0 or info.st_mode & 0o022:
+            raise UpdateError("Untrusted update signing key location")
+    if not 0 < location.stat().st_size <= MAX_SIGNATURE:
+        raise UpdateError("Invalid update signing key")
+    return str(location)
+
+
+def unique_fields(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise UpdateError("Duplicate field in signed update manifest")
+        result[key] = value
+    return result
+
+
+def update_metadata(payload):
+    metadata = json.loads(payload.decode("utf-8"), object_pairs_hook=unique_fields)
+    if (
+        not isinstance(metadata, dict)
+        or type(metadata.get("schema")) is not int
+        or metadata["schema"] != 1
+    ):
+        raise UpdateError("Unsupported update manifest schema")
+    version = metadata.get("version")
+    if (
+        not isinstance(version, str)
+        or len(version) > 64
+        or not VERSION_PATTERN.fullmatch(version)
+    ):
+        raise UpdateError("Invalid signed update version")
+    platforms = metadata.get("platforms")
+    deb = platforms.get("deb") if isinstance(platforms, dict) else None
+    if not isinstance(deb, dict):
+        raise UpdateError("No Debian package in signed update manifest")
+    size = deb.get("size")
+    sha256 = deb.get("sha256")
+    if type(size) is not int or not 0 < size <= MAX_PACKAGE:
+        raise UpdateError("Invalid signed update package size")
+    if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise UpdateError("Invalid signed update package hash")
+    return version.replace("-beta.", "~beta."), size, sha256
+
+
+def command(arguments, *, capture=True):
+    return subprocess.run(
+        arguments,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=capture,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=CHILD_ENV,
+        cwd="/",
+        timeout=30 if capture else None,
+    )
+
+
+def installed_version():
+    query = command([
+        "/usr/bin/dpkg-query", "-W", "-f=${Status}\n${Version}\n${Architecture}\n", PACKAGE,
+    ])
+    parts = query.stdout.splitlines()
+    if (
+        query.returncode
+        or len(parts) != 3
+        or parts[0] != "install ok installed"
+        or parts[2] != ARCHITECTURE
+    ):
+        raise UpdateError("TRLKA must be installed for amd64 and not on hold")
+    return parts[1]
+
+
+def validate_package(package, version):
+    fields = command([
+        "/usr/bin/dpkg-deb", "--field", str(package), "Package", "Architecture", "Version",
+    ])
+    actual = dict(line.split(": ", 1) for line in fields.stdout.splitlines() if ": " in line)
+    if fields.returncode or actual != {
+        "Package": PACKAGE, "Architecture": ARCHITECTURE, "Version": version,
+    }:
+        raise UpdateError("Debian package does not match the signed TRLKA release")
+    comparison = command(["/usr/bin/dpkg", "--compare-versions", installed_version(), "lt", version])
+    if comparison.returncode:
+        raise UpdateError("The signed TRLKA package is not newer than the installed release")
+
+
+def apt_install_arguments(package):
+    return [
+        "/usr/bin/apt-get",
+        "--assume-yes",
+        "--no-remove",
+        "--no-install-recommends",
+        "-o", "APT::Get::AllowUnauthenticated=false",
+        "-o", "Acquire::AllowInsecureRepositories=false",
+        "-o", "APT::Get::allow-downgrades=false",
+        "-o", "APT::Get::allow-change-held-packages=false",
+        "-o", "DPkg::Lock::Timeout=30",
+        "-o", "Dpkg::Options::=--force-confold",
+        "install", str(package),
+    ]
+
+
+def install(path, uid):
+    public_key = trusted_key()
+    directory = user_stage(path, uid)
+    try:
+        with tempfile.TemporaryDirectory(prefix="trlka-update-", dir="/var/tmp") as temporary:
+            root = Path(temporary)
+            manifest = root / "manifest.json"
+            signature = root / "manifest.json.minisig"
+            package = root / "package.deb"
+            copy_verified_input(directory, manifest.name, manifest, uid, MAX_MANIFEST)
+            copy_verified_input(directory, signature.name, signature, uid, MAX_SIGNATURE)
+            verification = command([
+                "/usr/bin/minisign", "-V", "-q", "-p", public_key,
+                "-x", str(signature), "-m", str(manifest),
+            ])
+            if verification.returncode:
+                raise UpdateError("Update manifest signature is invalid")
+            version, expected_size, expected_hash = update_metadata(manifest.read_bytes())
+            size, digest = copy_verified_input(directory, package.name, package, uid, expected_size)
+            if (size, digest) != (expected_size, expected_hash):
+                raise UpdateError("Debian package failed integrity verification")
+            validate_package(package, version)
+
+            # Let APT's unprivileged _apt worker read the authenticated package.
+            # The package and its directory stay root-owned and non-writable to other users.
+            package.chmod(0o644)
+            root.chmod(0o755)
+            if command(apt_install_arguments(package), capture=False).returncode:
+                raise UpdateError("APT could not install the verified TRLKA update")
+            if installed_version() != version:
+                raise UpdateError("APT did not install the selected TRLKA version")
+    finally:
+        os.close(directory)
+
+
+def main():
+    try:
+        invoking_uid = os.environ.get("PKEXEC_UID", "")
+        if (
+            len(sys.argv) != 2
+            or os.geteuid() != 0
+            or not re.fullmatch(r"[1-9][0-9]{0,9}", invoking_uid)
+        ):
+            raise UpdateError("Start this installer through the TRLKA PolicyKit prompt")
+        uid = int(invoking_uid)
+        if uid >= 2**32 - 1:
+            raise UpdateError("Invalid invoking user")
+        install(sys.argv[1], uid)
+        return 0
+    except (UpdateError, ValueError, OSError, subprocess.SubprocessError) as error:
+        message = str(error) if isinstance(error, UpdateError) else "System could not complete the update"
+        print(f"TRLKA: {message}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
