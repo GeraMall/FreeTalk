@@ -41,7 +41,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            dbus-x11 file libfuse2 squashfs-tools xauth xdotool xvfb
+            dbus-x11 file libfuse2 pulseaudio pulseaudio-utils squashfs-tools xauth xdotool xvfb
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @freetalk/desktop build
       - name: Stage and build the Debian package
@@ -69,6 +69,36 @@ jobs:
             test "$(dpkg-deb -f ./*.deb Architecture)" = amd64
             sha256sum ./*.deb > SHA256SUMS.txt
           )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-chromium-x86_64-deb-candidate
+          path: linux-chromium-assets/
+          if-no-files-found: error
+      - name: Prepare an isolated playback environment
+        run: |
+          cat > "$RUNNER_TEMP/trlka-pulse-smoke.sh" <<'BASH'
+          set -euo pipefail
+          report_dir="$4"
+          runtime_dir=$(mktemp -d)
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          export XDG_CONFIG_HOME="$runtime_dir/config"
+          socket="$runtime_dir/pulse/native"
+          export PULSE_SERVER="unix:$socket"
+          install -d -m 700 "$runtime_dir/pulse" "$XDG_CONFIG_HOME" "$report_dir"
+          pulseaudio -n --daemonize=no --exit-idle-time=-1 --use-pid-file=no \
+            -L "module-native-protocol-unix socket=$socket auth-anonymous=true" \
+            -L "module-null-sink sink_name=trlka_preview" \
+            > "$report_dir/pulseaudio.log" 2>&1 &
+          pulse_pid=$!
+          trap 'kill "$pulse_pid" 2>/dev/null || true; wait "$pulse_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..50}; do
+            if pactl info >/dev/null 2>&1; then break; fi
+            kill -0 "$pulse_pid"
+            sleep 0.2
+          done
+          pactl set-default-sink trlka_preview
+          "$1" "$2" "$3" "$report_dir"
+          BASH
       - name: Verify the installed Chromium application offline
         run: |
           deb=$(realpath linux-chromium-assets/*.deb)
@@ -83,14 +113,14 @@ jobs:
             ip link set lo up
             exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 \
               xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- \
-              "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/deb"
-          ' bash "$(id -un)" "$node_binary" "$PWD" "$app"
+              bash "$5" "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/deb"
+          ' bash "$(id -un)" "$node_binary" "$PWD" "$app" "$RUNNER_TEMP/trlka-pulse-smoke.sh"
       - uses: actions/upload-artifact@v4
         with:
           name: trlka-linux-chromium-x86_64-deb
           path: linux-chromium-assets/
           if-no-files-found: error
-      - name: Build and verify the AppImage offline
+      - name: Build the AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
         run: |
@@ -104,14 +134,22 @@ jobs:
             cd linux-chromium-assets
             sha256sum ./*.deb ./*.AppImage > SHA256SUMS.txt
           )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-chromium-x86_64-candidate
+          path: linux-chromium-assets/
+          if-no-files-found: error
+      - name: Verify the AppImage offline
+        run: |
+          image=$(realpath linux-chromium-assets/*.AppImage)
           node_binary=$(command -v node)
           mkdir -p linux-chromium-smoke/appimage
           sudo unshare --net -- bash -c '
             ip link set lo up
             exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 APPIMAGE_EXTRACT_AND_RUN=1 \
               xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- \
-              "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/appimage"
-          ' bash "$(id -un)" "$node_binary" "$PWD" "$image"
+              bash "$5" "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/appimage"
+          ' bash "$(id -un)" "$node_binary" "$PWD" "$image" "$RUNNER_TEMP/trlka-pulse-smoke.sh"
       - uses: actions/upload-artifact@v4
         with:
           name: trlka-linux-chromium-x86_64-preview

@@ -51,6 +51,7 @@ const app = spawn(
     '--ozone-platform=x11',
     '--use-fake-device-for-media-stream',
     `--use-file-for-fake-audio-capture=${microphone}`,
+    '--autoplay-policy=no-user-gesture-required',
     '--allow-loopback-in-peer-connection',
     '--disable-features=WebRtcHideLocalIpsWithMdns',
     '--disable-background-networking',
@@ -184,7 +185,7 @@ async function verifyMedia() {
     new RTCPeerConnection({ iceServers: [] }),
   ];
   const [sender, receiver] = peers;
-  const audioOutput = new window.AudioContext({ sinkId: { type: 'none' } });
+  const audioOutput = new window.AudioContext();
   const audioInputs = new Map();
   const samples = new Float32Array(2_048);
 
@@ -202,12 +203,15 @@ async function verifyMedia() {
     const video = stats.find((entry) => entry.type === 'inbound-rtp' && entry.kind === 'video');
     const input = audioInputs.get(peer);
     samples.fill(0);
-    input?.getFloatTimeDomainData(samples);
+    input?.analyser.getFloatTimeDomainData(samples);
     const audioPeak = samples.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0);
     return {
       state: peer.connectionState,
       audioPackets: audio?.packetsReceived ?? 0,
       audioPeak,
+      audioDecodedSamples: audio?.totalSamplesReceived ?? 0,
+      playbackTime: input?.element.currentTime ?? 0,
+      playbackError: input?.error ?? null,
       videoFrames: video?.framesDecoded ?? 0,
       width: video?.frameWidth ?? 0,
       height: video?.frameHeight ?? 0,
@@ -223,10 +227,20 @@ async function verifyMedia() {
     for (const peer of peers) {
       peer.addEventListener('track', ({ track }) => {
         if (track.kind !== 'audio') return;
-        const source = audioOutput.createMediaStreamSource(new window.MediaStream([track]));
+        const incoming = new window.MediaStream([track]);
+        const element = document.createElement('audio');
+        element.srcObject = incoming;
+        document.body.append(element);
+        const source = audioOutput.createMediaStreamSource(incoming);
         const analyser = audioOutput.createAnalyser();
-        source.connect(analyser).connect(audioOutput.destination);
-        audioInputs.set(peer, analyser);
+        const silent = audioOutput.createGain();
+        silent.gain.value = 0;
+        source.connect(analyser).connect(silent).connect(audioOutput.destination);
+        const input = { analyser, element, error: null };
+        audioInputs.set(peer, input);
+        void element.play().catch((error) => {
+          input.error = error.name;
+        });
       });
       for (const track of tracks) peer.addTrack(track, stream);
     }
@@ -255,6 +269,10 @@ async function verifyMedia() {
     }
     throw new Error(`Did not decode audio and video in both directions: ${JSON.stringify(stats)}`);
   } finally {
+    for (const { element } of audioInputs.values()) {
+      element.srcObject = null;
+      element.remove();
+    }
     for (const peer of peers) peer.close();
     for (const track of stream.getTracks()) track.stop();
     await audioOutput.close();
@@ -364,35 +382,6 @@ try {
     });
   }
 
-  const initialWindows = await waitFor('visible TRLKA desktop window', 10_000, async () => {
-    const windows = await visibleTrlkaWindows();
-    return windows.length > 0 ? windows : null;
-  });
-  let mediaFinished = false;
-  const mediaPromise = page.evaluate(verifyMedia, undefined, 32_000).finally(() => {
-    mediaFinished = true;
-  });
-  void mediaPromise.catch(() => undefined);
-  const observedWindows = new Set(initialWindows);
-  while (!mediaFinished) {
-    const consent = await waitFor(
-      'microphone and camera consent or completed media',
-      30_000,
-      async () => {
-        if (mediaFinished) return { done: true };
-        const windowId = (await visibleTrlkaWindows()).find((id) => !observedWindows.has(id));
-        return windowId ? { windowId } : null;
-      },
-    );
-    if (consent.done) break;
-    observedWindows.add(consent.windowId);
-    // The GTK dialog starts with its deny button focused. Tab selects Allow.
-    await xdo('xdotool', ['windowfocus', '--sync', consent.windowId, 'key', 'Tab', 'space'], {
-      timeout: 5_000,
-    });
-  }
-  const media = await mediaPromise;
-
   async function chooseDisplay(cancel) {
     const capture = page.evaluate(verifyDisplayCapture, cancel, 27_000);
     void capture.catch(() => undefined);
@@ -430,6 +419,36 @@ try {
 
   const canceledDisplayCapture = await chooseDisplay(true);
   const displayCapture = await chooseDisplay(false);
+  console.log(JSON.stringify({ canceledDisplayCapture, displayCapture }));
+
+  const initialWindows = await waitFor('visible TRLKA desktop window', 10_000, async () => {
+    const windows = await visibleTrlkaWindows();
+    return windows.length > 0 ? windows : null;
+  });
+  let mediaFinished = false;
+  const mediaPromise = page.evaluate(verifyMedia, undefined, 32_000).finally(() => {
+    mediaFinished = true;
+  });
+  void mediaPromise.catch(() => undefined);
+  const observedWindows = new Set(initialWindows);
+  while (!mediaFinished) {
+    const consent = await waitFor(
+      'microphone and camera consent or completed media',
+      30_000,
+      async () => {
+        if (mediaFinished) return { done: true };
+        const windowId = (await visibleTrlkaWindows()).find((id) => !observedWindows.has(id));
+        return windowId ? { windowId } : null;
+      },
+    );
+    if (consent.done) break;
+    observedWindows.add(consent.windowId);
+    // The GTK dialog starts with its deny button focused. Tab selects Allow.
+    await xdo('xdotool', ['windowfocus', '--sync', consent.windowId, 'key', 'Tab', 'space'], {
+      timeout: 5_000,
+    });
+  }
+  const media = await mediaPromise;
   const report = {
     version: nativeVersion,
     signIn: title,
