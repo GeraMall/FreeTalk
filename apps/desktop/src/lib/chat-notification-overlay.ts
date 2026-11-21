@@ -9,13 +9,19 @@ function isTauriDesktop() {
 }
 
 export function appIsInForeground() {
-  if (!isTauriDesktop()) return true;
+  if (typeof window === 'undefined') return true;
+  if (!isTauriDesktop() && !window.trlkaLinuxDesktop) return true;
   return document.visibilityState === 'visible' && document.hasFocus();
 }
 
 export async function showChatNotificationOverlay(preview: ChatNotificationPreview) {
-  if (!isTauriDesktop() || appIsInForeground()) return false;
+  if (appIsInForeground()) return false;
   try {
+    if (window.trlkaLinuxDesktop) {
+      const { chatId, senderName, body } = preview;
+      return await window.trlkaLinuxDesktop.notifications.show({ chatId, senderName, body });
+    }
+    if (!isTauriDesktop()) return false;
     const [{ invoke }, { emitTo }] = await Promise.all([
       import('@tauri-apps/api/core'),
       import('@tauri-apps/api/event'),
@@ -29,6 +35,8 @@ export async function showChatNotificationOverlay(preview: ChatNotificationPrevi
 }
 
 export async function listenForNotificationOpen(onOpen: (chatId: string) => void) {
+  if (typeof window === 'undefined') return (() => undefined) satisfies UnlistenFn;
+  if (window.trlkaLinuxDesktop) return window.trlkaLinuxDesktop.notifications.onOpen(onOpen);
   if (!isTauriDesktop()) return (() => undefined) satisfies UnlistenFn;
   const { listen } = await import('@tauri-apps/api/event');
   return listen<{ chatId: string }>(OPEN_EVENT, (event) => onOpen(event.payload.chatId));

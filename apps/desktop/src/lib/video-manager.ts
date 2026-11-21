@@ -300,6 +300,8 @@ export class VideoManager {
       connectionDiagnostics.record('screen-capture:error', undefined, {
         errorName: error instanceof DOMException ? error.name : 'unknown',
       });
+      if (error instanceof DOMException && error.name === 'AbortError' && window.trlkaLinuxDesktop)
+        throw new ScreenCaptureCancelledError('Демонстрация экрана отменена.');
       if (error instanceof DOMException && error.name === 'NotAllowedError')
         throw new ScreenCaptureCancelledError(screenErrorMessage(error));
       throw new Error(screenErrorMessage(error));
@@ -352,11 +354,15 @@ export class VideoManager {
       displaySurface: track.getSettings().displaySurface ?? 'unknown',
     });
     if (includeAudio && !audioTrack) {
-      this.onNotice(
-        macOS
-          ? 'macOS не запустила нативный захват системного звука. Установите macOS 13 или новее и повторно разрешите Trlka запись экрана и системного аудио.'
-          : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
-      );
+      if (window.trlkaLinuxDesktop) {
+        this.onNotice('Демонстрация запущена. Передача звука экрана на Linux пока недоступна.');
+      } else {
+        this.onNotice(
+          macOS
+            ? 'macOS не запустила нативный захват системного звука. Установите macOS 13 или новее и повторно разрешите Trlka запись экрана и системного аудио.'
+            : 'Экран включён, но система не предоставила аудиодорожку. В системном окне выберите экран или окно с включённой передачей звука.',
+        );
+      }
     }
     try {
       await this.publish(track, 'screen', stream);

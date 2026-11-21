@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>Демонстрация экрана</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          15px/1.4 system-ui,
+          sans-serif;
+        color: #e8eef8;
+        background: #0e1622;
+      }
+      body {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 18px;
+        min-height: 100vh;
+        height: 100vh;
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+      p {
+        margin: 5px 0 0;
+        color: #a4b3c7;
+      }
+      .capture-sources {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 10px;
+        overflow: auto;
+        overscroll-behavior: contain;
+        padding: 2px;
+      }
+      button {
+        min-width: 0;
+        font: inherit;
+        font-weight: 550;
+        color: inherit;
+        background: #151f2d;
+        border: 1px solid #344155;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      button:hover,
+      button:focus-visible {
+        background: #202e43;
+        border-color: #9bb4e0;
+      }
+      button:focus-visible {
+        outline: 2px solid #9bb4e0;
+        outline-offset: -2px;
+      }
+      .capture-source {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        padding: 7px;
+        text-align: left;
+      }
+      .preview {
+        display: grid;
+        place-items: center;
+        aspect-ratio: 16 / 9;
+        background: #08101a;
+        overflow: hidden;
+        border-radius: 5px;
+      }
+      .preview img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .source-name {
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .capture-cancel {
+        justify-self: end;
+        padding: 8px 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Демонстрация экрана</h1>
+      <p>Выберите экран или окно, которое увидят участники звонка.</p>
+    </header>
+    <main class="capture-sources" aria-label="Доступные экраны и окна"></main>
+    <button class="capture-cancel" type="button">Отмена</button>
+  </body>
+</html>

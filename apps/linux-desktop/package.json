@@ -1,0 +1,85 @@
+{
+  "name": "trlka",
+  "version": "0.4.0-beta.232",
+  "description": "TRLKA desktop voice chat, messaging and screen sharing",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/GeraMall/FreeTalk",
+  "author": {
+    "name": "Trlka contributors",
+    "email": "237113068+GeraMall@users.noreply.github.com"
+  },
+  "main": "main.cjs",
+  "desktopName": "io.freetalk.desktop.desktop",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "package:deb": "electron-builder --linux deb --x64 --publish never",
+    "package:appimage": "electron-builder --linux AppImage --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "io.freetalk.desktop",
+    "productName": "Trlka",
+    "npmRebuild": false,
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "directories": {
+      "output": "packages"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "desktop-bridge.cjs",
+      "capture-picker.*",
+      "app-config.json",
+      "app-icon.png",
+      "frontend/**"
+    ],
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      }
+    ],
+    "linux": {
+      "icon": "app-icon.png",
+      "executableName": "trlka",
+      "category": "Network",
+      "mimeTypes": [
+        "x-scheme-handler/freetalk"
+      ],
+      "syncDesktopName": true
+    },
+    "deb": {
+      "artifactName": "Trlka_${version}_amd64.${ext}",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2 | libasound2t64",
+        "libcups2 | libcups2t64"
+      ],
+      "recommends": [
+        "gnome-keyring",
+        "libayatana-appindicator3-1 | libappindicator3-1",
+        "xdg-desktop-portal"
+      ]
+    },
+    "appImage": {
+      "artifactName": "Trlka_${version}_x86_64.${ext}"
+    }
+  }
+}

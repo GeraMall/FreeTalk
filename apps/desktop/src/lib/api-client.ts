@@ -99,7 +99,11 @@ function isTauri() {
 }
 
 async function storeRefreshToken(token?: string) {
-  if (isTauri()) {
+  const linuxSession = window.trlkaLinuxDesktop?.session;
+  if (linuxSession) {
+    if (token) await linuxSession.save(token);
+    else await linuxSession.clear();
+  } else if (isTauri()) {
     if (token) await invoke('secure_session_set', { refreshToken: token });
     else await invoke('secure_session_clear');
   } else {
@@ -119,6 +123,7 @@ async function storeRefreshToken(token?: string) {
 }
 
 async function readRefreshToken() {
+  if (window.trlkaLinuxDesktop) return window.trlkaLinuxDesktop.session.read();
   if (isTauri()) return await invoke<string | null>('secure_session_get');
   try {
     const persisted = window.localStorage.getItem(BROWSER_REFRESH_TOKEN_KEY);

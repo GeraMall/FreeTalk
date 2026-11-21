@@ -2617,6 +2617,7 @@ function updateMessage(status: UpdateStatus, version: string) {
   if (status.kind === 'downloading') return `Загрузка ${status.progress}%`;
   if (status.kind === 'current') return 'Установлена последняя версия';
   if (status.kind === 'error') return status.message;
-  if (status.kind === 'unavailable') return 'Проверка доступна в настольной версии';
+  if (status.kind === 'unavailable')
+    return status.message ?? 'Проверка доступна в настольной версии';
   return `Установлена версия ${version}`;
 }

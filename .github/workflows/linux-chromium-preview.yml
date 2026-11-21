@@ -1,0 +1,125 @@
+name: Linux Chromium preview
+
+on:
+  push:
+    branches: [preview/linux-chromium-232]
+    paths:
+      - '.github/workflows/linux-chromium-preview.yml'
+      - 'apps/linux-desktop/**'
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'scripts/linux/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-chromium-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.19.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: linux-chromium-ubuntu22-x64-v1-${{ hashFiles('apps/linux-desktop/package.json', 'apps/linux-desktop/package-lock.json') }}
+      - name: Install packaging and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus-x11 file libfuse2 squashfs-tools xauth xdotool xvfb
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @freetalk/desktop build
+      - name: Stage and build the Debian package
+        run: |
+          source_dir="$PWD/apps/linux-desktop"
+          staging_dir="$RUNNER_TEMP/trlka-linux"
+          mkdir -p "$staging_dir" linux-chromium-assets
+          cp "$source_dir"/{main.cjs,preload.cjs,desktop-bridge.cjs,capture-picker.html,capture-picker.cjs} "$staging_dir/"
+          cp "$source_dir"/{package.json,package-lock.json} "$staging_dir/"
+          if [[ -f "$source_dir/capture-picker.css" ]]; then
+            cp "$source_dir/capture-picker.css" "$staging_dir/"
+          fi
+          cp -r apps/desktop/dist "$staging_dir/frontend"
+          cp apps/desktop/src-tauri/tauri.conf.json "$staging_dir/app-config.json"
+          cp apps/desktop/src-tauri/icons/icon.png "$staging_dir/app-icon.png"
+          cp LICENSE "$staging_dir/"
+          (
+            cd "$staging_dir"
+            npm ci --no-audit --no-fund
+            npm run package:deb
+          )
+          cp "$staging_dir"/packages/*.deb linux-chromium-assets/
+          (
+            cd linux-chromium-assets
+            test "$(dpkg-deb -f ./*.deb Architecture)" = amd64
+            sha256sum ./*.deb > SHA256SUMS.txt
+          )
+      - name: Verify the installed Chromium application offline
+        run: |
+          deb=$(realpath linux-chromium-assets/*.deb)
+          package_name=$(dpkg-deb -f "$deb" Package)
+          sudo apt-get install -y --no-install-recommends "$deb"
+          app=$(dpkg -L "$package_name" | awk '/^\/opt\/.*\/trlka$/ {print}')
+          test -x "$app"
+          cmp LICENSE "$(dirname "$app")/resources/LICENSE"
+          node_binary=$(command -v node)
+          mkdir -p linux-chromium-smoke/deb
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 \
+              xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- \
+              "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/deb"
+          ' bash "$(id -un)" "$node_binary" "$PWD" "$app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-chromium-x86_64-deb
+          path: linux-chromium-assets/
+          if-no-files-found: error
+      - name: Build and verify the AppImage offline
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          staging_dir="$RUNNER_TEMP/trlka-linux"
+          (cd "$staging_dir"; npm run package:appimage)
+          cp "$staging_dir"/packages/*.AppImage linux-chromium-assets/
+          image=$(realpath linux-chromium-assets/*.AppImage)
+          chmod u+x "$image"
+          file "$image" | grep -E 'ELF 64-bit.*x86-64'
+          (
+            cd linux-chromium-assets
+            sha256sum ./*.deb ./*.AppImage > SHA256SUMS.txt
+          )
+          node_binary=$(command -v node)
+          mkdir -p linux-chromium-smoke/appimage
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 APPIMAGE_EXTRACT_AND_RUN=1 \
+              xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- \
+              "$2" "$3/scripts/linux/verify-chromium-preview.mjs" "$4" "$3/linux-chromium-smoke/appimage"
+          ' bash "$(id -un)" "$node_binary" "$PWD" "$image"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-chromium-x86_64-preview
+          path: linux-chromium-assets/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trlka-linux-chromium-x86_64-smoke
+          path: linux-chromium-smoke/
+          if-no-files-found: ignore

@@ -7,7 +7,7 @@ export type UpdateStatus =
   | { kind: 'available'; version: string; notes?: string; downloaded?: boolean }
   | { kind: 'downloading'; version: string; progress: number }
   | { kind: 'error'; message: string }
-  | { kind: 'unavailable' };
+  | { kind: 'unavailable'; message?: string };
 
 let pendingUpdate: Update | null = null;
 let checking: Promise<UpdateStatus> | undefined;
@@ -21,12 +21,16 @@ function isTauri() {
 }
 
 export async function currentVersion() {
+  if (window.trlkaLinuxDesktop) return window.trlkaLinuxDesktop.version();
   if (!isTauri()) return 'web';
   const { getVersion } = await import('@tauri-apps/api/app');
   return getVersion();
 }
 
 export async function checkForUpdate(): Promise<UpdateStatus> {
+  if (window.trlkaLinuxDesktop) {
+    return { kind: 'unavailable', message: 'Обновления для Linux устанавливаются вручную.' };
+  }
   if (!isTauri()) return { kind: 'unavailable' };
   if (installing && downloadStatus) return downloadStatus;
   checking ??= performUpdateCheck().finally(() => {

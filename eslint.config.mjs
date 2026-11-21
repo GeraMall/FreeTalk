@@ -31,6 +31,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node, fetch: 'readonly' } },
   },
   {
+    files: ['apps/linux-desktop/*.cjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
