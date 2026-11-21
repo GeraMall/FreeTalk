@@ -1,177 +1,61 @@
-name: Beta pre-release
+name: Stage verified desktop beta.232
 
 on:
-  push:
-    tags: ['v*-beta.*']
   workflow_dispatch:
-    inputs:
-      include_macos:
-        description: Build and publish macOS installers too
-        type: boolean
-        default: false
 
 permissions:
-  contents: read
-
-env:
-  VITE_SIGNALING_URL: ${{ vars.FREETALK_BETA_SIGNALING_URL }}
-  VITE_API_URL: ${{ vars.FREETALK_BETA_API_URL }}
-  VITE_INVITE_BASE_URL: https://freetalk.191-44-38-60.sslip.io
-  VITE_TURNSTILE_SITE_KEY: ${{ vars.FREETALK_TURNSTILE_SITE_KEY }}
+  actions: read
+  contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    env:
-      CXXFLAGS_x86_64_pc_windows_msvc: /DNTDDI_WIN11_GE=0x0A000010 /D_HAS_EXCEPTIONS=1 /permissive
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.19.0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Cache Windows native dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            apps/desktop/src-tauri/target
-          key: windows-native-v2-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
-          restore-keys: windows-native-v2-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
-        if: github.event_name != 'workflow_dispatch' || !startsWith(github.ref, 'refs/heads/preview/')
-      - name: Build design preview
-        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/preview/')
-        run: pnpm --filter @freetalk/desktop tauri build --bundles nsis --config ../../scripts/windows/tauri-local-unsigned.json
-      - run: pnpm --filter @freetalk/desktop tauri build --bundles nsis
-        if: github.event_name != 'workflow_dispatch' || !startsWith(github.ref, 'refs/heads/preview/')
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
-      - shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force beta-assets | Out-Null
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*.exe beta-assets/
-          if (Test-Path apps/desktop/src-tauri/target/release/bundle/nsis/*.sig) {
-            Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*.sig beta-assets/
-          }
-          Copy-Item apps/desktop/src-tauri/target/release/freetalk.exe "beta-assets/Trlka_${version}_portable_x64.exe"
-      - uses: actions/upload-artifact@v4
-        with: { name: beta-windows-x64, path: beta-assets/*, if-no-files-found: error }
-
-  macos:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_macos == true) || github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' || github.ref_name == 'v0.4.0-beta.201' || github.ref_name == 'v0.4.0-beta.203' || github.ref_name == 'v0.4.0-beta.204' || github.ref_name == 'v0.4.0-beta.205' || github.ref_name == 'v0.4.0-beta.221' || github.ref_name == 'v0.4.0-beta.223' }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - { target: aarch64-apple-darwin, runner: macos-26 }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.19.0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - uses: dtolnay/rust-toolchain@stable
-        with: { targets: '${{ matrix.target }}' }
-      - run: pnpm install --frozen-lockfile
-      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --target ${{ matrix.target }}
-      - run: pnpm --filter @freetalk/desktop tauri build --target ${{ matrix.target }} --bundles app,dmg
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.FREETALK_UPDATER_PRIVATE_KEY_PASSWORD }}
-      - name: Verify macOS runtime paths
-        run: |
-          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
-          executable="$app_path/Contents/MacOS/freetalk"
-          test -x "$executable"
-          otool -L "$executable"
-          if ! otool -l "$executable" | grep -A3 LC_RPATH | grep -q "path /usr/lib/swift"; then
-            echo "Missing /usr/lib/swift LC_RPATH; packaged app would crash before launch" >&2
-            exit 1
-          fi
-      - name: Package macOS app
-        run: |
-          mkdir -p beta-assets
-          version=$(node -p "require('./package.json').version")
-          case "${{ matrix.target }}" in
-            aarch64-apple-darwin) release_arch=aarch64 ;;
-            x86_64-apple-darwin) release_arch=x64 ;;
-          esac
-          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" "beta-assets/Trlka-${{ matrix.target }}.app.zip"
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg beta-assets/
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz"
-          cp apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig "beta-assets/Trlka_${version}_${release_arch}.app.tar.gz.sig"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: beta-macos-${{ matrix.target }}
-          if-no-files-found: error
-          path: beta-assets/*
-
-  prerelease:
-    permissions:
-      contents: write
-    if: >-
-      ${{
-        always() &&
-        startsWith(github.ref, 'refs/tags/') &&
-        needs.windows.result == 'success' &&
-        (needs.macos.result == 'success' || needs.macos.result == 'skipped')
-      }}
-    needs: [windows, macos]
+  stage:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: desktop-v0.4.0-beta.232
     steps:
-      - uses: actions/download-artifact@v4
-        with: { path: release-assets }
-      - name: Generate updater manifest
-        shell: bash
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Check build provenance and release draft
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
-          windows_file=$(find release-assets -name "Trlka_${version}_x64-setup.exe" -print -quit)
-          test -f "$windows_file"
-          test -f "$windows_file.sig"
-
-          platforms=$(jq -n \
-            --arg windows_signature "$(cat "$windows_file.sig")" \
-            --arg windows_url "$base_url/$(basename "$windows_file")" \
-            '{
-              "windows-x86_64": { signature: $windows_signature, url: $windows_url }
-            }')
-
-          arm_file=$(find release-assets -name "Trlka_${version}_aarch64.app.tar.gz" -print -quit)
-          intel_file=$(find release-assets -name "Trlka_${version}_x64.app.tar.gz" -print -quit)
-          if [[ -n "$arm_file" ]]; then
-            test -f "$arm_file.sig"
-            platforms=$(jq -n \
-              --argjson platforms "$platforms" \
-              --arg arm_signature "$(cat "$arm_file.sig")" \
-              --arg arm_url "$base_url/$(basename "$arm_file")" \
-              '$platforms + {"darwin-aarch64": {signature: $arm_signature, url: $arm_url}}')
-          fi
-
-          jq -n \
-            --arg version "$version" \
-            --arg notes "TRLKA ${version}: fixed room chat layout and improved macOS screen-share clarity in video mode; screen-share restart issue on Mac remains under investigation." \
-            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --argjson platforms "$platforms" \
-            '{
-              version: $version,
-              notes: $notes,
-              pub_date: $pub_date,
-              platforms: $platforms
-            }' > release-assets/latest.json
-      - uses: softprops/action-gh-release@v2
+          test "$(gh run view 44924989968 --json headSha,conclusion --jq '[.headSha, .conclusion] | join(" ")')" = 'c45a149e3f16a73f9c6f28632b499b9d384c611f success'
+          test "$(gh run view 44926625371 --json headSha,conclusion --jq '[.headSha, .conclusion] | join(" ")')" = '794c120228e7673ac30dcce85b3dfa19dc1fa21d success'
+          test "$(gh release view "$TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | join(" ")')" = 'true c45a149e3f16a73f9c6f28632b499b9d384c611f'
+      - uses: actions/download-artifact@v4
         with:
-          draft: ${{ github.ref_name == 'v0.4.0-beta.194' || github.ref_name == 'v0.4.0-beta.189' || github.ref_name == 'v0.4.0-beta.197' || github.ref_name == 'v0.4.0-beta.200' || github.ref_name == 'v0.4.0-beta.201' || github.ref_name == 'v0.4.0-beta.203' || github.ref_name == 'v0.4.0-beta.204' || github.ref_name == 'v0.4.0-beta.205' || github.ref_name == 'v0.4.0-beta.221' || github.ref_name == 'v0.4.0-beta.223' }}
-          prerelease: false
-          make_latest: true
-          generate_release_notes: true
-          files: release-assets/**/*
+          name: beta-windows-x64
+          run-id: 44924989968
+          github-token: ${{ github.token }}
+          path: stage/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: beta-macos-aarch64-apple-darwin
+          run-id: 44926625371
+          github-token: ${{ github.token }}
+          path: stage/macos
+      - name: Verify trusted updater signatures and assemble the manifest
+        run: |
+          set -euo pipefail
+          win=stage/windows/Trlka_0.4.0-beta.232_x64-setup.exe
+          mac=stage/macos/Trlka_0.4.0-beta.232_aarch64.app.tar.gz
+          node scripts/windows/verify-updater.mjs "$win" "$win.sig"
+          node scripts/windows/verify-updater.mjs "$mac" "$mac.sig"
+          cp scripts/release/prepare-updater-232.mjs stage/
+          node stage/prepare-updater-232.mjs
+          cd stage
+          node ../scripts/release/verify-desktop-232.mjs
+      - name: Upload files to the existing draft
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$TAG" stage/windows/Trlka_0.4.0-beta.232_* stage/macos/Trlka_0.4.0-beta.232_* stage/latest.json stage/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-beta232-verified-metadata
+          if-no-files-found: error
+          path: |
+            stage/latest.json
+            stage/verified-metadata.json
+            stage/SHA256SUMS.txt
