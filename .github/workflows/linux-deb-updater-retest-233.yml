@@ -31,14 +31,37 @@ jobs:
           path: fixtures
       - name: Install the exact old Debian package and inspect permissions
         run: |
+          set -o pipefail
           deb=$(realpath fixtures/old/*.deb)
-          dpkg-deb --contents "$deb" | grep -E 'resources/(install-update|linux-updater-key.txt|LICENSE)$'
+          dpkg-deb --contents "$deb" | awk '
+            $NF == "./opt/Trlka/" || $NF == "./opt/Trlka/resources/" {
+              print
+              verified++
+              if ($2 != "root/root" || substr($1, 1, 1) != "d" ||
+                  substr($1, 6, 1) == "w" || substr($1, 9, 1) == "w") invalid = 1
+            }
+            $NF ~ /resources\/(install-update|linux-updater-key.txt|LICENSE)$/ { print }
+            END { if (verified != 2 || invalid) exit 1 }
+          '
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends dbus-x11 openbox xauth xdotool xvfb "$deb"
           cmp LICENSE /opt/Trlka/resources/LICENSE
+          namei -om /opt/Trlka/resources/linux-updater-key.txt
+          for directory in /opt/Trlka /opt/Trlka/resources; do
+            test ! -L "$directory"
+            test "$(stat -c '%u:%g' "$directory")" = 0:0
+            mode=$(stat -c '%a' "$directory")
+            test "$((8#$mode & 022))" -eq 0
+          done
           stat -c '%u:%a %n' /opt/Trlka/resources/{install-update,linux-updater-key.txt}
           test "$(stat -c '%u:%a' /opt/Trlka/resources/install-update)" = 0:755
           test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater-key.txt)" = 0:644
+          # This disposable VM may have runner-specific permissions on the pre-existing ancestors.
+          test -d /opt
+          test ! -L /opt
+          sudo chown root:root / /opt
+          sudo chmod go-w / /opt
+          namei -om /opt/Trlka/resources/linux-updater-key.txt
       - name: Set up the narrowly scoped CI-only authorization action
         run: |
           cat > "$RUNNER_TEMP/trlka-install-test.policy" <<'POLICY'
