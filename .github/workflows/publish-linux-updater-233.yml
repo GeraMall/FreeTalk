@@ -1,0 +1,98 @@
+name: Publish Linux beta.233 and signed update feed
+
+on:
+  push:
+    branches: [release/stage-linux-updater-233]
+    paths: [.github/workflows/publish-linux-updater-233.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PACKAGE_RUN: '44951194888'
+      PACKAGE_SOURCE: d1ee82dec901c794ece29316009250a61367449c
+      RETEST_RUN: '44952331242'
+      RETEST_SOURCE: 63b60ee750b2a9ec18ca05ff7bf1b9d209b166fc
+      LINUX_TAG: linux-v0.4.0-beta.233
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PACKAGE_SOURCE }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Check the exact successful build and upgrade tests
+        run: |
+          gh run view "$PACKAGE_RUN" --json headSha,jobs | jq -e --arg sha "$PACKAGE_SOURCE" '
+            .headSha == $sha and
+            ([.jobs[] | select(.conclusion == "success") | .name] | sort) ==
+              ["package", "upgrade (appimage)"]'
+          gh run view "$RETEST_RUN" --json headSha,conclusion,jobs | jq -e --arg sha "$RETEST_SOURCE" '
+            .headSha == $sha and .conclusion == "success" and
+            ([.jobs[] | select(.conclusion == "success")] | length) == 2 and
+            any(.jobs[]; .name == "signed-stage" and .conclusion == "success")'
+          test -z "$(git ls-remote --heads origin refs/heads/linux-updates)"
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.RETEST_RUN }}
+          name: trlka-linux-update-signed
+          path: release-assets
+      - name: Verify the signed manifest and the packaged bytes
+        run: |
+          (cd release-assets; sha256sum --strict --check SHA256SUMS.txt)
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { createHash } = require('node:crypto');
+          const { readFileSync, statSync } = require('node:fs');
+          const { verifyFeed } = require('./apps/linux-desktop/linux-updater.cjs');
+          const key = require('./apps/desktop/src-tauri/tauri.conf.json').plugins.updater.pubkey;
+          const { manifest } = verifyFeed(
+            JSON.parse(readFileSync('release-assets/latest.json')),
+            Buffer.from(key, 'base64').toString('utf8'),
+          );
+          assert.equal(manifest.schema, 1);
+          assert.equal(manifest.version, '0.4.0-beta.233');
+          for (const [kind, suffix] of Object.entries({ deb: 'amd64.deb', appimage: 'x86_64.AppImage' })) {
+            const name = 'Trlka_' + manifest.version + '_' + suffix;
+            const path = 'release-assets/' + name;
+            const asset = manifest.platforms[kind];
+            assert.equal(asset.url, 'https://github.com/' + process.env.GH_REPO + '/releases/download/' + process.env.LINUX_TAG + '/' + name);
+            assert.equal(asset.size, statSync(path).size);
+            assert.equal(asset.sha256, createHash('sha256').update(readFileSync(path)).digest('hex'));
+          }
+          NODE
+      - name: Upload and verify Linux release assets
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          TRLKA для Linux x86‑64 автоматически проверяет наличие обновлений. Их можно скачать и установить кнопкой «Обновить» в приложении.
+
+          Если уже установлена beta.232, установите beta.233 один раз из этого релиза. Выберите тот же формат: `.deb` или AppImage. Для установки обновлений `.deb` Linux запрашивает подтверждение администратора.
+
+          Проверено обновление тестовой сборки на точные пакеты beta.233 в Ubuntu 22.04.
+          EOF
+          gh release create "$LINUX_TAG" release-assets/* --draft --prerelease +            --target "$PACKAGE_SOURCE" --title 'TRLKA beta.233 для Linux x86-64' +            --notes-file "$RUNNER_TEMP/notes.md"
+          gh release view "$LINUX_TAG" --json assets > "$RUNNER_TEMP/release-assets.json"
+          for file in release-assets/*; do
+            name=$(basename "$file")
+            hash=$(sha256sum "$file" | cut -d' ' -f1)
+            jq -e --arg name "$name" --arg hash "sha256:$hash" +              'any(.assets[]; .name == $name and .digest == $hash and .state == "uploaded")' +              "$RUNNER_TEMP/release-assets.json"
+          done
+          gh release edit "$LINUX_TAG" --draft=false --prerelease --latest=false
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" = desktop-v0.4.0-beta.232
+      - name: Publish the signed Linux feed atomically
+        run: |
+          feed_dir="$RUNNER_TEMP/linux-feed"
+          git worktree add --detach "$feed_dir" "$PACKAGE_SOURCE"
+          git -C "$feed_dir" switch --orphan linux-updates
+          cp release-assets/latest.json "$feed_dir/latest.json"
+          git -C "$feed_dir" add -- latest.json
+          git -C "$feed_dir" -c user.name='TRLKA release' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m 'Publish signed Linux beta.233 update feed'
+          git -C "$feed_dir" push origin HEAD:refs/heads/linux-updates
