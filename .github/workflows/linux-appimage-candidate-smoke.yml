@@ -3,7 +3,9 @@ name: Linux AppImage candidate diagnosis
 on:
   push:
     branches: [preview/linux-appimage-smoke-232]
-    paths: ['.github/workflows/linux-appimage-candidate-smoke.yml']
+    paths:
+      - '.github/workflows/linux-appimage-candidate-smoke.yml'
+      - 'scripts/linux/verify-chromium-preview.mjs'
 
 permissions:
   contents: read
@@ -75,7 +77,7 @@ jobs:
           pactl set-default-sink trlka_preview
           xprop -root _NET_SUPPORTING_WM_CHECK | grep -E '0x[1-9a-fA-F][0-9a-fA-F]*'
           xwininfo -root | sed -n '1,19p'
-          "$1" "$2" "$3" "$4"
+          timeout --signal=TERM --kill-after=8s 95s "$1" "$2" "$3" "$4"
           BASH
           sudo unshare --net -- bash -c '
             ip link set lo up

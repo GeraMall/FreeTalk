@@ -68,10 +68,19 @@ const app = spawn(
       XDG_SESSION_TYPE: 'x11',
       WAYLAND_DISPLAY: '',
     },
+    detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
 const appClosed = new Promise((resolveExit) => app.once('close', resolveExit));
+function terminateAppGroup(signal) {
+  if (!Number.isInteger(app.pid) || app.pid <= 1) return;
+  try {
+    process.kill(-app.pid, signal);
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
+  }
+}
 let launchError;
 app.once('error', (error) => {
   launchError = error;
@@ -492,11 +501,11 @@ try {
   throw error;
 } finally {
   page?.close();
-  if (app.exitCode === null && app.signalCode === null) app.kill();
+  terminateAppGroup('SIGTERM');
   await Promise.race([appClosed, pause(5_000, undefined, { ref: false })]);
-  if (app.exitCode === null && app.signalCode === null) {
-    app.kill('SIGKILL');
-    await Promise.race([appClosed, pause(5_000, undefined, { ref: false })]);
-  }
+  terminateAppGroup('SIGKILL');
+  app.stdout.destroy();
+  app.stderr.destroy();
+  await Promise.race([appClosed, pause(2_000, undefined, { ref: false })]);
   await rm(profile, { recursive: true, force: true, maxRetries: 3 });
 }
