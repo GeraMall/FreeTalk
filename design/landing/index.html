@@ -17,6 +17,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/assets/landing.css?v=silent-tour-4" />
+    <link rel="stylesheet" href="/assets/linux-downloads.css" />
   </head>
   <body>
     <header class="topbar">
@@ -64,7 +65,10 @@
             >↓ Скачать для Windows</a
           ><a class="button button-secondary" href="#possibilities">Посмотреть возможности</a>
         </div>
-        <div class="hero-note">beta.223 · Windows 10/11, 64-bit · бесплатно</div>
+        <div class="hero-note">
+          beta.223 · Windows 10/11, 64-bit · бесплатно
+          <a class="hero-linux-link" href="#linux-downloads">Версия для Linux</a>
+        </div>
         <figure class="app-stage product-preview" data-reveal>
           <video
             class="tour-video"
@@ -178,7 +182,7 @@
       <section class="shell" id="download">
         <div class="download" data-reveal>
           <div class="kicker">Начать разговор</div>
-          <h2>Trlka уже доступна на Windows.</h2>
+          <h2>Скачать TRLKA</h2>
           <p>
             Установите приложение, создайте комнату и отправьте друзьям приглашение. Регистрация для
             гостя не обязательна.
@@ -186,8 +190,36 @@
           <a
             class="button button-primary"
             href="https://github.com/GeraMall/FreeTalk/releases/download/v0.4.0-beta.223/Trlka_0.4.0-beta.223_x64-setup.exe"
-            >↓ Скачать Trlka</a
+            >↓ Скачать для Windows</a
           ><span class="download-meta">beta.223 · Windows 10/11</span>
+          <section
+            class="linux-downloads"
+            id="linux-downloads"
+            aria-labelledby="linux-download-title"
+          >
+            <div class="linux-download-heading">
+              <h3 id="linux-download-title">Linux <span>· 64 бита</span></h3>
+              <span class="linux-download-version" data-linux-version>beta.233</span>
+            </div>
+            <div class="linux-download-options">
+              <a
+                class="button button-secondary linux-download-option"
+                data-linux-format="deb"
+                href="https://github.com/GeraMall/FreeTalk/releases/download/linux-v0.4.0-beta.233/Trlka_0.4.0-beta.233_amd64.deb"
+              >
+                <span>Скачать .deb</span>
+                <small>Ubuntu и Debian</small>
+              </a>
+              <a
+                class="button button-secondary linux-download-option"
+                data-linux-format="appimage"
+                href="https://github.com/GeraMall/FreeTalk/releases/download/linux-v0.4.0-beta.233/Trlka_0.4.0-beta.233_x86_64.AppImage"
+              >
+                <span>Скачать AppImage</span>
+                <small>Запуск без установки</small>
+              </a>
+            </div>
+          </section>
         </div>
       </section>
     </main>
@@ -220,5 +252,6 @@
       </div>
     </footer>
     <script src="/assets/landing.js?v=silent-tour-4"></script>
+    <script src="/assets/linux-downloads.js" defer></script>
   </body>
 </html>
