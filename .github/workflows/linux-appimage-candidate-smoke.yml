@@ -1,0 +1,96 @@
+name: Linux AppImage candidate diagnosis
+
+on:
+  push:
+    branches: [preview/linux-appimage-smoke-232]
+    paths: ['.github/workflows/linux-appimage-candidate-smoke.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  existing-appimage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        display: ['1280x800x24', '1600x1000x24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44930785510
+          name: trlka-linux-chromium-x86_64-candidate
+          path: candidate
+      - name: Verify the unchanged candidate and prepare X11
+        run: |
+          (
+            cd candidate
+            sha256sum --strict --check SHA256SUMS.txt
+            cat SHA256SUMS.txt
+          )
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus-x11 libfuse2 openbox pulseaudio pulseaudio-utils \
+            xauth xdotool xvfb x11-utils \
+            libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libatspi2.0-0 \
+            libuuid1 libsecret-1-0 libgbm1 libasound2 libcups2
+      - name: Run packaged AppImage offline with Openbox and PulseAudio
+        env:
+          DISPLAY_SPEC: ${{ matrix.display }}
+        run: |
+          image=$(realpath candidate/*.AppImage)
+          chmod u+x "$image"
+          report_dir="$RUNNER_TEMP/trlka-appimage-report"
+          mkdir -p "$report_dir"
+          helper="$RUNNER_TEMP/trlka-appimage-offline.sh"
+          cat > "$helper" <<'BASH'
+          set -euo pipefail
+          runtime_dir=$(mktemp -d)
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          export XDG_CONFIG_HOME="$runtime_dir/config"
+          socket="$runtime_dir/pulse/native"
+          export PULSE_SERVER="unix:$socket"
+          install -d -m 700 "$runtime_dir/pulse" "$XDG_CONFIG_HOME"
+          pulseaudio -n --daemonize=no --exit-idle-time=-1 --use-pid-file=no \
+            -L "module-native-protocol-unix socket=$socket auth-anonymous=true" \
+            -L "module-null-sink sink_name=trlka_preview" > "$4/pulseaudio.log" 2>&1 &
+          pulse_pid=$!
+          openbox > "$4/openbox.log" 2>&1 &
+          wm_pid=$!
+          trap 'kill "$pulse_pid" "$wm_pid" 2>/dev/null || true; wait "$pulse_pid" "$wm_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..50}; do
+            if pactl info >/dev/null 2>&1 &&
+              xprop -root _NET_SUPPORTING_WM_CHECK | grep -Eq '0x[1-9a-fA-F][0-9a-fA-F]*'; then
+              break
+            fi
+            kill -0 "$pulse_pid" "$wm_pid"
+            sleep 0.2
+          done
+          pactl set-default-sink trlka_preview
+          xprop -root _NET_SUPPORTING_WM_CHECK | grep -E '0x[1-9a-fA-F][0-9a-fA-F]*'
+          xwininfo -root | sed -n '1,19p'
+          "$1" "$2" "$3" "$4"
+          BASH
+          sudo unshare --net -- bash -c '
+            ip link set lo up
+            exec runuser -u "$1" -- env LIBGL_ALWAYS_SOFTWARE=1 APPIMAGE_EXTRACT_AND_RUN=1 \
+              xvfb-run -a -s "-screen 0 $7 -noreset" dbus-run-session -- \
+              bash "$2" "$3" "$4" "$5" "$6"
+          ' bash "$(id -un)" "$helper" "$(command -v node)" \
+            "$PWD/scripts/linux/verify-chromium-preview.mjs" "$image" "$report_dir" "$DISPLAY_SPEC"
+      - name: Print diagnostic evidence
+        if: always()
+        run: |
+          report_dir="$RUNNER_TEMP/trlka-appimage-report"
+          for file in report.json app.log pulseaudio.log openbox.log; do
+            if [[ -f "$report_dir/$file" ]]; then
+              echo "$file"
+              tail -n 40 "$report_dir/$file"
+            fi
+          done
