@@ -107,6 +107,17 @@ final class AccountStore {
         showLogin()
     }
 
+    #if os(iOS)
+    func block(userID: String, chatID: String) async throws {
+        try await client.block(userID: userID)
+        if calls.chatID == chatID { calls.end() }
+        drafts[chatID] = nil
+        typists[chatID] = nil
+        chatListRevision += 1
+        revision += 1
+    }
+    #endif
+
     private func clearSessionActivity() {
         calls.end(); realtime.stop(); clearIncoming()
         drafts.removeAll(); chatRevisions.removeAll(); typists.removeAll()

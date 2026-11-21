@@ -37,8 +37,11 @@ final class CallTileLayoutTests: XCTestCase {
     func testWideCallCanShowFourEqualTilesInTwoColumns() {
         let layout = CallTileLayout(width: 900, height: 610, count: 4)
         XCTAssertFalse(layout.needsScroll)
-        XCTAssertEqual(layout.frames.map(\.x), [0, 455, 0, 455])
-        XCTAssertEqual(layout.frames.map(\.y), [0, 0, 310, 310])
+        XCTAssertEqual(layout.frames.count, 4)
+        for (frame, position) in zip(layout.frames, [(0.0, 0.0), (455, 0), (0, 310), (455, 310)]) {
+            XCTAssertEqual(frame.x, position.0, accuracy: 0.01)
+            XCTAssertEqual(frame.y, position.1, accuracy: 0.01)
+        }
     }
 
     func testEmptyRoomHasNoPhantomTile() {

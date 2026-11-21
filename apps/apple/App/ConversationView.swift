@@ -42,6 +42,7 @@ struct ConversationView: View {
     @State private var photo: PhotosPickerItem?
     #endif
     @State private var profileVisible = false
+    @State private var closeAfterBlock = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -62,7 +63,7 @@ struct ConversationView: View {
             } label: { Image(systemName: "phone").font(.system(size: 20)).frame(width: 44, height: 44) }
                 .buttonStyle(CompactControlStyle()).disabled(account.calls.busy).accessibilityLabel("Позвонить").accessibilityIdentifier("chat.call")
             Button { profileVisible = true } label: { Image(systemName: "sidebar.right").font(.system(size: 19)).frame(width: 36, height: 44) }
-                .buttonStyle(CompactControlStyle()).accessibilityLabel("Показать профиль")
+                .buttonStyle(CompactControlStyle()).accessibilityLabel("Показать профиль").accessibilityIdentifier("chat.profile")
             }
         }.padding(.horizontal, 10).padding(.vertical, 8).background(Brand.webHeader)
             .overlay(alignment: .bottom) { Rectangle().fill(Brand.stroke).frame(height: 0.5) }
@@ -124,7 +125,11 @@ struct ConversationView: View {
         .background(Brand.chatCanvas)
         .preference(key: ChatDestinationKey.self, value: true)
         .navigationTitle(chat.name(currentUserID: account.user?.id))
-        .sheet(isPresented: $profileVisible) { PeerProfileScreen(chat: chat, account: account) }
+        .sheet(isPresented: $profileVisible, onDismiss: {
+            if closeAfterBlock { dismiss() }
+        }) {
+            PeerProfileScreen(chat: chat, account: account) { closeAfterBlock = true }
+        }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $choosingExpression) {

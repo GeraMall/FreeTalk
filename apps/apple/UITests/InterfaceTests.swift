@@ -143,6 +143,21 @@ final class InterfaceTests: XCTestCase {
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
     }
 
+    func testDirectChatProfileExposesBlockWithConfirmation() {
+        let app = launch("conversation")
+        let profile = app.buttons["chat.profile"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 10))
+        profile.tap()
+        let block = app.buttons["profile.block"]
+        XCTAssertTrue(block.waitForExistence(timeout: 5))
+        block.tap()
+        let confirm = app.alerts.firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirm.buttons["Заблокировать"].exists)
+        confirm.buttons["Отмена"].tap()
+        XCTAssertTrue(block.waitForExistence(timeout: 5))
+    }
+
     func testMinimizedCallKeepsChatUsableAndCanReturnAndEnd() {
         let app = launch("call")
         XCTAssertTrue(app.buttons["call.microphone"].waitForExistence(timeout: 10))

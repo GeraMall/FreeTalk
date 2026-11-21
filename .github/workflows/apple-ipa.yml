@@ -30,6 +30,9 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 11.19.0
+      - name: Select the App Store SDK for build 231
+        if: github.ref_name == 'preview/mobile-store-readiness-231'
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
       - run: brew install xcodegen
       - name: Build and verify unsigned release IPA for iPhone and iPad
         run: |

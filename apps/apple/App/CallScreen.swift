@@ -91,7 +91,7 @@ struct CallScreen: View {
                     .disabled(call.tablet == nil || call.phase == .reconnecting)
                     .accessibilityIdentifier("call.tablet")
                 #endif
-                CallButton(title: "Ещё", icon: "ellipsis", color: .white) { more = true }
+                CallButton(title: "Ещё", icon: "ellipsis", color: .primary) { more = true }
                 CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
                     .accessibilityIdentifier("call.end")
             }
@@ -308,8 +308,10 @@ private struct RTCVideoSurface: UIViewRepresentable {
         configure(view, coordinator: context.coordinator)
     }
     private func configure(_ view: RTCMTLVideoView, coordinator: Coordinator) {
-        view.videoContentMode = fillsTile ? .scaleAspectFill : .scaleAspectFit
-        view.transform = CGAffineTransform(scaleX: mirrored ? -1 : 1, y: 1)
+        let mode: UIView.ContentMode = fillsTile ? .scaleAspectFill : .scaleAspectFit
+        if view.videoContentMode != mode { view.videoContentMode = mode }
+        let transform = CGAffineTransform(scaleX: mirrored ? -1 : 1, y: 1)
+        if view.transform != transform { view.transform = transform }
         coordinator.onFirstFrame = onFirstFrame
         coordinator.attach(track, view)
     }

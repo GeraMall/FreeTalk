@@ -446,6 +446,10 @@ public actor AccountClient {
         return result.profile
     }
 
+    public func block(userID: String) async throws {
+        let _: EmptyResponse = try await request("v1/blocks/\(try identifier(userID))", method: "POST")
+    }
+
     private func identifier(_ value: String) throws -> String {
         guard UUID(uuidString: value) != nil else {
             throw APIError(status: 0, code: "INVALID_ID", message: "Некорректный идентификатор чата.")

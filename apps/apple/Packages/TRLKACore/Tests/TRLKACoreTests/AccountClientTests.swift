@@ -169,6 +169,31 @@ final class AccountClientTests: XCTestCase {
         XCTAssertNil(restored)
     }
 
+    func testBlockRequiresAnIdentifierAndUsesAuthenticatedServerRoute() async throws {
+        let vault = MemoryVault("saved-token")
+        let api = try client(vault: vault)
+        do {
+            try await api.block(userID: "../invalid")
+            XCTFail("Expected identifier validation before sending the request")
+        } catch let error as APIError {
+            XCTAssertEqual(error.code, "INVALID_ID")
+        }
+        let userID = "22222222-2222-4222-8222-222222222222"
+        var mutations = 0
+        StubProtocol.handle = { request in
+            if request.url?.path == "/api/v1/auth/refresh" {
+                return (200, "{\"session\":\(self.sessionJSON)}")
+            }
+            mutations += 1
+            XCTAssertEqual(request.url?.path, "/api/v1/blocks/\(userID)")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-new")
+            return (204, "")
+        }
+        try await api.block(userID: userID)
+        XCTAssertEqual(mutations, 1)
+    }
+
     func testLogoutDuringRefreshCannotResurrectSession() async throws {
         let vault = MemoryVault("saved-token")
         let started = expectation(description: "Refresh started")
