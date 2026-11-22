@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -23,16 +24,19 @@ import androidx.compose.ui.zIndex
 
 @Composable
 internal fun CallParticipants(peers: List<RoomPeer>, selfId: String, media: NativeCallMedia?, videoMode: Boolean,
-    focused: String?, onFocus: (String?) -> Unit, modifier: Modifier = Modifier) {
+    focused: String?, onFocus: (String?) -> Unit, modifier: Modifier = Modifier,
+    screenFullscreen: Boolean = false, onFullscreenChat: (() -> Unit)? = null) {
     val selected = peers.firstOrNull { videoMode && it.id == focused }
     val others = peers.filter { it.id != selected?.id }
-    val mini = if (selected == null) null else
+    val mini = if (selected == null || screenFullscreen) null else
         others.firstOrNull { it.id == selfId && media?.camera == true }
             ?: others.firstOrNull { peer -> media?.videos?.keys?.any { it.startsWith("${peer.videoPrefix(selfId)}:") } == true }
     var zoom by remember(selected?.id, mini?.id) { mutableFloatStateOf(1f) }
     var dx by remember(selected?.id, mini?.id) { mutableFloatStateOf(0f) }
     var dy by remember(selected?.id, mini?.id) { mutableFloatStateOf(0f) }
-    BoxWithConstraints(modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))) {
+    val container = if (screenFullscreen) Modifier.clipToBounds().background(Color.Black)
+        else Modifier.clip(RoundedCornerShape(18.dp))
+    BoxWithConstraints(modifier.fillMaxSize().then(container)) {
         val width = maxWidth.value.coerceAtLeast(1f)
         val height = maxHeight.value.coerceAtLeast(1f)
         val grid = remember(width, height, peers.size, videoMode) {
@@ -41,7 +45,7 @@ internal fun CallParticipants(peers: List<RoomPeer>, selfId: String, media: Nati
         val scroll = rememberScrollState()
         val canvas = if (selected == null) grid.canvasHeight else height
         val canvasHeight by animateDpAsState(canvas.dp, tween(220), label = "call grid height")
-        LaunchedEffect(selected?.id) { if (selected != null && scroll.value != 0) scroll.animateScrollTo(0, tween(220)) }
+        LaunchedEffect(selected?.id) { if (selected != null && scroll.value != 0) scroll.scrollTo(0) }
         Box(Modifier.fillMaxSize().verticalScroll(scroll, enabled = selected == null && grid.canvasHeight > height + 1f)) {
             Box(Modifier.fillMaxWidth().height(canvasHeight)) {
                 peers.forEachIndexed { index, peer -> key(peer.id) {
@@ -74,32 +78,45 @@ internal fun CallParticipants(peers: List<RoomPeer>, selfId: String, media: Nati
                         videoMode && selected == null -> Modifier.clickable(onClickLabel = "Раскрыть ${peer.name}") { onFocus(peer.id) }
                         else -> Modifier
                     }
-                    ParticipantTile(peer, selfId, media, position.then(interaction), videoMode, preview, shown, w.value)
+                    ParticipantTile(peer, selfId, media, position.then(interaction), videoMode, preview, shown, w.value,
+                        edgeToEdge = screenFullscreen && primary)
                 } }
             }
         }
         if (selected != null) {
-            WebIconButton(onClick = { onFocus(null) }, modifier = Modifier.align(Alignment.TopStart)
-                .padding(10.dp).size(48.dp).background(MobileDesign.background.copy(alpha = .86f), RoundedCornerShape(12.dp))) {
-                WebIcon(WebIcons.ArrowBack, "Вернуться к участникам")
+            val insets = if (screenFullscreen) Modifier.windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)) else Modifier
+            val control = Modifier.size(48.dp)
+                .background(MobileDesign.background.copy(alpha = .86f), RoundedCornerShape(12.dp))
+            Row(Modifier.align(Alignment.TopStart).fillMaxWidth().then(insets).padding(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WebIconButton(onClick = { onFocus(null) }, modifier = control) {
+                    WebIcon(WebIcons.ArrowBack, "Вернуться к участникам")
+                }
+                if (screenFullscreen && onFullscreenChat != null) {
+                    WebIconButton(onClick = onFullscreenChat, modifier = control) {
+                        WebIcon(WebIcons.ChatBubbleOutline, "Чат во время звонка")
+                    }
+                }
             }
         }
     }
 }
 
-private fun RoomPeer.videoPrefix(selfId: String) = if (id == selfId) "self" else id
+internal fun RoomPeer.videoPrefix(selfId: String) = if (id == selfId) "self" else id
 
 @Composable
 private fun ParticipantTile(peer: RoomPeer, selfId: String, media: NativeCallMedia?, modifier: Modifier,
-    videoMode: Boolean, compact: Boolean, visible: Boolean, width: Float) {
+    videoMode: Boolean, compact: Boolean, visible: Boolean, width: Float, edgeToEdge: Boolean) {
     val self = peer.id == selfId
     val prefix = peer.videoPrefix(selfId)
     val screen = media?.videos?.get("$prefix:screen")
     val track = screen ?: media?.videos?.get("$prefix:camera")
     val label = peer.name + if (self) " · вы" else ""
     val shape = RoundedCornerShape(18.dp)
-    Box(modifier.clip(shape).background(MobileDesign.incoming).border(1.dp, MobileDesign.stroke, shape),
-        contentAlignment = Alignment.Center) {
+    val decoration = if (edgeToEdge) Modifier.clipToBounds().background(Color.Black)
+        else Modifier.clip(shape).background(MobileDesign.incoming).border(1.dp, MobileDesign.stroke, shape)
+    Box(modifier.then(decoration), contentAlignment = Alignment.Center) {
         if (videoMode) {
             Column(Modifier.padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -128,10 +145,10 @@ private fun ParticipantTile(peer: RoomPeer, selfId: String, media: NativeCallMed
                 RoomVideo(track, media, self && screen == null && MobilePreferences.mirrorSelf,
                     Modifier.fillMaxSize(), fit = screen != null, visible = visible)
             }
-            MobileText(label, fontSize = if (compact) 10.sp else 12.sp, color = Color.White,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color.Black.copy(alpha = .56f))
-                    .padding(horizontal = 9.dp, vertical = if (compact) 5.dp else 8.dp))
+            if (!edgeToEdge) MobileText(label, fontSize = if (compact) 10.sp else 12.sp, color = Color.White,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color.Black.copy(alpha = .56f))
+                        .padding(horizontal = 9.dp, vertical = if (compact) 5.dp else 8.dp))
         }
     }
 }

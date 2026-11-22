@@ -2,23 +2,48 @@ package io.freetalk.mobile
 
 import org.junit.Assert.*
 import org.junit.Test
-import kotlin.math.abs
 
 class CallTileLayoutTest {
-    @Test fun equalAreaTilesStayInsidePhoneTabletAndLandscapeBounds() {
+    @Test fun matchingTilesStayInsidePhoneTabletAndLandscapeBounds() {
         for ((width, height) in listOf(320f to 390f, 390f to 600f, 800f to 900f, 720f to 260f)) {
             for (count in 1..8) {
                 val layout = CallTileLayout.calculate(width, height, count)
                 assertEquals(count, layout.frames.size)
-                val area = layout.frames.first().let { it.width * it.height }
+                val first = layout.frames.first()
                 layout.frames.forEachIndexed { i, a ->
                     assertTrue(a.width > 0 && a.height > 0 && a.x >= 0 && a.y >= 0)
                     assertTrue(a.x + a.width <= width + .1f && a.y + a.height <= layout.canvasHeight + .1f)
-                    assertTrue(abs(a.width * a.height - area) < 1f)
+                    assertEquals(first.width, a.width, .01f)
+                    assertEquals(first.height, a.height, .01f)
                     layout.frames.drop(i + 1).forEach { b -> assertTrue(a.x + a.width <= b.x + .1f || b.x + b.width <= a.x + .1f || a.y + a.height <= b.y + .1f || b.y + b.height <= a.y + .1f) }
+                }
+                layout.frames.groupBy { it.y }.values.forEach { row ->
+                    assertEquals(width / 2f, (row.first().x + row.last().x + row.last().width) / 2f, .1f)
                 }
             }
         }
+    }
+
+    @Test fun shortLandscapeScrollsWithoutClippingTheLastEqualSizedTile() {
+        val layout = CallTileLayout.calculate(720f, 160f, 8)
+        assertTrue(layout.canvasHeight > 160f)
+        val last = layout.frames.last()
+        assertEquals(layout.canvasHeight, last.y + last.height, .1f)
+        assertEquals(layout.frames.first().width, last.width, .01f)
+        assertEquals(layout.frames.first().height, last.height, .01f)
+    }
+
+    @Test fun emptyVideoLayoutKeepsAnEmptyViewport() {
+        val layout = CallTileLayout.calculate(390f, 480f, 0)
+        assertTrue(layout.frames.isEmpty())
+        assertEquals(480f, layout.canvasHeight, .1f)
+    }
+
+    @Test fun focusedScreenEndsEvenWhenTheSameParticipantStillHasCamera() {
+        val peer = RoomPeer("remote", "Remote", null, false, false)
+        val focus = CallFocus(peer.id, screen = true)
+        assertTrue(focus.isAvailable(listOf(peer), "local", setOf("remote:screen", "remote:camera")))
+        assertFalse(focus.isAvailable(listOf(peer), "local", setOf("remote:camera")))
     }
     @Test fun twoPeopleSplitPortraitCanvasEvenly() {
         val frames = CallTileLayout.calculate(390f, 600f, 2).frames

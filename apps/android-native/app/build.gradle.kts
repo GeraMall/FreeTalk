@@ -33,8 +33,8 @@ android {
         applicationId = "io.freetalk.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 231
-        versionName = if (storeRelease) "0.4.0" else "0.4.0-beta.231"
+        versionCode = 234
+        versionName = if (storeRelease) "0.4.0" else "0.4.0-beta.234"
         buildConfigField("String", "BUILD_COMMIT", "\"$sourceCommit\"")
         buildConfigField("String", "TURNSTILE_SITE_KEY", "\"$turnstileSiteKey\"")
         testInstrumentationRunner = providers.gradleProperty("callProbeRunner")

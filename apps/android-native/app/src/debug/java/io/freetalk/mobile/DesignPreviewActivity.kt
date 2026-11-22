@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.sp
 
 /** Offline screen review. No session restore, socket, push registration or media capture. */
 class DesignPreviewActivity : ComponentActivity() {
+    companion object { internal const val PREVIEW_PEER_ID = "22222222-2222-4222-8222-222222222222" }
+
     var screen by mutableStateOf("home")
     internal var previewCallMedia by mutableStateOf<NativeCallMedia?>(null)
     var previewProfile by mutableStateOf(SignedInUser("11111111-1111-4111-8111-111111111111", "alexey_1", "Alex",
@@ -35,7 +37,7 @@ class DesignPreviewActivity : ComponentActivity() {
     private fun Content(api: FreeTalkApi, cache: MediaCache) {
         MobileSystemBars(screen in listOf("login", "recovery") || MobilePreferences.theme != "light")
         val self = previewProfile
-        val friend = ChatMember("22222222-2222-4222-8222-222222222222", "Макс", null, "max")
+        val friend = ChatMember(PREVIEW_PEER_ID, "Макс", null, "max")
         val chat = ChatSummary("33333333-3333-4333-8333-333333333333", "direct", null, listOf(ChatMember(self.id, self.displayName, null, self.username), friend), "Давай созвонимся вечером", "2026-11-02T12:00:00Z", null)
         val call = CallSummary("history-1", "PREVIEW", "2026-11-01T12:00:00Z", 2400, listOf(CallParticipant(friend.id, "Макс", null)))
         val friends = listOf(FriendSummary(friend.id, "max", "Макс", null, "online"))
@@ -79,15 +81,23 @@ class DesignPreviewActivity : ComponentActivity() {
             "settings", "settings-profile", "settings-audio", "settings-interface", "settings-video", "settings-devices", "settings-recording", "settings-chats", "settings-about" ->
                 AccountSettingsScreen(api, cache, self, emptyList(), { screen = "home" }, { previewProfile = it }, { screen = "login" },
                     preview = true, initialTab = screen.removePrefix("settings-").takeIf { screen != "settings" })
-            "call", "video" -> Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp)) {
-                CallHeader("Комната с друзьями", "Проверяем связь…", "01:05",
-                    onMinimize = { minimized = true; screen = "home" },
-                    onChat = { minimized = true; screen = "conversation" })
-                Text("Участники · 2 из 8", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
-                CallParticipants(listOf(RoomPeer(self.id, self.displayName, null, false, true), RoomPeer(friend.id, "Макс", null, false, false)),
-                    self.id, previewCallMedia, previewCallMedia?.videos?.isNotEmpty() ?: (screen == "video"),
-                    focused, { focused = it }, Modifier.weight(1f))
-                CallToolbar(mic, false, false, true, { mic = !mic }, {}, { screen = "video" }, {}, {}, {}, {}, {}, { minimized = false; screen = "home" })
+            "call", "video", "screen-share" -> {
+                val fullscreen = screen == "screen-share" && focused == friend.id
+                val openChat: () -> Unit = { minimized = true; screen = "conversation" }
+                val insets = if (fullscreen) Modifier else Modifier.safeDrawingPadding().padding(horizontal = 16.dp)
+                Column(Modifier.fillMaxSize().then(insets)) {
+                    if (!fullscreen) {
+                        CallHeader("Комната с друзьями", "Проверяем связь…", "01:05",
+                            onMinimize = { minimized = true; screen = "home" }, onChat = openChat)
+                        Text("Участники · 2 из 8", fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                            modifier = Modifier.padding(vertical = 16.dp))
+                    }
+                    CallParticipants(listOf(RoomPeer(self.id, self.displayName, null, false, true), RoomPeer(friend.id, "Макс", null, false, false)),
+                        self.id, previewCallMedia, previewCallMedia?.videos?.isNotEmpty() ?: (screen != "call"),
+                        focused, { focused = it }, Modifier.weight(1f), screenFullscreen = fullscreen, onFullscreenChat = openChat)
+                    if (!fullscreen) CallToolbar(mic, false, false, true, { mic = !mic }, {}, { screen = "video" }, {}, {}, {}, {}, {},
+                        { minimized = false; screen = "home" })
+                }
             }
             else -> {
                 val page = listOf("home", "chats", "friends", "history", "store").indexOf(screen).coerceAtLeast(0)

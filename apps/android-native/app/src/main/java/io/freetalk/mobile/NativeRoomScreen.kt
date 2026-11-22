@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +39,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.UUID
+
+internal data class CallFocus(val peerId: String, val screen: Boolean = false) {
+    fun isAvailable(peers: List<RoomPeer>, selfId: String, videos: Set<String>): Boolean {
+        val peer = peers.firstOrNull { it.id == peerId } ?: return false
+        return videos.isNotEmpty() && (!screen || "${peer.videoPrefix(selfId)}:screen" in videos)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,8 +63,15 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     val enteredAt = remember(roomId) { System.currentTimeMillis() }
     var pendingInvite by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf<String?>(null) }
-    val hasVideo = media?.videos?.isNotEmpty() == true
+    var focus by remember(roomId) { mutableStateOf<CallFocus?>(null) }
+    val videos = media?.videos?.keys.orEmpty()
+    val hasVideo = videos.isNotEmpty()
+    val focused = focus?.takeIf { it.isAvailable(state.peers, state.selfId, videos) }
+    val screenFullscreen = focused?.screen == true
+    val selectFocus: (String?) -> Unit = { id ->
+        val peer = state.peers.firstOrNull { it.id == id }
+        focus = peer?.let { CallFocus(it.id, "${it.videoPrefix(state.selfId)}:screen" in videos) }
+    }
     LaunchedEffect(state.activity) {
         if (state.activity?.let { JSONObject(it).optBoolean("open") } == false) tabletVisible = false
     }
@@ -64,10 +79,9 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
     LaunchedEffect(media?.videos?.keys?.toSet()) {
         if (media?.videos?.keys?.any { it.endsWith(":screen") } == true) tabletVisible = false
     }
-    LaunchedEffect(hasVideo) { if (!hasVideo) focused = null }
-    LaunchedEffect(state.peers.map { it.id }) { if (focused != null && state.peers.none { it.id == focused }) focused = null }
+    LaunchedEffect(focus, focused) { if (focused == null) focus = null }
     LaunchedEffect(media?.connections?.toMap()) { onQuality(when { media?.connections?.values?.any { it.contains("Ошибка") } == true -> "poor"; media?.connections?.values?.any { it.contains("потер", ignoreCase = true) } == true -> "weak"; media?.connections?.values?.any { it == "Подключён" } == true -> "good"; else -> "connecting" }) }
-    BackHandler(enabled = expanded) { if (focused != null) focused = null else { sheet = null; onMinimize() } }
+    BackHandler(enabled = expanded) { if (focused != null) focus = null else { sheet = null; onMinimize() } }
     val secondary = MobileDesign.muted
     val link = "https://trlka.com/join/$roomId"
     val latestLeave by rememberUpdatedState(onLeave)
@@ -143,13 +157,17 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         Unit
     }
     if (!expanded) return
-    Scaffold(containerColor = MobileDesign.canvas, topBar = {
+    val configuration = LocalConfiguration.current
+    val compact = configuration.screenWidthDp > configuration.screenHeightDp && configuration.screenHeightDp < 480
+    Scaffold(containerColor = if (screenFullscreen) Color.Black else MobileDesign.canvas,
+        contentWindowInsets = if (screenFullscreen) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
+        topBar = {
         if (focused == null) CallHeader("Комната с друзьями",
             if (media?.connections?.values?.any { it == "Подключён" } == true) "Связь установлена" else if (state.peers.size < 2) "Ожидаем участников" else "Проверяем связь…",
             if (state.startedAt > 0) "%02d:%02d".format(elapsed / 60, elapsed % 60) else "…",
-            onMinimize = { sheet = null; onMinimize() }, onChat = openChat)
+            onMinimize = { sheet = null; onMinimize() }, onChat = openChat, compact = compact)
     }, bottomBar = {
-        Column {
+        if (!screenFullscreen) Column {
         if (NativeSettingsStore.string("transmissionMode") == "push-to-talk") {
             val engine = media
             var held by remember(engine) { mutableStateOf(false) }
@@ -173,6 +191,7 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
             onCameraOptions = { sheet = "camera" },
             onScreen = { if (media?.sharing == true) media?.stopCapture("screen") else sheet = "share" },
             onReaction = { sheet = "reactions" }, onChat = openChat, onMore = { sheet = "menu" }, onLeave = onLeave,
+            compact = compact,
             onActivity = {
                 if (state.activity == null) feedback = "Подключаем общий планшет…"
                 else {
@@ -184,17 +203,21 @@ fun NativeRoomScreen(user: SignedInUser, roomId: String, status: String, signali
         )
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding)
+            .padding(horizontal = if (screenFullscreen) 0.dp else if (compact) 10.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 14.dp)) {
             if (focused == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 MobileText("Участники · ${state.peers.size} из 8", Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 WebTextButton(onClick = { sheet = "invite" }, enabled = state.peers.size < 8) { WebIcon(WebIcons.PersonAdd, null, Modifier.size(16.dp)); MobileText("Добавить", Modifier.padding(start = 6.dp), fontSize = 12.sp) }
             }
-            if (feedback.isNotBlank() || media?.error?.isNotBlank() == true) MobileText(feedback.ifBlank { media?.error.orEmpty() }, color = MobileDesign.red, fontSize = 12.sp)
-            if (media != null && state.peers.size > 1 && now - enteredAt > 15_000 &&
+            if (!screenFullscreen && (feedback.isNotBlank() || media?.error?.isNotBlank() == true))
+                MobileText(feedback.ifBlank { media?.error.orEmpty() }, color = MobileDesign.red, fontSize = 12.sp)
+            if (!screenFullscreen && media != null && state.peers.size > 1 && now - enteredAt > 15_000 &&
                 media?.connections?.values?.none { it == "Подключён" } == true) {
                 WebOutlinedButton(onClick = { media?.retryConnection() }) { MobileText("Повторить подключение") }
             }
-            CallParticipants(state.peers, state.selfId, media, hasVideo, focused, { focused = it }, Modifier.weight(1f))
+            CallParticipants(state.peers, state.selfId, media, hasVideo, focused?.peerId, selectFocus, Modifier.weight(1f),
+                screenFullscreen = screenFullscreen, onFullscreenChat = openChat)
         }
     }
     if (tabletVisible) androidx.compose.ui.window.Dialog(
