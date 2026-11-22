@@ -57,24 +57,47 @@ final class CallController {
     private var ringTask: Task<Void, Never>?
     #if DEBUG
     private var previewFrames: Task<Void, Never>?
+    private var previewScreenFrames: Task<Void, Never>?
+    private var previewScreen: (participantID: String, track: RTCVideoTrack)?
     func installPreviewCamera() {
-        let previewFactory = RTCPeerConnectionFactory()
+        let (track, frames) = previewVideo(trackID: "preview-camera", width: 320, height: 240)
+        localVideo = track
+        previewFrames = frames
+        cameraOn = true; revision += 1
+    }
+    func installPreviewScreen(for participantID: String) {
+        let (track, frames) = previewVideo(trackID: "preview-screen", width: 480, height: 270)
+        previewScreen = (participantID, track)
+        previewScreenFrames = frames
+        revision += 1
+    }
+    func stopPreviewScreen() {
+        guard previewScreen != nil else { return }
+        previewScreenFrames?.cancel(); previewScreenFrames = nil
+        previewScreen = nil
+        revision += 1
+    }
+    private func previewVideo(trackID: String, width: Int, height: Int) -> (RTCVideoTrack, Task<Void, Never>) {
+        let previewFactory = factory ?? RTCPeerConnectionFactory()
         let source = previewFactory.videoSource()
         let capture = RTCVideoCapturer(delegate: source)
         factory = previewFactory
-        localVideo = previewFactory.videoTrack(with: source, trackId: "preview-camera")
-        cameraOn = true; revision += 1
-        previewFrames = Task {
+        let track = previewFactory.videoTrack(with: source, trackId: trackID)
+        let frames = Task {
             var tick = 0
+            let attributes: [String: Any] = [
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+                kCVPixelBufferMetalCompatibilityKey as String: true,
+            ]
             while !Task.isCancelled {
                 var buffer: CVPixelBuffer?
-                CVPixelBufferCreate(kCFAllocatorDefault, 320, 240, kCVPixelFormatType_32BGRA, nil, &buffer)
+                CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer)
                 if let buffer {
                     CVPixelBufferLockBaseAddress(buffer, [])
                     if let base = CVPixelBufferGetBaseAddress(buffer) {
                         let pixels = base.assumingMemoryBound(to: UInt8.self)
                         let stride = CVPixelBufferGetBytesPerRow(buffer)
-                        for y in 0..<240 { for x in 0..<320 {
+                        for y in 0..<height { for x in 0..<width {
                             let index = y * stride + x * 4
                             pixels[index] = UInt8((x + tick) % 180 + 60)
                             pixels[index + 1] = UInt8(y / 2 + 60)
@@ -89,6 +112,7 @@ final class CallController {
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
+        return (track, frames)
     }
     #endif
     private var statisticsTask: Task<Void, Never>?
@@ -396,6 +420,9 @@ final class CallController {
     }
     func video(participantID: String, source: String = "camera") -> RTCVideoTrack? {
         _ = revision
+        #if DEBUG
+        if source == "screen", let previewScreen, previewScreen.participantID == participantID { return previewScreen.track }
+        #endif
         if participantID == selfID { return source == "camera" ? localVideo : nil }
         return peers[participantID]?.video(source: source)
     }
@@ -551,6 +578,9 @@ final class CallController {
 
     func end() {
         generation += 1
+        #if DEBUG
+        stopPreviewScreen()
+        #endif
         #if os(iOS)
         if let screenCapture {
             sharingScreen = false

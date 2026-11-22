@@ -8,7 +8,7 @@ struct CallScreen: View {
     @State private var invite = false
     @State private var showChat = false
     @State private var videoMode = false
-    @State private var focusedID: String?
+    @State private var focus: CallMediaFocus?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -22,99 +22,102 @@ struct CallScreen: View {
         #else
         let wideLayout = false
         #endif
-        let showTileGrid = videoMode || (wideLayout && (!call.participants.isEmpty || !call.waiting.isEmpty))
-        VStack(spacing: 16) {
-            if focusedID == nil || !showTileGrid {
-            HStack(spacing: 14) {
-                Button { call.presented = false } label: { Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44).trlkaPanel(14) }
-                    .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(call.title).font(.headline).lineLimit(1)
-                    HStack(spacing: 5) {
-                        Circle().fill(call.qualityColor).frame(width: 6, height: 6)
-                        Text(call.qualityText).font(.caption).foregroundStyle(Brand.muted)
+        let presentationID = focus?.screenParticipantID
+        let presenter = call.participants.first { $0.id == presentationID }
+        let sharedTrackID = presentationID.flatMap { call.video(participantID: $0, source: "screen")?.trackId }
+        let presentation = presentationID != nil
+        let showTileGrid = presentation || videoMode || (wideLayout && (!call.participants.isEmpty || !call.waiting.isEmpty))
+        ZStack {
+            (presentation ? Color.black : Brand.background).ignoresSafeArea()
+            VStack(spacing: 16) {
+                if focus == nil || !showTileGrid { callHeader(call) }
+                ZStack {
+                    if showTileGrid {
+                        VideoCallCanvas(account: account, mirrorSelf: mirrorSelf, focus: $focus)
+                            .transition(.opacity)
+                    } else {
+                        audioList(call).transition(.opacity)
                     }
                 }
-                Spacer(minLength: 4)
-                Text(call.startedAt, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
+                if !presentation { callControls(call) }
             }
-            HStack {
-                Text("Участники · \(call.participants.count) из 8").font(.subheadline.weight(.semibold))
-                Spacer()
-                Button { showChat = true } label: {
-                    Image(systemName: "bubble.left.and.bubble.right").frame(minWidth: 36, minHeight: 32)
-                }.buttonStyle(.bordered).accessibilityLabel("Открыть чат звонка")
-                    .accessibilityIdentifier("call.chat").disabled(call.roomID.isEmpty)
-                Button { invite = true } label: { Label("Добавить", systemImage: "person.badge.plus").font(.caption.weight(.semibold)) }
-                    .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
-            }
-            }
-            ZStack {
-                if showTileGrid {
-                    VideoCallCanvas(account: account, mirrorSelf: mirrorSelf, focusedID: $focusedID)
-                        .transition(.opacity)
-                } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(call.participants) { participant in
-                            AudioParticipantRow(participant: participant, account: account)
-                        }
-                        ForEach(call.waiting) { person in
-                            HStack(spacing: 12) {
-                                ProfileAvatar(name: person.name, url: person.avatar, client: account.client, size: 42)
-                                VStack(alignment: .leading, spacing: 5) { Text(person.name).font(.subheadline.weight(.semibold)).lineLimit(1); Text("Ожидаем подключения").font(.caption).foregroundStyle(Brand.muted) }
-                                Spacer(minLength: 4)
-                                Image(systemName: "phone.arrow.up.right").foregroundStyle(Brand.accent)
-                            }.padding(14).trlkaPanel(18)
-                        }
-                        if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").padding(32) }
-                    }.padding(.vertical, 2)
-                }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list").transition(.opacity)
-                }
-            }
+            .padding(.horizontal, presentation ? 0 : 16)
+            .padding(.top, presentation ? 0 : 8)
+            .frame(maxWidth: presentation ? .infinity : 900)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(presentation ? .container : [])
             #if os(iOS)
-            if call.sharingScreen {
-                Button { call.toggleScreen() } label: {
-                    Label("Остановить показ TRLKA", systemImage: "stop.circle.fill")
-                }.buttonStyle(.bordered).tint(.red).accessibilityIdentifier("call.stop-screen-share")
-            }
+            if presentation { presentationControls(call, presenter: presenter) }
             #endif
-            HStack(spacing: 8) {
-                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, highlighted: !call.muted) { call.setMuted(!call.muted) }
-                    .accessibilityIdentifier("call.microphone")
-                CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
-                    .accessibilityIdentifier("call.camera")
-                    .accessibilityValue(call.cameraOn ? "Включена" : "Выключена")
-                    .disabled(call.cameraBusy)
-                #if os(iOS)
-                CallButton(title: "Игры", icon: "gamecontroller", color: Brand.accent, highlighted: call.tablet?["open"] as? Bool == true) { call.openTablet() }
-                    .disabled(call.tablet == nil || call.phase == .reconnecting)
-                    .accessibilityIdentifier("call.tablet")
-                #endif
-                CallButton(title: "Ещё", icon: "ellipsis", color: .primary) { more = true }
-                CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
-                    .accessibilityIdentifier("call.end")
-            }
-            .frame(maxWidth: 370).padding(.top, 4)
         }
-        .padding(.horizontal, 16).padding(.top, 8).frame(maxWidth: 900)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Brand.background)
+        #if os(iOS)
+        .statusBarHidden(presentation)
+        #endif
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: showTileGrid)
-        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: focusedID)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: focus)
         .onChange(of: showTileGrid) { _, show in
-            if !show { focusedID = nil }
+            if !show { focus = nil }
+        }
+        .onChange(of: sharedTrackID) { _, track in
+            if track == nil && focus?.screenParticipantID != nil { focus = nil }
         }
         .task(id: hasVideo) {
             if hasVideo { videoMode = true }
             else {
                 try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 260))
                 guard !Task.isCancelled else { return }
-                if !wideLayout { focusedID = nil }
+                if !wideLayout { focus = nil }
                 videoMode = false
             }
         }
-        .sheet(isPresented: $more) {
+        .sheet(isPresented: $more) { callOptions(call) }
+        .sheet(isPresented: $showChat) {
+            CallChatSheet(account: account)
+        }
+        .sheet(isPresented: $invite) { InviteToCallScreen(account: account) }
+        #if os(iOS)
+        .fullScreenCover(isPresented: Binding(get: { call.tabletPresented }, set: { if !$0 { call.closeTablet() } })) {
+            CallTabletScreen(call: call, client: account.client)
+        }
+        #endif
+        .alert("Звонок", isPresented: Binding(get: { call.error != nil }, set: { if !$0 { call.error = nil } })) {
+            Button("Понятно") { call.error = nil }
+        } message: { Text(call.error ?? "") }
+    }
+
+    #if os(iOS)
+    private func presentationControls(_ call: CallController, presenter: RoomParticipant?) -> some View {
+        VStack {
+            HStack(spacing: 10) {
+                Button { focus = nil } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left").frame(width: 44, height: 44)
+                }
+                .buttonStyle(CompactControlStyle())
+                .accessibilityLabel("Закрыть полноэкранный просмотр")
+                .accessibilityIdentifier("call.close-presentation")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Демонстрация экрана").font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("call.presentation")
+                    if let presenter { Text(presenter.name).font(.caption).foregroundStyle(Brand.muted).lineLimit(1) }
+                }
+                Spacer(minLength: 4)
+                chatButton(call)
+            }
+            .padding(.trailing, 6)
+            .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+            Spacer(minLength: 0)
+            callControls(call)
+                .padding(6)
+                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .accessibilityAction(.escape) { focus = nil }
+    }
+    #endif
+
+    private func callOptions(_ call: CallController) -> some View {
+        ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Настройки звонка").font(.title2.bold())
                 #if os(iOS)
@@ -133,25 +136,100 @@ struct CallScreen: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 #endif
+                #if DEBUG
+                if PreviewFixtures.mode == "call-screen" {
+                    Button("Остановить тестовый показ") { call.stopPreviewScreen(); more = false }
+                        .accessibilityIdentifier("call.stop-preview-screen")
+                }
+                #endif
                 Toggle("Зеркалить свою камеру", isOn: $mirrorSelf)
                 Text("Другие участники видят камеру без зеркального отражения.").font(.caption).foregroundStyle(Brand.muted)
                 ShareLink(item: URL(string: "https://trlka.com/join/\(account.calls.roomID)")!) { Label("Поделиться комнатой", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
                 Text("Код комнаты: \(account.calls.roomID)").font(.callout.monospaced()).textSelection(.enabled)
                 Button("Готово") { more = false }
-            }.padding(24).presentationDetents([.large])
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+        }.accessibilityIdentifier("call.options").presentationDetents([.large])
+    }
+
+    private func callHeader(_ call: CallController) -> some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 14) {
+                Button { call.presented = false } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44).trlkaPanel(14)
+                }
+                .buttonStyle(CompactControlStyle()).accessibilityLabel("Свернуть звонок").accessibilityIdentifier("call.minimize")
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(call.title).font(.headline).lineLimit(1)
+                    HStack(spacing: 5) {
+                        Circle().fill(call.qualityColor).frame(width: 6, height: 6)
+                        Text(call.qualityText).font(.caption).foregroundStyle(Brand.muted)
+                    }
+                }
+                Spacer(minLength: 4)
+                Text(call.startedAt, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
+            }
+            HStack {
+                Text("Участники · \(call.participants.count) из 8").font(.subheadline.weight(.semibold))
+                Spacer()
+                chatButton(call)
+                Button { invite = true } label: { Label("Добавить", systemImage: "person.badge.plus").font(.caption.weight(.semibold)) }
+                    .buttonStyle(.bordered).disabled(call.participants.count >= 8 || call.roomID.isEmpty)
+            }
         }
-        .sheet(isPresented: $showChat) {
-            CallChatSheet(account: account)
+    }
+
+    private func chatButton(_ call: CallController) -> some View {
+        Button { showChat = true } label: {
+            Image(systemName: "bubble.left.and.bubble.right").frame(minWidth: 36, minHeight: 32)
         }
-        .sheet(isPresented: $invite) { InviteToCallScreen(account: account) }
-        #if os(iOS)
-        .fullScreenCover(isPresented: Binding(get: { call.tabletPresented }, set: { if !$0 { call.closeTablet() } })) {
-            CallTabletScreen(call: call, client: account.client)
+        .buttonStyle(.bordered).accessibilityLabel("Открыть чат звонка")
+        .accessibilityIdentifier("call.chat").disabled(call.roomID.isEmpty)
+    }
+
+    private func audioList(_ call: CallController) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(call.participants) { participant in
+                    AudioParticipantRow(participant: participant, account: account)
+                }
+                ForEach(call.waiting) { person in
+                    HStack(spacing: 12) {
+                        ProfileAvatar(name: person.name, url: person.avatar, client: account.client, size: 42)
+                        VStack(alignment: .leading, spacing: 5) { Text(person.name).font(.subheadline.weight(.semibold)).lineLimit(1); Text("Ожидаем подключения").font(.caption).foregroundStyle(Brand.muted) }
+                        Spacer(minLength: 4)
+                        Image(systemName: "phone.arrow.up.right").foregroundStyle(Brand.accent)
+                    }.padding(14).trlkaPanel(18)
+                }
+                if call.participants.isEmpty && call.waiting.isEmpty { ProgressView("Подключаемся…").padding(32) }
+            }.padding(.vertical, 2)
+        }.scrollIndicators(.hidden).accessibilityIdentifier("call.audio-list")
+    }
+
+    private func callControls(_ call: CallController) -> some View {
+        VStack(spacing: 16) {
+            #if os(iOS)
+            if call.sharingScreen {
+                Button { call.toggleScreen() } label: {
+                    Label("Остановить показ TRLKA", systemImage: "stop.circle.fill")
+                }.buttonStyle(.bordered).tint(.red).accessibilityIdentifier("call.stop-screen-share")
+            }
+            #endif
+            HStack(spacing: 8) {
+                CallButton(title: "Микрофон", icon: call.muted ? "mic.slash.fill" : "mic.fill", color: call.muted ? .pink : Brand.online, highlighted: !call.muted) { call.setMuted(!call.muted) }
+                    .accessibilityIdentifier("call.microphone")
+                CallButton(title: "Камера", icon: call.cameraOn ? "video.fill" : "video.slash.fill", color: call.cameraOn ? Brand.accent : .pink) { Task { await call.toggleCamera() } }
+                    .accessibilityIdentifier("call.camera")
+                    .accessibilityValue(call.cameraOn ? "Включена" : "Выключена").disabled(call.cameraBusy)
+                #if os(iOS)
+                CallButton(title: "Игры", icon: "gamecontroller", color: Brand.accent, highlighted: call.tablet?["open"] as? Bool == true) { call.openTablet() }
+                    .disabled(call.tablet == nil || call.phase == .reconnecting).accessibilityIdentifier("call.tablet")
+                #endif
+                CallButton(title: "Ещё", icon: "ellipsis", color: .primary) { more = true }
+                    .accessibilityIdentifier("call.more")
+                CallButton(title: "Выйти", icon: "rectangle.portrait.and.arrow.right", color: .white, destructive: true) { call.end() }
+                    .accessibilityIdentifier("call.end")
+            }.frame(maxWidth: 370).padding(.top, 4)
         }
-        #endif
-        .alert("Звонок", isPresented: Binding(get: { call.error != nil }, set: { if !$0 { call.error = nil } })) {
-            Button("Понятно") { call.error = nil }
-        } message: { Text(call.error ?? "") }
     }
 }
 
@@ -163,20 +241,25 @@ struct ParticipantCard: View {
     var tileSize: CGSize?
     var compact = false
     var expanded = false
+    var presentation = false
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let call = account.calls
         let screen = call.video(participantID: participant.id, source: "screen")
-        let video = screen ?? call.video(participantID: participant.id)
+        let video = presentation ? screen : screen ?? call.video(participantID: participant.id)
         ZStack {
-            LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing)
-            VStack(spacing: compact ? 4 : side < 150 ? 6 : 10) {
-                ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: compact ? 26 : min(96, side * 0.32))
-                identity.font(.system(size: compact ? 10 : side < 150 ? 12 : 14, weight: .semibold))
-                if !compact && side >= 150 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
-                if !compact { activity }
-            }.padding(compact ? 6 : 12)
+            if presentation {
+                Color.black
+            } else {
+                LinearGradient(colors: [Brand.surface, Brand.background], startPoint: .topLeading, endPoint: .bottomTrailing)
+                VStack(spacing: compact ? 4 : side < 150 ? 6 : 10) {
+                    ProfileAvatar(name: participant.name, url: participant.avatar, client: account.client, size: compact ? 26 : min(96, side * 0.32))
+                    identity.font(.system(size: compact ? 10 : side < 150 ? 12 : 14, weight: .semibold))
+                    if !compact && side >= 150 { Text(call.connectionState(participant.id)).font(.system(size: 11)).foregroundStyle(Brand.muted).lineLimit(1) }
+                    if !compact { activity }
+                }.padding(compact ? 6 : 12)
+            }
             if let video {
                 let mirrored = screen == nil && participant.id == call.selfID && mirrorSelf
                 Group {
@@ -191,14 +274,16 @@ struct ParticipantCard: View {
                 }
                 .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side).clipped().allowsHitTesting(false)
                 .transition(.opacity)
-                VStack { Spacer(); HStack { identity.font(.system(size: compact ? 10 : 12, weight: .semibold)); Spacer(minLength: 4); if !compact { activity } }.padding(compact ? 6 : 10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
-                    .transition(.opacity)
+                if !presentation {
+                    VStack { Spacer(); HStack { identity.font(.system(size: compact ? 10 : 12, weight: .semibold)); Spacer(minLength: 4); if !compact { activity } }.padding(compact ? 6 : 10).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)) }
+                        .transition(.opacity)
+                }
             }
         }
         .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: presentation ? 0 : 20))
         .accessibilityValue(video == nil ? "Без видео" : screen != nil ? "Демонстрация экрана" : "Камера")
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(presentation ? 0 : call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: video?.trackId)
         .accessibilityIdentifier("call.participant.\(participant.id)")
         .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } } }

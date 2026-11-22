@@ -11,15 +11,17 @@ enum PreviewFixtures {
     static let userID = "11111111-1111-4111-8111-111111111111"
     static let friendID = "22222222-2222-4222-8222-222222222222"
     static let chatID = "33333333-3333-4333-8333-333333333333"
+    static let guestID = "44444444-4444-4444-8444-444444444444"
     static var user: [String: Any] { ["id": userID, "username": "alex", "displayName": "Alex", "avatarUrl": NSNull(), "bio": "Всегда на связи"] }
     static var member: [String: Any] { ["id": friendID, "username": "max", "displayName": "Макс", "avatarUrl": NSNull()] }
     static var chatJSON: [String: Any] { ["id": chatID, "type": "direct", "title": NSNull(), "lastMessage": "Давай созвонимся вечером", "lastMessageAt": "2026-11-01T12:00:00Z", "members": [user, member]] }
     static var chat: Chat { try! JSONDecoder().decode(Chat.self, from: JSONSerialization.data(withJSONObject: chatJSON)) }
     static var participants: [RoomParticipant] {
-        let values: [[String: Any]] = [
+        var values: [[String: Any]] = [
             ["id": userID, "accountId": userID, "name": "Alex", "muted": false, "isOwner": true],
             ["id": friendID, "accountId": friendID, "name": "Макс", "muted": false, "isOwner": false]
         ]
+        if mode == "call-screen" { values.append(["id": guestID, "name": "Саша", "muted": true, "isOwner": false]) }
         return try! JSONDecoder().decode([RoomParticipant].self, from: JSONSerialization.data(withJSONObject: values))
     }
     static func response(_ path: String) -> [String: Any] {

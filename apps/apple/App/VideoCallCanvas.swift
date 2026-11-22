@@ -1,6 +1,22 @@
 import SwiftUI
 import TRLKACore
 
+enum CallMediaFocus: Equatable {
+    case participant(String)
+    case screen(String)
+
+    var participantID: String {
+        switch self {
+        case .participant(let id), .screen(let id): return id
+        }
+    }
+
+    var screenParticipantID: String? {
+        if case .screen(let id) = self { return id }
+        return nil
+    }
+}
+
 struct AudioParticipantRow: View {
     let participant: RoomParticipant
     let account: AccountStore
@@ -33,7 +49,7 @@ struct AudioParticipantRow: View {
 struct VideoCallCanvas: View {
     let account: AccountStore
     let mirrorSelf: Bool
-    @Binding var focusedID: String?
+    @Binding var focus: CallMediaFocus?
     @State private var secondaryID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var transition: Animation? { reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88) }
@@ -41,7 +57,8 @@ struct VideoCallCanvas: View {
     var body: some View {
         GeometryReader { geometry in
             let call = account.calls
-            let focused = call.participants.first { $0.id == focusedID }
+            let focused = call.participants.first { $0.id == focus?.participantID }
+            let presentation = focus?.screenParticipantID != nil
             let width = max(1, geometry.size.width)
             let height = max(1, geometry.size.height)
             let bounds = CGSize(width: width, height: height)
@@ -56,10 +73,11 @@ struct VideoCallCanvas: View {
                                 let hidden = focused != nil && !expanded
                                 let size = expanded ? bounds : CGSize(width: frame.width, height: frame.height)
                                 ParticipantCard(participant: participant, account: account, mirrorSelf: mirrorSelf,
-                                                side: min(size.width, size.height), tileSize: size, expanded: expanded)
+                                                side: min(size.width, size.height), tileSize: size, expanded: expanded,
+                                                presentation: expanded && presentation)
                                     .contentShape(RoundedRectangle(cornerRadius: 20))
-                                    .onTapGesture { focus(participant, replacing: focused == nil) }
-                                    .accessibilityAction { focus(participant, replacing: focused == nil) }
+                                    .onTapGesture { focusParticipant(participant, replacing: focused == nil) }
+                                    .accessibilityAction { focusParticipant(participant, replacing: focused == nil) }
                                     .accessibilityAddTraits(.isButton)
                                     .opacity(hidden ? 0 : 1)
                                     .accessibilityHidden(hidden)
@@ -83,9 +101,9 @@ struct VideoCallCanvas: View {
                     .scrollDisabled(focused != nil || !layout.needsScroll)
                     .scrollIndicators(.hidden)
                     .accessibilityIdentifier("call.video-grid")
-                    if let focused {
+                    if let focused, !presentation {
                         Button {
-                            withAnimation(transition) { focusedID = nil; secondaryID = nil }
+                            withAnimation(transition) { focus = nil; secondaryID = nil }
                         } label: {
                             Image(systemName: "arrow.down.right.and.arrow.up.left").font(.system(size: 18, weight: .semibold))
                                 .frame(width: 44, height: 44).background(Brand.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 13))
@@ -96,31 +114,38 @@ struct VideoCallCanvas: View {
                         .accessibilityIdentifier("call.return-grid")
                         if let mini = miniParticipant(focused: focused), call.video(participantID: mini.id) != nil || call.video(participantID: mini.id, source: "screen") != nil || call.cameraOn {
                             FloatingCallPreview(participant: mini, account: account, mirrorSelf: mirrorSelf, bounds: bounds) {
-                                withAnimation(transition) { secondaryID = focused.id; focusedID = mini.id }
+                                withAnimation(transition) { secondaryID = focused.id; focus = mediaFocus(for: mini) }
                             }.transition(.opacity)
                         }
                     }
                 }
                 .frame(width: width, height: height)
                 .clipped()
-                .onChange(of: focusedID) { _, value in
+                .onChange(of: focus) { _, value in
                     if value != nil { scroll.scrollTo("participants", anchor: .top) }
+                    else { secondaryID = nil }
                 }
             }
             .animation(transition, value: call.participants.map(\.id))
             .animation(transition, value: call.waiting.map(\.id))
             .onChange(of: call.participants.map(\.id)) { _, ids in
-                if let focusedID, !ids.contains(focusedID) { withAnimation(transition) { self.focusedID = nil; secondaryID = nil } }
+                if let focus, !ids.contains(focus.participantID) { withAnimation(transition) { self.focus = nil } }
             }
         }
     }
-    private func focus(_ participant: RoomParticipant, replacing: Bool) {
+    private func focusParticipant(_ participant: RoomParticipant, replacing: Bool) {
         guard replacing else { return }
         let call = account.calls
         withAnimation(transition) {
-            focusedID = participant.id
+            focus = mediaFocus(for: participant)
             secondaryID = participant.id == call.selfID ? call.participants.first(where: { $0.id != call.selfID })?.id : call.selfID
         }
+    }
+    private func mediaFocus(for participant: RoomParticipant) -> CallMediaFocus {
+        #if os(iOS)
+        if account.calls.video(participantID: participant.id, source: "screen") != nil { return .screen(participant.id) }
+        #endif
+        return .participant(participant.id)
     }
     private func miniParticipant(focused: RoomParticipant) -> RoomParticipant? {
         let id = focused.id == account.calls.selfID ? secondaryID : account.calls.selfID

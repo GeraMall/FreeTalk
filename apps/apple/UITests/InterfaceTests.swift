@@ -49,6 +49,86 @@ final class InterfaceTests: XCTestCase {
         app.buttons["call.camera"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "call.audio-list").firstMatch.waitForExistence(timeout: 5))
     }
+
+    @MainActor
+    func testScreenShareFillsBothOrientationsAndReturnsToEqualTilesWhenItEnds() async {
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = launch("call-screen")
+        let own = participant(app, "11111111-1111-4111-8111-111111111111")
+        let peer = participant(app, "22222222-2222-4222-8222-222222222222")
+        let guest = participant(app, "44444444-4444-4444-8444-444444444444")
+        XCTAssertTrue(own.waitForExistence(timeout: 10))
+        XCTAssertTrue(peer.waitForExistence(timeout: 5))
+        XCTAssertTrue(guest.waitForExistence(timeout: 5))
+        for tile in [peer, guest] {
+            XCTAssertEqual(tile.frame.width, own.frame.width, accuracy: 2)
+            XCTAssertEqual(tile.frame.height, own.frame.height, accuracy: 2)
+        }
+        XCTAssertEqual(guest.frame.midX, app.frame.midX, accuracy: 5)
+
+        peer.tap()
+        let close = app.buttons["call.close-presentation"]
+        let portraitReady = await waitForCallLayout { close.isHittable && peer.frame.width >= app.frame.width - 5 }
+        XCTAssertTrue(portraitReady)
+        XCTAssertEqual(peer.value as? String, "Демонстрация экрана")
+        XCTAssertGreaterThanOrEqual(peer.frame.width, app.frame.width - 5)
+        XCTAssertTrue(app.buttons["call.chat"].isHittable)
+        XCTAssertTrue(app.buttons["call.end"].isHittable)
+        attachCallScreen("screen-share-portrait", app: app)
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let landscapeReady = await waitForCallLayout {
+            app.frame.width > app.frame.height && close.isHittable && peer.frame.width >= app.frame.width - 5
+        }
+        XCTAssertTrue(landscapeReady)
+        XCTAssertTrue(close.isHittable)
+        XCTAssertGreaterThanOrEqual(peer.frame.width, app.frame.width - 5)
+        XCTAssertTrue(app.buttons["call.chat"].isHittable)
+        XCTAssertTrue(app.buttons["call.microphone"].isHittable)
+        attachCallScreen("screen-share-landscape", app: app)
+
+        close.tap()
+        let gridRestored = await waitForCallLayout { !close.exists && peer.isHittable }
+        XCTAssertTrue(gridRestored)
+        peer.tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        app.buttons["call.more"].tap()
+        let stop = app.buttons["call.stop-preview-screen"]
+        XCTAssertTrue(app.scrollViews["call.options"].waitForExistence(timeout: 5))
+        if !stop.isHittable { app.scrollViews["call.options"].swipeUp() }
+        XCTAssertTrue(stop.isHittable)
+        stop.tap()
+        let shareEnded = await waitForCallLayout {
+            !close.exists && peer.value as? String == "Без видео" && own.value as? String == "Камера"
+        }
+        XCTAssertTrue(shareEnded)
+        XCTAssertEqual(own.value as? String, "Камера")
+        XCTAssertEqual(peer.value as? String, "Без видео")
+    }
+
+    @MainActor
+    private func waitForCallLayout(_ ready: () -> Bool) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(8)
+        while clock.now < deadline {
+            if ready() { return true }
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+        return ready()
+    }
+
+    private func participant(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "call.participant.\(id)").firstMatch
+    }
+
+    private func attachCallScreen(_ name: String, app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     private func launch(_ mode: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-preview", mode, "-AppleLanguages", "(ru)", "-AppleLocale", "ru_RU"]

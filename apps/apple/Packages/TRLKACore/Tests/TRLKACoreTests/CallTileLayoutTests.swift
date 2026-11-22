@@ -2,14 +2,15 @@ import XCTest
 @testable import TRLKACore
 
 final class CallTileLayoutTests: XCTestCase {
-    func testPhoneAndTabletDivideVideoAreaEquallyWithoutOverlap() {
+    func testPhoneAndTabletUseSameTileDimensionsWithoutOverlap() {
         for width in [288.0, 358, 800, 960] {
             for count in 1...8 {
                 let layout = CallTileLayout(width: width, height: 560, count: count)
                 XCTAssertEqual(layout.frames.count, count)
-                let area = layout.frames[0].width * layout.frames[0].height
+                let first = layout.frames[0]
                 for (index, frame) in layout.frames.enumerated() {
-                    XCTAssertEqual(frame.width * frame.height, area, accuracy: 0.01)
+                    XCTAssertEqual(frame.width, first.width, accuracy: 0.01)
+                    XCTAssertEqual(frame.height, first.height, accuracy: 0.01)
                     XCTAssertGreaterThanOrEqual(frame.x, 0)
                     XCTAssertGreaterThanOrEqual(frame.y, 0)
                     XCTAssertLessThanOrEqual(frame.x + frame.width, width + 1)
@@ -21,6 +22,15 @@ final class CallTileLayoutTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testOddPortraitRowCentersItsLastTileWithoutStretchingIt() {
+        let layout = CallTileLayout(width: 358, height: 550, count: 3)
+        let first = layout.frames[0], last = layout.frames[2]
+        XCTAssertGreaterThan(last.y, first.y)
+        XCTAssertEqual(last.width, first.width, accuracy: 0.01)
+        XCTAssertEqual(last.height, first.height, accuracy: 0.01)
+        XCTAssertEqual(last.x + last.width / 2, 179, accuracy: 0.01)
     }
     func testShortLandscapeKeepsUsableTilesAndScrollsInsteadOfCoveringControls() {
         let layout = CallTileLayout(width: 700, height: 130, count: 8)

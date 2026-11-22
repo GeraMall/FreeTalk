@@ -7,7 +7,7 @@ public struct CallTileFrame: Sendable {
     public let height: Double
 }
 
-/// Equal-area video tiles. Odd participant counts do not leave an empty cell.
+/// Tiles have equal dimensions, with an incomplete final row centered in the canvas.
 public struct CallTileLayout: Sendable {
     public let frames: [CallTileFrame]
     public let canvasHeight: Double
@@ -31,26 +31,28 @@ public struct CallTileLayout: Sendable {
         needsScroll = canvasHeight > height + 1
         var best: [CallTileFrame] = []
         var bestScore = Double.infinity
-        for rows in minimumRows...count {
-            let counts = (0..<rows).map { count / rows + ($0 < count % rows ? 1 : 0) }
-            let widths = counts.map { (width - gap * Double($0 - 1)) / Double($0) }
-            guard widths.allSatisfy({ $0 > 0 }), canvasHeight > gap * Double(rows - 1) else { continue }
-            let area = (canvasHeight - gap * Double(rows - 1)) / widths.reduce(0.0) { $0 + 1 / $1 }
-            var candidate: [CallTileFrame] = [], y = 0.0
-            var score = 0.0, worst = 0.0
-            for row in 0..<rows {
-                let tileWidth = widths[row], tileHeight = area / widths[row]
-                let distortion = abs(log(tileWidth / tileHeight / targetAspectRatio))
-                worst = max(worst, distortion)
-                score += distortion * Double(counts[row])
-                if min(tileWidth, tileHeight) < 90 { score += 20 }
-                for column in 0..<counts[row] {
-                    candidate.append(CallTileFrame(x: Double(column) * (tileWidth + gap), y: y, width: tileWidth, height: tileHeight))
-                }
-                y += tileHeight + gap
+        for columns in 1...min(possibleColumns, count) {
+            let rows = (count + columns - 1) / columns
+            let tileWidth = (width - gap * Double(columns - 1)) / Double(columns)
+            let tileHeight = (canvasHeight - gap * Double(rows - 1)) / Double(rows)
+            guard tileWidth > 0, tileHeight > 0 else { continue }
+            let unused = Double(rows * columns - count) / Double(rows * columns)
+            let tooSmall = min(tileWidth, tileHeight) < 90 ? 20.0 : 0
+            let score = abs(log(tileWidth / tileHeight / targetAspectRatio)) + unused * 0.2 + tooSmall
+            guard score < bestScore else { continue }
+            bestScore = score
+            best = (0..<count).map { index in
+                let row = index / columns
+                let column = index % columns
+                let rowCount = min(columns, count - row * columns)
+                let rowWidth = tileWidth * Double(rowCount) + gap * Double(rowCount - 1)
+                return CallTileFrame(
+                    x: (width - rowWidth) / 2 + Double(column) * (tileWidth + gap),
+                    y: Double(row) * (tileHeight + gap),
+                    width: tileWidth,
+                    height: tileHeight
+                )
             }
-            score = score / Double(count) + worst * 0.3
-            if score < bestScore { bestScore = score; best = candidate }
         }
         frames = best
     }

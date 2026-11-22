@@ -132,14 +132,15 @@ final class AccountStore {
     private func startRealtime() async {
         #if DEBUG
         if PreviewFixtures.mode != nil {
-            if PreviewFixtures.mode == "call" || PreviewFixtures.mode == "call-video" || PreviewFixtures.mode == "minimized" {
+            if ["call", "call-video", "call-screen", "minimized"].contains(PreviewFixtures.mode ?? "") {
                 calls.roomID = "ABCDEFGHJKLM"; calls.selfID = PreviewFixtures.userID; calls.title = "Комната с друзьями"
                 calls.participants = PreviewFixtures.participants; calls.phase = .connected; calls.presented = PreviewFixtures.mode != "minimized"
                 calls.tablet = ["revision": 1, "open": true, "region": "RU", "canPlayPoker": false]
                 let sample: [String: Any] = ["id": PreviewFixtures.chatID, "participantId": PreviewFixtures.friendID,
                                             "senderName": "Макс", "text": "Сообщение из комнаты", "timestamp": 1_780_000_000_000.0]
                 calls.roomChat.join(snapshot: ["roomChatVersion": 2, "roomChatMessages": [sample]], socketURL: nil, selfID: calls.selfID)
-                if PreviewFixtures.mode == "call-video" { calls.installPreviewCamera() }
+                if PreviewFixtures.mode == "call-video" || PreviewFixtures.mode == "call-screen" { calls.installPreviewCamera() }
+                if PreviewFixtures.mode == "call-screen" { calls.installPreviewScreen(for: PreviewFixtures.friendID) }
             }
             return
         }
