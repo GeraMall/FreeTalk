@@ -21,6 +21,7 @@ import './theme-steel.css';
 import './chat-theme.css';
 import './control-motion.css';
 import './interface-themes.css';
+import './screen-share-viewport.css';
 
 const themeSurface = new URLSearchParams(location.search);
 applyInterfaceTheme(

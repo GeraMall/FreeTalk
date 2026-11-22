@@ -2023,6 +2023,8 @@ function DeviceMenuItem({
   );
 }
 
+const SCREEN_SHARE_VIEWPORT_QUERY = '(max-width: 760px), (pointer: coarse)';
+
 function ScreenShareStage({
   presenter,
   stream,
@@ -2043,10 +2045,15 @@ function ScreenShareStage({
   onVolume(participantId: string, volume: number): void;
 }) {
   const slotRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const expandRef = useRef<HTMLButtonElement>(null);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>();
   const [fullscreen, setFullscreen] = useState(false);
+  const [touchViewport, setTouchViewport] = useState(
+    () => window.matchMedia?.(SCREEN_SHARE_VIEWPORT_QUERY).matches ?? false,
+  );
+  const viewportFullscreen = fullscreen && touchViewport;
   const [playbackMetrics, setPlaybackMetrics] = useState({ width: 0, height: 0, fps: 0 });
   const updatePlaybackMetrics = useCallback(
     (metrics: { width: number; height: number; fps: number }) =>
@@ -2095,12 +2102,59 @@ function ScreenShareStage({
     };
   }, [aspectRatio]);
 
+  useEffect(() => {
+    const query = window.matchMedia?.(SCREEN_SHARE_VIEWPORT_QUERY);
+    if (!query) return;
+    const update = () => setTouchViewport(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (!viewportFullscreen || !shell) return;
+
+    // Promote the existing video to the top layer without replacing its DOM node.
+    if (typeof shell.showPopover === 'function') {
+      shell.setAttribute('popover', 'manual');
+      try {
+        shell.showPopover();
+      } catch {
+        shell.removeAttribute('popover');
+      }
+    }
+    expandRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (shell.hasAttribute('popover')) {
+        shell.hidePopover();
+        shell.removeAttribute('popover');
+      }
+    };
+  }, [viewportFullscreen]);
+
   const toggleFullscreen = () => setFullscreen((active) => !active);
 
   return (
     <div className="presentation-stage-slot" ref={slotRef}>
       <div
-        className={`screen-stage-shell ${fullscreen ? `media-fullscreen-shell${constrainFullscreenToWorkspace ? ' media-workspace-fullscreen-shell' : ''}` : ''}`}
+        ref={shellRef}
+        className={[
+          'screen-stage-shell',
+          fullscreen && 'media-fullscreen-shell',
+          viewportFullscreen && 'media-viewport-fullscreen-shell',
+          fullscreen &&
+            !viewportFullscreen &&
+            constrainFullscreenToWorkspace &&
+            'media-workspace-fullscreen-shell',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onKeyDown={(event) => {
+          if (!fullscreen || event.key !== 'Escape') return;
+          event.stopPropagation();
+          event.preventDefault();
+          setFullscreen(false);
+        }}
         style={
           {
             '--screen-aspect-ratio': aspectRatio,
@@ -2131,6 +2185,7 @@ function ScreenShareStage({
               {playbackMetrics.fps > 0 && ` · ${playbackMetrics.fps} FPS`}
             </span>
             <button
+              ref={expandRef}
               type="button"
               className="screen-stage-expand"
               aria-label={
@@ -2147,12 +2202,12 @@ function ScreenShareStage({
           </span>
         </div>
         <article
-          ref={stageRef}
           className={`screen-stage media-surface ${fullscreen ? 'screen-stage-window-fullscreen' : ''}`}
           aria-label={t('Демонстрация экрана {p0}', { p0: presenter.name })}
           onClick={(event) => {
             const target = event.target;
             if (target instanceof Element && target.closest('.screen-stage-volume')) return;
+            if (viewportFullscreen) return;
             toggleFullscreen();
           }}
         >

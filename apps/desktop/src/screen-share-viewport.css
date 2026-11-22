@@ -1,0 +1,72 @@
+@media (max-width: 760px), (pointer: coarse) {
+  .screen-stage-shell .screen-stage-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .screen-stage-toolbar .screen-stage-title,
+  .screen-stage-title > span {
+    min-width: 0;
+  }
+
+  .screen-stage-title strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .screen-stage-toolbar .screen-stage-expand {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.screen-stage-shell.media-fullscreen-shell .screen-stage.screen-stage-window-fullscreen {
+  z-index: 0;
+}
+
+.screen-stage-shell.media-viewport-fullscreen-shell {
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  border-radius: 0;
+  animation: screen-share-viewport-in 160ms ease-out;
+}
+
+.media-viewport-fullscreen-shell .screen-stage-toolbar {
+  padding: calc(4px + env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) 4px
+    max(12px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(180deg, rgba(2, 11, 21, 0.9), rgba(2, 11, 21, 0.52));
+}
+
+.media-viewport-fullscreen-shell .screen-stage.screen-stage-window-fullscreen {
+  cursor: default;
+}
+
+.media-viewport-fullscreen-shell .participant-video.screen video {
+  object-fit: contain;
+}
+
+.media-viewport-fullscreen-shell .screen-stage-volume {
+  inset-block-end: max(12px, env(safe-area-inset-bottom, 0px));
+  inset-inline-start: max(12px, env(safe-area-inset-left, 0px));
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+@keyframes screen-share-viewport-in {
+  from {
+    opacity: 0.76;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-stage-shell.media-viewport-fullscreen-shell {
+    animation: none;
+  }
+}
