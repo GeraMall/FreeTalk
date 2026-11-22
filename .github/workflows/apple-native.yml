@@ -14,6 +14,10 @@ on:
         description: Capture non-call iPhone screens only after a visual change
         type: boolean
         default: false
+      screen_share_test_only:
+        description: Run the screen-share layout test on the iPhone and iPad simulators
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,10 +52,10 @@ jobs:
           bash apps/apple/script/prepare_tablet.sh
           (cd apps/apple && xcodegen generate)
       - name: Core contract and session tests
-        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true && inputs.screen_share_test_only != true
         run: swift test --package-path apps/apple/Packages/TRLKACore
       - name: Build Mac app
-        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true && inputs.screen_share_test_only != true
         run: bash apps/apple/script/build_and_run.sh macos --build-only
       - name: Build iPhone and iPad app
         working-directory: apps/apple
@@ -63,7 +67,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = com.trlka.ios
           file "$APP/TRLKA"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          if [[ '${{ inputs.call_preview_only }}' != 'true' && '${{ inputs.non_call_preview_only }}' != 'true' ]]; then
+          if [[ '${{ inputs.call_preview_only }}' != 'true' && '${{ inputs.non_call_preview_only }}' != 'true' && '${{ inputs.screen_share_test_only }}' != 'true' ]]; then
             xcodebuild -project TRLKA.xcodeproj -scheme TRLKA-iOS \
               -destination 'generic/platform=iOS' -derivedDataPath build/device \
               CODE_SIGNING_ALLOWED=NO build
@@ -74,6 +78,7 @@ jobs:
         env:
           TRLKA_CALL_PREVIEW_ONLY: ${{ inputs.call_preview_only }}
           TRLKA_NON_CALL_PREVIEW_ONLY: ${{ inputs.non_call_preview_only }}
+          TRLKA_SCREEN_SHARE_TEST_ONLY: ${{ inputs.screen_share_test_only }}
         run: |
           mkdir -p build/previews
           xcrun simctl list devices available --json > build/devices.json
@@ -81,6 +86,7 @@ jobs:
           import json, os, subprocess, time
           non_call = os.environ.get('TRLKA_NON_CALL_PREVIEW_ONLY') == 'true'
           quick = os.environ.get('TRLKA_CALL_PREVIEW_ONLY') == 'true' or non_call
+          screen_share = os.environ.get('TRLKA_SCREEN_SHARE_TEST_ONLY') == 'true'
           by_runtime = json.load(open('build/devices.json'))['devices']
           sdk = subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-version'], text=True).strip()
           version = lambda s: tuple(map(int, s.replace('-', '.').split('.')))
@@ -89,14 +95,15 @@ jobs:
                         key=lambda key: version(key.split('.iOS-')[1]))
           devices = by_runtime[runtime]
           print('Simulator runtime:', runtime, 'SDK:', sdk, flush=True)
-          for family in (('iPhone',) if quick else ('iPhone', 'iPad')):
+          failed_screen_share = []
+          for family in (('iPhone',) if quick and not screen_share else ('iPhone', 'iPad')):
               device = next(d for d in devices if d['name'].startswith(family))
               uid = device['udid']
               subprocess.run(['xcrun','simctl','boot',uid], check=False)
               subprocess.run(['xcrun','simctl','bootstatus',uid,'-b'], check=True)
               subprocess.run(['xcrun','simctl','install',uid,'build/ios/Build/Products/Debug-iphonesimulator/TRLKA.app'],check=True)
               subprocess.run(['xcrun','simctl','get_app_container',uid,'com.trlka.ios','app'],check=True)
-              modes = ['settings','bot','conversation','home','chats','friends','history','login'] if non_call else ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
+              modes = [] if screen_share else ['settings','bot','conversation','home','chats','friends','history','login'] if non_call else ['call'] if quick else (['login','home','chats','conversation','bot','bot-profile','minimized','call','call-video','settings','friends','history'] if family == 'iPhone' else ['home','chats','conversation','bot','settings','call','call-video'])
               for mode in modes:
                   subprocess.run(['xcrun','simctl','terminate',uid,'com.trlka.ios'],check=False)
                   launch = ['xcrun','simctl','launch',uid,'com.trlka.ios','--ui-preview',mode,'-AppleLanguages','(ru)','-AppleLocale','ru_RU']
@@ -127,15 +134,22 @@ jobs:
                           print(error.stdout, error.stderr, flush=True)
                       raise RuntimeError(f'TRLKA exited before capturing {mode}')
                   subprocess.run(['xcrun','simctl','io',uid,'screenshot',f'build/previews/{family}-{mode}.png'],check=True)
-              if family == 'iPhone' and not quick:
-                  subprocess.run(['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
-                      '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
-                      '-parallel-testing-enabled','NO','-resultBundlePath','build/UITests.xcresult',
-                      'CODE_SIGN_IDENTITY=-'],check=True)
+              if screen_share or (family == 'iPhone' and not quick):
+                  bundle = f'build/{family}-ScreenShare.xcresult' if screen_share else 'build/UITests.xcresult'
+                  test = ['xcodebuild','test','-project','TRLKA.xcodeproj','-scheme','TRLKA-iOS',
+                          '-destination',f'platform=iOS Simulator,id={uid}','-derivedDataPath','build/ios',
+                          '-parallel-testing-enabled','NO','-resultBundlePath',bundle,'CODE_SIGN_IDENTITY=-']
+                  if screen_share:
+                      test.append('-only-testing:TRLKA-UITests/InterfaceTests/testScreenShareFillsBothOrientationsAndReturnsToEqualTilesWhenItEnds')
+                  result = subprocess.run(test, check=not screen_share)
+                  if result.returncode:
+                      failed_screen_share.append(family)
               subprocess.run(['xcrun','simctl','shutdown',uid],check=True)
+          if failed_screen_share:
+              raise RuntimeError('Screen-share test failed on ' + ', '.join(failed_screen_share))
           PY
       - name: Package local Mac preview
-        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true
+        if: inputs.call_preview_only != true && inputs.non_call_preview_only != true && inputs.screen_share_test_only != true
         working-directory: apps/apple
         run: |
           bash script/sign_preview.sh
@@ -153,5 +167,5 @@ jobs:
             apps/apple/build/TRLKA-macOS-preview.zip
             apps/apple/build/previews/*.png
             apps/apple/build/previews/*.ips
-            apps/apple/build/UITests.xcresult
+            apps/apple/build/*.xcresult
           retention-days: 14

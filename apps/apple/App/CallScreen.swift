@@ -282,11 +282,24 @@ struct ParticipantCard: View {
         }
         .frame(width: tileSize?.width ?? side, height: tileSize?.height ?? side)
         .clipShape(RoundedRectangle(cornerRadius: presentation ? 0 : 20))
-        .accessibilityValue(video == nil ? "Без видео" : screen != nil ? "Демонстрация экрана" : "Камера")
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.accent.opacity(presentation ? 0 : call.participants.count == 1 ? (pulse ? 0.55 : 0.12) : 0.2), lineWidth: 1))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: video?.trackId)
+        .accessibilityElement(children: .ignore)
+        .contentShape(.accessibility, RoundedRectangle(cornerRadius: presentation ? 0 : 20))
+        .accessibilityLabel(spokenIdentity)
+        .accessibilityValue(video == nil ? "Без видео" : screen != nil ? "Демонстрация экрана" : "Камера")
         .accessibilityIdentifier("call.participant.\(participant.id)")
         .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } } }
+    }
+    private var spokenIdentity: String {
+        var parts = [participant.name]
+        let isSelf = participant.id == account.calls.selfID
+        if isSelf { parts.append("Вы") }
+        if participant.isOwner { parts.append("Ведущий звонка") }
+        if participant.deafened == true { parts.append("Звук звонка выключен") }
+        else if participant.muted { parts.append("Микрофон выключен") }
+        else if !isSelf { parts.append(account.calls.connectionState(participant.id)) }
+        return parts.joined(separator: ", ")
     }
     private var identity: some View {
         HStack(spacing: 4) {

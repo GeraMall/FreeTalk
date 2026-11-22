@@ -61,11 +61,13 @@ final class InterfaceTests: XCTestCase {
         XCTAssertTrue(own.waitForExistence(timeout: 10))
         XCTAssertTrue(peer.waitForExistence(timeout: 5))
         XCTAssertTrue(guest.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(own.frame.width, 90, "Measure a participant tile, not the avatar")
         for tile in [peer, guest] {
             XCTAssertEqual(tile.frame.width, own.frame.width, accuracy: 2)
             XCTAssertEqual(tile.frame.height, own.frame.height, accuracy: 2)
         }
         XCTAssertEqual(guest.frame.midX, app.frame.midX, accuracy: 5)
+        attachCallScreen("screen-share-grid-portrait", app: app)
 
         peer.tap()
         let close = app.buttons["call.close-presentation"]
@@ -119,7 +121,7 @@ final class InterfaceTests: XCTestCase {
     }
 
     private func participant(_ app: XCUIApplication, _ id: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "call.participant.\(id)").firstMatch
+        app.buttons["call.participant.\(id)"]
     }
 
     private func attachCallScreen(_ name: String, app: XCUIApplication) {
