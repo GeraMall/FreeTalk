@@ -1,0 +1,99 @@
+#download,
+#linux-downloads {
+  scroll-margin-top: 100px;
+}
+
+.platform-downloads {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-download {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(5, 11, 20, 0.26);
+}
+
+.platform-download-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.platform-download-heading h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.platform-download-version,
+.platform-download-compatibility,
+.platform-download-option small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.platform-download-compatibility {
+  margin-block: 4px 14px;
+}
+
+.platform-download-options {
+  display: grid;
+  gap: 8px;
+  margin-block-start: auto;
+}
+
+.linux-download-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.download .platform-download-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 14px;
+  font-size: 14px;
+  text-align: center;
+  white-space: normal;
+}
+
+.platform-download-option:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+
+@media (max-width: 1000px) {
+  .platform-downloads {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #linux-downloads {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .platform-downloads {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 360px) {
+  .linux-download-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
