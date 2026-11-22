@@ -1,0 +1,145 @@
+name: Stage verified Linux beta.234 assets in the draft
+
+on:
+  push:
+    branches: [release/stage-linux-draft-234]
+    paths: [.github/workflows/stage-linux-draft-234.yml]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: stage-linux-beta234-draft
+  cancel-in-progress: false
+
+jobs:
+  stage-draft:
+    if: github.repository == 'GeraMall/FreeTalk' && github.ref == 'refs/heads/release/stage-linux-draft-234'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PACKAGE_RUN: '45045204802'
+      PACKAGE_SOURCE: a6c8c706a3e03692e66dfb815362bcd2168e6849
+      PREVIOUS_SOURCE: d1ee82dec901c794ece29316009250a61367449c
+      LINUX_TAG: linux-v0.4.0-beta.234
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PACKAGE_SOURCE }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verify the isolated build and existing draft
+        run: |
+          gh run view "$PACKAGE_RUN" --json headSha,status,conclusion,jobs | jq -e --arg sha "$PACKAGE_SOURCE" '
+            .headSha == $sha and .status == "completed" and .conclusion == "success" and
+            ([.jobs[] | select(.conclusion == "success") | .name] | sort) ==
+              ["package", "signed-stage", "upgrade (appimage)", "upgrade (deb)"]'
+          gh release view "$LINUX_TAG" --json tagName,isDraft,isPrerelease,targetCommitish |
+            jq -e --arg tag "$LINUX_TAG" --arg sha "$PACKAGE_SOURCE" '
+              .tagName == $tag and .isDraft and .isPrerelease and .targetCommitish == $sha'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.PACKAGE_RUN }}
+          name: trlka-linux-update-signed
+          path: input-artifacts/trlka-linux-update-signed
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.PACKAGE_RUN }}
+          pattern: trlka-linux-updater-*-test
+          path: input-artifacts
+      - name: Verify tested packages, both signatures and the signed feed
+        run: |
+          asset_dir=input-artifacts/trlka-linux-update-signed
+          (cd "$asset_dir"; sha256sum --strict --check SHA256SUMS.txt)
+          node scripts/windows/verify-updater.mjs "$asset_dir"/Trlka_0.4.0-beta.234_amd64.deb "$asset_dir"/Trlka_0.4.0-beta.234_amd64.deb.sig
+          node scripts/windows/verify-updater.mjs "$asset_dir"/Trlka_0.4.0-beta.234_x86_64.AppImage "$asset_dir"/Trlka_0.4.0-beta.234_x86_64.AppImage.sig
+          mkdir -p staging-metadata
+          cp "$asset_dir"/latest.json "$asset_dir"/SHA256SUMS.txt staging-metadata/
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const { createHash } = require('node:crypto');
+          const { readFileSync, readdirSync, statSync, writeFileSync } = require('node:fs');
+          const { verifyFeed } = require('./apps/linux-desktop/linux-updater.cjs');
+          const config = 'apps/desktop/src-tauri/tauri.conf.json';
+          const previous = JSON.parse(execFileSync('git', ['show', process.env.PREVIOUS_SOURCE + ':' + config]));
+          const key = previous.plugins.updater.pubkey;
+          assert.equal(require('./' + config).plugins.updater.pubkey, key);
+          const source = 'input-artifacts/trlka-linux-update-signed/';
+          const { manifest } = verifyFeed(
+            JSON.parse(readFileSync(source + 'latest.json')),
+            Buffer.from(key, 'base64').toString('utf8'),
+          );
+          assert.equal(manifest.schema, 1);
+          assert.equal(manifest.version, '0.4.0-beta.234');
+          const suffixes = { deb: 'amd64.deb', appimage: 'x86_64.AppImage' };
+          const expected = ['latest.json', 'SHA256SUMS.txt'];
+          const assets = Object.fromEntries(readdirSync(source).map(name => [
+            name,
+            {
+              size: statSync(source + name).size,
+              sha256: createHash('sha256').update(readFileSync(source + name)).digest('hex'),
+            },
+          ]));
+          for (const [format, suffix] of Object.entries(suffixes)) {
+            const name = 'Trlka_' + manifest.version + '_' + suffix;
+            expected.push(name, name + '.sig');
+            const tested = JSON.parse(readFileSync('input-artifacts/trlka-linux-updater-' + format + '-test/report.json'));
+            assert.equal(tested.format, format);
+            assert.equal(tested.oldVersion, '0.4.0-beta.233');
+            assert.equal(tested.newVersion, manifest.version);
+            assert.equal(tested.checks.profileRetained, true);
+            assert.equal(tested.checks.newProcessReportsCandidateVersion, true);
+            assert.equal(tested.checks.invalidSignatureRejected, true);
+            assert.equal(tested.checks.invalidArtifactHashRejected, true);
+            assert.equal(tested.checks.signedCandidateSha256, assets[name].sha256);
+            const url = 'https://github.com/' + process.env.GH_REPO + '/releases/download/' + process.env.LINUX_TAG + '/' + name;
+            assert.deepEqual(manifest.platforms[format], { url, ...assets[name] });
+          }
+          assert.deepEqual(Object.keys(assets).sort(), expected.sort());
+          writeFileSync('staging-metadata/assets.json', JSON.stringify({
+            tag: process.env.LINUX_TAG,
+            source: process.env.PACKAGE_SOURCE,
+            buildRun: process.env.PACKAGE_RUN,
+            assets,
+          }, null, 2) + '\n');
+          NODE
+      - name: Upload verified assets to the existing draft
+        run: |
+          asset_dir=input-artifacts/trlka-linux-update-signed
+          for file in "$asset_dir"/*; do
+            gh release view "$LINUX_TAG" --json tagName,isDraft,isPrerelease,targetCommitish,assets > "$RUNNER_TEMP/linux-draft.json"
+            jq -e --arg tag "$LINUX_TAG" --arg sha "$PACKAGE_SOURCE" '
+              .tagName == $tag and .isDraft and .isPrerelease and .targetCommitish == $sha' "$RUNNER_TEMP/linux-draft.json"
+            name=$(basename "$file")
+            if jq -e --arg name "$name" 'any(.assets[]; .name == $name)' "$RUNNER_TEMP/linux-draft.json" >/dev/null; then
+              hash=$(jq -r --arg name "$name" '.assets[$name].sha256' staging-metadata/assets.json)
+              size=$(jq -r --arg name "$name" '.assets[$name].size' staging-metadata/assets.json)
+              jq -e --arg name "$name" --arg digest "sha256:$hash" --argjson size "$size" '
+                any(.assets[]; .name == $name and .state == "uploaded" and .digest == $digest and .size == $size)' "$RUNNER_TEMP/linux-draft.json"
+            else
+              gh release upload "$LINUX_TAG" "$file"
+            fi
+          done
+          gh release view "$LINUX_TAG" --json tagName,isDraft,isPrerelease,targetCommitish,assets > "$RUNNER_TEMP/linux-draft.json"
+          jq -e --arg tag "$LINUX_TAG" --arg sha "$PACKAGE_SOURCE" --slurpfile verified staging-metadata/assets.json '
+            .tagName == $tag and .isDraft and .isPrerelease and .targetCommitish == $sha and
+            ([.assets[].name] | sort) == ($verified[0].assets | keys | sort) and
+            all(.assets[]; . as $asset | $verified[0].assets[$asset.name] as $expected |
+              $asset.state == "uploaded" and $asset.digest == ("sha256:" + $expected.sha256) and $asset.size == $expected.size)
+          ' "$RUNNER_TEMP/linux-draft.json"
+          jq --slurpfile verified staging-metadata/assets.json -r '
+            $verified[0].assets["latest.json"] | "Signed feed SHA-256: " + .sha256
+          ' "$RUNNER_TEMP/linux-draft.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trlka-linux-234-draft-metadata
+          path: staging-metadata/
+          if-no-files-found: error
