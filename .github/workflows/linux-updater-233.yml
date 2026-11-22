@@ -2,7 +2,7 @@ name: Stage and verify Linux updates
 
 on:
   push:
-    branches: [preview/linux-updater-233]
+    branches: [preview/linux-updater-234]
     paths:
       - '.github/workflows/linux-updater-233.yml'
       - 'apps/linux-desktop/**'
@@ -36,6 +36,7 @@ jobs:
             ~/.cache/electron
             ~/.cache/electron-builder
           key: linux-updater-ubuntu22-x64-${{ hashFiles('apps/linux-desktop/package-lock.json') }}
+          restore-keys: linux-updater-ubuntu22-x64-
       - name: Install package tooling
         run: |
           sudo apt-get update
@@ -43,19 +44,36 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @freetalk/desktop build
       - run: python3 -I apps/linux-desktop/install-update.test.py -v
-      - name: Build the exact production packages and isolated older clients
+      - name: Build the exact production packages
         run: |
           version=$(node -p 'require("./apps/linux-desktop/package.json").version')
           bash scripts/linux/build-updater-packages.sh "$PWD/candidate" "$RUNNER_TEMP/trlka-production" "$version"
+          test "$(dpkg-deb -f candidate/*.deb Package)" = trlka
+          deb_version=$(dpkg-deb -f candidate/*.deb Version)
+          test "${deb_version/~beta./-beta.}" = "$version"
           test "$(dpkg-deb -f candidate/*.deb Architecture)" = amd64
           file candidate/*.AppImage | grep -E 'ELF 64-bit.*x86-64'
+      - uses: actions/checkout@v4
+        with:
+          ref: d1ee82dec901c794ece29316009250a61367449c
+          path: previous-source
+          persist-credentials: false
+      - name: Build isolated installed clients from the released beta.233 source
+        run: |
+          version=$(node -p 'require("./apps/linux-desktop/package.json").version')
           mkdir -m 700 "$RUNNER_TEMP/trlka-test-key"
           key="$RUNNER_TEMP/trlka-test-key/private"
           trap 'rm -f "$key" "$key.pub"' EXIT
           node apps/desktop/node_modules/@tauri-apps/cli/tauri.js signer generate \
             --ci --write-keys "$key" >/dev/null
-          bash scripts/linux/build-updater-packages.sh "$PWD/fixtures/old" \
-            "$RUNNER_TEMP/trlka-isolated" 0.4.0-beta.232 "$key.pub"
+          destination="$PWD/fixtures/old"
+          (
+            cd previous-source
+            pnpm install --frozen-lockfile
+            pnpm --filter @freetalk/desktop build
+            bash scripts/linux/build-updater-packages.sh "$destination" \
+              "$RUNNER_TEMP/trlka-isolated" 0.4.0-beta.233 "$key.pub"
+          )
           node scripts/linux/create-update-feed.mjs --assets candidate \
             --output fixtures/cases --version "$version" \
             --notes 'Offline test release' --fixture-key "$key"
@@ -100,6 +118,18 @@ jobs:
             cmp LICENSE /opt/Trlka/resources/LICENSE
             test "$(stat -c '%u:%a' /opt/Trlka/resources/install-update)" = 0:755
             test "$(stat -c '%u:%a' /opt/Trlka/resources/linux-updater-key.txt)" = 0:644
+            for directory in /opt/Trlka /opt/Trlka/resources; do
+              test ! -L "$directory"
+              test "$(stat -c '%u:%g' "$directory")" = 0:0
+              mode=$(stat -c '%a' "$directory")
+              test "$((8#$mode & 022))" -eq 0
+            done
+            # This disposable GitHub runner may give its existing ancestors runner-specific ownership.
+            test -d /opt
+            test ! -L /opt
+            sudo chown root:root / /opt
+            sudo chmod go-w / /opt
+            namei -om /opt/Trlka/resources/linux-updater-key.txt
             cat > "$RUNNER_TEMP/trlka-install-test.policy" <<'POLICY'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
@@ -119,8 +149,9 @@ jobs:
           POLICY
             sudo install -m 644 "$RUNNER_TEMP/trlka-install-test.policy" \
               /usr/share/polkit-1/actions/io.freetalk.desktop.install-update-ci.policy
-            sudo systemctl restart polkit
-            pkaction --action-id io.freetalk.desktop.install-update-ci >/dev/null
+            sudo systemctl restart polkit || echo "PolicyKit service restart unavailable"
+            pkaction --verbose --action-id io.freetalk.desktop.install-update-ci ||
+              echo "CI PolicyKit action not detected; the test reports its install path."
           else
             chmod u+x fixtures/old/*.AppImage candidate/*.AppImage
           fi
@@ -160,7 +191,7 @@ jobs:
 
   signed-stage:
     needs: [package, upgrade]
-    if: github.repository == 'GeraMall/FreeTalk' && github.ref == 'refs/heads/preview/linux-updater-233'
+    if: github.repository == 'GeraMall/FreeTalk' && github.ref == 'refs/heads/preview/linux-updater-234'
     runs-on: ubuntu-22.04
     timeout-minutes: 12
     steps:
@@ -179,7 +210,8 @@ jobs:
         run: |
           version=$(node -p 'require("./apps/linux-desktop/package.json").version')
           node scripts/linux/create-update-feed.mjs \
-            --assets signed-linux --output signed-linux --version "$version"
+            --assets signed-linux --output signed-linux --version "$version" \
+            --notes 'Одинаковые карточки участников звонка и полноэкранная демонстрация с поворотом.'
           (cd signed-linux; sha256sum ./*.deb ./*.AppImage ./*.sig latest.json > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:

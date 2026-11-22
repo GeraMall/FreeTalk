@@ -21,8 +21,8 @@ assert.equal(
   'Run the update smoke in an isolated Linux graphical session',
 );
 
-const oldVersion = '0.4.0-beta.232';
-const newVersion = '0.4.0-beta.233';
+const oldVersion = '0.4.0-beta.233';
+const newVersion = '0.4.0-beta.234';
 const feedOrigin = 'http://127.0.0.1:41230';
 const cdpOrigin = 'http://127.0.0.1:41231';
 const rendererUrl = 'tauri://localhost/index.html';
