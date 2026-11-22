@@ -1,4 +1,4 @@
-name: Stage verified desktop beta.232
+name: Stage verified desktop beta.234
 
 on:
   workflow_dispatch:
@@ -10,52 +10,85 @@ permissions:
 jobs:
   stage:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: desktop-v0.4.0-beta.232
+      TAG: desktop-v0.4.0-beta.234
+      WINDOWS_RUN: '45045081119'
+      MACOS_RUN: '45045085525'
+      WINDOWS_SHA: 9ecb185a009fa2faf751d05321a789a0eebd4d50
+      MACOS_SHA: 758adb875ed2eb8e263939c1a7736d01340616cf
+      TRLKA_STAGING_ROOT: ${{ github.workspace }}/build-stage
+      TRLKA_WINDOWS_SOURCE: ${{ github.workspace }}/windows-source
+      TRLKA_MACOS_SOURCE: ${{ github.workspace }}/macos-source
+      TRLKA_PREVIOUS_SOURCE: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Check build provenance and release draft
+      - name: Check build provenance and the existing draft
+        shell: bash
         run: |
           set -euo pipefail
-          test "$(gh run view 44924989968 --json headSha,conclusion --jq '[.headSha, .conclusion] | join(" ")')" = 'c45a149e3f16a73f9c6f28632b499b9d384c611f success'
-          test "$(gh run view 44926625371 --json headSha,conclusion --jq '[.headSha, .conclusion] | join(" ")')" = '794c120228e7673ac30dcce85b3dfa19dc1fa21d success'
-          test "$(gh release view "$TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | join(" ")')" = 'true c45a149e3f16a73f9c6f28632b499b9d384c611f'
+          test "$(gh release view "$TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | join(" ")')" = "true $WINDOWS_SHA"
+          wait_for_build() {
+            local run_id="$1"
+            local expected_sha="$2"
+            local run_sha status conclusion
+            for ((attempt = 0; attempt < 120; attempt++)); do
+              IFS=$'\t' read -r run_sha status conclusion < <(gh run view "$run_id" --json headSha,status,conclusion --jq '[.headSha,.status,.conclusion]|@tsv')
+              test "$run_sha" = "$expected_sha"
+              if [[ "$status" == completed ]]; then
+                test "$conclusion" = success
+                return
+              fi
+              sleep 15
+            done
+            echo "Timed out waiting for CI run $run_id" >&2
+            return 1
+          }
+          wait_for_build "$WINDOWS_RUN" "$WINDOWS_SHA" &
+          windows_pid=$!
+          wait_for_build "$MACOS_RUN" "$MACOS_SHA" &
+          macos_pid=$!
+          wait "$windows_pid"
+          wait "$macos_pid"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WINDOWS_SHA }}
+          path: windows-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MACOS_SHA }}
+          path: macos-source
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: beta-windows-x64
-          run-id: 44924989968
+          run-id: ${{ env.WINDOWS_RUN }}
           github-token: ${{ github.token }}
-          path: stage/windows
+          path: build-stage/incoming/windows
       - uses: actions/download-artifact@v4
         with:
           name: beta-macos-aarch64-apple-darwin
-          run-id: 44926625371
+          run-id: ${{ env.MACOS_RUN }}
           github-token: ${{ github.token }}
-          path: stage/macos
-      - name: Verify trusted updater signatures and assemble the manifest
-        run: |
-          set -euo pipefail
-          win=stage/windows/Trlka_0.4.0-beta.232_x64-setup.exe
-          mac=stage/macos/Trlka_0.4.0-beta.232_aarch64.app.tar.gz
-          node scripts/windows/verify-updater.mjs "$win" "$win.sig"
-          node scripts/windows/verify-updater.mjs "$mac" "$mac.sig"
-          cp scripts/release/prepare-updater-232.mjs stage/
-          node stage/prepare-updater-232.mjs
-          cd stage
-          node ../scripts/release/verify-desktop-232.mjs
-      - name: Upload files to the existing draft
-        run: |
-          set -euo pipefail
-          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
-          gh release upload "$TAG" stage/windows/Trlka_0.4.0-beta.232_* stage/macos/Trlka_0.4.0-beta.232_* stage/latest.json stage/SHA256SUMS.txt
+          path: build-stage/incoming/macos
+      - name: Verify updater signatures and package metadata
+        run: python3 scripts/release/stage-desktop-234.py
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-beta232-verified-metadata
+          name: desktop-beta234-verified-metadata
           if-no-files-found: error
           path: |
-            stage/latest.json
-            stage/verified-metadata.json
-            stage/SHA256SUMS.txt
+            build-stage/stage/latest.json
+            build-stage/stage/SHA256SUMS.txt
+            build-stage/verified-metadata.json
+      - name: Upload files to the existing draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | join(" ")')" = "true $WINDOWS_SHA"
+          gh release upload "$TAG" build-stage/stage/*
