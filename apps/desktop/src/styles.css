@@ -2670,14 +2670,18 @@ input[type='range']:hover::-webkit-slider-thumb {
   width: min(100%, max(560px, calc(160vh - 621px)));
   margin: 0 auto;
 }
-.participants-grid[data-mode='camera'][data-count='3'] .camera-tile,
-.participants-grid[data-mode='camera'][data-count='4'] .camera-tile,
-.participants-grid[data-mode='camera'][data-count='5'] .camera-tile,
-.participants-grid[data-mode='camera'][data-count='6'] .camera-tile {
+/* Apply the camera row limits to voice and waiting cards in the same grid. */
+.participants-grid[data-mode='camera']:is(
+    [data-count='3'],
+    [data-count='4'],
+    [data-count='5'],
+    [data-count='6']
+  )
+  > .participant-card:where(:not(:fullscreen, .camera-tile-window-fullscreen)) {
   max-height: max(170px, calc((100vh - 398px) / 2));
 }
-.participants-grid[data-mode='camera'][data-count='7'] .camera-tile,
-.participants-grid[data-mode='camera'][data-count='8'] .camera-tile {
+.participants-grid[data-mode='camera']:is([data-count='7'], [data-count='8'])
+  > .participant-card:where(:not(:fullscreen, .camera-tile-window-fullscreen)) {
   max-height: max(150px, calc((100vh - 414px) / 3));
 }
 .participant-card {
@@ -2806,6 +2810,59 @@ input[type='range']:hover::-webkit-slider-thumb {
   background: var(--ui-surface0-100, #030912);
   cursor: default;
   animation: media-tile-in 0.2s ease-out;
+}
+.participants-grid[data-mode='camera'] > .participant-card.audio-tile {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 12px 14px;
+  aspect-ratio: 16 / 10;
+}
+.participants-grid[data-mode='camera'] > .audio-tile > .participant-avatar {
+  width: 58px;
+  height: 58px;
+  margin: 0 12px 0 0;
+  align-self: center;
+}
+.participants-grid[data-mode='camera'] > .audio-tile > .participant-info {
+  margin-top: 0;
+}
+.participants-grid[data-mode='camera'] .participant-name {
+  min-width: 0;
+}
+.participants-grid[data-mode='camera'] .participant-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.participants-grid > .participant-card {
+  transition-property: border-color, box-shadow, transform;
+}
+.participants-grid > .participant-card:where(:not(.waiting-participant-card)) {
+  animation: participant-card-appear 180ms ease-out;
+}
+.participants-grid
+  > .participant-card
+  > :is(.participant-video.camera, .participant-card-ambient, .participant-avatar) {
+  animation: participant-media-appear 220ms ease-out;
+}
+@keyframes participant-card-appear {
+  from {
+    opacity: 0.78;
+  }
+}
+@keyframes participant-media-appear {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .participants-grid > .participant-card:where(:not(.waiting-participant-card)),
+  .participants-grid
+    > .participant-card
+    > :is(.participant-video.camera, .participant-card-ambient, .participant-avatar) {
+    animation: none;
+  }
 }
 .participant-card.camera-tile:fullscreen,
 .participant-card.camera-tile.camera-tile-window-fullscreen {
@@ -19981,6 +20038,7 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
 }
 .conversation-call-compact:not(.call-fullscreen) .room-mode-camera .participant-card {
   flex: 0 1 min(420px, calc(50% - 8px));
+  min-width: 0;
   min-height: 0;
   height: min(100%, 240px);
   max-height: 100%;
@@ -21103,6 +21161,14 @@ html[data-chat-message-style='compact'] .message-bubble-row.own .message-bubble 
     height: auto;
     max-height: none;
     aspect-ratio: 16 / 10;
+  }
+
+  .room-shell
+    .participants-grid[data-mode='camera']
+    > .participant-card:where(:not(:fullscreen, .camera-tile-window-fullscreen)) {
+    height: auto;
+    min-height: 158px;
+    max-height: none;
   }
 
   .room-shell .invite-empty {

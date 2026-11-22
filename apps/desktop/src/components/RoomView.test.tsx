@@ -552,6 +552,39 @@ describe('RoomView media layouts', () => {
     expect(assignments).toEqual([]);
   });
 
+  it('expands a screen share past the mobile chat workspace and collapses the same video', () => {
+    const mediaQuery = vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal('matchMedia', mediaQuery);
+    try {
+      const { getByLabelText, getByRole, container, unmount } = render(
+        view('none', { [peerId]: { screen: stream } }, false, vi.fn(), vi.fn(), vi.fn(), {
+          embedded: true,
+          conversation: true,
+        }),
+      );
+      const video = getByLabelText('Экран Друг');
+      fireEvent.click(getByRole('button', { name: 'Развернуть демонстрацию экрана' }));
+
+      expect(container.querySelector('.media-viewport-fullscreen-shell')).not.toBeNull();
+      expect(container.querySelector('.media-workspace-fullscreen-shell')).toBeNull();
+      expect(getByLabelText('Экран Друг')).toBe(video);
+
+      const collapse = getByRole('button', { name: 'Свернуть демонстрацию экрана' });
+      expect(document.activeElement).toBe(collapse);
+      fireEvent.keyDown(collapse, { key: 'Escape' });
+
+      expect(container.querySelector('.media-fullscreen-shell')).toBeNull();
+      expect(getByLabelText('Экран Друг')).toBe(video);
+      unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps screen video muted because dedicated audio playback handles screen sound', () => {
     const remote = render(view('none', { [peerId]: { screen: stream } }));
     const remoteScreen = remote.getByLabelText('Экран Друг') as HTMLVideoElement;
