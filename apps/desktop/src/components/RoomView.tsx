@@ -2106,8 +2106,12 @@ function ScreenShareStage({
     const query = window.matchMedia?.(SCREEN_SHARE_VIEWPORT_QUERY);
     if (!query) return;
     const update = () => setTouchViewport(query.matches);
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
+    query.addEventListener?.('change', update);
+    window.addEventListener('resize', update);
+    return () => {
+      query.removeEventListener?.('change', update);
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
   useLayoutEffect(() => {
